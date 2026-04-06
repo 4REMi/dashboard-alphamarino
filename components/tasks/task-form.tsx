@@ -21,7 +21,7 @@ export function TaskForm({ projectId, task, employees, trigger }: TaskFormProps)
   const [open, setOpen] = useState(false)
   const [status, setStatus] = useState<string>(task?.status ?? "Todo")
   const [priority, setPriority] = useState<string>(task?.priority ?? "Medium")
-  const [assigneeId, setAssigneeId] = useState<string>(task?.assignee_id ?? "")
+  const [assigneeId, setAssigneeId] = useState<string>(task?.assignee_id ?? "none")
   const [loading, setLoading] = useState(false)
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -30,7 +30,7 @@ export function TaskForm({ projectId, task, employees, trigger }: TaskFormProps)
     const formData = new FormData(e.currentTarget)
     formData.set("status", status)
     formData.set("priority", priority)
-    formData.set("assignee_id", assigneeId)
+    formData.set("assignee_id", assigneeId === "none" ? "" : assigneeId)
     formData.set("project_id", projectId)
 
     try {
@@ -114,7 +114,7 @@ export function TaskForm({ projectId, task, employees, trigger }: TaskFormProps)
                   <SelectValue placeholder="Sin asignar" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Sin asignar</SelectItem>
+                  <SelectItem value="none">Sin asignar</SelectItem>
                   {employees.map((e) => (
                     <SelectItem key={e.id} value={e.id}>{e.full_name}</SelectItem>
                   ))}

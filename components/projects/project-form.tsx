@@ -19,7 +19,7 @@ interface ProjectFormProps {
 export function ProjectForm({ project, customers, trigger }: ProjectFormProps) {
   const [open, setOpen] = useState(false)
   const [status, setStatus] = useState<string>(project?.status ?? "Planning")
-  const [customerId, setCustomerId] = useState(project?.customer_id ?? "")
+  const [customerId, setCustomerId] = useState(project?.customer_id ?? "none")
   const [loading, setLoading] = useState(false)
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -27,7 +27,7 @@ export function ProjectForm({ project, customers, trigger }: ProjectFormProps) {
     setLoading(true)
     const formData = new FormData(e.currentTarget)
     formData.set("status", status)
-    formData.set("customer_id", customerId)
+    formData.set("customer_id", customerId === "none" ? "" : customerId)
 
     try {
       if (project) {
@@ -68,7 +68,7 @@ export function ProjectForm({ project, customers, trigger }: ProjectFormProps) {
                   <SelectValue placeholder="Sin cliente" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Sin cliente</SelectItem>
+                  <SelectItem value="none">Sin cliente</SelectItem>
                   {customers.map((c) => (
                     <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                   ))}

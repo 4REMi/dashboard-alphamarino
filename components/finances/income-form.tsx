@@ -16,14 +16,14 @@ interface IncomeFormProps {
 
 export function IncomeForm({ projects }: IncomeFormProps) {
   const [open, setOpen] = useState(false)
-  const [projectId, setProjectId] = useState("")
+  const [projectId, setProjectId] = useState("none")
   const [loading, setLoading] = useState(false)
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setLoading(true)
     const formData = new FormData(e.currentTarget)
-    formData.set("project_id", projectId)
+    formData.set("project_id", projectId === "none" ? "" : projectId)
 
     try {
       await createIncome(formData)
@@ -63,7 +63,7 @@ export function IncomeForm({ projects }: IncomeFormProps) {
                 <SelectValue placeholder="Sin proyecto específico" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Sin proyecto</SelectItem>
+                <SelectItem value="none">Sin proyecto</SelectItem>
                 {projects.map((p) => (
                   <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
                 ))}
