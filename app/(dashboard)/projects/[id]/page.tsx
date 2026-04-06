@@ -6,11 +6,11 @@ import { getIncome, getProjectExpenses } from "@/lib/actions/finances"
 import { ProjectForm } from "@/components/projects/project-form"
 import { TaskForm } from "@/components/tasks/task-form"
 import { TaskTable } from "@/components/tasks/task-table"
+import { TeamManager } from "@/components/projects/team-manager"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { createClient } from "@/lib/supabase/server"
 import { getCustomers } from "@/lib/actions/customers"
 import { ArrowLeft, CalendarDays, DollarSign, Users } from "lucide-react"
@@ -151,30 +151,13 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
 
       {/* Team */}
       <div>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-base font-semibold">Equipo ({members.length})</h2>
-        </div>
-        <div className="flex gap-3 flex-wrap">
-          {members.map((member: Profile) => {
-            const initials = member.full_name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
-            return (
-              <Link key={member.id} href={`/employees/${member.id}`}>
-                <div className="flex items-center gap-2 bg-muted rounded-lg px-3 py-2 hover:bg-accent transition-colors">
-                  <Avatar className="h-7 w-7">
-                    <AvatarFallback className="text-xs">{initials}</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p className="text-sm font-medium">{member.full_name}</p>
-                    {member.position && <p className="text-xs text-muted-foreground">{member.position}</p>}
-                  </div>
-                </div>
-              </Link>
-            )
-          })}
-          {members.length === 0 && (
-            <p className="text-sm text-muted-foreground">Sin miembros asignados</p>
-          )}
-        </div>
+        <h2 className="text-base font-semibold mb-3">Equipo ({members.length})</h2>
+        <TeamManager
+          projectId={project.id}
+          members={members}
+          allEmployees={employees as Profile[]}
+          isAdmin={isAdmin}
+        />
       </div>
 
       {/* Tasks */}
