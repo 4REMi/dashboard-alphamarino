@@ -20,6 +20,7 @@ export function ProjectForm({ project, customers, trigger }: ProjectFormProps) {
   const [open, setOpen] = useState(false)
   const [status, setStatus] = useState<string>(project?.status ?? "Planning")
   const [customerId, setCustomerId] = useState(project?.customer_id ?? "none")
+  const [projectType, setProjectType] = useState<string>(project?.project_type ?? "paid_media")
   const [loading, setLoading] = useState(false)
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -28,6 +29,7 @@ export function ProjectForm({ project, customers, trigger }: ProjectFormProps) {
     const formData = new FormData(e.currentTarget)
     formData.set("status", status)
     formData.set("customer_id", customerId === "none" ? "" : customerId)
+    formData.set("project_type", projectType)
 
     try {
       if (project) {
@@ -59,6 +61,18 @@ export function ProjectForm({ project, customers, trigger }: ProjectFormProps) {
           <div className="space-y-2">
             <Label htmlFor="name">Nombre *</Label>
             <Input id="name" name="name" defaultValue={project?.name} required />
+          </div>
+          <div className="space-y-2">
+            <Label>Tipo de Proyecto</Label>
+            <Select value={projectType} onValueChange={setProjectType}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="paid_media">Paid Media</SelectItem>
+                <SelectItem value="sitio_web">Sitio Web</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">

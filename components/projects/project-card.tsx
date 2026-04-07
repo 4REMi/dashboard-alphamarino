@@ -29,11 +29,20 @@ export function ProjectCard({ project, memberCount }: ProjectCardProps) {
         <CardContent className="p-5">
           <div className="flex items-start justify-between mb-3">
             <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-base group-hover:text-primary transition-colors truncate">
-                {project.name}
-              </h3>
+              <div className="flex items-center gap-2 mb-0.5">
+                <h3 className="font-semibold text-base group-hover:text-primary transition-colors truncate">
+                  {project.name}
+                </h3>
+                <span className={`text-xs px-1.5 py-0.5 rounded font-medium flex-shrink-0 ${
+                  project.project_type === "sitio_web"
+                    ? "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300"
+                    : "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
+                }`}>
+                  {project.project_type === "sitio_web" ? "Web" : "Paid Media"}
+                </span>
+              </div>
               {project.customer && (
-                <p className="text-xs text-muted-foreground mt-0.5">{project.customer.name}</p>
+                <p className="text-xs text-muted-foreground">{project.customer.name}</p>
               )}
             </div>
             <Badge variant={config.variant} className="ml-2 flex-shrink-0">{config.label}</Badge>

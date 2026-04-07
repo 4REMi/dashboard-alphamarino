@@ -1,21 +1,31 @@
 import { notFound } from "next/navigation"
 import Link from "next/link"
-import { getProject } from "@/lib/actions/projects"
+import {
+  getProject,
+  getPaidMediaCycles,
+  getWebPhases,
+  getProjectLog,
+} from "@/lib/actions/projects"
 import { getEmployees } from "@/lib/actions/employees"
 import { getIncome, getProjectExpenses } from "@/lib/actions/finances"
 import { ProjectForm } from "@/components/projects/project-form"
 import { TaskForm } from "@/components/tasks/task-form"
 import { TaskTable } from "@/components/tasks/task-table"
 import { TeamManager } from "@/components/projects/team-manager"
+import { PaidMediaContextCard } from "@/components/projects/hub/paid-media-context-card"
+import { PaidMediaCyclesPanel } from "@/components/projects/hub/paid-media-cycles-panel"
+import { WebContextCard } from "@/components/projects/hub/web-context-card"
+import { WebPhaseStepper } from "@/components/projects/hub/web-phase-stepper"
+import { ProjectLog } from "@/components/projects/hub/project-log"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { createClient } from "@/lib/supabase/server"
 import { getCustomers } from "@/lib/actions/customers"
 import { ArrowLeft, CalendarDays, DollarSign, Users } from "lucide-react"
 import { formatDate, formatCurrency } from "@/lib/utils"
-import type { Customer, Profile, Task } from "@/lib/types"
+import type { Customer, Profile, Task, PaidMediaContext, WebContext } from "@/lib/types"
 
 const statusConfig = {
   Planning: { label: "Planificación", variant: "secondary" as const },
@@ -39,11 +49,17 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user!.id).single()
   const isAdmin = profile?.role === "admin"
 
-  const [employees, customers, income, expenses] = await Promise.all([
+  const isPaidMedia = project.project_type === "paid_media"
+  const isWebProject = project.project_type === "sitio_web"
+
+  const [employees, customers, income, expenses, paidMediaCycles, webPhases, logEntries] = await Promise.all([
     getEmployees(),
     getCustomers(),
     isAdmin ? getIncome(id) : Promise.resolve([]),
     isAdmin ? getProjectExpenses(id) : Promise.resolve([]),
+    isPaidMedia ? getPaidMediaCycles(id) : Promise.resolve([]),
+    isWebProject ? getWebPhases(id) : Promise.resolve([]),
+    getProjectLog(id),
   ])
 
   const tasks = (project.tasks ?? []) as Task[]
@@ -51,6 +67,15 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const totalIncome = income.reduce((s, i) => s + Number(i.amount), 0)
   const totalExpenses = expenses.reduce((s, e) => s + Number(e.amount), 0)
   const config = statusConfig[project.status as keyof typeof statusConfig] ?? statusConfig["Planning"]
+
+  // Extract nested hub context (Supabase returns array for one-to-one joins via select)
+  const paidMediaContext = Array.isArray(project.paid_media_context)
+    ? (project.paid_media_context[0] as PaidMediaContext | undefined) ?? null
+    : (project.paid_media_context as PaidMediaContext | null) ?? null
+
+  const webContext = Array.isArray(project.web_context)
+    ? (project.web_context[0] as WebContext | undefined) ?? null
+    : (project.web_context as WebContext | null) ?? null
 
   return (
     <div className="p-6 space-y-6">
@@ -69,6 +94,13 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-2xl font-bold">{project.name}</h1>
             <Badge variant={config.variant}>{config.label}</Badge>
+            <span className={`text-xs px-2 py-1 rounded font-medium ${
+              isWebProject
+                ? "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300"
+                : "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
+            }`}>
+              {isWebProject ? "Sitio Web" : "Paid Media"}
+            </span>
           </div>
           {project.customer && (
             <Link href={`/customers/${project.customer_id}`} className="text-sm text-muted-foreground hover:text-primary mt-1 inline-block">
@@ -114,7 +146,13 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             )}
             <div className="flex items-center gap-1.5">
               <Users className="w-4 h-4" />
-              <span>{tasks.filter((t) => t.status === "Done").length}/{tasks.length} tareas</span>
+              {isWebProject ? (
+                <span>
+                  {webPhases.filter((p) => p.status === "done").length}/{webPhases.length} fases
+                </span>
+              ) : (
+                <span>{tasks.filter((t) => t.status === "Done").length}/{tasks.length} tareas</span>
+              )}
             </div>
           </div>
           {project.description && (
@@ -123,7 +161,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         </CardContent>
       </Card>
 
-      {/* KPI row */}
+      {/* KPI row (admin only) */}
       {isAdmin && (
         <div className="grid grid-cols-3 gap-4">
           <Card>
@@ -149,6 +187,48 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         </div>
       )}
 
+      {/* ===== PAID MEDIA HUB ===== */}
+      {isPaidMedia && (
+        <section className="space-y-4">
+          <h2 className="text-base font-semibold text-foreground">Hub Paid Media</h2>
+          <PaidMediaContextCard
+            projectId={project.id}
+            context={paidMediaContext}
+            isAdmin={isAdmin}
+          />
+          <PaidMediaCyclesPanel
+            projectId={project.id}
+            initialCycles={paidMediaCycles as any}
+            isAdmin={isAdmin}
+          />
+        </section>
+      )}
+
+      {/* ===== SITIO WEB HUB ===== */}
+      {isWebProject && (
+        <section className="space-y-4">
+          <h2 className="text-base font-semibold text-foreground">Hub Sitio Web</h2>
+          <WebContextCard
+            projectId={project.id}
+            context={webContext}
+            isAdmin={isAdmin}
+          />
+          <WebPhaseStepper
+            projectId={project.id}
+            initialPhases={webPhases as any}
+            isAdmin={isAdmin}
+          />
+        </section>
+      )}
+
+      {/* ===== PROJECT LOG ===== */}
+      <ProjectLog
+        projectId={project.id}
+        initialEntries={logEntries as any}
+        currentUserId={user!.id}
+        isAdmin={isAdmin}
+      />
+
       {/* Team */}
       <div>
         <h2 className="text-base font-semibold mb-3">Equipo ({members.length})</h2>
@@ -160,7 +240,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         />
       </div>
 
-      {/* Tasks */}
+      {/* Tasks — shown for both types */}
       <div>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-base font-semibold">Tareas ({tasks.length})</h2>
