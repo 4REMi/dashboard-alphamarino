@@ -9,12 +9,34 @@ import { createClient } from "@/lib/supabase/server"
 
 export async function getProjectTypes() {
   const supabase = await createClient()
-  const { data, error } = await supabase
+  const { data: types, error } = await supabase
     .from("project_types")
     .select("*")
     .order("name")
   if (error) return []
-  return data ?? []
+
+  // Load phase sets separately — avoids dependency on the FK constraint
+  // between project_types.default_phase_set_id → phase_sets.id
+  const phaseSetsMap: Record<string, { id: string; name: string; phases: { id: string; name: string; description: string | null; phase_order: number }[] }> = {}
+  try {
+    const { data: phaseSets } = await supabase
+      .from("phase_sets")
+      .select("*, phases:phase_set_phases(id, name, description, phase_order)")
+    if (phaseSets) {
+      for (const ps of phaseSets) {
+        phaseSetsMap[ps.id] = {
+          ...ps,
+          phases: ((ps.phases ?? []) as { id: string; name: string; description: string | null; phase_order: number }[])
+            .sort((a, b) => a.phase_order - b.phase_order),
+        }
+      }
+    }
+  } catch { /* phase_sets may not exist */ }
+
+  return (types ?? []).map((t) => ({
+    ...t,
+    default_phase_set: t.default_phase_set_id ? (phaseSetsMap[t.default_phase_set_id] ?? null) : null,
+  }))
 }
 
 export async function createProjectType(formData: FormData) {

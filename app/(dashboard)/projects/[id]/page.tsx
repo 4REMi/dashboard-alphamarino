@@ -3,10 +3,11 @@ import Link from "next/link"
 import { getProject, getProjectCycles, getProjectLog } from "@/lib/actions/projects"
 import { getEmployees } from "@/lib/actions/employees"
 import { getIncome, getProjectExpenses } from "@/lib/actions/finances"
-import { getProjectTypes } from "@/lib/actions/config"
+import { getProjectTypes, getPhaseSets } from "@/lib/actions/config"
 import { getCustomers } from "@/lib/actions/customers"
 import { ProjectForm } from "@/components/projects/project-form"
 import { ProjectActions } from "@/components/projects/project-actions"
+import { ApplyPhasesButton } from "@/components/projects/apply-phases-button"
 import { TaskForm } from "@/components/tasks/task-form"
 import { TaskTable } from "@/components/tasks/task-table"
 import { TeamManager } from "@/components/projects/team-manager"
@@ -54,10 +55,11 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const hasPhases = (project.phases ?? []).length > 0
   const isArchived = project.status === "Archived"
 
-  const [employees, customers, projectTypes, income, expenses, cycles, logEntries] = await Promise.all([
+  const [employees, customers, projectTypes, phaseSets, income, expenses, cycles, logEntries] = await Promise.all([
     getEmployees().catch(() => []),
     getCustomers().catch(() => []),
     getProjectTypes().catch(() => []),
+    getPhaseSets().catch(() => []),
     isAdminOrSubadmin ? getIncome(id).catch(() => []) : Promise.resolve([]),
     isAdminOrSubadmin ? getProjectExpenses(id).catch(() => []) : Promise.resolve([]),
     isPaidMedia ? getProjectCycles(id).catch(() => []) : Promise.resolve([]),
@@ -211,10 +213,19 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         </section>
       )}
 
-      {/* Web Dev phases */}
-      {hasPhases && (
+      {/* Phases section */}
+      {(hasPhases || (isAdminOrSubadmin && phaseSets.length > 0)) && (
         <section className="space-y-4">
-          <h2 className="text-base font-semibold">Fases del Proyecto</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold">Fases del Proyecto</h2>
+            {isAdminOrSubadmin && phaseSets.length > 0 && (
+              <ApplyPhasesButton
+                projectId={project.id}
+                phaseSets={phaseSets as Parameters<typeof ApplyPhasesButton>[0]["phaseSets"]}
+                defaultPhaseSetId={(project.project_type as { default_phase_set_id?: string } | null)?.default_phase_set_id ?? null}
+              />
+            )}
+          </div>
           {webContext !== null || !isPaidMedia ? (
             <WebContextCard
               projectId={project.id}

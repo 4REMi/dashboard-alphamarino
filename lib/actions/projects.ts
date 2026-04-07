@@ -232,6 +232,35 @@ export async function createProject(
   return project
 }
 
+export async function applyPhaseSetToProject(projectId: string, phaseSetId: string) {
+  const supabase = await createClient()
+
+  // Get phases from the phase set
+  const { data: templatePhases, error } = await supabase
+    .from("phase_set_phases")
+    .select("*")
+    .eq("phase_set_id", phaseSetId)
+    .order("phase_order")
+
+  if (error) throw error
+  if (!templatePhases || templatePhases.length === 0) throw new Error("El phase set no tiene fases")
+
+  // Delete existing phases first (allow re-applying)
+  await supabase.from("project_phases").delete().eq("project_id", projectId)
+
+  // Insert new phases
+  const projectPhases = templatePhases.map((tp, i) => ({
+    project_id: projectId,
+    name: tp.name,
+    description: tp.description,
+    phase_order: i,
+  }))
+  const { error: insertError } = await supabase.from("project_phases").insert(projectPhases)
+  if (insertError) throw insertError
+
+  revalidatePath(`/projects/${projectId}`)
+}
+
 export async function updateProject(id: string, formData: FormData) {
   const supabase = await createClient()
   const projectTypeId = formData.get("project_type_id") as string
