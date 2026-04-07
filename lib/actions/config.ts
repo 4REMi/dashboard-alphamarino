@@ -13,8 +13,8 @@ export async function getProjectTypes() {
     .from("project_types")
     .select("*, default_phase_set:phase_sets(id, name)")
     .order("name")
-  if (error) throw error
-  return data
+  if (error) return []
+  return data ?? []
 }
 
 export async function createProjectType(formData: FormData) {
@@ -61,8 +61,7 @@ export async function getPhaseSets() {
     .from("phase_sets")
     .select("*, phases:phase_set_phases(*)")
     .order("name")
-  if (error) throw error
-  // Sort phases by phase_order
+  if (error) return []
   return (data ?? []).map((ps) => ({
     ...ps,
     phases: (ps.phases ?? []).sort(

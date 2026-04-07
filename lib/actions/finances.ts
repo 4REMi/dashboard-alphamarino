@@ -137,12 +137,16 @@ export async function deleteProjectExpense(id: string) {
 
 export async function getDomains() {
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from("domains")
-    .select("*, customer:customers(id, name)")
-    .order("renewal_date", { ascending: true })
-  if (error) throw error
-  return data ?? []
+  try {
+    const { data, error } = await supabase
+      .from("domains")
+      .select("*, customer:customers(id, name)")
+      .order("renewal_date", { ascending: true })
+    if (error) return []
+    return data ?? []
+  } catch {
+    return []
+  }
 }
 
 export async function createDomain(formData: FormData) {

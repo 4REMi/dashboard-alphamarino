@@ -10,9 +10,9 @@ import type { ProjectStatus, PhaseStatus, CycleDeliverableStatus, CampaignStatus
 
 export async function getProjects() {
   const supabase = await createClient()
-  const now = new Date().toISOString()
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+  const now = new Date().toISOString().split("T")[0]
 
+  // Base query — works even if optional tables don't exist yet
   const { data, error } = await supabase
     .from("projects")
     .select(`
@@ -21,27 +21,38 @@ export async function getProjects() {
       project_type:project_types(id, name),
       members:project_members(profile_id),
       tasks(id, status, due_date),
-      phases:project_phases(id, status),
-      log:project_log_entries(created_at)
+      phases:project_phases(id, status)
     `)
     .order("created_at", { ascending: false })
 
   if (error) throw error
 
+  // Try to fetch log entries separately so a missing table doesn't break the list
+  let logMap: Record<string, string> = {}
+  try {
+    const { data: logs } = await supabase
+      .from("project_log_entries")
+      .select("project_id, created_at")
+      .order("created_at", { ascending: false })
+    if (logs) {
+      for (const l of logs) {
+        if (!logMap[l.project_id]) logMap[l.project_id] = l.created_at
+      }
+    }
+  } catch {
+    // table may not exist yet
+  }
+
   return (data ?? []).map((p) => {
     const tasks = (p.tasks ?? []) as Array<{ status: string; due_date: string | null }>
     const phases = (p.phases ?? []) as Array<{ status: string }>
-    const logs = (p.log ?? []) as Array<{ created_at: string }>
 
     const hasOverdueTasks = tasks.some(
-      (t) => t.status !== "Done" && t.due_date && t.due_date < now.split("T")[0]
+      (t) => t.status !== "Done" && t.due_date && t.due_date < now
     )
     const hasBlockedPhase = phases.some((ph) => ph.status === "blocked")
 
-    // Last activity: last log entry or project created_at
-    const lastActivity = logs.length > 0
-      ? logs.sort((a, b) => b.created_at.localeCompare(a.created_at))[0].created_at
-      : p.created_at
+    const lastActivity = logMap[p.id] ?? p.created_at
     const inactiveForDays = Math.floor(
       (Date.now() - new Date(lastActivity).getTime()) / (1000 * 60 * 60 * 24)
     )
@@ -52,7 +63,7 @@ export async function getProjects() {
       attention: {
         hasOverdueTasks,
         hasBlockedPhase,
-        hasPendingCycleReport: false, // computed separately if needed
+        hasPendingCycleReport: false,
         inactiveForDays,
       },
     }
@@ -61,6 +72,8 @@ export async function getProjects() {
 
 export async function getProject(id: string) {
   const supabase = await createClient()
+
+  // Core query — customers and tasks exist in all schema versions
   const { data, error } = await supabase
     .from("projects")
     .select(`
@@ -69,18 +82,39 @@ export async function getProject(id: string) {
       project_type:project_types(id, name, description, default_phase_set_id),
       tasks(*, assignee:profiles(id, full_name, avatar_url, position)),
       members:project_members(profile:profiles(id, full_name, avatar_url, position, role)),
-      phases:project_phases(*),
-      paid_media_context(*),
-      web_project_context(*)
+      phases:project_phases(*)
     `)
     .eq("id", id)
     .single()
 
   if (error) throw error
 
-  // Sort phases and tasks
+  // Optional hub tables — fetch separately so a missing table doesn't crash the page
+  let paidMediaContext = null
+  let webProjectContext = null
+
+  try {
+    const { data: pmc } = await supabase
+      .from("paid_media_context")
+      .select("*")
+      .eq("project_id", id)
+      .maybeSingle()
+    paidMediaContext = pmc
+  } catch { /* table may not exist */ }
+
+  try {
+    const { data: wpc } = await supabase
+      .from("web_project_context")
+      .select("*")
+      .eq("project_id", id)
+      .maybeSingle()
+    webProjectContext = wpc
+  } catch { /* table may not exist */ }
+
   return {
     ...data,
+    paid_media_context: paidMediaContext ? [paidMediaContext] : [],
+    web_project_context: webProjectContext ? [webProjectContext] : [],
     phases: ((data.phases ?? []) as Array<{ phase_order: number }>)
       .sort((a, b) => a.phase_order - b.phase_order),
     tasks: ((data.tasks ?? []) as Array<{ due_date: string | null }>)
@@ -266,13 +300,17 @@ export async function upsertPaidMediaContext(projectId: string, formData: FormDa
 
 export async function getProjectCycles(projectId: string) {
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from("paid_media_cycles")
-    .select("*")
-    .eq("project_id", projectId)
-    .order("cycle_month", { ascending: false })
-  if (error) throw error
-  return data ?? []
+  try {
+    const { data, error } = await supabase
+      .from("paid_media_cycles")
+      .select("*")
+      .eq("project_id", projectId)
+      .order("cycle_month", { ascending: false })
+    if (error) return []
+    return data ?? []
+  } catch {
+    return []
+  }
 }
 
 export async function openNewCycle(projectId: string, cycleMonth: string) {
@@ -374,13 +412,17 @@ export async function incrementRevision(projectId: string) {
 
 export async function getProjectLog(projectId: string) {
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from("project_log_entries")
-    .select("*, author:profiles(id, full_name, avatar_url)")
-    .eq("project_id", projectId)
-    .order("created_at", { ascending: false })
-  if (error) throw error
-  return data ?? []
+  try {
+    const { data, error } = await supabase
+      .from("project_log_entries")
+      .select("*, author:profiles(id, full_name, avatar_url)")
+      .eq("project_id", projectId)
+      .order("created_at", { ascending: false })
+    if (error) return []
+    return data ?? []
+  } catch {
+    return []
+  }
 }
 
 export async function addLogEntry(projectId: string, body: string) {
