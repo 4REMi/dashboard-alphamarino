@@ -61,7 +61,7 @@ export function Sidebar({ profile, logoUrl }: SidebarProps) {
     >
       {/* Logo */}
       <div className="flex items-center gap-3 px-4 py-5 border-b border-sidebar-border">
-        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary flex-shrink-0 overflow-hidden">
+        <div className={`flex items-center justify-center w-8 h-8 rounded-lg flex-shrink-0 overflow-hidden ${logoUrl ? "" : "bg-primary"}`}>
           {logoUrl ? (
             <Image
               src={logoUrl}
