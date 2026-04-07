@@ -1,17 +1,17 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import type { PaidMediaContext } from "@/lib/types"
-import { PAID_MEDIA_PLATFORMS } from "@/lib/types"
+import type { PaidMediaContext, MainObjective } from "@/lib/types"
+import { PAID_MEDIA_PLATFORMS, MAIN_OBJECTIVES } from "@/lib/types"
 import { upsertPaidMediaContext } from "@/lib/actions/projects"
 
 interface Props {
   projectId: string
   context: PaidMediaContext | null
-  isAdmin: boolean
+  canEdit: boolean
 }
 
-export function PaidMediaContextCard({ projectId, context, isAdmin }: Props) {
+export function PaidMediaContextCard({ projectId, context, canEdit }: Props) {
   const [editing, setEditing] = useState(!context)
   const [isPending, startTransition] = useTransition()
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(context?.platforms ?? [])
@@ -36,36 +36,42 @@ export function PaidMediaContextCard({ projectId, context, isAdmin }: Props) {
     return (
       <div className="rounded-xl border border-border bg-card p-5 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-sm text-foreground">Contexto de Medios</h3>
-          {isAdmin && (
-            <button
-              onClick={() => setEditing(true)}
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
+          <h3 className="font-semibold text-sm text-foreground">Contexto de Cuenta</h3>
+          {canEdit && (
+            <button onClick={() => setEditing(true)} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
               Editar
             </button>
           )}
         </div>
 
+        {/* Platforms */}
         <div className="flex flex-wrap gap-2">
           {context?.platforms.map((p) => (
-            <span key={p} className="px-2 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium">
-              {p}
-            </span>
+            <span key={p} className="px-2 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium">{p}</span>
           ))}
-          {(!context?.platforms.length) && (
-            <span className="text-xs text-muted-foreground">Sin plataformas configuradas</span>
+          {!context?.platforms.length && <span className="text-xs text-muted-foreground">Sin plataformas</span>}
+        </div>
+
+        {/* Objective + KPIs */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {context?.main_objective && (
+            <Kpi label="Objetivo" value={MAIN_OBJECTIVES[context.main_objective as MainObjective]} />
           )}
+          {context?.monthly_ad_budget && (
+            <Kpi label="Budget pauta (MXN)" value={`$${context.monthly_ad_budget.toLocaleString()}`} />
+          )}
+          {context?.target_roas && <Kpi label="ROAS objetivo" value={`${context.target_roas}x`} />}
+          {context?.target_cpa && <Kpi label="CPA objetivo" value={`$${context.target_cpa}`} />}
+          {context?.target_cpl && <Kpi label="CPL objetivo" value={`$${context.target_cpl}`} />}
+          {context?.target_leads_per_month && <Kpi label="Leads/mes" value={context.target_leads_per_month.toString()} />}
         </div>
 
-        <div className="grid grid-cols-3 gap-4">
-          <Stat label="Budget Mensual" value={context?.monthly_budget ? `$${context.monthly_budget.toLocaleString()}` : "—"} />
-          <Stat label="CPA Objetivo" value={context?.target_cpa ? `$${context.target_cpa}` : "—"} />
-          <Stat label="ROAS Objetivo" value={context?.target_roas ? `${context.target_roas}x` : "—"} />
-        </div>
-
-        {context?.notes && (
-          <p className="text-sm text-muted-foreground border-t border-border pt-3">{context.notes}</p>
+        {/* Account notes */}
+        {context?.account_notes && (
+          <div className="border-t border-border pt-3">
+            <p className="text-xs font-medium text-muted-foreground mb-1">Notas de cuenta</p>
+            <p className="text-sm text-foreground whitespace-pre-wrap">{context.account_notes}</p>
+          </div>
         )}
       </div>
     )
@@ -73,10 +79,10 @@ export function PaidMediaContextCard({ projectId, context, isAdmin }: Props) {
 
   return (
     <form onSubmit={handleSubmit} className="rounded-xl border border-border bg-card p-5 space-y-4">
-      <h3 className="font-semibold text-sm text-foreground">Contexto de Medios</h3>
+      <h3 className="font-semibold text-sm text-foreground">Contexto de Cuenta</h3>
 
       <div>
-        <label className="text-xs font-medium text-muted-foreground mb-2 block">Plataformas</label>
+        <label className="text-xs font-medium text-muted-foreground mb-2 block">Plataformas activas</label>
         <div className="flex flex-wrap gap-2">
           {PAID_MEDIA_PLATFORMS.map((p) => (
             <button
@@ -95,64 +101,72 @@ export function PaidMediaContextCard({ projectId, context, isAdmin }: Props) {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="text-xs font-medium text-muted-foreground mb-1 block">Budget Mensual ($)</label>
-          <input
-            name="monthly_budget"
-            type="number"
-            step="0.01"
-            defaultValue={context?.monthly_budget ?? ""}
+          <label className="text-xs font-medium text-muted-foreground mb-1 block">Objetivo principal</label>
+          <select
+            name="main_objective"
+            defaultValue={context?.main_objective ?? "none"}
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          />
+          >
+            <option value="none">Sin objetivo</option>
+            {Object.entries(MAIN_OBJECTIVES).map(([val, label]) => (
+              <option key={val} value={val}>{label}</option>
+            ))}
+          </select>
         </div>
         <div>
-          <label className="text-xs font-medium text-muted-foreground mb-1 block">CPA Objetivo ($)</label>
+          <label className="text-xs font-medium text-muted-foreground mb-1 block">Budget de pauta mensual (MXN)</label>
           <input
-            name="target_cpa"
+            name="monthly_ad_budget"
             type="number"
             step="0.01"
-            defaultValue={context?.target_cpa ?? ""}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          />
-        </div>
-        <div>
-          <label className="text-xs font-medium text-muted-foreground mb-1 block">ROAS Objetivo (x)</label>
-          <input
-            name="target_roas"
-            type="number"
-            step="0.01"
-            defaultValue={context?.target_roas ?? ""}
+            defaultValue={context?.monthly_ad_budget ?? ""}
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
       </div>
 
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {[
+          { name: "target_roas", label: "ROAS objetivo (x)", val: context?.target_roas },
+          { name: "target_cpa", label: "CPA objetivo ($)", val: context?.target_cpa },
+          { name: "target_cpl", label: "CPL objetivo ($)", val: context?.target_cpl },
+          { name: "target_leads_per_month", label: "Leads/mes", val: context?.target_leads_per_month },
+        ].map(({ name, label, val }) => (
+          <div key={name}>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">{label}</label>
+            <input
+              name={name}
+              type="number"
+              step="any"
+              defaultValue={val ?? ""}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
+        ))}
+      </div>
+
       <div>
-        <label className="text-xs font-medium text-muted-foreground mb-1 block">Notas</label>
+        <label className="text-xs font-medium text-muted-foreground mb-1 block">
+          Notas de cuenta <span className="text-muted-foreground/60">(briefing, buyer persona, restricciones, decisiones)</span>
+        </label>
         <textarea
-          name="notes"
-          rows={2}
-          defaultValue={context?.notes ?? ""}
+          name="account_notes"
+          rows={4}
+          defaultValue={context?.account_notes ?? ""}
+          placeholder="El 'cerebro' de la cuenta…"
           className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
         />
       </div>
 
       <div className="flex justify-end gap-2">
         {context && (
-          <button
-            type="button"
-            onClick={() => setEditing(false)}
-            className="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
+          <button type="button" onClick={() => setEditing(false)} className="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
             Cancelar
           </button>
         )}
-        <button
-          type="submit"
-          disabled={isPending}
-          className="px-4 py-1.5 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
-        >
+        <button type="submit" disabled={isPending} className="px-4 py-1.5 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors">
           {isPending ? "Guardando…" : "Guardar"}
         </button>
       </div>
@@ -160,11 +174,11 @@ export function PaidMediaContextCard({ projectId, context, isAdmin }: Props) {
   )
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Kpi({ label, value }: { label: string; value: string }) {
   return (
-    <div>
+    <div className="bg-muted/40 rounded-lg p-2.5">
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="text-sm font-semibold text-foreground">{value}</p>
+      <p className="text-sm font-semibold text-foreground mt-0.5">{value}</p>
     </div>
   )
 }

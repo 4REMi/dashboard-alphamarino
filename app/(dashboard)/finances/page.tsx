@@ -10,22 +10,32 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { deleteRecurringExpense, deleteIncome } from "@/lib/actions/finances"
-import { Trash2, TrendingUp, TrendingDown, DollarSign } from "lucide-react"
+import { Trash2, TrendingUp, TrendingDown, DollarSign, Repeat, AlertCircle } from "lucide-react"
 import { formatCurrency, formatDate } from "@/lib/utils"
-import type { Income, RecurringExpense, ProjectExpense, Project } from "@/lib/types"
+import { normalizeToMonthly } from "@/lib/types"
+import type { Income, RecurringExpense, ProjectExpense, Project, ExpenseFrequency } from "@/lib/types"
 
 const frequencyLabels: Record<string, string> = {
   Monthly: "Mensual",
   Weekly: "Semanal",
   Annual: "Anual",
+  Semestral: "Semestral",
   "One-time": "Único",
+}
+
+const categoryLabels: Record<string, string> = {
+  Payroll: "Nómina",
+  Software: "Software",
+  Rent: "Renta",
+  Services: "Servicios",
+  Other: "Otros",
 }
 
 const categoryColors: Record<string, string> = {
   Payroll: "bg-blue-100 text-blue-700",
   Software: "bg-purple-100 text-purple-700",
   Rent: "bg-yellow-100 text-yellow-700",
-  Utilities: "bg-orange-100 text-orange-700",
+  Services: "bg-orange-100 text-orange-700",
   Other: "bg-gray-100 text-gray-700",
 }
 
@@ -48,12 +58,17 @@ export default async function FinancesPage() {
 
   const monthlyRecurringTotal = recurring
     .filter((e: RecurringExpense) => e.is_active)
-    .reduce((s: number, e: RecurringExpense) => {
-      if (e.frequency === "Monthly") return s + Number(e.amount)
-      if (e.frequency === "Weekly") return s + Number(e.amount) * 4.33
-      if (e.frequency === "Annual") return s + Number(e.amount) / 12
-      return s
-    }, 0)
+    .reduce((s: number, e: RecurringExpense) => s + normalizeToMonthly(Number(e.amount), e.frequency as ExpenseFrequency), 0)
+
+  // Expenses expiring in the next 30 days
+  const today = new Date()
+  const in30Days = new Date(today)
+  in30Days.setDate(today.getDate() + 30)
+  const upcomingExpenses = (recurring as RecurringExpense[]).filter((e) => {
+    if (!e.next_payment_date || !e.is_active) return false
+    const d = new Date(e.next_payment_date)
+    return d >= today && d <= in30Days
+  })
 
   return (
     <div className="p-6 space-y-6">
@@ -65,7 +80,7 @@ export default async function FinancesPage() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <Card>
           <CardContent className="p-5">
             <div className="flex items-center justify-between mb-3">
@@ -74,7 +89,7 @@ export default async function FinancesPage() {
                 <TrendingUp className="w-4 h-4 text-green-600" />
               </div>
             </div>
-            <p className="text-2xl font-bold text-green-600">{formatCurrency(summary.monthlyIncome)}</p>
+            <p className="text-2xl font-bold text-green-700">{formatCurrency(summary.monthlyIncome)}</p>
           </CardContent>
         </Card>
         <Card>
@@ -85,18 +100,18 @@ export default async function FinancesPage() {
                 <TrendingDown className="w-4 h-4 text-red-600" />
               </div>
             </div>
-            <p className="text-2xl font-bold text-red-600">{formatCurrency(summary.monthlyExpenses)}</p>
+            <p className="text-2xl font-bold text-red-700">{formatCurrency(summary.monthlyExpenses)}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-5">
             <div className="flex items-center justify-between mb-3">
               <p className="text-sm font-medium text-muted-foreground">Margen Neto</p>
-              <div className={`p-2 rounded-lg ${summary.netMargin >= 0 ? "bg-green-50" : "bg-red-50"}`}>
-                <DollarSign className={`w-4 h-4 ${summary.netMargin >= 0 ? "text-green-600" : "text-red-600"}`} />
+              <div className={`p-2 rounded-lg ${summary.netMargin >= 0 ? "bg-blue-50" : "bg-red-50"}`}>
+                <DollarSign className={`w-4 h-4 ${summary.netMargin >= 0 ? "text-blue-600" : "text-red-600"}`} />
               </div>
             </div>
-            <p className={`text-2xl font-bold ${summary.netMargin >= 0 ? "text-green-600" : "text-red-600"}`}>
+            <p className={`text-2xl font-bold ${summary.netMargin >= 0 ? "text-blue-700" : "text-red-700"}`}>
               {formatCurrency(summary.netMargin)}
             </p>
           </CardContent>
@@ -104,15 +119,46 @@ export default async function FinancesPage() {
         <Card>
           <CardContent className="p-5">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-medium text-muted-foreground">Gastos Fijos/Mes</p>
-              <div className="p-2 bg-blue-50 rounded-lg">
-                <DollarSign className="w-4 h-4 text-blue-600" />
+              <p className="text-sm font-medium text-muted-foreground">MRR</p>
+              <div className="p-2 bg-purple-50 rounded-lg">
+                <Repeat className="w-4 h-4 text-purple-600" />
               </div>
             </div>
-            <p className="text-2xl font-bold text-blue-600">{formatCurrency(monthlyRecurringTotal)}</p>
+            <p className="text-2xl font-bold text-purple-700">{formatCurrency(summary.mrr)}</p>
+            <p className="text-xs text-muted-foreground mt-1">fees activos</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-medium text-muted-foreground">Gastos Fijos/Mes</p>
+              <div className="p-2 bg-slate-100 rounded-lg">
+                <DollarSign className="w-4 h-4 text-slate-600" />
+              </div>
+            </div>
+            <p className="text-2xl font-bold">{formatCurrency(monthlyRecurringTotal)}</p>
           </CardContent>
         </Card>
       </div>
+
+      {/* Upcoming payment alerts */}
+      {upcomingExpenses.length > 0 && (
+        <Card className="border-amber-200 bg-amber-50/30">
+          <CardContent className="p-4 flex items-start gap-3">
+            <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-amber-800">Pagos próximos (30 días)</p>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {upcomingExpenses.map((e) => (
+                  <span key={e.id} className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
+                    {e.name} — {formatDate(e.next_payment_date!)} ({formatCurrency(e.amount)})
+                  </span>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Tabs defaultValue="overview">
         <TabsList>
@@ -207,21 +253,18 @@ export default async function FinancesPage() {
           </div>
 
           {/* Group by category */}
-          {["Payroll", "Software", "Rent", "Utilities", "Other"].map((category) => {
+          {(["Payroll", "Software", "Rent", "Services", "Other"] as const).map((category) => {
             const categoryItems = (recurring as RecurringExpense[]).filter((e) => e.category === category)
             if (categoryItems.length === 0) return null
-            const categoryTotal = categoryItems.reduce((s, e) => {
-              if (e.frequency === "Monthly") return s + Number(e.amount)
-              if (e.frequency === "Weekly") return s + Number(e.amount) * 4.33
-              if (e.frequency === "Annual") return s + Number(e.amount) / 12
-              return s
-            }, 0)
+            const categoryTotal = categoryItems
+              .filter((e) => e.is_active)
+              .reduce((s, e) => s + normalizeToMonthly(Number(e.amount), e.frequency as ExpenseFrequency), 0)
 
             return (
               <div key={category}>
                 <div className="flex items-center justify-between mb-2">
                   <span className={`text-xs font-semibold px-2 py-1 rounded-full ${categoryColors[category]}`}>
-                    {category === "Payroll" ? "Nómina" : category === "Software" ? "Software" : category === "Rent" ? "Renta" : category === "Utilities" ? "Servicios" : "Otros"}
+                    {categoryLabels[category]}
                   </span>
                   <span className="text-sm text-muted-foreground">{formatCurrency(categoryTotal)}/mes</span>
                 </div>
@@ -231,44 +274,54 @@ export default async function FinancesPage() {
                       <tr>
                         <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Nombre</th>
                         <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Frecuencia</th>
+                        <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Próx. Pago</th>
                         <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Estado</th>
                         <th className="text-right px-4 py-2.5 font-medium text-muted-foreground">Monto</th>
                         <th className="text-right px-4 py-2.5 font-medium text-muted-foreground"></th>
                       </tr>
                     </thead>
                     <tbody>
-                      {categoryItems.map((expense) => (
-                        <tr key={expense.id} className="border-t hover:bg-muted/30 transition-colors">
-                          <td className="px-4 py-3">{expense.name}</td>
-                          <td className="px-4 py-3 text-muted-foreground">{frequencyLabels[expense.frequency]}</td>
-                          <td className="px-4 py-3">
-                            <Badge variant={expense.is_active ? "success" : "secondary"}>
-                              {expense.is_active ? "Activo" : "Inactivo"}
-                            </Badge>
-                          </td>
-                          <td className="px-4 py-3 text-right font-semibold">
-                            {formatCurrency(expense.amount)}
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            <div className="flex items-center justify-end gap-1">
-                              <ExpenseForm
-                                expense={expense}
-                                trigger={
-                                  <Button variant="ghost" size="icon" className="h-8 w-8">
-                                    <span className="sr-only">Editar</span>
-                                    ✏️
+                      {categoryItems.map((expense) => {
+                        const isUpcoming = expense.next_payment_date &&
+                          new Date(expense.next_payment_date) >= today &&
+                          new Date(expense.next_payment_date) <= in30Days
+                        return (
+                          <tr key={expense.id} className="border-t hover:bg-muted/30 transition-colors">
+                            <td className="px-4 py-3">{expense.name}</td>
+                            <td className="px-4 py-3 text-muted-foreground">{frequencyLabels[expense.frequency]}</td>
+                            <td className={`px-4 py-3 text-sm ${isUpcoming ? "text-amber-600 font-medium" : "text-muted-foreground"}`}>
+                              {expense.next_payment_date ? formatDate(expense.next_payment_date) : "—"}
+                              {isUpcoming && " ⚠"}
+                            </td>
+                            <td className="px-4 py-3">
+                              <Badge variant={expense.is_active ? "success" : "secondary"}>
+                                {expense.is_active ? "Activo" : "Inactivo"}
+                              </Badge>
+                            </td>
+                            <td className="px-4 py-3 text-right font-semibold">
+                              {formatCurrency(expense.amount)}
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <ExpenseForm
+                                  expense={expense}
+                                  trigger={
+                                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                                      <span className="sr-only">Editar</span>
+                                      ✏️
+                                    </Button>
+                                  }
+                                />
+                                <form action={async () => { "use server"; await deleteRecurringExpense(expense.id) }}>
+                                  <Button type="submit" variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
+                                    <Trash2 className="w-3.5 h-3.5" />
                                   </Button>
-                                }
-                              />
-                              <form action={async () => { "use server"; await deleteRecurringExpense(expense.id) }}>
-                                <Button type="submit" variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </Button>
-                              </form>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                                </form>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>

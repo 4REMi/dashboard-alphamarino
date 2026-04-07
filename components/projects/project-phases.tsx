@@ -1,0 +1,199 @@
+"use client"
+
+import { useState, useTransition } from "react"
+import type { ProjectPhase, PhaseStatus } from "@/lib/types"
+import { PHASE_STATUS_LABELS } from "@/lib/types"
+import { updateProjectPhaseStatus, updateProjectPhaseNotes } from "@/lib/actions/projects"
+
+interface Props {
+  projectId: string
+  initialPhases: ProjectPhase[]
+  canEdit: boolean // admin or subadmin
+}
+
+const STATUS_STYLES: Record<PhaseStatus, { dot: string; badge: string }> = {
+  pending: { dot: "bg-muted-foreground/40", badge: "bg-muted text-muted-foreground border-border" },
+  in_progress: { dot: "bg-amber-500", badge: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800" },
+  completed: { dot: "bg-green-500", badge: "bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300 dark:border-green-800" },
+  blocked: { dot: "bg-destructive", badge: "bg-destructive/10 text-destructive border-destructive/20" },
+}
+
+export function ProjectPhases({ projectId, initialPhases, canEdit }: Props) {
+  const [phases, setPhases] = useState<ProjectPhase[]>(initialPhases)
+  const [expandedId, setExpandedId] = useState<string | null>(
+    initialPhases.find((p) => p.status === "in_progress")?.id ??
+    initialPhases.find((p) => p.status === "blocked")?.id ??
+    null
+  )
+  const [editingNotesId, setEditingNotesId] = useState<string | null>(null)
+  const [notesValue, setNotesValue] = useState("")
+  const [isPending, startTransition] = useTransition()
+
+  const done = phases.filter((p) => p.status === "completed").length
+
+  function handleStatusChange(phase: ProjectPhase, status: PhaseStatus) {
+    setPhases((prev) => prev.map((p) => (p.id === phase.id ? { ...p, status } : p)))
+    startTransition(async () => {
+      await updateProjectPhaseStatus(phase.id, status, projectId)
+    })
+  }
+
+  function handleSaveNotes(phaseId: string) {
+    setPhases((prev) => prev.map((p) => (p.id === phaseId ? { ...p, notes: notesValue } : p)))
+    setEditingNotesId(null)
+    startTransition(async () => {
+      await updateProjectPhaseNotes(phaseId, notesValue, projectId)
+    })
+  }
+
+  if (phases.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-border bg-card p-6 text-center text-sm text-muted-foreground">
+        Este proyecto no tiene fases configuradas.
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-xl border border-border bg-card">
+      {/* Header with mini stepper */}
+      <div className="px-5 py-4 border-b border-border">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold text-sm text-foreground">Fases del Proyecto</h3>
+          <span className="text-xs text-muted-foreground">{done}/{phases.length} completadas</span>
+        </div>
+        {/* Stepper dots */}
+        <div className="flex items-center gap-1">
+          {phases.map((phase, i) => {
+            const styles = STATUS_STYLES[phase.status]
+            return (
+              <div key={phase.id} className="flex items-center flex-1">
+                <button
+                  title={phase.name}
+                  onClick={() => setExpandedId(expandedId === phase.id ? null : phase.id)}
+                  className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold border-2 transition-all ${
+                    phase.status === "completed"
+                      ? "bg-green-500 border-green-500 text-white"
+                      : phase.status === "in_progress"
+                      ? "bg-amber-500 border-amber-500 text-white"
+                      : phase.status === "blocked"
+                      ? "bg-destructive border-destructive text-white"
+                      : "bg-background border-muted-foreground/30 text-muted-foreground"
+                  }`}
+                >
+                  {phase.status === "completed" ? "✓" : i + 1}
+                </button>
+                {i < phases.length - 1 && (
+                  <div className={`h-0.5 flex-1 mx-1 rounded-full transition-colors ${
+                    phases[i + 1]?.status !== "pending" || phase.status === "completed"
+                      ? "bg-green-500/50"
+                      : "bg-muted"
+                  }`} />
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Phase list */}
+      <div className="divide-y divide-border">
+        {phases.map((phase) => {
+          const isExpanded = expandedId === phase.id
+          const styles = STATUS_STYLES[phase.status]
+
+          return (
+            <div key={phase.id} className={`transition-colors ${isExpanded && phase.status !== "pending" ? "bg-muted/20" : ""}`}>
+              {/* Phase row */}
+              <div
+                className="flex items-center gap-3 px-5 py-3 cursor-pointer"
+                onClick={() => setExpandedId(isExpanded ? null : phase.id)}
+              >
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border flex-shrink-0 ${styles.badge}`}>
+                  {PHASE_STATUS_LABELS[phase.status]}
+                </span>
+                <span className="flex-1 text-sm font-medium text-foreground">{phase.name}</span>
+                {phase.status === "in_progress" && phase.started_at && (
+                  <span className="text-xs text-muted-foreground hidden sm:block">
+                    Iniciada {new Date(phase.started_at).toLocaleDateString("es-MX")}
+                  </span>
+                )}
+                <span className={`text-muted-foreground text-xs transition-transform ${isExpanded ? "rotate-180" : ""}`}>▾</span>
+              </div>
+
+              {/* Phase detail */}
+              {isExpanded && (
+                <div className="px-5 pb-4 space-y-3">
+                  {/* Status controls */}
+                  {canEdit && (
+                    <div className="flex flex-wrap gap-2">
+                      {(["pending", "in_progress", "completed", "blocked"] as PhaseStatus[]).map((s) => (
+                        <button
+                          key={s}
+                          onClick={() => handleStatusChange(phase, s)}
+                          disabled={isPending || phase.status === s}
+                          className={`px-3 py-1 rounded-md text-xs font-medium transition-colors disabled:opacity-50 ${
+                            phase.status === s
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-muted text-muted-foreground hover:bg-muted/80"
+                          }`}
+                        >
+                          {PHASE_STATUS_LABELS[s]}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Notes */}
+                  {editingNotesId === phase.id ? (
+                    <div className="space-y-2">
+                      <textarea
+                        value={notesValue}
+                        onChange={(e) => setNotesValue(e.target.value)}
+                        rows={3}
+                        autoFocus
+                        placeholder="Notas de la fase…"
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+                      />
+                      <div className="flex gap-2 justify-end">
+                        <button onClick={() => setEditingNotesId(null)} className="text-sm text-muted-foreground hover:text-foreground transition-colors">Cancelar</button>
+                        <button onClick={() => handleSaveNotes(phase.id)} className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 transition-colors">Guardar</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      {phase.notes ? (
+                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{phase.notes}</p>
+                      ) : canEdit ? (
+                        <button
+                          onClick={() => { setEditingNotesId(phase.id); setNotesValue(phase.notes ?? "") }}
+                          className="text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+                        >
+                          + Agregar notas
+                        </button>
+                      ) : null}
+                      {phase.notes && canEdit && (
+                        <button
+                          onClick={() => { setEditingNotesId(phase.id); setNotesValue(phase.notes ?? "") }}
+                          className="text-xs text-muted-foreground hover:text-foreground transition-colors mt-1 block"
+                        >
+                          Editar notas
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Dates */}
+                  <div className="flex gap-4 text-xs text-muted-foreground">
+                    {phase.started_at && <span>Inicio: {new Date(phase.started_at).toLocaleDateString("es-MX")}</span>}
+                    {phase.completed_at && <span>Completada: {new Date(phase.completed_at).toLocaleDateString("es-MX")}</span>}
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}

@@ -4,12 +4,10 @@ import { getProjects } from "@/lib/actions/projects"
 import { getCustomers } from "@/lib/actions/customers"
 import { getTasks } from "@/lib/actions/tasks"
 import { getEmployees } from "@/lib/actions/employees"
-import { getFinancialSummary } from "@/lib/actions/finances"
+import { getFinancialSummary, getDomains } from "@/lib/actions/finances"
 import { ProjectCard } from "@/components/projects/project-card"
-import { CustomerStatusBadge } from "@/components/customers/customer-status-badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
 import {
   Users,
   FolderKanban,
@@ -17,166 +15,365 @@ import {
   DollarSign,
   TrendingUp,
   TrendingDown,
-  AlertCircle,
+  AlertTriangle,
+  Globe,
+  Repeat,
   UserCircle,
 } from "lucide-react"
 import { formatCurrency } from "@/lib/utils"
-import type { Customer, Project, Task, Profile } from "@/lib/types"
+import type { ProjectWithAttention, Task, Profile, Customer, Domain } from "@/lib/types"
 
 export default async function HomePage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  const { data: profile } = await supabase.from("profiles").select("role, full_name").eq("id", user!.id).single()
-  const isAdmin = profile?.role === "admin"
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role, full_name")
+    .eq("id", user!.id)
+    .single()
 
-  let customers: Customer[] = []
+  const role = profile?.role as "admin" | "subadmin" | "employee" | undefined
+  const isAdmin = role === "admin"
+  const isAdminOrSubadmin = role === "admin" || role === "subadmin"
+
+  // Fetch projects (RLS filters by role automatically)
+  const projects = (await getProjects()) as ProjectWithAttention[]
+  const activeProjects = projects.filter((p) => p.status === "In Progress")
+  const attentionProjects = activeProjects.filter(
+    (p) => p.attention?.hasOverdueTasks || p.attention?.hasBlockedPhase ||
+           p.attention?.hasPendingCycleReport || p.attention?.inactiveForDays > 7
+  )
+
+  // Role-specific fetches
   let allTasks: Task[] = []
+  let customers: Customer[] = []
   let employees: Profile[] = []
-  let summary = { monthlyIncome: 0, monthlyExpenses: 0, netMargin: 0, monthlyRecurring: 0, monthlyProjectExpenses: 0 }
-
-  const projects = (await getProjects()) as Project[]
+  let summary = { monthlyIncome: 0, monthlyExpenses: 0, netMargin: 0, mrr: 0, monthlyRecurring: 0, monthlyProjectExpenses: 0 }
+  let domains: Domain[] = []
 
   if (isAdmin) {
-    customers = (await getCustomers()) as Customer[]
+    ;[allTasks, customers, employees, summary, domains] = await Promise.all([
+      getTasks() as Promise<Task[]>,
+      getCustomers() as Promise<Customer[]>,
+      getEmployees() as Promise<Profile[]>,
+      getFinancialSummary(),
+      getDomains() as Promise<Domain[]>,
+    ])
+  } else if (isAdminOrSubadmin) {
     allTasks = (await getTasks()) as Task[]
-    employees = (await getEmployees()) as Profile[]
-    summary = await getFinancialSummary()
   } else {
-    allTasks = ((await getTasks()) as Task[]).filter((t) => t.assignee_id === user!.id)
+    // employee: only assigned tasks
+    const allT = (await getTasks()) as Task[]
+    allTasks = allT.filter((t) => t.assignee_id === user!.id)
   }
 
-  const activeProjects = projects.filter((p) => p.status === "In Progress")
-  const todoTasks = allTasks.filter((t) => t.status === "Todo")
+  const pendingTasks = allTasks.filter((t) => t.status !== "Done")
   const inProgressTasks = allTasks.filter((t) => t.status === "In Progress")
   const highPriorityTasks = allTasks.filter((t) => t.priority === "High" && t.status !== "Done")
 
+  // Domain alerts (< 30 days)
+  const today = new Date()
+  const in30Days = new Date(today)
+  in30Days.setDate(today.getDate() + 30)
+  const expiringDomains = domains.filter((d) => {
+    if (!d.renewal_date) return false
+    const renewal = new Date(d.renewal_date)
+    return renewal <= in30Days && renewal >= today
+  })
+
+  // Blocked phase projects
+  const blockedPhaseProjects = attentionProjects.filter((p) => p.attention?.hasBlockedPhase)
+  const overdueReportProjects = attentionProjects.filter((p) => p.attention?.hasPendingCycleReport)
+
   const hour = new Date().getHours()
   const greeting = hour < 12 ? "Buenos días" : hour < 18 ? "Buenas tardes" : "Buenas noches"
+  const firstName = profile?.full_name?.split(" ")[0]
+
+  const dateStr = new Date().toLocaleDateString("es-PA", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  })
 
   return (
     <div className="p-6 space-y-6">
       {/* Greeting */}
       <div>
-        <h1 className="text-2xl font-bold">{greeting}, {profile?.full_name?.split(" ")[0]} 👋</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          {new Date().toLocaleDateString("es-PA", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
-        </p>
+        <h1 className="text-2xl font-bold">{greeting}, {firstName}</h1>
+        <p className="text-muted-foreground text-sm mt-1 capitalize">{dateStr}</p>
       </div>
 
-      {/* KPI Cards */}
-      <div className={`grid gap-4 ${isAdmin ? "grid-cols-2 md:grid-cols-4" : "grid-cols-2"}`}>
-        {isAdmin && (
-          <Card>
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-sm font-medium text-muted-foreground">Clientes</p>
+      {/* ── ADMIN VIEW ── */}
+      {isAdmin && (
+        <>
+          {/* KPI Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Card>
+              <CardContent className="p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm font-medium text-muted-foreground">Ingresos del Mes</p>
+                  <div className="p-2 bg-green-50 rounded-lg">
+                    <TrendingUp className="w-4 h-4 text-green-600" />
+                  </div>
+                </div>
+                <p className="text-2xl font-bold text-green-700">{formatCurrency(summary.monthlyIncome)}</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm font-medium text-muted-foreground">Gastos del Mes</p>
+                  <div className="p-2 bg-red-50 rounded-lg">
+                    <TrendingDown className="w-4 h-4 text-red-600" />
+                  </div>
+                </div>
+                <p className="text-2xl font-bold text-red-700">{formatCurrency(summary.monthlyExpenses)}</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm font-medium text-muted-foreground">Margen Neto</p>
+                  <div className={`p-2 rounded-lg ${summary.netMargin >= 0 ? "bg-blue-50" : "bg-red-50"}`}>
+                    <DollarSign className={`w-4 h-4 ${summary.netMargin >= 0 ? "text-blue-600" : "text-red-600"}`} />
+                  </div>
+                </div>
+                <p className={`text-2xl font-bold ${summary.netMargin >= 0 ? "text-blue-700" : "text-red-700"}`}>
+                  {formatCurrency(summary.netMargin)}
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm font-medium text-muted-foreground">MRR</p>
+                  <div className="p-2 bg-purple-50 rounded-lg">
+                    <Repeat className="w-4 h-4 text-purple-600" />
+                  </div>
+                </div>
+                <p className="text-2xl font-bold text-purple-700">{formatCurrency(summary.mrr)}</p>
+                <p className="text-xs text-muted-foreground mt-1">fees mensuales activos</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Secondary KPIs */}
+          <div className="grid grid-cols-3 gap-4">
+            <Card>
+              <CardContent className="p-4 flex items-center gap-3">
                 <div className="p-2 bg-blue-50 rounded-lg">
                   <Users className="w-4 h-4 text-blue-600" />
                 </div>
-              </div>
-              <p className="text-2xl font-bold">{customers.length}</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                {customers.filter((c) => c.status === "Active").length} activos
-              </p>
-            </CardContent>
-          </Card>
-        )}
+                <div>
+                  <p className="text-xs text-muted-foreground">Clientes</p>
+                  <p className="text-lg font-bold">{customers.length}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {customers.filter((c) => c.status === "Active").length} activos
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4 flex items-center gap-3">
+                <div className="p-2 bg-orange-50 rounded-lg">
+                  <FolderKanban className="w-4 h-4 text-orange-600" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Proyectos Activos</p>
+                  <p className="text-lg font-bold">{activeProjects.length}</p>
+                  <p className="text-xs text-muted-foreground">de {projects.length} total</p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4 flex items-center gap-3">
+                <div className="p-2 bg-slate-100 rounded-lg">
+                  <UserCircle className="w-4 h-4 text-slate-600" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Equipo</p>
+                  <p className="text-lg font-bold">{employees.length}</p>
+                  <p className="text-xs text-muted-foreground">miembros</p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
 
-        <Card>
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-medium text-muted-foreground">Proyectos Activos</p>
-              <div className="p-2 bg-purple-50 rounded-lg">
-                <FolderKanban className="w-4 h-4 text-purple-600" />
+          {/* Alerts */}
+          {(expiringDomains.length > 0 || blockedPhaseProjects.length > 0 || overdueReportProjects.length > 0) && (
+            <div className="space-y-2">
+              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Alertas</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {expiringDomains.length > 0 && (
+                  <Link href="/finances/domains">
+                    <Card className="border-amber-200 bg-amber-50/40 hover:bg-amber-50/70 transition-colors cursor-pointer">
+                      <CardContent className="p-4 flex items-start gap-3">
+                        <Globe className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                        <div>
+                          <p className="text-sm font-medium text-amber-800">Dominios por vencer</p>
+                          <p className="text-xs text-amber-700 mt-0.5">
+                            {expiringDomains.length} dominio{expiringDomains.length !== 1 ? "s" : ""} vencen en &lt;30 días
+                          </p>
+                          <p className="text-xs text-amber-600 mt-1 truncate">
+                            {expiringDomains.slice(0, 2).map((d) => d.domain).join(", ")}
+                            {expiringDomains.length > 2 && ` +${expiringDomains.length - 2}`}
+                          </p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                )}
+
+                {blockedPhaseProjects.length > 0 && (
+                  <Link href="/projects">
+                    <Card className="border-red-200 bg-red-50/40 hover:bg-red-50/70 transition-colors cursor-pointer">
+                      <CardContent className="p-4 flex items-start gap-3">
+                        <AlertTriangle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
+                        <div>
+                          <p className="text-sm font-medium text-red-800">Fases bloqueadas</p>
+                          <p className="text-xs text-red-700 mt-0.5">
+                            {blockedPhaseProjects.length} proyecto{blockedPhaseProjects.length !== 1 ? "s" : ""} con fase bloqueada
+                          </p>
+                          <p className="text-xs text-red-600 mt-1 truncate">
+                            {blockedPhaseProjects.slice(0, 2).map((p) => p.name).join(", ")}
+                            {blockedPhaseProjects.length > 2 && ` +${blockedPhaseProjects.length - 2}`}
+                          </p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                )}
+
+                {overdueReportProjects.length > 0 && (
+                  <Link href="/projects">
+                    <Card className="border-orange-200 bg-orange-50/40 hover:bg-orange-50/70 transition-colors cursor-pointer">
+                      <CardContent className="p-4 flex items-start gap-3">
+                        <AlertTriangle className="w-4 h-4 text-orange-600 mt-0.5 flex-shrink-0" />
+                        <div>
+                          <p className="text-sm font-medium text-orange-800">Reportes pendientes</p>
+                          <p className="text-xs text-orange-700 mt-0.5">
+                            {overdueReportProjects.length} ciclo{overdueReportProjects.length !== 1 ? "s" : ""} sin reporte entregado
+                          </p>
+                          <p className="text-xs text-orange-600 mt-1 truncate">
+                            {overdueReportProjects.slice(0, 2).map((p) => p.name).join(", ")}
+                            {overdueReportProjects.length > 2 && ` +${overdueReportProjects.length - 2}`}
+                          </p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                )}
               </div>
             </div>
-            <p className="text-2xl font-bold">{activeProjects.length}</p>
-            <p className="text-xs text-muted-foreground mt-1">de {projects.length} total</p>
-          </CardContent>
-        </Card>
+          )}
+        </>
+      )}
 
-        <Card>
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-medium text-muted-foreground">Tareas Pendientes</p>
-              <div className="p-2 bg-orange-50 rounded-lg">
-                <CheckSquare className="w-4 h-4 text-orange-600" />
-              </div>
-            </div>
-            <p className="text-2xl font-bold">{todoTasks.length + inProgressTasks.length}</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              {inProgressTasks.length} en progreso
-            </p>
-          </CardContent>
-        </Card>
-
-        {isAdmin && (
+      {/* ── SUBADMIN VIEW (non-financial KPIs) ── */}
+      {!isAdmin && isAdminOrSubadmin && (
+        <div className="grid grid-cols-2 gap-4">
           <Card>
             <CardContent className="p-5">
               <div className="flex items-center justify-between mb-3">
-                <p className="text-sm font-medium text-muted-foreground">Empleados</p>
-                <div className="p-2 bg-green-50 rounded-lg">
-                  <UserCircle className="w-4 h-4 text-green-600" />
+                <p className="text-sm font-medium text-muted-foreground">Proyectos Activos</p>
+                <div className="p-2 bg-purple-50 rounded-lg">
+                  <FolderKanban className="w-4 h-4 text-purple-600" />
                 </div>
               </div>
-              <p className="text-2xl font-bold">{employees.length}</p>
-              <p className="text-xs text-muted-foreground mt-1">miembros del equipo</p>
+              <p className="text-2xl font-bold">{activeProjects.length}</p>
+              <p className="text-xs text-muted-foreground mt-1">de {projects.length} total</p>
             </CardContent>
           </Card>
-        )}
-      </div>
-
-      {/* Financial Summary (admin only) */}
-      {isAdmin && (
-        <div className="grid grid-cols-3 gap-4">
-          <Card className="border-green-200 bg-green-50/30">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 mb-1">
-                <TrendingUp className="w-4 h-4 text-green-600" />
-                <p className="text-xs text-muted-foreground">Ingresos del Mes</p>
+          <Card>
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-medium text-muted-foreground">Tareas Pendientes</p>
+                <div className="p-2 bg-orange-50 rounded-lg">
+                  <CheckSquare className="w-4 h-4 text-orange-600" />
+                </div>
               </div>
-              <p className="text-xl font-bold text-green-700">{formatCurrency(summary.monthlyIncome)}</p>
-            </CardContent>
-          </Card>
-          <Card className="border-red-200 bg-red-50/30">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 mb-1">
-                <TrendingDown className="w-4 h-4 text-red-600" />
-                <p className="text-xs text-muted-foreground">Gastos del Mes</p>
-              </div>
-              <p className="text-xl font-bold text-red-700">{formatCurrency(summary.monthlyExpenses)}</p>
-            </CardContent>
-          </Card>
-          <Card className={`${summary.netMargin >= 0 ? "border-blue-200 bg-blue-50/30" : "border-red-200 bg-red-50/30"}`}>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 mb-1">
-                <DollarSign className={`w-4 h-4 ${summary.netMargin >= 0 ? "text-blue-600" : "text-red-600"}`} />
-                <p className="text-xs text-muted-foreground">Margen Neto</p>
-              </div>
-              <p className={`text-xl font-bold ${summary.netMargin >= 0 ? "text-blue-700" : "text-red-700"}`}>
-                {formatCurrency(summary.netMargin)}
-              </p>
+              <p className="text-2xl font-bold">{pendingTasks.length}</p>
+              <p className="text-xs text-muted-foreground mt-1">{inProgressTasks.length} en progreso</p>
             </CardContent>
           </Card>
         </div>
       )}
 
+      {/* ── EMPLOYEE VIEW KPIs ── */}
+      {!isAdminOrSubadmin && (
+        <div className="grid grid-cols-2 gap-4">
+          <Card>
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-medium text-muted-foreground">Mis Proyectos</p>
+                <div className="p-2 bg-purple-50 rounded-lg">
+                  <FolderKanban className="w-4 h-4 text-purple-600" />
+                </div>
+              </div>
+              <p className="text-2xl font-bold">{activeProjects.length}</p>
+              <p className="text-xs text-muted-foreground mt-1">activos</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-medium text-muted-foreground">Mis Tareas</p>
+                <div className="p-2 bg-orange-50 rounded-lg">
+                  <CheckSquare className="w-4 h-4 text-orange-600" />
+                </div>
+              </div>
+              <p className="text-2xl font-bold">{pendingTasks.length}</p>
+              <p className="text-xs text-muted-foreground mt-1">{inProgressTasks.length} en progreso</p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* ── MAIN CONTENT GRID ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Active Projects */}
         <div className="lg:col-span-2 space-y-3">
           <div className="flex items-center justify-between">
-            <h2 className="text-base font-semibold">Proyectos Activos</h2>
-            <Link href="/projects" className="text-xs text-primary hover:underline">Ver todos →</Link>
+            <h2 className="text-base font-semibold">
+              {isAdminOrSubadmin ? "Proyectos Activos" : "Mis Proyectos"}
+            </h2>
+            <Link href="/projects" className="text-xs text-primary hover:underline">
+              Ver todos →
+            </Link>
           </div>
-          {activeProjects.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {activeProjects.slice(0, 4).map((project) => (
-                <ProjectCard key={project.id} project={project as Project & { customer?: { name: string; company?: string | null } | null }} />
-              ))}
+
+          {attentionProjects.length > 0 && (
+            <div className="space-y-2 mb-2">
+              <p className="text-xs font-medium text-amber-700 flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5" />
+                Requieren atención ({attentionProjects.length})
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {attentionProjects.slice(0, 4).map((project) => (
+                  <ProjectCard key={project.id} project={project} />
+                ))}
+              </div>
             </div>
-          ) : (
+          )}
+
+          {activeProjects.filter((p) => !attentionProjects.includes(p)).length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {activeProjects
+                .filter((p) => !attentionProjects.includes(p))
+                .slice(0, attentionProjects.length > 0 ? 2 : 4)
+                .map((project) => (
+                  <ProjectCard key={project.id} project={project} />
+                ))}
+            </div>
+          )}
+
+          {activeProjects.length === 0 && (
             <Card>
-              <CardContent className="p-8 text-center text-muted-foreground">
+              <CardContent className="p-8 text-center text-muted-foreground text-sm">
                 No hay proyectos activos
               </CardContent>
             </Card>
@@ -190,44 +387,98 @@ export default async function HomePage() {
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm flex items-center gap-2 text-red-700">
-                  <AlertCircle className="w-4 h-4" />
+                  <AlertTriangle className="w-4 h-4" />
                   Alta Prioridad ({highPriorityTasks.length})
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 pt-0">
-                {highPriorityTasks.slice(0, 5).map((task) => (
+                {highPriorityTasks.slice(0, 6).map((task) => (
                   <div key={task.id} className="flex items-start gap-2 text-sm">
                     <span className="w-1.5 h-1.5 rounded-full bg-red-500 mt-1.5 flex-shrink-0" />
                     <div className="flex-1 min-w-0">
                       <p className="truncate">{task.title}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {(task.project as { name: string } | undefined)?.name ?? ""}
+                      <p className="text-xs text-muted-foreground truncate">
+                        {(task.project as { name: string } | null | undefined)?.name ?? ""}
                       </p>
                     </div>
-                    <Badge variant="secondary" className="text-xs flex-shrink-0">{task.status}</Badge>
+                    {task.due_date && (
+                      <span className={`text-xs flex-shrink-0 ${new Date(task.due_date) < new Date() ? "text-red-600 font-medium" : "text-muted-foreground"}`}>
+                        {new Date(task.due_date).toLocaleDateString("es-PA", { month: "short", day: "numeric" })}
+                      </span>
+                    )}
                   </div>
                 ))}
+                <Link href="/tasks" className="text-xs text-primary hover:underline block pt-1">
+                  Ver todas las tareas →
+                </Link>
               </CardContent>
             </Card>
           )}
 
-          {/* Recent customers (admin only) */}
-          {isAdmin && customers.length > 0 && (
+          {/* Employee: all pending tasks */}
+          {!isAdminOrSubadmin && pendingTasks.length > 0 && highPriorityTasks.length === 0 && (
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm">Clientes Recientes</CardTitle>
+                <CardTitle className="text-sm">Mis Tareas Pendientes</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3 pt-0">
-                {customers.slice(0, 4).map((customer) => (
-                  <Link key={customer.id} href={`/customers/${customer.id}`} className="flex items-center justify-between hover:bg-muted/50 rounded-md px-1 py-0.5 transition-colors">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">{customer.name}</p>
-                      {customer.company && <p className="text-xs text-muted-foreground">{customer.company}</p>}
+              <CardContent className="space-y-2 pt-0">
+                {pendingTasks
+                  .sort((a, b) => {
+                    const priority = { High: 0, Medium: 1, Low: 2 }
+                    return (priority[a.priority] ?? 1) - (priority[b.priority] ?? 1)
+                  })
+                  .slice(0, 6)
+                  .map((task) => (
+                    <div key={task.id} className="flex items-start gap-2 text-sm">
+                      <Badge
+                        variant="secondary"
+                        className={`text-xs flex-shrink-0 ${
+                          task.priority === "High"
+                            ? "bg-red-100 text-red-700"
+                            : task.priority === "Medium"
+                            ? "bg-amber-100 text-amber-700"
+                            : "bg-slate-100 text-slate-600"
+                        }`}
+                      >
+                        {task.priority === "High" ? "Alta" : task.priority === "Medium" ? "Media" : "Baja"}
+                      </Badge>
+                      <div className="flex-1 min-w-0">
+                        <p className="truncate">{task.title}</p>
+                        {task.due_date && (
+                          <p className={`text-xs ${new Date(task.due_date) < new Date() ? "text-red-600" : "text-muted-foreground"}`}>
+                            {new Date(task.due_date).toLocaleDateString("es-PA", { month: "short", day: "numeric" })}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                    <CustomerStatusBadge status={customer.status} />
+                  ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Admin: quick financial links */}
+          {isAdmin && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm">Accesos Rápidos</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-1 pt-0">
+                {[
+                  { href: "/finances", label: "Resumen Financiero" },
+                  { href: "/finances/expenses", label: "Gastos Fijos" },
+                  { href: "/finances/domains", label: "Dominios" },
+                  { href: "/customers", label: "Clientes" },
+                  { href: "/employees", label: "Equipo" },
+                  { href: "/settings", label: "Configuración" },
+                ].map(({ href, label }) => (
+                  <Link
+                    key={href}
+                    href={href}
+                    className="block text-sm py-1 px-2 rounded hover:bg-muted/60 transition-colors text-muted-foreground hover:text-foreground"
+                  >
+                    {label}
                   </Link>
                 ))}
-                <Link href="/customers" className="text-xs text-primary hover:underline block text-right">Ver todos →</Link>
               </CardContent>
             </Card>
           )}

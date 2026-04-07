@@ -14,6 +14,8 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
+  Settings,
+  Globe,
 } from "lucide-react"
 import { useState } from "react"
 import { signOut } from "@/lib/auth-actions"
@@ -26,20 +28,27 @@ const navItems = [
   { href: "/projects", icon: FolderKanban, label: "Proyectos" },
   { href: "/tasks", icon: CheckSquare, label: "Tareas" },
   { href: "/finances", icon: DollarSign, label: "Finanzas", adminOnly: true },
+  { href: "/finances/domains", icon: Globe, label: "Dominios", adminOnly: true },
   { href: "/employees", icon: UserCircle, label: "Empleados" },
+  { href: "/settings", icon: Settings, label: "Configuración", adminOnly: true },
 ]
 
 interface SidebarProps {
   profile: Profile | null
 }
 
+const ROLE_LABELS: Record<string, string> = {
+  admin: "Administrador",
+  subadmin: "Subadmin",
+  employee: "Empleado",
+}
+
 export function Sidebar({ profile }: SidebarProps) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
 
-  const visibleItems = navItems.filter(
-    (item) => !item.adminOnly || profile?.role === "admin"
-  )
+  const isAdmin = profile?.role === "admin"
+  const visibleItems = navItems.filter((item) => !item.adminOnly || isAdmin)
 
   return (
     <aside
@@ -68,7 +77,7 @@ export function Sidebar({ profile }: SidebarProps) {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-2 py-4 space-y-1">
+      <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
         {visibleItems.map((item) => {
           const isActive = item.href === "/"
             ? pathname === "/"
@@ -97,7 +106,9 @@ export function Sidebar({ profile }: SidebarProps) {
         {profile && !collapsed && (
           <div className="px-3 py-2">
             <p className="text-sm font-medium truncate">{profile.full_name}</p>
-            <p className="text-xs text-muted-foreground capitalize">{profile.role}</p>
+            <p className="text-xs text-muted-foreground">
+              {ROLE_LABELS[profile.role] ?? profile.role}
+            </p>
           </div>
         )}
         <form action={signOut}>

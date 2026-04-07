@@ -61,7 +61,7 @@ export function ExpenseForm({ expense, trigger }: ExpenseFormProps) {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="amount">Monto (USD) *</Label>
+              <Label htmlFor="amount">Monto *</Label>
               <Input id="amount" name="amount" type="number" min="0" step="0.01" defaultValue={expense?.amount} required />
             </div>
             <div className="space-y-2">
@@ -73,6 +73,7 @@ export function ExpenseForm({ expense, trigger }: ExpenseFormProps) {
                 <SelectContent>
                   <SelectItem value="Monthly">Mensual</SelectItem>
                   <SelectItem value="Weekly">Semanal</SelectItem>
+                  <SelectItem value="Semestral">Semestral</SelectItem>
                   <SelectItem value="Annual">Anual</SelectItem>
                   <SelectItem value="One-time">Único</SelectItem>
                 </SelectContent>
@@ -89,14 +90,29 @@ export function ExpenseForm({ expense, trigger }: ExpenseFormProps) {
                 <SelectItem value="Payroll">Nómina (Payroll)</SelectItem>
                 <SelectItem value="Software">Software / Herramientas</SelectItem>
                 <SelectItem value="Rent">Renta / Alquiler</SelectItem>
-                <SelectItem value="Utilities">Servicios</SelectItem>
+                <SelectItem value="Services">Servicios</SelectItem>
                 <SelectItem value="Other">Otro</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="start_date">Fecha Inicio</Label>
-            <Input id="start_date" name="start_date" type="date" defaultValue={expense?.start_date ?? new Date().toISOString().split("T")[0]} />
+            <Label htmlFor="next_payment_date">Próximo pago</Label>
+            <Input
+              id="next_payment_date"
+              name="next_payment_date"
+              type="date"
+              defaultValue={expense?.next_payment_date ?? ""}
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              id="is_active"
+              name="is_active"
+              type="checkbox"
+              defaultChecked={expense?.is_active ?? true}
+              className="h-4 w-4"
+            />
+            <Label htmlFor="is_active" className="font-normal">Activo</Label>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>

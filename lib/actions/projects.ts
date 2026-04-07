@@ -2,17 +2,61 @@
 
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
-import type { ProjectStatus, ProjectType } from "@/lib/types"
+import type { ProjectStatus, PhaseStatus, CycleDeliverableStatus, CampaignStatus } from "@/lib/types"
+
+// ============================================================
+// READ
+// ============================================================
 
 export async function getProjects() {
   const supabase = await createClient()
+  const now = new Date().toISOString()
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+
   const { data, error } = await supabase
     .from("projects")
-    .select("*, customer:customers(id, name, company)")
+    .select(`
+      *,
+      customer:customers(id, name, company),
+      project_type:project_types(id, name),
+      members:project_members(profile_id),
+      tasks(id, status, due_date),
+      phases:project_phases(id, status),
+      log:project_log_entries(created_at)
+    `)
     .order("created_at", { ascending: false })
 
   if (error) throw error
-  return data
+
+  return (data ?? []).map((p) => {
+    const tasks = (p.tasks ?? []) as Array<{ status: string; due_date: string | null }>
+    const phases = (p.phases ?? []) as Array<{ status: string }>
+    const logs = (p.log ?? []) as Array<{ created_at: string }>
+
+    const hasOverdueTasks = tasks.some(
+      (t) => t.status !== "Done" && t.due_date && t.due_date < now.split("T")[0]
+    )
+    const hasBlockedPhase = phases.some((ph) => ph.status === "blocked")
+
+    // Last activity: last log entry or project created_at
+    const lastActivity = logs.length > 0
+      ? logs.sort((a, b) => b.created_at.localeCompare(a.created_at))[0].created_at
+      : p.created_at
+    const inactiveForDays = Math.floor(
+      (Date.now() - new Date(lastActivity).getTime()) / (1000 * 60 * 60 * 24)
+    )
+
+    return {
+      ...p,
+      members: (p.members ?? []).map((m: { profile_id: string }) => m.profile_id),
+      attention: {
+        hasOverdueTasks,
+        hasBlockedPhase,
+        hasPendingCycleReport: false, // computed separately if needed
+        inactiveForDays,
+      },
+    }
+  })
 }
 
 export async function getProject(id: string) {
@@ -21,52 +65,101 @@ export async function getProject(id: string) {
     .from("projects")
     .select(`
       *,
-      customer:customers(id, name, company),
-      tasks(*,assignee:profiles(id, full_name, avatar_url)),
-      members:project_members(profile:profiles(id, full_name, avatar_url, position)),
+      customer:customers(id, name, company, email, phone),
+      project_type:project_types(id, name, description, default_phase_set_id),
+      tasks(*, assignee:profiles(id, full_name, avatar_url, position)),
+      members:project_members(profile:profiles(id, full_name, avatar_url, position, role)),
+      phases:project_phases(*),
       paid_media_context(*),
-      web_context(*)
+      web_project_context(*)
     `)
     .eq("id", id)
     .single()
 
   if (error) throw error
-  return data
+
+  // Sort phases and tasks
+  return {
+    ...data,
+    phases: ((data.phases ?? []) as Array<{ phase_order: number }>)
+      .sort((a, b) => a.phase_order - b.phase_order),
+    tasks: ((data.tasks ?? []) as Array<{ due_date: string | null }>)
+      .sort((a, b) => {
+        if (!a.due_date && !b.due_date) return 0
+        if (!a.due_date) return 1
+        if (!b.due_date) return -1
+        return a.due_date.localeCompare(b.due_date)
+      }),
+  }
 }
 
-export async function createProject(formData: FormData) {
+// ============================================================
+// PROJECT CRUD
+// ============================================================
+
+export async function createProject(
+  formData: FormData,
+  selectedPhaseSetPhaseIds?: string[]
+) {
   const supabase = await createClient()
+  const projectTypeId = formData.get("project_type_id") as string
 
-  const projectType = (formData.get("project_type") as ProjectType) ?? "paid_media"
-
-  const { error } = await supabase.from("projects").insert({
-    name: formData.get("name") as string,
-    customer_id: (formData.get("customer_id") as string) || null,
-    status: (formData.get("status") as ProjectStatus) ?? "Planning",
-    project_type: projectType,
-    start_date: (formData.get("start_date") as string) || null,
-    end_date: (formData.get("end_date") as string) || null,
-    budget: formData.get("budget") ? Number(formData.get("budget")) : null,
-    description: (formData.get("description") as string) || null,
-  })
+  const { data: project, error } = await supabase
+    .from("projects")
+    .insert({
+      name: formData.get("name") as string,
+      customer_id: (formData.get("customer_id") as string) || null,
+      project_type_id: projectTypeId && projectTypeId !== "none" ? projectTypeId : null,
+      status: (formData.get("status") as ProjectStatus) ?? "Planning",
+      project_value: formData.get("project_value") ? Number(formData.get("project_value")) : null,
+      monthly_fee: formData.get("monthly_fee") ? Number(formData.get("monthly_fee")) : null,
+      start_date: (formData.get("start_date") as string) || null,
+      end_date: (formData.get("end_date") as string) || null,
+      description: (formData.get("description") as string) || null,
+    })
+    .select()
+    .single()
 
   if (error) throw error
+
+  // Copy selected phase set phases to project_phases
+  if (selectedPhaseSetPhaseIds && selectedPhaseSetPhaseIds.length > 0) {
+    const { data: templatePhases } = await supabase
+      .from("phase_set_phases")
+      .select("*")
+      .in("id", selectedPhaseSetPhaseIds)
+      .order("phase_order")
+
+    if (templatePhases && templatePhases.length > 0) {
+      const projectPhases = templatePhases.map((tp, i) => ({
+        project_id: project.id,
+        name: tp.name,
+        description: tp.description,
+        phase_order: i,
+      }))
+      await supabase.from("project_phases").insert(projectPhases)
+    }
+  }
+
   revalidatePath("/projects")
+  return project
 }
 
 export async function updateProject(id: string, formData: FormData) {
   const supabase = await createClient()
+  const projectTypeId = formData.get("project_type_id") as string
 
   const { error } = await supabase
     .from("projects")
     .update({
       name: formData.get("name") as string,
       customer_id: (formData.get("customer_id") as string) || null,
+      project_type_id: projectTypeId && projectTypeId !== "none" ? projectTypeId : null,
       status: formData.get("status") as ProjectStatus,
-      project_type: formData.get("project_type") as ProjectType,
+      project_value: formData.get("project_value") ? Number(formData.get("project_value")) : null,
+      monthly_fee: formData.get("monthly_fee") ? Number(formData.get("monthly_fee")) : null,
       start_date: (formData.get("start_date") as string) || null,
       end_date: (formData.get("end_date") as string) || null,
-      budget: formData.get("budget") ? Number(formData.get("budget")) : null,
       description: (formData.get("description") as string) || null,
     })
     .eq("id", id)
@@ -83,12 +176,15 @@ export async function deleteProject(id: string) {
   revalidatePath("/projects")
 }
 
+// ============================================================
+// TEAM
+// ============================================================
+
 export async function addProjectMember(projectId: string, profileId: string) {
   const supabase = await createClient()
   const { error } = await supabase
     .from("project_members")
     .insert({ project_id: projectId, profile_id: profileId })
-
   if (error) throw error
   revalidatePath(`/projects/${projectId}`)
 }
@@ -100,60 +196,122 @@ export async function removeProjectMember(projectId: string, profileId: string) 
     .delete()
     .eq("project_id", projectId)
     .eq("profile_id", profileId)
-
   if (error) throw error
   revalidatePath(`/projects/${projectId}`)
 }
 
 // ============================================================
-// PAID MEDIA ACTIONS
+// PROJECT PHASES
+// ============================================================
+
+export async function updateProjectPhaseStatus(
+  phaseId: string,
+  status: PhaseStatus,
+  projectId: string
+) {
+  const supabase = await createClient()
+  const updates: Record<string, unknown> = { status }
+  if (status === "in_progress") updates.started_at = new Date().toISOString()
+  if (status === "completed") updates.completed_at = new Date().toISOString()
+
+  const { error } = await supabase
+    .from("project_phases")
+    .update(updates)
+    .eq("id", phaseId)
+
+  if (error) throw error
+  revalidatePath(`/projects/${projectId}`)
+}
+
+export async function updateProjectPhaseNotes(phaseId: string, notes: string, projectId: string) {
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from("project_phases")
+    .update({ notes })
+    .eq("id", phaseId)
+  if (error) throw error
+  revalidatePath(`/projects/${projectId}`)
+}
+
+// ============================================================
+// PAID MEDIA CONTEXT
 // ============================================================
 
 export async function upsertPaidMediaContext(projectId: string, formData: FormData) {
   const supabase = await createClient()
   const platforms = formData.getAll("platforms") as string[]
+  const mainObjective = formData.get("main_objective") as string
 
-  const { error } = await supabase.from("paid_media_context").upsert({
-    project_id: projectId,
-    platforms,
-    monthly_budget: formData.get("monthly_budget") ? Number(formData.get("monthly_budget")) : null,
-    target_cpa: formData.get("target_cpa") ? Number(formData.get("target_cpa")) : null,
-    target_roas: formData.get("target_roas") ? Number(formData.get("target_roas")) : null,
-    notes: (formData.get("notes") as string) || null,
-  }, { onConflict: "project_id" })
-
+  const { error } = await supabase.from("paid_media_context").upsert(
+    {
+      project_id: projectId,
+      platforms,
+      monthly_ad_budget: formData.get("monthly_ad_budget") ? Number(formData.get("monthly_ad_budget")) : null,
+      main_objective: mainObjective && mainObjective !== "none" ? mainObjective : null,
+      target_roas: formData.get("target_roas") ? Number(formData.get("target_roas")) : null,
+      target_cpa: formData.get("target_cpa") ? Number(formData.get("target_cpa")) : null,
+      target_cpl: formData.get("target_cpl") ? Number(formData.get("target_cpl")) : null,
+      target_leads_per_month: formData.get("target_leads_per_month") ? Number(formData.get("target_leads_per_month")) : null,
+      account_notes: (formData.get("account_notes") as string) || null,
+    },
+    { onConflict: "project_id" }
+  )
   if (error) throw error
   revalidatePath(`/projects/${projectId}`)
 }
 
-export async function createPaidMediaCycle(projectId: string, cycleMonth: string) {
-  const supabase = await createClient()
+// ============================================================
+// PAID MEDIA CYCLES
+// ============================================================
 
+export async function getProjectCycles(projectId: string) {
+  const supabase = await createClient()
   const { data, error } = await supabase
     .from("paid_media_cycles")
-    .insert({ project_id: projectId, cycle_month: cycleMonth })
-    .select()
-    .single()
-
+    .select("*")
+    .eq("project_id", projectId)
+    .order("cycle_month", { ascending: false })
   if (error) throw error
-  revalidatePath(`/projects/${projectId}`)
-  return data
+  return data ?? []
 }
 
-export async function updatePaidMediaCycle(cycleId: string, projectId: string, formData: FormData) {
+export async function openNewCycle(projectId: string, cycleMonth: string) {
   const supabase = await createClient()
+
+  // Close current active cycle
+  await supabase
+    .from("paid_media_cycles")
+    .update({ is_active: false })
+    .eq("project_id", projectId)
+    .eq("is_active", true)
+
+  // Open new cycle
+  const { error } = await supabase.from("paid_media_cycles").insert({
+    project_id: projectId,
+    cycle_month: cycleMonth + "-01",
+    is_active: true,
+  })
+  if (error) throw error
+  revalidatePath(`/projects/${projectId}`)
+}
+
+export async function updateCycle(cycleId: string, projectId: string, formData: FormData) {
+  const supabase = await createClient()
+  const campaignStatus = formData.get("campaign_status") as string
 
   const { error } = await supabase
     .from("paid_media_cycles")
     .update({
-      budget_spent: formData.get("budget_spent") ? Number(formData.get("budget_spent")) : null,
-      impressions: formData.get("impressions") ? Number(formData.get("impressions")) : null,
-      clicks: formData.get("clicks") ? Number(formData.get("clicks")) : null,
-      conversions: formData.get("conversions") ? Number(formData.get("conversions")) : null,
-      cpa: formData.get("cpa") ? Number(formData.get("cpa")) : null,
-      roas: formData.get("roas") ? Number(formData.get("roas")) : null,
-      notes: (formData.get("notes") as string) || null,
-      status: (formData.get("status") as "active" | "closed") ?? "active",
+      campaign_status: campaignStatus && campaignStatus !== "none" ? (campaignStatus as CampaignStatus) : null,
+      report_cutoff_date: (formData.get("report_cutoff_date") as string) || null,
+      report_delivery_date: (formData.get("report_delivery_date") as string) || null,
+      report_status: (formData.get("report_status") as CycleDeliverableStatus) ?? "pending",
+      creative_status: (formData.get("creative_status") as CycleDeliverableStatus) ?? "pending",
+      roas_real: formData.get("roas_real") ? Number(formData.get("roas_real")) : null,
+      cpa_real: formData.get("cpa_real") ? Number(formData.get("cpa_real")) : null,
+      cpl_real: formData.get("cpl_real") ? Number(formData.get("cpl_real")) : null,
+      real_spend: formData.get("real_spend") ? Number(formData.get("real_spend")) : null,
+      real_results: formData.get("real_results") ? Number(formData.get("real_results")) : null,
     })
     .eq("id", cycleId)
 
@@ -161,146 +319,57 @@ export async function updatePaidMediaCycle(cycleId: string, projectId: string, f
   revalidatePath(`/projects/${projectId}`)
 }
 
-export async function getPaidMediaCycles(projectId: string) {
+export async function closeCycle(cycleId: string, projectId: string) {
   const supabase = await createClient()
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from("paid_media_cycles")
-    .select("*, deliverables:paid_media_cycle_deliverables(*)")
-    .eq("project_id", projectId)
-    .order("cycle_month", { ascending: false })
-
-  if (error) throw error
-  return data
-}
-
-export async function toggleCycleDeliverable(deliverableId: string, done: boolean, projectId: string) {
-  const supabase = await createClient()
-  const { error } = await supabase
-    .from("paid_media_cycle_deliverables")
-    .update({ done })
-    .eq("id", deliverableId)
-
-  if (error) throw error
-  revalidatePath(`/projects/${projectId}`)
-}
-
-export async function addCycleDeliverable(cycleId: string, projectId: string, title: string, dueDate?: string) {
-  const supabase = await createClient()
-  const { error } = await supabase
-    .from("paid_media_cycle_deliverables")
-    .insert({ cycle_id: cycleId, title, due_date: dueDate || null })
-
+    .update({ is_active: false })
+    .eq("id", cycleId)
   if (error) throw error
   revalidatePath(`/projects/${projectId}`)
 }
 
 // ============================================================
-// SITIO WEB ACTIONS
+// WEB PROJECT CONTEXT
 // ============================================================
 
 export async function upsertWebContext(projectId: string, formData: FormData) {
   const supabase = await createClient()
-  const tech_stack = (formData.get("tech_stack") as string)
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean)
-
-  const { error } = await supabase.from("web_context").upsert({
-    project_id: projectId,
-    tech_stack,
-    repo_url: (formData.get("repo_url") as string) || null,
-    staging_url: (formData.get("staging_url") as string) || null,
-    production_url: (formData.get("production_url") as string) || null,
-    notes: (formData.get("notes") as string) || null,
-  }, { onConflict: "project_id" })
-
+  const { error } = await supabase.from("web_project_context").upsert(
+    {
+      project_id: projectId,
+      platform: (formData.get("platform") as string) || null,
+      staging_url: (formData.get("staging_url") as string) || null,
+      production_url: (formData.get("production_url") as string) || null,
+      technical_notes: (formData.get("technical_notes") as string) || null,
+      revisions_included: formData.get("revisions_included") ? Number(formData.get("revisions_included")) : 0,
+      revisions_used: formData.get("revisions_used") ? Number(formData.get("revisions_used")) : 0,
+    },
+    { onConflict: "project_id" }
+  )
   if (error) throw error
   revalidatePath(`/projects/${projectId}`)
 }
 
-export async function initWebPhases(projectId: string, phaseNames: string[]) {
+export async function incrementRevision(projectId: string) {
   const supabase = await createClient()
-
-  const rows = phaseNames.map((name, i) => ({
-    project_id: projectId,
-    name,
-    phase_order: i,
-    status: "pending" as const,
-  }))
-
-  const { error } = await supabase.from("web_phases").insert(rows)
-  if (error) throw error
-  revalidatePath(`/projects/${projectId}`)
-}
-
-export async function getWebPhases(projectId: string) {
-  const supabase = await createClient()
-  const { data, error } = await supabase
-    .from("web_phases")
-    .select("*, deliverables:web_deliverables(*)")
+  const { data: ctx } = await supabase
+    .from("web_project_context")
+    .select("revisions_used")
     .eq("project_id", projectId)
-    .order("phase_order", { ascending: true })
+    .single()
 
-  if (error) throw error
-  return data
-}
-
-export async function updateWebPhaseStatus(
-  phaseId: string,
-  projectId: string,
-  status: "pending" | "in_progress" | "done"
-) {
-  const supabase = await createClient()
-  const updates: Record<string, unknown> = { status }
-  if (status === "in_progress") updates.started_at = new Date().toISOString()
-  if (status === "done") updates.completed_at = new Date().toISOString()
-
-  const { error } = await supabase.from("web_phases").update(updates).eq("id", phaseId)
-  if (error) throw error
-
-  // Recalculate web progress and update project
-  const { data: progressData } = await supabase.rpc("get_web_progress", { p_project_id: projectId })
-  if (progressData && progressData[0]) {
-    await supabase
-      .from("projects")
-      .update({ progress: progressData[0].progress_pct })
-      .eq("id", projectId)
-  }
-
-  revalidatePath(`/projects/${projectId}`)
-}
-
-export async function toggleWebDeliverable(deliverableId: string, done: boolean, projectId: string) {
-  const supabase = await createClient()
   const { error } = await supabase
-    .from("web_deliverables")
-    .update({ done })
-    .eq("id", deliverableId)
+    .from("web_project_context")
+    .update({ revisions_used: (ctx?.revisions_used ?? 0) + 1 })
+    .eq("project_id", projectId)
 
-  if (error) throw error
-
-  // Recalculate progress
-  const { data: progressData } = await supabase.rpc("get_web_progress", { p_project_id: projectId })
-  if (progressData && progressData[0]) {
-    await supabase
-      .from("projects")
-      .update({ progress: progressData[0].progress_pct })
-      .eq("id", projectId)
-  }
-
-  revalidatePath(`/projects/${projectId}`)
-}
-
-export async function initWebDeliverables(phaseId: string, projectId: string, titles: string[]) {
-  const supabase = await createClient()
-  const rows = titles.map((title) => ({ phase_id: phaseId, project_id: projectId, title }))
-  const { error } = await supabase.from("web_deliverables").insert(rows)
   if (error) throw error
   revalidatePath(`/projects/${projectId}`)
 }
 
 // ============================================================
-// PROJECT LOG ACTIONS
+// PROJECT LOG
 // ============================================================
 
 export async function getProjectLog(projectId: string) {
@@ -309,11 +378,9 @@ export async function getProjectLog(projectId: string) {
     .from("project_log_entries")
     .select("*, author:profiles(id, full_name, avatar_url)")
     .eq("project_id", projectId)
-    .order("pinned", { ascending: false })
     .order("created_at", { ascending: false })
-
   if (error) throw error
-  return data
+  return data ?? []
 }
 
 export async function addLogEntry(projectId: string, body: string) {
@@ -329,24 +396,12 @@ export async function addLogEntry(projectId: string, body: string) {
   revalidatePath(`/projects/${projectId}`)
 }
 
-export async function toggleLogPin(entryId: string, pinned: boolean, projectId: string) {
-  const supabase = await createClient()
-  const { error } = await supabase
-    .from("project_log_entries")
-    .update({ pinned })
-    .eq("id", entryId)
-
-  if (error) throw error
-  revalidatePath(`/projects/${projectId}`)
-}
-
 export async function deleteLogEntry(entryId: string, projectId: string) {
   const supabase = await createClient()
   const { error } = await supabase
     .from("project_log_entries")
     .delete()
     .eq("id", entryId)
-
   if (error) throw error
   revalidatePath(`/projects/${projectId}`)
 }
