@@ -47,10 +47,11 @@ export default async function EmployeesPage() {
                 <CardContent className="p-5">
                   <div className="flex items-start gap-4">
                     <Avatar className="h-12 w-12">
-                      {employee.avatar_url && (
+                      {employee.avatar_url ? (
                         <img src={employee.avatar_url} alt={employee.full_name} className="aspect-square h-full w-full object-cover" />
+                      ) : (
+                        <AvatarFallback className="text-base font-semibold">{initials}</AvatarFallback>
                       )}
-                      <AvatarFallback className="text-base font-semibold">{initials}</AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
