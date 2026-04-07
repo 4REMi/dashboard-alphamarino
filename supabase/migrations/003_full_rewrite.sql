@@ -130,6 +130,7 @@ CREATE TABLE IF NOT EXISTS project_phases (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+DROP TRIGGER IF EXISTS set_updated_at_project_phases ON project_phases;
 CREATE TRIGGER set_updated_at_project_phases
   BEFORE UPDATE ON project_phases
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
@@ -152,6 +153,7 @@ CREATE TABLE IF NOT EXISTS paid_media_context (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+DROP TRIGGER IF EXISTS set_updated_at_paid_media_context ON paid_media_context;
 CREATE TRIGGER set_updated_at_paid_media_context
   BEFORE UPDATE ON paid_media_context
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
@@ -193,6 +195,7 @@ CREATE TABLE IF NOT EXISTS web_project_context (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+DROP TRIGGER IF EXISTS set_updated_at_web_project_context ON web_project_context;
 CREATE TRIGGER set_updated_at_web_project_context
   BEFORE UPDATE ON web_project_context
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
