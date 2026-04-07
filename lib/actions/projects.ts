@@ -12,8 +12,10 @@ export async function getProjects() {
   const supabase = await createClient()
   const now = new Date().toISOString().split("T")[0]
 
-  // Base query — works even if optional tables don't exist yet
-  const { data, error } = await supabase
+  // Try full query first; fall back to minimal if any join table is missing
+  let rawData: Record<string, unknown>[] | null = null
+
+  const { data: fullData, error: fullError } = await supabase
     .from("projects")
     .select(`
       *,
@@ -25,9 +27,24 @@ export async function getProjects() {
     `)
     .order("created_at", { ascending: false })
 
-  if (error) throw error
+  if (!fullError) {
+    rawData = fullData ?? []
+  } else {
+    // Fallback: minimal query without optional joins
+    const { data: minimal, error: minError } = await supabase
+      .from("projects")
+      .select(`
+        *,
+        customer:customers(id, name, company),
+        members:project_members(profile_id),
+        tasks(id, status, due_date)
+      `)
+      .order("created_at", { ascending: false })
+    if (minError) throw minError
+    rawData = (minimal ?? []).map((p) => ({ ...p, project_type: null, phases: [] }))
+  }
 
-  // Try to fetch log entries separately so a missing table doesn't break the list
+  // Try to fetch log entries separately
   let logMap: Record<string, string> = {}
   try {
     const { data: logs } = await supabase
@@ -36,30 +53,28 @@ export async function getProjects() {
       .order("created_at", { ascending: false })
     if (logs) {
       for (const l of logs) {
-        if (!logMap[l.project_id]) logMap[l.project_id] = l.created_at
+        if (!logMap[l.project_id as string]) logMap[l.project_id as string] = l.created_at as string
       }
     }
-  } catch {
-    // table may not exist yet
-  }
+  } catch { /* table may not exist yet */ }
 
-  return (data ?? []).map((p) => {
+  return rawData.map((p) => {
     const tasks = (p.tasks ?? []) as Array<{ status: string; due_date: string | null }>
     const phases = (p.phases ?? []) as Array<{ status: string }>
 
     const hasOverdueTasks = tasks.some(
-      (t) => t.status !== "Done" && t.due_date && t.due_date < now
+      (t) => t.status !== "Done" && t.due_date && (t.due_date as string) < now
     )
     const hasBlockedPhase = phases.some((ph) => ph.status === "blocked")
 
-    const lastActivity = logMap[p.id] ?? p.created_at
+    const lastActivity = logMap[p.id as string] ?? (p.created_at as string)
     const inactiveForDays = Math.floor(
       (Date.now() - new Date(lastActivity).getTime()) / (1000 * 60 * 60 * 24)
     )
 
     return {
       ...p,
-      members: (p.members ?? []).map((m: { profile_id: string }) => m.profile_id),
+      members: ((p.members ?? []) as Array<{ profile_id: string }>).map((m) => m.profile_id),
       attention: {
         hasOverdueTasks,
         hasBlockedPhase,
@@ -67,14 +82,17 @@ export async function getProjects() {
         inactiveForDays,
       },
     }
-  })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  }) as any[]
 }
 
 export async function getProject(id: string) {
   const supabase = await createClient()
 
-  // Core query — customers and tasks exist in all schema versions
-  const { data, error } = await supabase
+  // Try full query; fall back without optional join tables
+  let data: Record<string, unknown>
+
+  const { data: fullData, error: fullError } = await supabase
     .from("projects")
     .select(`
       *,
@@ -87,7 +105,23 @@ export async function getProject(id: string) {
     .eq("id", id)
     .single()
 
-  if (error) throw error
+  if (!fullError) {
+    data = fullData as Record<string, unknown>
+  } else {
+    // Fallback without project_type and project_phases joins
+    const { data: minData, error: minError } = await supabase
+      .from("projects")
+      .select(`
+        *,
+        customer:customers(id, name, company, email, phone),
+        tasks(*, assignee:profiles(id, full_name, avatar_url, position)),
+        members:project_members(profile:profiles(id, full_name, avatar_url, position, role))
+      `)
+      .eq("id", id)
+      .single()
+    if (minError) throw minError
+    data = { ...minData, project_type: null, phases: [] } as Record<string, unknown>
+  }
 
   // Optional hub tables — fetch separately so a missing table doesn't crash the page
   let paidMediaContext = null
@@ -111,6 +145,7 @@ export async function getProject(id: string) {
     webProjectContext = wpc
   } catch { /* table may not exist */ }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return {
     ...data,
     paid_media_context: paidMediaContext ? [paidMediaContext] : [],
@@ -124,7 +159,8 @@ export async function getProject(id: string) {
         if (!b.due_date) return -1
         return a.due_date.localeCompare(b.due_date)
       }),
-  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any
 }
 
 // ============================================================
