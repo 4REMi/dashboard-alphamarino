@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { useRouter } from "next/navigation"
 import type { ProjectType, PhaseSet } from "@/lib/types"
 import {
   createProjectType,
@@ -15,36 +14,57 @@ interface Props {
 }
 
 export function ProjectTypeManager({ initialTypes, phaseSets }: Props) {
-  const router = useRouter()
+  const [types, setTypes] = useState<ProjectType[]>(initialTypes)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showNew, setShowNew] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
   function handleCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const fd = new FormData(e.currentTarget)
+    const form = e.currentTarget
+    setError(null)
     startTransition(async () => {
-      await createProjectType(fd)
-      setShowNew(false)
-      router.refresh()
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const created = await createProjectType(fd) as any
+        setTypes((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
+        setShowNew(false)
+        form.reset()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Error al crear")
+      }
     })
   }
 
   function handleUpdate(id: string, e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const fd = new FormData(e.currentTarget)
+    setError(null)
     startTransition(async () => {
-      await updateProjectType(id, fd)
-      setEditingId(null)
-      router.refresh()
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const updated = await updateProjectType(id, fd) as any
+        setTypes((prev) =>
+          prev.map((t) => (t.id === id ? { ...t, ...updated } : t))
+        )
+        setEditingId(null)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Error al actualizar")
+      }
     })
   }
 
   function handleDelete(id: string) {
     if (!confirm("¿Eliminar este tipo de proyecto?")) return
     startTransition(async () => {
-      await deleteProjectType(id)
-      router.refresh()
+      try {
+        await deleteProjectType(id)
+        setTypes((prev) => prev.filter((t) => t.id !== id))
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Error al eliminar")
+      }
     })
   }
 
@@ -60,8 +80,11 @@ export function ProjectTypeManager({ initialTypes, phaseSets }: Props) {
         </button>
       </div>
 
+      {error && (
+        <p className="text-xs text-destructive bg-destructive/10 px-3 py-2 rounded-md">{error}</p>
+      )}
+
       <div className="space-y-2">
-        {/* New type form */}
         {showNew && (
           <form onSubmit={handleCreate} className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-4 space-y-3">
             <div className="grid grid-cols-2 gap-3">
@@ -93,8 +116,7 @@ export function ProjectTypeManager({ initialTypes, phaseSets }: Props) {
           </form>
         )}
 
-        {/* Type list */}
-        {initialTypes.map((type) => (
+        {types.map((type) => (
           <div key={type.id} className="rounded-xl border border-border bg-card p-4">
             {editingId === type.id ? (
               <form onSubmit={(e) => handleUpdate(type.id, e)} className="space-y-3">
@@ -148,7 +170,7 @@ export function ProjectTypeManager({ initialTypes, phaseSets }: Props) {
           </div>
         ))}
 
-        {initialTypes.length === 0 && !showNew && (
+        {types.length === 0 && !showNew && (
           <p className="text-sm text-muted-foreground text-center py-8">Sin tipos de proyecto. Crea el primero.</p>
         )}
       </div>

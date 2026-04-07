@@ -13,25 +13,26 @@ export async function getProjectTypes() {
     .from("project_types")
     .select("*, default_phase_set:phase_sets(id, name)")
     .order("name")
-  if (error) return []
+  if (error) throw error
   return data ?? []
 }
 
 export async function createProjectType(formData: FormData) {
   const supabase = await createClient()
-  const { error } = await supabase.from("project_types").insert({
+  const { data, error } = await supabase.from("project_types").insert({
     name: formData.get("name") as string,
     description: (formData.get("description") as string) || null,
-  })
+  }).select().single()
   if (error) throw error
   revalidatePath("/settings")
   revalidatePath("/projects")
+  return data
 }
 
 export async function updateProjectType(id: string, formData: FormData) {
   const supabase = await createClient()
   const defaultPhaseSetId = formData.get("default_phase_set_id") as string
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("project_types")
     .update({
       name: formData.get("name") as string,
@@ -39,9 +40,12 @@ export async function updateProjectType(id: string, formData: FormData) {
       default_phase_set_id: defaultPhaseSetId && defaultPhaseSetId !== "none" ? defaultPhaseSetId : null,
     })
     .eq("id", id)
+    .select()
+    .single()
   if (error) throw error
   revalidatePath("/settings")
   revalidatePath("/projects")
+  return data
 }
 
 export async function deleteProjectType(id: string) {
@@ -73,12 +77,13 @@ export async function getPhaseSets() {
 export async function createPhaseSet(formData: FormData) {
   const supabase = await createClient()
   const projectTypeId = formData.get("project_type_id") as string
-  const { error } = await supabase.from("phase_sets").insert({
+  const { data, error } = await supabase.from("phase_sets").insert({
     name: formData.get("name") as string,
     project_type_id: projectTypeId && projectTypeId !== "none" ? projectTypeId : null,
-  })
+  }).select().single()
   if (error) throw error
   revalidatePath("/settings")
+  return data
 }
 
 export async function updatePhaseSet(id: string, formData: FormData) {
@@ -117,14 +122,15 @@ export async function addPhaseToSet(phaseSetId: string, formData: FormData) {
     .limit(1)
   const nextOrder = existing?.[0] ? existing[0].phase_order + 1 : 0
 
-  const { error } = await supabase.from("phase_set_phases").insert({
+  const { data, error } = await supabase.from("phase_set_phases").insert({
     phase_set_id: phaseSetId,
     name: formData.get("name") as string,
     description: (formData.get("description") as string) || null,
     phase_order: nextOrder,
-  })
+  }).select().single()
   if (error) throw error
   revalidatePath("/settings")
+  return data
 }
 
 export async function updatePhaseInSet(phaseId: string, formData: FormData) {

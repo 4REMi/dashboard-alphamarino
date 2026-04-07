@@ -1,8 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { useRouter } from "next/navigation"
-import type { PhaseSet, ProjectType } from "@/lib/types"
+import type { PhaseSet, PhaseSetPhase, ProjectType } from "@/lib/types"
 import {
   createPhaseSet,
   deletePhaseSet,
@@ -16,45 +15,84 @@ interface Props {
 }
 
 export function PhaseSetManager({ initialSets, projectTypes }: Props) {
-  const router = useRouter()
+  const [sets, setSets] = useState<PhaseSet[]>(initialSets)
   const [expandedId, setExpandedId] = useState<string | null>(initialSets[0]?.id ?? null)
   const [showNew, setShowNew] = useState(false)
   const [addingPhaseFor, setAddingPhaseFor] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
   function handleCreateSet(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const fd = new FormData(e.currentTarget)
+    const form = e.currentTarget
+    setError(null)
     startTransition(async () => {
-      await createPhaseSet(fd)
-      setShowNew(false)
-      router.refresh()
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const created = await createPhaseSet(fd) as any
+        const newSet: PhaseSet = { ...created, phases: [] }
+        setSets((prev) => [...prev, newSet].sort((a, b) => a.name.localeCompare(b.name)))
+        setExpandedId(created.id)
+        setShowNew(false)
+        form.reset()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Error al crear")
+      }
     })
   }
 
   function handleDeleteSet(id: string) {
     if (!confirm("¿Eliminar este phase set y todas sus fases?")) return
     startTransition(async () => {
-      await deletePhaseSet(id)
-      router.refresh()
+      try {
+        await deletePhaseSet(id)
+        setSets((prev) => prev.filter((s) => s.id !== id))
+        if (expandedId === id) setExpandedId(null)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Error al eliminar")
+      }
     })
   }
 
   function handleAddPhase(setId: string, e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const fd = new FormData(e.currentTarget)
+    const form = e.currentTarget
+    setError(null)
     startTransition(async () => {
-      await addPhaseToSet(setId, fd)
-      setAddingPhaseFor(null)
-      router.refresh()
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const created = await addPhaseToSet(setId, fd) as any
+        const newPhase: PhaseSetPhase = created
+        setSets((prev) =>
+          prev.map((s) =>
+            s.id === setId ? { ...s, phases: [...(s.phases ?? []), newPhase] } : s
+          )
+        )
+        setAddingPhaseFor(null)
+        form.reset()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Error al agregar fase")
+      }
     })
   }
 
   function handleDeletePhase(setId: string, phaseId: string) {
     if (!confirm("¿Eliminar esta fase?")) return
     startTransition(async () => {
-      await deletePhaseFromSet(phaseId)
-      router.refresh()
+      try {
+        await deletePhaseFromSet(phaseId)
+        setSets((prev) =>
+          prev.map((s) =>
+            s.id === setId
+              ? { ...s, phases: (s.phases ?? []).filter((p) => p.id !== phaseId) }
+              : s
+          )
+        )
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Error al eliminar fase")
+      }
     })
   }
 
@@ -70,7 +108,10 @@ export function PhaseSetManager({ initialSets, projectTypes }: Props) {
         </button>
       </div>
 
-      {/* New set form */}
+      {error && (
+        <p className="text-xs text-destructive bg-destructive/10 px-3 py-2 rounded-md">{error}</p>
+      )}
+
       {showNew && (
         <form onSubmit={handleCreateSet} className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-4 space-y-3">
           <div className="grid grid-cols-2 gap-3">
@@ -95,15 +136,13 @@ export function PhaseSetManager({ initialSets, projectTypes }: Props) {
         </form>
       )}
 
-      {/* Set list */}
       <div className="space-y-2">
-        {initialSets.map((set) => {
+        {sets.map((set) => {
           const isExpanded = expandedId === set.id
           const phases = set.phases ?? []
 
           return (
             <div key={set.id} className="rounded-xl border border-border bg-card">
-              {/* Set header */}
               <div
                 className="flex items-center justify-between px-4 py-3 cursor-pointer"
                 onClick={() => setExpandedId(isExpanded ? null : set.id)}
@@ -124,7 +163,6 @@ export function PhaseSetManager({ initialSets, projectTypes }: Props) {
                 </div>
               </div>
 
-              {/* Phase list */}
               {isExpanded && (
                 <div className="border-t border-border">
                   {phases.map((phase, i) => (
@@ -145,7 +183,6 @@ export function PhaseSetManager({ initialSets, projectTypes }: Props) {
                     </div>
                   ))}
 
-                  {/* Add phase */}
                   {addingPhaseFor === set.id ? (
                     <form
                       onSubmit={(e) => handleAddPhase(set.id, e)}
@@ -190,7 +227,7 @@ export function PhaseSetManager({ initialSets, projectTypes }: Props) {
           )
         })}
 
-        {initialSets.length === 0 && !showNew && (
+        {sets.length === 0 && !showNew && (
           <p className="text-sm text-muted-foreground text-center py-8">Sin phase sets. Crea el primero.</p>
         )}
       </div>
