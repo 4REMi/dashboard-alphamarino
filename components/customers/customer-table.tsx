@@ -39,7 +39,7 @@ export function CustomerTable({ customers, isAdmin }: CustomerTableProps) {
         </div>
       </div>
 
-      <div className="border rounded-lg overflow-hidden">
+      <div className="border rounded-lg overflow-hidden bg-card">
         <table className="w-full text-sm">
           <thead className="bg-muted/50">
             <tr>

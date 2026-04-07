@@ -184,7 +184,7 @@ export default async function FinancesPage() {
           <div className="flex justify-end">
             <IncomeForm projects={projects as Project[]} />
           </div>
-          <div className="border rounded-lg overflow-hidden">
+          <div className="border rounded-lg overflow-hidden bg-card">
             <table className="w-full text-sm">
               <thead className="bg-muted/50">
                 <tr>
@@ -268,7 +268,7 @@ export default async function FinancesPage() {
                   </span>
                   <span className="text-sm text-muted-foreground">{formatCurrency(categoryTotal)}/mes</span>
                 </div>
-                <div className="border rounded-lg overflow-hidden mb-4">
+                <div className="border rounded-lg overflow-hidden bg-card mb-4">
                   <table className="w-full text-sm">
                     <thead className="bg-muted/50">
                       <tr>

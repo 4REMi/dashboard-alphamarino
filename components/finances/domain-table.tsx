@@ -186,7 +186,7 @@ export function DomainTable({ initialDomains, customers }: DomainTableProps) {
       )}
 
       {/* Table */}
-      <div className="border rounded-lg overflow-hidden">
+      <div className="border rounded-lg overflow-hidden bg-card">
         <table className="w-full text-sm">
           <thead className="bg-muted/50">
             <tr>

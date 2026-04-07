@@ -171,7 +171,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
       {tasks.length > 0 && (
         <div>
           <h2 className="text-base font-semibold mb-3">Tareas Asignadas</h2>
-          <div className="border rounded-lg overflow-hidden">
+          <div className="border rounded-lg overflow-hidden bg-card">
             <table className="w-full text-sm">
               <thead className="bg-muted/50">
                 <tr>
