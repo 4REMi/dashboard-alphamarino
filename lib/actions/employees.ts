@@ -85,15 +85,23 @@ export async function createEmployee(formData: FormData) {
 
 export async function updateEmployee(id: string, formData: FormData) {
   const supabase = await createClient()
-  const { error } = await supabase
-    .from("profiles")
-    .update({
-      full_name: formData.get("full_name") as string,
-      position: (formData.get("position") as string) || null,
-      phone: (formData.get("phone") as string) || null,
-    })
-    .eq("id", id)
+  const role = formData.get("role") as string
+  const updates: Record<string, unknown> = {
+    full_name: formData.get("full_name") as string,
+    position: (formData.get("position") as string) || null,
+    phone: (formData.get("phone") as string) || null,
+  }
+  if (role) updates.role = role
+  const { error } = await supabase.from("profiles").update(updates).eq("id", id)
   if (error) throw error
   revalidatePath("/employees")
   revalidatePath(`/employees/${id}`)
+}
+
+export async function deleteEmployee(id: string) {
+  // Delete from auth.users via admin client (profiles will cascade)
+  const adminClient = createAdminClient()
+  const { error } = await adminClient.auth.admin.deleteUser(id)
+  if (error) throw error
+  revalidatePath("/employees")
 }

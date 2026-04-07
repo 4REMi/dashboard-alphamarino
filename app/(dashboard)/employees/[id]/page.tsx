@@ -10,7 +10,8 @@ import { Progress } from "@/components/ui/progress"
 import { ArrowLeft, Mail, Phone, Briefcase, FolderKanban, CheckSquare, CalendarDays } from "lucide-react"
 import { formatDate } from "@/lib/utils"
 import { cn } from "@/lib/utils"
-import type { Task } from "@/lib/types"
+import { EmployeeEditActions } from "@/components/employees/employee-edit-actions"
+import type { Task, Profile } from "@/lib/types"
 
 const taskStatusConfig = {
   Todo: { label: "Por Hacer", variant: "secondary" as const },
@@ -65,11 +66,18 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
           <AvatarFallback className="text-2xl font-bold">{initials}</AvatarFallback>
         </Avatar>
         <div className="flex-1">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold">{profile.full_name}</h1>
-            <Badge variant={profile.role === "admin" ? "default" : "secondary"}>
-              {profile.role === "admin" ? "Administrador" : "Empleado"}
-            </Badge>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              <h1 className="text-2xl font-bold">{profile.full_name}</h1>
+              <Badge variant={profile.role === "admin" ? "default" : profile.role === "subadmin" ? "info" : "secondary"}>
+                {profile.role === "admin" ? "Administrador" : profile.role === "subadmin" ? "Subadmin" : "Empleado"}
+              </Badge>
+            </div>
+            <EmployeeEditActions
+              profile={profile as Profile}
+              isAdmin={isAdmin}
+              isSelf={user!.id === profile.id}
+            />
           </div>
           <div className="flex flex-col gap-1 mt-2">
             {profile.position && (
