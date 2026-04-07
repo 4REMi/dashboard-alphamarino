@@ -13,9 +13,9 @@ export default async function ProjectsPage() {
   const isAdminOrSubadmin = profile?.role === "admin" || profile?.role === "subadmin"
 
   const [projects, customers, projectTypes] = await Promise.all([
-    getProjects(),
-    getCustomers(),
-    getProjectTypes(),
+    getProjects().catch(() => []),
+    getCustomers().catch(() => []),
+    getProjectTypes().catch(() => []),
   ])
 
   const projectList = projects as Project[]

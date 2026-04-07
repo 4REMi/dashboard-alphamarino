@@ -11,9 +11,9 @@ export async function getProjectTypes() {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("project_types")
-    .select("*, default_phase_set:phase_sets(id, name)")
+    .select("*")
     .order("name")
-  if (error) throw error
+  if (error) return []
   return data ?? []
 }
 
