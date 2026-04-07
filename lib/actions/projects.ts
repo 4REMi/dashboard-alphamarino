@@ -105,6 +105,10 @@ export async function getProject(id: string) {
     .eq("id", id)
     .single()
 
+  if (fullError) {
+    console.error("[getProject] full query error:", fullError.message, fullError.details, fullError.hint)
+  }
+
   if (!fullError) {
     data = fullData as Record<string, unknown>
   } else {
@@ -119,7 +123,10 @@ export async function getProject(id: string) {
       `)
       .eq("id", id)
       .single()
-    if (minError) throw minError
+    if (minError) {
+      console.error("[getProject] fallback query error:", minError.message, minError.details, minError.hint)
+      throw minError
+    }
     data = { ...minData, project_type: null, phases: [] } as Record<string, unknown>
   }
 

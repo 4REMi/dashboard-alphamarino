@@ -196,8 +196,6 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             activeCycle={activeCycle}
             context={paidMediaContext}
             canEdit={isAdminOrSubadmin}
-            onCycleClosed={() => {}}
-            onCycleCreated={() => {}}
           />
           {historyCycles.length > 0 && <PaidMediaCycleHistory cycles={historyCycles} />}
         </section>

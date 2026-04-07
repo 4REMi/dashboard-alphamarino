@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import { useRouter } from "next/navigation"
 import type { PaidMediaCycle, PaidMediaContext, CycleDeliverableStatus } from "@/lib/types"
 import { CAMPAIGN_STATUS_LABELS, DELIVERABLE_STATUS_LABELS } from "@/lib/types"
 import { openNewCycle, updateCycle, closeCycle } from "@/lib/actions/projects"
@@ -10,8 +11,6 @@ interface Props {
   activeCycle: PaidMediaCycle | null
   context: PaidMediaContext | null
   canEdit: boolean
-  onCycleClosed: (cycle: PaidMediaCycle) => void
-  onCycleCreated: (cycle: PaidMediaCycle) => void
 }
 
 const MONTHS_ES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
@@ -53,7 +52,8 @@ function KpiEmpty({ label }: { label: string }) {
   )
 }
 
-export function PaidMediaCycleCard({ projectId, activeCycle, context, canEdit, onCycleClosed, onCycleCreated }: Props) {
+export function PaidMediaCycleCard({ projectId, activeCycle, context, canEdit }: Props) {
+  const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [showOpenForm, setShowOpenForm] = useState(false)
   const [newCycleMonth, setNewCycleMonth] = useState("")
@@ -63,22 +63,9 @@ export function PaidMediaCycleCard({ projectId, activeCycle, context, canEdit, o
     if (!newCycleMonth) return
     startTransition(async () => {
       await openNewCycle(projectId, newCycleMonth)
-      const created: PaidMediaCycle = {
-        id: crypto.randomUUID(),
-        project_id: projectId,
-        cycle_month: newCycleMonth + "-01",
-        is_active: true,
-        campaign_status: null,
-        report_cutoff_date: null,
-        report_delivery_date: null,
-        report_status: "pending",
-        creative_status: "pending",
-        roas_real: null, cpa_real: null, cpl_real: null, real_spend: null, real_results: null,
-        created_at: new Date().toISOString(),
-      }
-      onCycleCreated(created)
       setShowOpenForm(false)
       setNewCycleMonth("")
+      router.refresh()
     })
   }
 
@@ -96,7 +83,7 @@ export function PaidMediaCycleCard({ projectId, activeCycle, context, canEdit, o
     if (!activeCycle || !confirm("¿Cerrar este ciclo? Ya no se podrán editar sus métricas.")) return
     startTransition(async () => {
       await closeCycle(activeCycle.id, projectId)
-      onCycleClosed(activeCycle)
+      router.refresh()
     })
   }
 
