@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { updateEmployee, deleteEmployee } from "@/lib/actions/employees"
+import { updateEmployee, deleteEmployee, resendPasswordLink } from "@/lib/actions/employees"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import type { Profile } from "@/lib/types"
@@ -13,11 +13,29 @@ interface Props {
   isSelf: boolean
 }
 
+type LinkState = "idle" | "sending" | "sent" | "error"
+
 export function EmployeeEditActions({ profile, isAdmin, isSelf }: Props) {
   const router = useRouter()
   const [editOpen, setEditOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [linkState, setLinkState] = useState<LinkState>("idle")
   const [isPending, startTransition] = useTransition()
+
+  function handleResendLink() {
+    if (!profile.email) return
+    setLinkState("sending")
+    startTransition(async () => {
+      try {
+        await resendPasswordLink(profile.email!)
+        setLinkState("sent")
+        setTimeout(() => setLinkState("idle"), 3000)
+      } catch {
+        setLinkState("error")
+        setTimeout(() => setLinkState("idle"), 3000)
+      }
+    })
+  }
 
   function handleUpdate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -102,6 +120,28 @@ export function EmployeeEditActions({ profile, isAdmin, isSelf }: Props) {
                 </select>
               </div>
             )}
+            {/* Resend password link */}
+            {isAdmin && profile.email && (
+              <div className="border-t pt-3">
+                <p className="text-xs text-muted-foreground mb-2">
+                  ¿El empleado no recibió o perdió su link de acceso?
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleResendLink}
+                  disabled={isPending || linkState === "sending" || linkState === "sent"}
+                  className="w-full"
+                >
+                  {linkState === "sending" && "Enviando..."}
+                  {linkState === "sent" && "✓ Link enviado"}
+                  {linkState === "error" && "Error al enviar"}
+                  {linkState === "idle" && "Reenviar link de contraseña"}
+                </Button>
+              </div>
+            )}
+
             {error && (
               <p className="text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-md">{error}</p>
             )}

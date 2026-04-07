@@ -98,6 +98,15 @@ export async function updateEmployee(id: string, formData: FormData) {
   revalidatePath(`/employees/${id}`)
 }
 
+export async function resendPasswordLink(email: string) {
+  const adminClient = createAdminClient()
+  const { error } = await adminClient.auth.admin.generateLink({
+    type: "recovery",
+    email,
+  })
+  if (error) throw error
+}
+
 export async function deleteEmployee(id: string) {
   // Delete from auth.users via admin client (profiles will cascade)
   const adminClient = createAdminClient()
