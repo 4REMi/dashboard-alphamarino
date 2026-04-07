@@ -2,6 +2,15 @@
 -- MIGRATION 002: Project Hubs (Paid Media + Sitio Web)
 -- ============================================================
 
+-- Shared updated_at trigger function (used by multiple tables below)
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 -- Add project_type to projects table
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_type TEXT NOT NULL DEFAULT 'paid_media'
   CHECK (project_type IN ('paid_media', 'sitio_web'));
