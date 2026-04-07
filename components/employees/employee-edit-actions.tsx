@@ -1,10 +1,12 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { updateEmployee, deleteEmployee, resendPasswordLink } from "@/lib/actions/employees"
+import Image from "next/image"
+import { updateEmployee, deleteEmployee, resendPasswordLink, uploadAvatar } from "@/lib/actions/employees"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Camera } from "lucide-react"
 import type { Profile } from "@/lib/types"
 
 interface Props {
@@ -20,7 +22,32 @@ export function EmployeeEditActions({ profile, isAdmin, isSelf }: Props) {
   const [editOpen, setEditOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [linkState, setLinkState] = useState<LinkState>("idle")
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(profile.avatar_url)
+  const [avatarUploading, setAvatarUploading] = useState(false)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
   const [isPending, startTransition] = useTransition()
+
+  const initials = profile.full_name
+    .split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2) || "?"
+
+  async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setAvatarPreview(URL.createObjectURL(file))
+    setAvatarUploading(true)
+    const fd = new FormData()
+    fd.append("avatar", file)
+    try {
+      const url = await uploadAvatar(profile.id, fd)
+      setAvatarPreview(url)
+      router.refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al subir foto")
+      setAvatarPreview(profile.avatar_url)
+    } finally {
+      setAvatarUploading(false)
+    }
+  }
 
   function handleResendLink() {
     if (!profile.email) return
@@ -78,6 +105,29 @@ export function EmployeeEditActions({ profile, isAdmin, isSelf }: Props) {
             <DialogTitle>Editar empleado</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleUpdate} className="space-y-4 mt-2">
+            {/* Avatar */}
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={() => avatarInputRef.current?.click()}
+                disabled={avatarUploading}
+                className="relative group"
+                title="Cambiar foto"
+              >
+                <div className="w-20 h-20 rounded-full overflow-hidden bg-muted flex items-center justify-center text-2xl font-bold text-muted-foreground border-2 border-border">
+                  {avatarPreview ? (
+                    <Image src={avatarPreview} alt="Avatar" width={80} height={80} className="object-cover w-full h-full" unoptimized />
+                  ) : initials}
+                </div>
+                <div className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  {avatarUploading
+                    ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    : <Camera className="w-5 h-5 text-white" />}
+                </div>
+              </button>
+              <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
+            </div>
+
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Nombre completo *</label>
               <input

@@ -98,6 +98,33 @@ export async function updateEmployee(id: string, formData: FormData) {
   revalidatePath(`/employees/${id}`)
 }
 
+export async function uploadAvatar(id: string, formData: FormData) {
+  const supabase = await createClient()
+  const file = formData.get("avatar") as File | null
+  if (!file || file.size === 0) throw new Error("No se seleccionó archivo")
+  if (file.size > 3 * 1024 * 1024) throw new Error("Máx 3 MB")
+  if (!file.type.startsWith("image/")) throw new Error("Solo imágenes")
+
+  const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg"
+  const path = `avatars/${id}.${ext}`
+
+  const arrayBuffer = await file.arrayBuffer()
+  const { error: uploadError } = await supabase.storage
+    .from("workspace-assets")
+    .upload(path, arrayBuffer, { contentType: file.type, upsert: true })
+  if (uploadError) throw new Error(uploadError.message)
+
+  const { data: urlData } = supabase.storage.from("workspace-assets").getPublicUrl(path)
+  const avatarUrl = `${urlData.publicUrl}?t=${Date.now()}`
+
+  const { error } = await supabase.from("profiles").update({ avatar_url: avatarUrl }).eq("id", id)
+  if (error) throw error
+
+  revalidatePath("/employees")
+  revalidatePath(`/employees/${id}`)
+  return avatarUrl
+}
+
 export async function resendPasswordLink(email: string) {
   const adminClient = createAdminClient()
   const { error } = await adminClient.auth.admin.generateLink({
