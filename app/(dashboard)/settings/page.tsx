@@ -15,8 +15,8 @@ export default async function SettingsPage() {
   if (profile?.role !== "admin") redirect("/")
 
   const [projectTypes, phaseSets] = await Promise.all([
-    getProjectTypes(),
-    getPhaseSets(),
+    getProjectTypes().catch(() => []),
+    getPhaseSets().catch(() => []),
   ])
 
   return (

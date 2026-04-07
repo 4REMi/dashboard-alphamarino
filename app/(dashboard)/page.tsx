@@ -53,17 +53,16 @@ export default async function HomePage() {
 
   if (isAdmin) {
     ;[allTasks, customers, employees, summary, domains] = await Promise.all([
-      getTasks() as Promise<Task[]>,
-      getCustomers() as Promise<Customer[]>,
-      getEmployees() as Promise<Profile[]>,
-      getFinancialSummary(),
-      getDomains() as Promise<Domain[]>,
+      (getTasks() as Promise<Task[]>).catch(() => [] as Task[]),
+      (getCustomers() as Promise<Customer[]>).catch(() => [] as Customer[]),
+      (getEmployees() as Promise<Profile[]>).catch(() => [] as Profile[]),
+      getFinancialSummary().catch(() => ({ monthlyIncome: 0, monthlyExpenses: 0, netMargin: 0, mrr: 0, monthlyRecurring: 0, monthlyProjectExpenses: 0 })),
+      (getDomains() as Promise<Domain[]>).catch(() => [] as Domain[]),
     ])
   } else if (isAdminOrSubadmin) {
-    allTasks = (await getTasks()) as Task[]
+    allTasks = await (getTasks() as Promise<Task[]>).catch(() => [] as Task[])
   } else {
-    // employee: only assigned tasks
-    const allT = (await getTasks()) as Task[]
+    const allT = await (getTasks() as Promise<Task[]>).catch(() => [] as Task[])
     allTasks = allT.filter((t) => t.assignee_id === user!.id)
   }
 
