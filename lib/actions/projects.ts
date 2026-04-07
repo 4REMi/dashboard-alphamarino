@@ -8,14 +8,14 @@ import type { ProjectStatus, PhaseStatus, CycleDeliverableStatus, CampaignStatus
 // READ
 // ============================================================
 
-export async function getProjects() {
+export async function getProjects(includeArchived = false) {
   const supabase = await createClient()
   const now = new Date().toISOString().split("T")[0]
 
   // Try full query first; fall back to minimal if any join table is missing
   let rawData: Record<string, unknown>[] | null = null
 
-  const { data: fullData, error: fullError } = await supabase
+  let fullQuery = supabase
     .from("projects")
     .select(`
       *,
@@ -27,11 +27,17 @@ export async function getProjects() {
     `)
     .order("created_at", { ascending: false })
 
+  if (!includeArchived) {
+    fullQuery = fullQuery.neq("status", "Archived")
+  }
+
+  const { data: fullData, error: fullError } = await fullQuery
+
   if (!fullError) {
     rawData = fullData ?? []
   } else {
     // Fallback: minimal query without optional joins
-    const { data: minimal, error: minError } = await supabase
+    let minQuery = supabase
       .from("projects")
       .select(`
         *,
@@ -40,6 +46,10 @@ export async function getProjects() {
         tasks(id, status, due_date)
       `)
       .order("created_at", { ascending: false })
+    if (!includeArchived) {
+      minQuery = minQuery.neq("status", "Archived")
+    }
+    const { data: minimal, error: minError } = await minQuery
     if (minError) throw minError
     rawData = (minimal ?? []).map((p) => ({ ...p, project_type: null, phases: [] }))
   }
@@ -251,6 +261,28 @@ export async function deleteProject(id: string) {
   const { error } = await supabase.from("projects").delete().eq("id", id)
   if (error) throw error
   revalidatePath("/projects")
+}
+
+export async function archiveProject(id: string) {
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from("projects")
+    .update({ status: "Archived" })
+    .eq("id", id)
+  if (error) throw error
+  revalidatePath("/projects")
+  revalidatePath(`/projects/${id}`)
+}
+
+export async function unarchiveProject(id: string) {
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from("projects")
+    .update({ status: "Planning" })
+    .eq("id", id)
+  if (error) throw error
+  revalidatePath("/projects")
+  revalidatePath(`/projects/${id}`)
 }
 
 // ============================================================

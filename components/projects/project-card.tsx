@@ -11,6 +11,7 @@ const statusConfig = {
   "In Progress": { label: "En Progreso", variant: "info" as const },
   Review: { label: "Revisión", variant: "warning" as const },
   Completed: { label: "Completado", variant: "success" as const },
+  Archived: { label: "Archivado", variant: "secondary" as const },
 }
 
 interface ProjectCardProps {

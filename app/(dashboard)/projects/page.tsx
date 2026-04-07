@@ -4,6 +4,7 @@ import { getCustomers } from "@/lib/actions/customers"
 import { getProjectTypes } from "@/lib/actions/config"
 import { ProjectCard } from "@/components/projects/project-card"
 import { ProjectForm } from "@/components/projects/project-form"
+import { ArchivedProjectsSection } from "@/components/projects/archived-projects-section"
 import type { Customer, Project, ProjectType } from "@/lib/types"
 
 export default async function ProjectsPage() {
@@ -12,13 +13,16 @@ export default async function ProjectsPage() {
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user!.id).single()
   const isAdminOrSubadmin = profile?.role === "admin" || profile?.role === "subadmin"
 
-  const [projects, customers, projectTypes] = await Promise.all([
-    getProjects().catch(() => []),
+  const [allProjects, customers, projectTypes] = await Promise.all([
+    getProjects(true).catch(() => []),
     getCustomers().catch(() => []),
     getProjectTypes().catch(() => []),
   ])
 
-  const projectList = projects as Project[]
+  const allList = allProjects as Project[]
+  const projectList = allList.filter((p) => p.status !== "Archived")
+  const archived = allList.filter((p) => p.status === "Archived")
+
   const inProgress = projectList.filter((p) => p.status === "In Progress")
   const planning = projectList.filter((p) => p.status === "Planning")
   const review = projectList.filter((p) => p.status === "Review")
@@ -41,7 +45,7 @@ export default async function ProjectsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Proyectos</h1>
-          <p className="text-muted-foreground text-sm mt-1">{projectList.length} proyectos en total</p>
+          <p className="text-muted-foreground text-sm mt-1">{projectList.length} proyectos activos</p>
         </div>
         {isAdminOrSubadmin && (
           <ProjectForm
@@ -78,12 +82,17 @@ export default async function ProjectsPage() {
         ) : null
       )}
 
-      {projectList.length === 0 && (
+      {projectList.length === 0 && archived.length === 0 && (
         <div className="text-center py-16 text-muted-foreground">
           <p className="text-lg">No hay proyectos aún</p>
           {isAdminOrSubadmin && <p className="text-sm mt-1">Crea el primer proyecto usando el botón de arriba</p>}
         </div>
       )}
+
+      <ArchivedProjectsSection
+        projects={archived as Parameters<typeof ArchivedProjectsSection>[0]["projects"]}
+        isAdminOrSubadmin={isAdminOrSubadmin}
+      />
     </div>
   )
 }

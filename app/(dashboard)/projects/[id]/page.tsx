@@ -6,6 +6,7 @@ import { getIncome, getProjectExpenses } from "@/lib/actions/finances"
 import { getProjectTypes } from "@/lib/actions/config"
 import { getCustomers } from "@/lib/actions/customers"
 import { ProjectForm } from "@/components/projects/project-form"
+import { ProjectActions } from "@/components/projects/project-actions"
 import { TaskForm } from "@/components/tasks/task-form"
 import { TaskTable } from "@/components/tasks/task-table"
 import { TeamManager } from "@/components/projects/team-manager"
@@ -51,6 +52,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const projectType = project.project_type as { name: string } | null
   const isPaidMedia = projectType?.name?.toLowerCase().includes("paid media") || projectType?.name?.toLowerCase().includes("media")
   const hasPhases = (project.phases ?? []).length > 0
+  const isArchived = project.status === "Archived"
 
   const [employees, customers, projectTypes, income, expenses, cycles, logEntries] = await Promise.all([
     getEmployees().catch(() => []),
@@ -112,14 +114,22 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             </Link>
           )}
         </div>
-        {isAdminOrSubadmin && (
-          <ProjectForm
-            project={project as Parameters<typeof ProjectForm>[0]["project"]}
-            customers={customers as Customer[]}
-            projectTypes={projectTypes as ProjectType[]}
-            trigger={<Button variant="outline" size="sm">Editar</Button>}
+        <div className="flex items-center gap-2">
+          {isAdminOrSubadmin && (
+            <ProjectForm
+              project={project as Parameters<typeof ProjectForm>[0]["project"]}
+              customers={customers as Customer[]}
+              projectTypes={projectTypes as ProjectType[]}
+              trigger={<Button variant="outline" size="sm">Editar</Button>}
+            />
+          )}
+          <ProjectActions
+            projectId={project.id}
+            isArchived={isArchived}
+            isAdmin={isAdmin}
+            isAdminOrSubadmin={isAdminOrSubadmin}
           />
-        )}
+        </div>
       </div>
 
       {/* Progress card */}

@@ -3,7 +3,7 @@
 // ============================================================
 
 export type Role = "admin" | "subadmin" | "employee"
-export type ProjectStatus = "Planning" | "In Progress" | "Review" | "Completed"
+export type ProjectStatus = "Planning" | "In Progress" | "Review" | "Completed" | "Archived"
 export type TaskStatus = "Todo" | "In Progress" | "Done"
 export type TaskPriority = "Low" | "Medium" | "High"
 export type CustomerStatus = "Prospect" | "Active" | "Inactive" | "Churned"
