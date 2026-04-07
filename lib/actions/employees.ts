@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import type { Role } from "@/lib/types"
 
 export async function getEmployees() {
@@ -56,17 +57,15 @@ export async function createEmployee(formData: FormData) {
   const phone = (formData.get("phone") as string) || null
   const role = (formData.get("role") as Role) ?? "employee"
 
-  // Use Supabase Admin to invite user by email
-  const { data: invited, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(email, {
-    data: {
-      full_name: fullName,
-      role,
-    },
+  // Use Service Role admin client to invite — anon key doesn't have auth.admin privileges
+  const adminClient = createAdminClient()
+  const { data: invited, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
+    data: { full_name: fullName, role },
   })
 
   if (inviteError) throw inviteError
 
-  // Upsert profile in case trigger already created it
+  // Upsert profile (use regular client so RLS applies normally)
   if (invited?.user?.id) {
     const { error: profileError } = await supabase.from("profiles").upsert({
       id: invited.user.id,
