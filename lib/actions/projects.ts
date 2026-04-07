@@ -420,6 +420,11 @@ export async function getProjectCycles(projectId: string) {
 export async function openNewCycle(projectId: string, cycleMonth: string) {
   const supabase = await createClient()
 
+  // Normalize cycleMonth to "YYYY-MM-01" regardless of what the client sent
+  const match = cycleMonth.match(/^(\d{4})-(\d{1,2})/)
+  if (!match) throw new Error(`Formato de mes inválido: "${cycleMonth}"`)
+  const dateStr = `${match[1]}-${match[2].padStart(2, "0")}-01`
+
   // Close current active cycle
   await supabase
     .from("paid_media_cycles")
@@ -430,7 +435,7 @@ export async function openNewCycle(projectId: string, cycleMonth: string) {
   // Open new cycle
   const { error } = await supabase.from("paid_media_cycles").insert({
     project_id: projectId,
-    cycle_month: cycleMonth + "-01",
+    cycle_month: dateStr,
     is_active: true,
   })
   if (error) throw error

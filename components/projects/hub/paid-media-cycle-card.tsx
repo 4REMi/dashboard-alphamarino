@@ -56,15 +56,20 @@ export function PaidMediaCycleCard({ projectId, activeCycle, context, canEdit }:
   const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [showOpenForm, setShowOpenForm] = useState(false)
-  const [newCycleMonth, setNewCycleMonth] = useState("")
+
+  const today = new Date()
+  const [newCycleYear, setNewCycleYear] = useState(String(today.getFullYear()))
+  const [newCycleMonthNum, setNewCycleMonthNum] = useState(String(today.getMonth() + 1).padStart(2, "0"))
+
   const [isPending, startTransition] = useTransition()
 
+  const MONTHS_LABEL = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
+  const years = Array.from({ length: 5 }, (_, i) => String(today.getFullYear() - 1 + i))
+
   function handleOpenCycle() {
-    if (!newCycleMonth) return
     startTransition(async () => {
-      await openNewCycle(projectId, newCycleMonth)
+      await openNewCycle(projectId, `${newCycleYear}-${newCycleMonthNum}`)
       setShowOpenForm(false)
-      setNewCycleMonth("")
       router.refresh()
     })
   }
@@ -100,13 +105,24 @@ export function PaidMediaCycleCard({ projectId, activeCycle, context, canEdit }:
           )}
         </div>
         {showOpenForm ? (
-          <div className="flex items-end gap-3">
+          <div className="flex items-end gap-3 flex-wrap">
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">Mes</label>
-              <input type="month" value={newCycleMonth} onChange={(e) => setNewCycleMonth(e.target.value)}
-                className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+              <select value={newCycleMonthNum} onChange={(e) => setNewCycleMonthNum(e.target.value)}
+                className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                {MONTHS_LABEL.map((name, i) => (
+                  <option key={i} value={String(i + 1).padStart(2, "0")}>{name}</option>
+                ))}
+              </select>
             </div>
-            <button onClick={handleOpenCycle} disabled={isPending || !newCycleMonth} className="px-3 py-2 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 disabled:opacity-50 transition-colors">Abrir</button>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Año</label>
+              <select value={newCycleYear} onChange={(e) => setNewCycleYear(e.target.value)}
+                className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                {years.map((y) => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+            <button onClick={handleOpenCycle} disabled={isPending} className="px-3 py-2 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 disabled:opacity-50 transition-colors">Abrir</button>
             <button onClick={() => setShowOpenForm(false)} className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors">Cancelar</button>
           </div>
         ) : (
