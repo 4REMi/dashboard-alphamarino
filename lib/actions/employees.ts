@@ -61,6 +61,7 @@ export async function createEmployee(formData: FormData) {
   const adminClient = createAdminClient()
   const { data: invited, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
     data: { full_name: fullName, role },
+    redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/callback`,
   })
 
   if (inviteError) throw inviteError
