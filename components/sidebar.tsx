@@ -116,12 +116,23 @@ export function Sidebar({ profile, logoUrl }: SidebarProps) {
 
       {/* User + Logout */}
       <div className="border-t border-sidebar-border px-2 py-3 space-y-1">
-        {profile && !collapsed && (
-          <div className="px-3 py-2">
-            <p className="text-sm font-medium truncate">{profile.full_name}</p>
-            <p className="text-xs text-muted-foreground">
-              {ROLE_LABELS[profile.role] ?? profile.role}
-            </p>
+        {profile && (
+          <div className={cn("px-3 py-2 flex items-center gap-2", collapsed && "justify-center px-0")}>
+            <div className="w-8 h-8 rounded-full overflow-hidden bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground flex-shrink-0">
+              {profile.avatar_url ? (
+                <Image src={profile.avatar_url} alt={profile.full_name} width={32} height={32} className="object-cover w-full h-full" unoptimized />
+              ) : (
+                profile.full_name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2) || "?"
+              )}
+            </div>
+            {!collapsed && (
+              <div className="overflow-hidden">
+                <p className="text-sm font-medium truncate">{profile.full_name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {ROLE_LABELS[profile.role] ?? profile.role}
+                </p>
+              </div>
+            )}
           </div>
         )}
         <form action={signOut}>

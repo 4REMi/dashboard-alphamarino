@@ -60,10 +60,11 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
       {/* Profile Header */}
       <div className="flex items-start gap-6">
         <Avatar className="h-20 w-20">
-          {profile.avatar_url && (
+          {profile.avatar_url ? (
             <img src={profile.avatar_url} alt={profile.full_name} className="aspect-square h-full w-full object-cover" />
+          ) : (
+            <AvatarFallback className="text-2xl font-bold">{initials}</AvatarFallback>
           )}
-          <AvatarFallback className="text-2xl font-bold">{initials}</AvatarFallback>
         </Avatar>
         <div className="flex-1">
           <div className="flex items-start justify-between gap-3">
