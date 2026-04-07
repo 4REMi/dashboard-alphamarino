@@ -18,6 +18,7 @@ import {
   Globe,
 } from "lucide-react"
 import { useState } from "react"
+import Image from "next/image"
 import { signOut } from "@/lib/auth-actions"
 import { Button } from "@/components/ui/button"
 import type { Profile } from "@/lib/types"
@@ -35,6 +36,7 @@ const navItems = [
 
 interface SidebarProps {
   profile: Profile | null
+  logoUrl?: string | null
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -43,7 +45,7 @@ const ROLE_LABELS: Record<string, string> = {
   employee: "Empleado",
 }
 
-export function Sidebar({ profile }: SidebarProps) {
+export function Sidebar({ profile, logoUrl }: SidebarProps) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
 
@@ -59,8 +61,19 @@ export function Sidebar({ profile }: SidebarProps) {
     >
       {/* Logo */}
       <div className="flex items-center gap-3 px-4 py-5 border-b border-sidebar-border">
-        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary flex-shrink-0">
-          <Anchor className="w-4 h-4 text-white" />
+        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary flex-shrink-0 overflow-hidden">
+          {logoUrl ? (
+            <Image
+              src={logoUrl}
+              alt="Logo"
+              width={32}
+              height={32}
+              className="object-contain w-full h-full"
+              unoptimized
+            />
+          ) : (
+            <Anchor className="w-4 h-4 text-white" />
+          )}
         </div>
         {!collapsed && (
           <div className="overflow-hidden">
