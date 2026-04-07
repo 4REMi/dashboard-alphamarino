@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import type { PhaseSet, PhaseSetPhase, ProjectType } from "@/lib/types"
+import { useRouter } from "next/navigation"
+import type { PhaseSet, ProjectType } from "@/lib/types"
 import {
   createPhaseSet,
   deletePhaseSet,
@@ -15,8 +16,8 @@ interface Props {
 }
 
 export function PhaseSetManager({ initialSets, projectTypes }: Props) {
-  const [sets, setSets] = useState<PhaseSet[]>(initialSets)
-  const [expandedId, setExpandedId] = useState<string | null>(sets[0]?.id ?? null)
+  const router = useRouter()
+  const [expandedId, setExpandedId] = useState<string | null>(initialSets[0]?.id ?? null)
   const [showNew, setShowNew] = useState(false)
   const [addingPhaseFor, setAddingPhaseFor] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -27,6 +28,7 @@ export function PhaseSetManager({ initialSets, projectTypes }: Props) {
     startTransition(async () => {
       await createPhaseSet(fd)
       setShowNew(false)
+      router.refresh()
     })
   }
 
@@ -34,43 +36,25 @@ export function PhaseSetManager({ initialSets, projectTypes }: Props) {
     if (!confirm("¿Eliminar este phase set y todas sus fases?")) return
     startTransition(async () => {
       await deletePhaseSet(id)
-      setSets((prev) => prev.filter((s) => s.id !== id))
+      router.refresh()
     })
   }
 
   function handleAddPhase(setId: string, e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const fd = new FormData(e.currentTarget)
-    const name = fd.get("name") as string
     startTransition(async () => {
       await addPhaseToSet(setId, fd)
-      const optimistic: PhaseSetPhase = {
-        id: crypto.randomUUID(),
-        phase_set_id: setId,
-        name,
-        description: (fd.get("description") as string) || null,
-        phase_order: sets.find((s) => s.id === setId)?.phases?.length ?? 0,
-        created_at: new Date().toISOString(),
-      }
-      setSets((prev) =>
-        prev.map((s) =>
-          s.id === setId ? { ...s, phases: [...(s.phases ?? []), optimistic] } : s
-        )
-      )
       setAddingPhaseFor(null)
+      router.refresh()
     })
   }
 
   function handleDeletePhase(setId: string, phaseId: string) {
-    setSets((prev) =>
-      prev.map((s) =>
-        s.id === setId
-          ? { ...s, phases: (s.phases ?? []).filter((p) => p.id !== phaseId) }
-          : s
-      )
-    )
+    if (!confirm("¿Eliminar esta fase?")) return
     startTransition(async () => {
       await deletePhaseFromSet(phaseId)
+      router.refresh()
     })
   }
 
@@ -113,7 +97,7 @@ export function PhaseSetManager({ initialSets, projectTypes }: Props) {
 
       {/* Set list */}
       <div className="space-y-2">
-        {sets.map((set) => {
+        {initialSets.map((set) => {
           const isExpanded = expandedId === set.id
           const phases = set.phases ?? []
 
@@ -206,7 +190,7 @@ export function PhaseSetManager({ initialSets, projectTypes }: Props) {
           )
         })}
 
-        {sets.length === 0 && !showNew && (
+        {initialSets.length === 0 && !showNew && (
           <p className="text-sm text-muted-foreground text-center py-8">Sin phase sets. Crea el primero.</p>
         )}
       </div>

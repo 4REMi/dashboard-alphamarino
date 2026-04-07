@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import { useRouter } from "next/navigation"
 import type { ProjectType, PhaseSet } from "@/lib/types"
 import {
   createProjectType,
@@ -14,7 +15,7 @@ interface Props {
 }
 
 export function ProjectTypeManager({ initialTypes, phaseSets }: Props) {
-  const [types, setTypes] = useState<ProjectType[]>(initialTypes)
+  const router = useRouter()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showNew, setShowNew] = useState(false)
   const [isPending, startTransition] = useTransition()
@@ -25,6 +26,7 @@ export function ProjectTypeManager({ initialTypes, phaseSets }: Props) {
     startTransition(async () => {
       await createProjectType(fd)
       setShowNew(false)
+      router.refresh()
     })
   }
 
@@ -34,6 +36,7 @@ export function ProjectTypeManager({ initialTypes, phaseSets }: Props) {
     startTransition(async () => {
       await updateProjectType(id, fd)
       setEditingId(null)
+      router.refresh()
     })
   }
 
@@ -41,7 +44,7 @@ export function ProjectTypeManager({ initialTypes, phaseSets }: Props) {
     if (!confirm("¿Eliminar este tipo de proyecto?")) return
     startTransition(async () => {
       await deleteProjectType(id)
-      setTypes((prev) => prev.filter((t) => t.id !== id))
+      router.refresh()
     })
   }
 
@@ -91,7 +94,7 @@ export function ProjectTypeManager({ initialTypes, phaseSets }: Props) {
         )}
 
         {/* Type list */}
-        {types.map((type) => (
+        {initialTypes.map((type) => (
           <div key={type.id} className="rounded-xl border border-border bg-card p-4">
             {editingId === type.id ? (
               <form onSubmit={(e) => handleUpdate(type.id, e)} className="space-y-3">
@@ -145,7 +148,7 @@ export function ProjectTypeManager({ initialTypes, phaseSets }: Props) {
           </div>
         ))}
 
-        {types.length === 0 && !showNew && (
+        {initialTypes.length === 0 && !showNew && (
           <p className="text-sm text-muted-foreground text-center py-8">Sin tipos de proyecto. Crea el primero.</p>
         )}
       </div>
