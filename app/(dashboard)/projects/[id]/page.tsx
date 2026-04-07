@@ -53,13 +53,13 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const hasPhases = (project.phases ?? []).length > 0
 
   const [employees, customers, projectTypes, income, expenses, cycles, logEntries] = await Promise.all([
-    getEmployees(),
-    getCustomers(),
-    getProjectTypes(),
-    isAdminOrSubadmin ? getIncome(id) : Promise.resolve([]),
-    isAdminOrSubadmin ? getProjectExpenses(id) : Promise.resolve([]),
-    isPaidMedia ? getProjectCycles(id) : Promise.resolve([]),
-    getProjectLog(id),
+    getEmployees().catch(() => []),
+    getCustomers().catch(() => []),
+    getProjectTypes().catch(() => []),
+    isAdminOrSubadmin ? getIncome(id).catch(() => []) : Promise.resolve([]),
+    isAdminOrSubadmin ? getProjectExpenses(id).catch(() => []) : Promise.resolve([]),
+    isPaidMedia ? getProjectCycles(id).catch(() => []) : Promise.resolve([]),
+    getProjectLog(id).catch(() => []),
   ])
 
   const tasks = (project.tasks ?? []) as Task[]
