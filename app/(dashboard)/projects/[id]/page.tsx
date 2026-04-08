@@ -156,7 +156,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                 <span>Fin: {formatDate(project.end_date)}</span>
               </div>
             )}
-            {project.project_value && (
+            {canViewFinancials && project.project_value && (
               <div className="flex items-center gap-1.5">
                 <DollarSign className="w-4 h-4" />
                 <span>Valor: {formatCurrency(project.project_value)}</span>

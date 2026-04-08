@@ -25,9 +25,10 @@ interface ProjectCardProps {
       inactiveForDays: number
     }
   }
+  canViewFinancials?: boolean
 }
 
-export function ProjectCard({ project }: ProjectCardProps) {
+export function ProjectCard({ project, canViewFinancials = false }: ProjectCardProps) {
   const config = statusConfig[project.status] ?? statusConfig["Planning"]
   const attention = project.attention
   const needsAttention = attention && (
@@ -93,7 +94,7 @@ export function ProjectCard({ project }: ProjectCardProps) {
                 <span>{formatDate(project.end_date)}</span>
               </div>
             )}
-            {project.project_value && (
+            {canViewFinancials && project.project_value && (
               <div className="flex items-center gap-1">
                 <DollarSign className="w-3.5 h-3.5" />
                 <span>{formatCurrency(project.project_value)}</span>

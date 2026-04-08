@@ -15,6 +15,7 @@ export default async function ProjectsPage() {
   const isAdminOrSubadmin = profile?.role === "admin" || profile?.role === "subadmin"
   const canEditProjects = can(profile, "edit_projects")
   const canViewAll = can(profile, "view_all_projects")
+  const canViewFinancials = can(profile, "view_project_financials")
 
   const [allProjects, customers, projectTypes] = await Promise.all([
     getProjects(true).catch(() => []),
@@ -80,7 +81,7 @@ export default async function ProjectsPage() {
             <h2 className={`text-base font-semibold mb-3 ${color}`}>{label}</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {items.map((project) => (
-                <ProjectCard key={project.id} project={project as Parameters<typeof ProjectCard>[0]["project"]} />
+                <ProjectCard key={project.id} project={project as Parameters<typeof ProjectCard>[0]["project"]} canViewFinancials={canViewFinancials} />
               ))}
             </div>
           </section>
