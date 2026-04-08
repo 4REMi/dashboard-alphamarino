@@ -31,7 +31,7 @@ const navItems = [
   { href: "/tasks", icon: CheckSquare, label: "Tareas" },
   { href: "/finances", icon: DollarSign, label: "Finanzas", permission: "view_global_finances" as const },
   { href: "/finances/domains", icon: Globe, label: "Dominios", permission: "view_global_finances" as const },
-  { href: "/employees", icon: UserCircle, label: "Empleados" },
+  { href: "/employees", icon: UserCircle, label: "Equipo" },
   { href: "/settings", icon: Settings, label: "Configuración", adminOnly: true },
 ]
 

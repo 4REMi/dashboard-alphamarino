@@ -32,6 +32,11 @@ const PERMISSION_LABELS: { key: keyof UserPermissions; label: string; descriptio
     label: "Ver todos los proyectos",
     description: "Ver proyectos donde no es miembro",
   },
+  {
+    key: "manage_tasks",
+    label: "Gestionar tareas",
+    description: "Crear, editar y eliminar tareas en proyectos",
+  },
 ]
 
 interface Props {

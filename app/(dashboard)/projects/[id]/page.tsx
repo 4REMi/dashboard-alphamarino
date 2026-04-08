@@ -53,6 +53,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const canViewFinancials = can(profile as Profile, "view_project_financials")
   const canEditProjects = can(profile as Profile, "edit_projects")
   const canManageTeam = can(profile as Profile, "manage_team")
+  const canManageTasks = can(profile as Profile, "manage_tasks")
 
   const projectType = project.project_type as { name: string } | null
   const isPaidMedia = projectType?.name?.toLowerCase().includes("paid media") || projectType?.name?.toLowerCase().includes("media")
@@ -264,7 +265,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       <div>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-base font-semibold">Tareas ({tasks.length})</h2>
-          {isAdminOrSubadmin && (
+          {canManageTasks && (
             <TaskForm projectId={project.id} employees={employees as Profile[]} />
           )}
         </div>
@@ -272,7 +273,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           tasks={tasks}
           projectId={project.id}
           employees={employees as Profile[]}
-          isAdmin={isAdminOrSubadmin}
+          isAdmin={canManageTasks}
         />
       </div>
     </div>

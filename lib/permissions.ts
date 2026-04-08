@@ -6,6 +6,7 @@ export type UserPermissions = {
   edit_projects?: boolean            // create, edit, archive projects
   manage_team?: boolean              // add/remove project members
   view_all_projects?: boolean        // see all projects vs only assigned ones
+  manage_tasks?: boolean             // add, edit, delete tasks in projects
 }
 
 // Defaults per role (admin always returns true without checking)
@@ -15,6 +16,7 @@ const SUBADMIN_DEFAULTS: Required<UserPermissions> = {
   edit_projects: true,
   manage_team: true,
   view_all_projects: true,
+  manage_tasks: true,
 }
 
 const EMPLOYEE_DEFAULTS: Required<UserPermissions> = {
@@ -23,6 +25,7 @@ const EMPLOYEE_DEFAULTS: Required<UserPermissions> = {
   edit_projects: false,
   manage_team: false,
   view_all_projects: false,
+  manage_tasks: true,
 }
 
 export function can(
