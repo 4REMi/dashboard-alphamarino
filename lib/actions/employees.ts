@@ -126,10 +126,9 @@ export async function uploadAvatar(id: string, formData: FormData) {
 }
 
 export async function resendPasswordLink(email: string) {
-  const adminClient = createAdminClient()
-  const { error } = await adminClient.auth.admin.generateLink({
-    type: "recovery",
-    email,
+  const supabase = await createClient()
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/callback`,
   })
   if (error) throw error
 }
