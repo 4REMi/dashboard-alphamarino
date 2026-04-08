@@ -24,34 +24,31 @@ import { signOut } from "@/lib/auth-actions"
 import { Button } from "@/components/ui/button"
 import { can } from "@/lib/permissions"
 import { ProfileEditModal } from "@/components/profile-edit-modal"
+import { useTranslations } from "next-intl"
 import type { Profile } from "@/lib/types"
-
-const navItems = [
-  { href: "/", icon: LayoutDashboard, label: "Dashboard" },
-  { href: "/customers", icon: Users, label: "Clientes" },
-  { href: "/projects", icon: FolderKanban, label: "Proyectos" },
-  { href: "/tasks", icon: CheckSquare, label: "Tareas" },
-  { href: "/finances", icon: DollarSign, label: "Finanzas", permission: "view_global_finances" as const },
-  { href: "/finances/domains", icon: Globe, label: "Dominios", permission: "view_global_finances" as const },
-  { href: "/employees", icon: UserCircle, label: "Equipo" },
-  { href: "/operations", icon: FlaskConical, label: "Operations Lab", adminOnly: true },
-  { href: "/settings", icon: Settings, label: "Configuración", adminOnly: true },
-]
 
 interface SidebarProps {
   profile: Profile | null
   logoUrl?: string | null
 }
 
-const ROLE_LABELS: Record<string, string> = {
-  admin: "Administrador",
-  subadmin: "Subadmin",
-  employee: "Empleado",
-}
-
 export function Sidebar({ profile, logoUrl }: SidebarProps) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
+  const t = useTranslations("nav")
+  const tRoles = useTranslations("roles")
+
+  const navItems = [
+    { href: "/", icon: LayoutDashboard, label: t("dashboard") },
+    { href: "/customers", icon: Users, label: t("clients") },
+    { href: "/projects", icon: FolderKanban, label: t("projects") },
+    { href: "/tasks", icon: CheckSquare, label: t("tasks") },
+    { href: "/finances", icon: DollarSign, label: t("finances"), permission: "view_global_finances" as const },
+    { href: "/finances/domains", icon: Globe, label: t("domains"), permission: "view_global_finances" as const },
+    { href: "/employees", icon: UserCircle, label: t("team") },
+    { href: "/operations", icon: FlaskConical, label: t("operationsLab"), adminOnly: true },
+    { href: "/settings", icon: Settings, label: t("settings"), adminOnly: true },
+  ]
 
   const isAdmin = profile?.role === "admin"
   const visibleItems = navItems.filter((item) => {
@@ -59,6 +56,8 @@ export function Sidebar({ profile, logoUrl }: SidebarProps) {
     if (item.permission) return can(profile, item.permission)
     return true
   })
+
+  const roleLabel = profile?.role ? (tRoles(profile.role as "admin" | "subadmin" | "employee") ?? profile.role) : ""
 
   return (
     <aside
@@ -137,9 +136,7 @@ export function Sidebar({ profile, logoUrl }: SidebarProps) {
               <div className="flex items-center gap-1 flex-1 min-w-0">
                 <div className="overflow-hidden flex-1">
                   <p className="text-sm font-medium truncate">{profile.full_name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {ROLE_LABELS[profile.role] ?? profile.role}
-                  </p>
+                  <p className="text-xs text-muted-foreground">{roleLabel}</p>
                 </div>
                 <ProfileEditModal profile={profile} />
               </div>
@@ -156,7 +153,7 @@ export function Sidebar({ profile, logoUrl }: SidebarProps) {
             )}
           >
             <LogOut className="w-5 h-5 flex-shrink-0" />
-            {!collapsed && <span>Cerrar Sesión</span>}
+            {!collapsed && <span>{t("signOut")}</span>}
           </Button>
         </form>
       </div>

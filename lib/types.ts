@@ -27,6 +27,7 @@ export interface Profile {
   phone: string | null
   avatar_url: string | null
   permissions: Record<string, boolean> | null
+  language: "es" | "en" | null
   created_at: string
 }
 

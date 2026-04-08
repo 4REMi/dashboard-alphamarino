@@ -14,7 +14,8 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
-import { updateOwnProfile, uploadOwnAvatar } from "@/lib/actions/employees"
+import { updateOwnProfile, uploadOwnAvatar, setLanguagePreference } from "@/lib/actions/employees"
+import { useTranslations } from "next-intl"
 import type { Profile } from "@/lib/types"
 
 interface Props {
@@ -22,6 +23,7 @@ interface Props {
 }
 
 export function ProfileEditModal({ profile }: Props) {
+  const t = useTranslations("profile")
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [avatarUrl, setAvatarUrl] = useState(profile.avatar_url ?? null)
@@ -54,7 +56,9 @@ export function ProfileEditModal({ profile }: Props) {
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const fd = new FormData(e.currentTarget)
+    const newLang = fd.get("language") as string
     startTransition(async () => {
+      await setLanguagePreference(newLang)
       await updateOwnProfile(fd)
       setOpen(false)
       router.refresh()
@@ -66,7 +70,7 @@ export function ProfileEditModal({ profile }: Props) {
       <DialogTrigger asChild>
         <button
           className="p-1 rounded hover:bg-sidebar-accent text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
-          title="Editar perfil"
+          title={t("editTrigger")}
         >
           <Settings className="w-3.5 h-3.5" />
         </button>
@@ -74,7 +78,7 @@ export function ProfileEditModal({ profile }: Props) {
 
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>Mi Perfil</DialogTitle>
+          <DialogTitle>{t("title")}</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-5">
@@ -97,7 +101,7 @@ export function ProfileEditModal({ profile }: Props) {
                 </div>
               )}
             </button>
-            <p className="text-xs text-muted-foreground">Clic en el avatar para cambiar imagen</p>
+            <p className="text-xs text-muted-foreground">{t("avatarHint")}</p>
             <input
               ref={fileRef}
               type="file"
@@ -108,7 +112,7 @@ export function ProfileEditModal({ profile }: Props) {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="pem-name">Nombre completo</Label>
+            <Label htmlFor="pem-name">{t("fullName")}</Label>
             <Input
               id="pem-name"
               name="full_name"
@@ -118,7 +122,7 @@ export function ProfileEditModal({ profile }: Props) {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="pem-phone">Teléfono</Label>
+            <Label htmlFor="pem-phone">{t("phone")}</Label>
             <Input
               id="pem-phone"
               name="phone"
@@ -128,12 +132,25 @@ export function ProfileEditModal({ profile }: Props) {
             />
           </div>
 
+          <div className="space-y-2">
+            <Label htmlFor="pem-language">{t("language")}</Label>
+            <select
+              id="pem-language"
+              name="language"
+              defaultValue={profile.language ?? "es"}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              <option value="es">{t("languageEs")}</option>
+              <option value="en">{t("languageEn")}</option>
+            </select>
+          </div>
+
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-              Cancelar
+              {t("cancel")}
             </Button>
             <Button type="submit" disabled={isPending || uploadingAvatar}>
-              {isPending ? "Guardando…" : "Guardar"}
+              {isPending ? t("saving") : t("save")}
             </Button>
           </DialogFooter>
         </form>

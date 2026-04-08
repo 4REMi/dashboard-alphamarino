@@ -7,14 +7,11 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Mail, Phone, Briefcase } from "lucide-react"
 import type { Profile } from "@/lib/types"
-
-const ROLE_LABELS: Record<string, string> = {
-  admin: "Administrador",
-  subadmin: "Subadmin",
-  employee: "Empleado",
-}
+import { getTranslations } from "next-intl/server"
 
 export default async function EmployeesPage() {
+  const t = await getTranslations("team")
+  const tRoles = await getTranslations("roles")
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   const { data: currentProfile } = await supabase.from("profiles").select("role").eq("id", user!.id).single()
@@ -26,8 +23,8 @@ export default async function EmployeesPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Empleados</h1>
-          <p className="text-muted-foreground text-sm mt-1">{employees.length} miembros del equipo</p>
+          <h1 className="text-2xl font-bold">{t("title")}</h1>
+          <p className="text-muted-foreground text-sm mt-1">{employees.length} {t("title").toLowerCase()}</p>
         </div>
         {isAdmin && <EmployeeForm />}
       </div>
@@ -60,7 +57,7 @@ export default async function EmployeesPage() {
                           variant={employee.role === "admin" ? "default" : employee.role === "subadmin" ? "info" : "secondary"}
                           className="flex-shrink-0 text-xs"
                         >
-                          {ROLE_LABELS[employee.role] ?? employee.role}
+                          {tRoles(employee.role as "admin" | "subadmin" | "employee")}
                         </Badge>
                       </div>
                       {employee.position && (
@@ -92,11 +89,9 @@ export default async function EmployeesPage() {
 
       {employees.length === 0 && (
         <div className="text-center py-16 text-muted-foreground">
-          <p>No hay empleados registrados</p>
+          <p>{t("noMembers")}</p>
           {isAdmin && (
-            <p className="text-sm mt-2">
-              Usa el botón "Nuevo empleado" para invitar a tu equipo.
-            </p>
+            <p className="text-sm mt-2">{t("invite")}</p>
           )}
         </div>
       )}

@@ -7,8 +7,10 @@ import { ProjectForm } from "@/components/projects/project-form"
 import { ArchivedProjectsSection } from "@/components/projects/archived-projects-section"
 import type { Customer, Project, ProjectType } from "@/lib/types"
 import { can } from "@/lib/permissions"
+import { getTranslations } from "next-intl/server"
 
 export default async function ProjectsPage() {
+  const t = await getTranslations("projects")
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   const { data: profile } = await supabase.from("profiles").select("role, permissions").eq("id", user!.id).single()
@@ -39,19 +41,19 @@ export default async function ProjectsPage() {
   })
 
   const sections = [
-    { key: "attention", label: "Requieren Atención", items: needsAttention, color: "text-amber-600" },
-    { key: "inprogress", label: "En Progreso", items: inProgress, color: "text-blue-600" },
-    { key: "planning", label: "Planificación", items: planning, color: "" },
-    { key: "review", label: "En Revisión", items: review, color: "text-yellow-600" },
-    { key: "completed", label: "Completados", items: completed, color: "text-green-600" },
+    { key: "attention", label: t("filter.all") === "All" ? "Needs Attention" : "Requieren Atención", items: needsAttention, color: "text-amber-600" },
+    { key: "inprogress", label: t("filter.inProgress"), items: inProgress, color: "text-blue-600" },
+    { key: "planning", label: t("filter.planning"), items: planning, color: "" },
+    { key: "review", label: t("filter.review"), items: review, color: "text-yellow-600" },
+    { key: "completed", label: t("filter.completed"), items: completed, color: "text-green-600" },
   ]
 
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Proyectos</h1>
-          <p className="text-muted-foreground text-sm mt-1">{projectList.length} proyectos activos</p>
+          <h1 className="text-2xl font-bold">{t("title")}</h1>
+          <p className="text-muted-foreground text-sm mt-1">{projectList.length} {t("title").toLowerCase()}</p>
         </div>
         {canEditProjects && (
           <ProjectForm
@@ -64,10 +66,10 @@ export default async function ProjectsPage() {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: "En Progreso", count: inProgress.length, color: "text-blue-700 bg-blue-50 dark:bg-blue-950 dark:text-blue-300" },
-          { label: "Planificación", count: planning.length, color: "text-muted-foreground bg-muted/40" },
-          { label: "En Revisión", count: review.length, color: "text-yellow-700 bg-yellow-50 dark:bg-yellow-950 dark:text-yellow-300" },
-          { label: "Completados", count: completed.length, color: "text-green-700 bg-green-50 dark:bg-green-950 dark:text-green-300" },
+          { label: t("filter.inProgress"), count: inProgress.length, color: "text-blue-700 bg-blue-50 dark:bg-blue-950 dark:text-blue-300" },
+          { label: t("filter.planning"), count: planning.length, color: "text-muted-foreground bg-muted/40" },
+          { label: t("filter.review"), count: review.length, color: "text-yellow-700 bg-yellow-50 dark:bg-yellow-950 dark:text-yellow-300" },
+          { label: t("filter.completed"), count: completed.length, color: "text-green-700 bg-green-50 dark:bg-green-950 dark:text-green-300" },
         ].map((stat) => (
           <div key={stat.label} className={`rounded-xl p-4 ${stat.color}`}>
             <p className="text-2xl font-bold">{stat.count}</p>
@@ -91,8 +93,8 @@ export default async function ProjectsPage() {
 
       {projectList.length === 0 && archived.length === 0 && (
         <div className="text-center py-16 text-muted-foreground">
-          <p className="text-lg">No hay proyectos aún</p>
-          {canEditProjects && <p className="text-sm mt-1">Crea el primer proyecto usando el botón de arriba</p>}
+          <p className="text-lg">{t("noProjects")}</p>
+          {canEditProjects && <p className="text-sm mt-1">{t("new")}</p>}
         </div>
       )}
 

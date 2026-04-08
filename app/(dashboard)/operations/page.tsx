@@ -6,8 +6,10 @@ import { getProjectTypes, getPhaseSets, getTaskSets } from "@/lib/actions/config
 import { getEmployees } from "@/lib/actions/employees"
 import { OperationsLab } from "@/components/operations/operations-lab"
 import type { ProjectType, PhaseSet, TaskSet, Profile } from "@/lib/types"
+import { getTranslations } from "next-intl/server"
 
 export default async function OperationsPage() {
+  const t = await getTranslations("operations")
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user!.id).single()
@@ -24,10 +26,8 @@ export default async function OperationsPage() {
   return (
     <div className="p-6 space-y-4">
       <div>
-        <h1 className="text-2xl font-bold">Operations Lab</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Tipos de proyecto → Phase Sets → Task Sets. Selecciona en cada columna para navegar la jerarquía.
-        </p>
+        <h1 className="text-2xl font-bold">{t("title")}</h1>
+        <p className="text-sm text-muted-foreground mt-1">{t("subtitle")}</p>
       </div>
 
       <OperationsLab

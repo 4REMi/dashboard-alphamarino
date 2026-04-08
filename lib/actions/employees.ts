@@ -149,15 +149,38 @@ export async function updateOwnProfile(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error("Not authenticated")
 
+  const language = formData.get("language") as string | null
   const { error } = await supabase.from("profiles").update({
     full_name: formData.get("full_name") as string,
     phone: (formData.get("phone") as string) || null,
+    ...(language ? { language } : {}),
   }).eq("id", user.id)
 
   if (error) throw error
   revalidatePath("/")
   revalidatePath("/employees")
   revalidatePath(`/employees/${user.id}`)
+}
+
+export async function setLanguagePreference(locale: string) {
+  "use server"
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
+
+  // Persist to profile
+  await supabase.from("profiles").update({ language: locale }).eq("id", user.id)
+
+  // Set cookie so next-intl picks it up immediately
+  const { cookies } = await import("next/headers")
+  const cookieStore = await cookies()
+  cookieStore.set("NEXT_LOCALE", locale, {
+    path: "/",
+    maxAge: 60 * 60 * 24 * 365, // 1 year
+    sameSite: "lax",
+  })
+
+  revalidatePath("/")
 }
 
 export async function uploadOwnAvatar(formData: FormData) {
