@@ -387,11 +387,15 @@ export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesBy
     tasks: tasks
       .filter((t) => t.status === g.value)
       .sort((a, b) => {
-        // task_order primary (preserves Operations Lab sequence)
+        // 1. Phase order (earlier phases first; tasks without phase go last)
+        const aPhaseOrder = (a.phase as { phase_order: number } | null)?.phase_order ?? 999
+        const bPhaseOrder = (b.phase as { phase_order: number } | null)?.phase_order ?? 999
+        if (aPhaseOrder !== bPhaseOrder) return aPhaseOrder - bPhaseOrder
+        // 2. task_order within the phase
         const orderDiff = (a.task_order ?? 0) - (b.task_order ?? 0)
         if (orderDiff !== 0) return orderDiff
-        // urgent first as tiebreaker
-        return (b.is_urgent ? 1 : 0) - (a.is_urgent ? 1 : 0)
+        // 3. created_at fallback (stable order for legacy tasks)
+        return a.created_at.localeCompare(b.created_at)
       }),
   })).filter((g) => g.tasks.length > 0)
 
