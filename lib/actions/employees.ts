@@ -149,14 +149,21 @@ export async function updateOwnProfile(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error("Not authenticated")
 
-  const language = formData.get("language") as string | null
+  // Update base fields first (always exist)
   const { error } = await supabase.from("profiles").update({
     full_name: formData.get("full_name") as string,
     phone: (formData.get("phone") as string) || null,
-    ...(language ? { language } : {}),
   }).eq("id", user.id)
 
   if (error) throw error
+
+  // Try to persist language — column may not exist yet (PGRST204), ignore if so
+  const language = formData.get("language") as string | null
+  if (language) {
+    await supabase.from("profiles").update({ language } as Record<string, unknown>).eq("id", user.id)
+    // error intentionally ignored — column added via migration 004
+  }
+
   revalidatePath("/")
   revalidatePath("/employees")
   revalidatePath(`/employees/${user.id}`)
@@ -168,15 +175,15 @@ export async function setLanguagePreference(locale: string) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
 
-  // Persist to profile
-  await supabase.from("profiles").update({ language: locale }).eq("id", user.id)
+  // Try to persist to profile — column may not exist yet (PGRST204), ignore if so
+  await supabase.from("profiles").update({ language: locale } as Record<string, unknown>).eq("id", user.id)
 
-  // Set cookie so next-intl picks it up immediately
+  // Always set cookie — this is what drives the UI immediately
   const { cookies } = await import("next/headers")
   const cookieStore = await cookies()
   cookieStore.set("NEXT_LOCALE", locale, {
     path: "/",
-    maxAge: 60 * 60 * 24 * 365, // 1 year
+    maxAge: 60 * 60 * 24 * 365,
     sameSite: "lax",
   })
 
