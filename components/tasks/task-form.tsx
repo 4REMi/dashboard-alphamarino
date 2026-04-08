@@ -120,7 +120,7 @@ export function TaskForm({ projectId, task, employees, trigger }: TaskFormProps)
             className={cn(
               "w-full flex items-center gap-3 rounded-lg border px-4 py-3 text-sm transition-colors",
               isUrgent
-                ? "border-red-300 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-400"
+                ? "border-destructive/40 bg-destructive/5 text-destructive"
                 : "border-border bg-muted/30 text-muted-foreground hover:bg-muted/60"
             )}
           >
@@ -133,7 +133,7 @@ export function TaskForm({ projectId, task, employees, trigger }: TaskFormProps)
             </div>
             <div className={cn(
               "ml-auto w-8 h-4 rounded-full transition-colors flex-shrink-0",
-              isUrgent ? "bg-red-500" : "bg-muted-foreground/30"
+              isUrgent ? "bg-destructive" : "bg-muted-foreground/30"
             )}>
               <div className={cn(
                 "w-4 h-4 rounded-full bg-white shadow transition-transform",
@@ -149,7 +149,7 @@ export function TaskForm({ projectId, task, employees, trigger }: TaskFormProps)
             className={cn(
               "w-full flex items-center gap-3 rounded-lg border px-4 py-3 text-sm transition-colors",
               requiresDeliverable
-                ? "border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-400"
+                ? "border-info/40 bg-info-subtle text-info-subtle-foreground"
                 : "border-border bg-muted/30 text-muted-foreground hover:bg-muted/60"
             )}
           >
@@ -162,7 +162,7 @@ export function TaskForm({ projectId, task, employees, trigger }: TaskFormProps)
             </div>
             <div className={cn(
               "ml-auto w-8 h-4 rounded-full transition-colors flex-shrink-0",
-              requiresDeliverable ? "bg-blue-500" : "bg-muted-foreground/30"
+              requiresDeliverable ? "bg-info" : "bg-muted-foreground/30"
             )}>
               <div className={cn(
                 "w-4 h-4 rounded-full bg-white shadow transition-transform",

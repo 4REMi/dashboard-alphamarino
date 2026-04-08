@@ -109,7 +109,7 @@ function UrgentFlag({ task, projectId }: { task: Task; projectId: string }) {
         "p-1.5 rounded-md transition-colors",
         isPending && "opacity-40",
         optimistic
-          ? "text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40"
+          ? "text-destructive hover:text-destructive hover:bg-destructive/10"
           : "text-muted-foreground/30 hover:text-muted-foreground hover:bg-muted"
       )}
     >
@@ -232,7 +232,7 @@ function TaskRow({ task, projectId, employees, isAdmin, deliverable, onDeliverab
     <tr className={cn(
       "border-t transition-colors",
       task.is_urgent
-        ? "bg-red-50/40 hover:bg-red-50/70 dark:bg-red-950/10 dark:hover:bg-red-950/20"
+        ? "bg-destructive/5 hover:bg-destructive/10"
         : "hover:bg-muted/30"
     )}>
       <td className="px-3 py-2.5">
@@ -255,8 +255,8 @@ function TaskRow({ task, projectId, employees, isAdmin, deliverable, onDeliverab
               className={cn(
                 "flex-shrink-0 p-1 rounded transition-colors",
                 hasDeliverable
-                  ? "text-green-600 hover:bg-green-50 dark:hover:bg-green-950/40"
-                  : "text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/40"
+                  ? "text-success hover:bg-success/10"
+                  : "text-warning hover:bg-warning/10"
               )}
             >
               <Paperclip className={cn("w-3.5 h-3.5", hasDeliverable && "fill-current opacity-80")} />
@@ -275,7 +275,7 @@ function TaskRow({ task, projectId, employees, isAdmin, deliverable, onDeliverab
           <div className={cn(
             "flex items-center gap-1 text-xs",
             new Date(task.due_date) < new Date() && task.status !== "Done"
-              ? "text-red-600 font-medium"
+              ? "text-destructive font-medium"
               : "text-muted-foreground"
           )}>
             <CalendarDays className="w-3.5 h-3.5 flex-shrink-0" />

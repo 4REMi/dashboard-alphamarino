@@ -332,11 +332,11 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                       </div>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Cobrado</span>
-                        <span className="font-semibold text-green-600">{formatCurrency(totalIncome)}</span>
+                        <span className="font-semibold text-success">{formatCurrency(totalIncome)}</span>
                       </div>
                       <div className="flex justify-between border-t pt-2">
                         <span className="text-muted-foreground">Por cobrar</span>
-                        <span className={`font-semibold ${accountsReceivable > 0 ? "text-amber-500" : "text-green-600"}`}>
+                        <span className={`font-semibold ${accountsReceivable > 0 ? "text-warning" : "text-success"}`}>
                           {formatCurrency(accountsReceivable)}
                         </span>
                       </div>
@@ -349,7 +349,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                       {totalExpenses > 0 && (
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">Gastos del proyecto</span>
-                          <span className="font-semibold text-red-500">{formatCurrency(totalExpenses)}</span>
+                          <span className="font-semibold text-destructive">{formatCurrency(totalExpenses)}</span>
                         </div>
                       )}
                     </div>

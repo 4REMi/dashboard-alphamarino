@@ -8,12 +8,13 @@ import { cn } from "@/lib/utils"
 import { formatDate } from "@/lib/utils"
 import type { Deliverable, DeliverableType } from "@/lib/types"
 
-const TYPE_ICON: Record<DeliverableType, React.ReactNode> = {
-  text:     <FileText className="w-3.5 h-3.5" />,
-  document: <Link2    className="w-3.5 h-3.5" />,
-  image:    <Image    className="w-3.5 h-3.5" />,
+const TYPE_CONFIG: Record<DeliverableType, { icon: React.ReactNode; label: string; iconClass: string; badgeClass: string }> = {
+  text:     { icon: <FileText className="w-3.5 h-3.5" />, label: "Texto",     iconClass: "text-info bg-info-subtle",              badgeClass: "bg-info-subtle text-info-subtle-foreground" },
+  document: { icon: <Link2    className="w-3.5 h-3.5" />, label: "Documento", iconClass: "text-warning bg-warning-subtle",         badgeClass: "bg-warning-subtle text-warning-subtle-foreground" },
+  image:    { icon: <Image    className="w-3.5 h-3.5" />, label: "Imagen",    iconClass: "text-success bg-success-subtle",         badgeClass: "bg-success-subtle text-success-subtle-foreground" },
 }
 
+// kept for backward compat in places that use TYPE_LABEL directly
 const TYPE_LABEL: Record<DeliverableType, string> = {
   text:     "Texto",
   document: "Documento",
@@ -83,9 +84,9 @@ export function DeliverablesSectionClient({
                   onClick={() => setDrawerDeliverable(d)}
                   className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/40 transition-colors"
                 >
-                  {/* Type icon */}
-                  <span className="text-muted-foreground flex-shrink-0">
-                    {TYPE_ICON[d.type]}
+                  {/* Type icon pill */}
+                  <span className={cn("flex-shrink-0 p-1.5 rounded-md", TYPE_CONFIG[d.type].iconClass)}>
+                    {TYPE_CONFIG[d.type].icon}
                   </span>
 
                   {/* Main info */}
@@ -99,8 +100,8 @@ export function DeliverablesSectionClient({
                   </div>
 
                   {/* Type badge */}
-                  <span className="hidden sm:inline text-xs text-muted-foreground bg-muted rounded px-2 py-0.5 flex-shrink-0">
-                    {TYPE_LABEL[d.type]}
+                  <span className={cn("hidden sm:inline text-xs font-medium rounded px-2 py-0.5 flex-shrink-0", TYPE_CONFIG[d.type].badgeClass)}>
+                    {TYPE_CONFIG[d.type].label}
                   </span>
 
                   {/* Uploader + date */}

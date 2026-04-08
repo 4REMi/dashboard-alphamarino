@@ -44,7 +44,7 @@ export default async function ProjectsPage() {
     { key: "attention", label: t("filter.all") === "All" ? "Needs Attention" : "Requieren Atención", items: needsAttention, color: "text-warning" },
     { key: "inprogress", label: t("filter.inProgress"), items: inProgress, color: "text-info" },
     { key: "planning",   label: t("filter.planning"),   items: planning,    color: "text-muted-foreground" },
-    { key: "review",     label: t("filter.review"),     items: review,      color: "text-warning" },
+    { key: "review",     label: t("filter.review"),     items: review,      color: "text-purple-subtle-foreground" },
     { key: "completed",  label: t("filter.completed"),  items: completed,   color: "text-success" },
   ]
 
@@ -67,7 +67,7 @@ export default async function ProjectsPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: t("filter.inProgress"), count: inProgress.length, color: "text-info-subtle-foreground bg-info-subtle" },
-          { label: t("filter.planning"),   count: planning.length,   color: "text-muted-foreground bg-muted/40" },
+          { label: t("filter.planning"),   count: planning.length,   color: "text-secondary-foreground bg-secondary" },
           { label: t("filter.review"),     count: review.length,     color: "text-warning-subtle-foreground bg-warning-subtle" },
           { label: t("filter.completed"),  count: completed.length,  color: "text-success-subtle-foreground bg-success-subtle" },
         ].map((stat) => (
