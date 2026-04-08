@@ -2,7 +2,36 @@
 
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
+import { can } from "@/lib/permissions"
 import type { TaskStatus, TaskPriority } from "@/lib/types"
+
+// Verify the caller is authenticated, has manage_tasks permission,
+// and has access to the given project. Returns the user.
+async function requireTaskPermission(projectId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error("Not authenticated")
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role, permissions")
+    .eq("id", user.id)
+    .single()
+
+  if (!can(profile, "manage_tasks")) throw new Error("Permission denied")
+
+  // Verify project access via RLS (employee must be a member)
+  const { data: project } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("id", projectId)
+    .single()
+
+  if (!project) throw new Error("Project not found or access denied")
+
+  return user
+}
 
 export async function getTasks(projectId?: string) {
   const supabase = await createClient()
@@ -21,10 +50,12 @@ export async function getTasks(projectId?: string) {
 }
 
 export async function createTask(formData: FormData) {
-  const supabase = await createClient()
+  const projectId = formData.get("project_id") as string
+  await requireTaskPermission(projectId)
 
-  const { error } = await supabase.from("tasks").insert({
-    project_id: formData.get("project_id") as string,
+  const admin = createAdminClient()
+  const { error } = await admin.from("tasks").insert({
+    project_id: projectId,
     title: formData.get("title") as string,
     description: (formData.get("description") as string) || null,
     status: (formData.get("status") as TaskStatus) ?? "Todo",
@@ -34,15 +65,16 @@ export async function createTask(formData: FormData) {
   })
 
   if (error) throw error
-  const projectId = formData.get("project_id") as string
   revalidatePath(`/projects/${projectId}`)
   revalidatePath("/tasks")
 }
 
 export async function updateTask(id: string, formData: FormData) {
-  const supabase = await createClient()
+  const projectId = formData.get("project_id") as string
+  await requireTaskPermission(projectId)
 
-  const { error } = await supabase
+  const admin = createAdminClient()
+  const { error } = await admin
     .from("tasks")
     .update({
       title: formData.get("title") as string,
@@ -55,14 +87,15 @@ export async function updateTask(id: string, formData: FormData) {
     .eq("id", id)
 
   if (error) throw error
+  revalidatePath(`/projects/${projectId}`)
   revalidatePath("/tasks")
-  revalidatePath("/projects")
 }
 
 export async function updateTaskStatus(id: string, status: TaskStatus, projectId: string) {
-  const supabase = await createClient()
+  await requireTaskPermission(projectId)
 
-  const { error } = await supabase
+  const admin = createAdminClient()
+  const { error } = await admin
     .from("tasks")
     .update({ status })
     .eq("id", id)
@@ -73,8 +106,10 @@ export async function updateTaskStatus(id: string, status: TaskStatus, projectId
 }
 
 export async function deleteTask(id: string, projectId: string) {
-  const supabase = await createClient()
-  const { error } = await supabase.from("tasks").delete().eq("id", id)
+  await requireTaskPermission(projectId)
+
+  const admin = createAdminClient()
+  const { error } = await admin.from("tasks").delete().eq("id", id)
   if (error) throw error
   revalidatePath(`/projects/${projectId}`)
   revalidatePath("/tasks")
