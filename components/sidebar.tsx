@@ -22,6 +22,7 @@ import Image from "next/image"
 import { signOut } from "@/lib/auth-actions"
 import { Button } from "@/components/ui/button"
 import { can } from "@/lib/permissions"
+import { ProfileEditModal } from "@/components/profile-edit-modal"
 import type { Profile } from "@/lib/types"
 
 const navItems = [
@@ -131,11 +132,14 @@ export function Sidebar({ profile, logoUrl }: SidebarProps) {
               )}
             </div>
             {!collapsed && (
-              <div className="overflow-hidden">
-                <p className="text-sm font-medium truncate">{profile.full_name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {ROLE_LABELS[profile.role] ?? profile.role}
-                </p>
+              <div className="flex items-center gap-1 flex-1 min-w-0">
+                <div className="overflow-hidden flex-1">
+                  <p className="text-sm font-medium truncate">{profile.full_name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {ROLE_LABELS[profile.role] ?? profile.role}
+                  </p>
+                </div>
+                <ProfileEditModal profile={profile} />
               </div>
             )}
           </div>

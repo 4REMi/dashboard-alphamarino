@@ -144,6 +144,29 @@ export async function resendPasswordLink(email: string) {
   if (error) throw error
 }
 
+export async function updateOwnProfile(formData: FormData) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error("Not authenticated")
+
+  const { error } = await supabase.from("profiles").update({
+    full_name: formData.get("full_name") as string,
+    phone: (formData.get("phone") as string) || null,
+  }).eq("id", user.id)
+
+  if (error) throw error
+  revalidatePath("/")
+  revalidatePath("/employees")
+  revalidatePath(`/employees/${user.id}`)
+}
+
+export async function uploadOwnAvatar(formData: FormData) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error("Not authenticated")
+  return uploadAvatar(user.id, formData)
+}
+
 export async function deleteEmployee(id: string) {
   // Delete from auth.users via admin client (profiles will cascade)
   const adminClient = createAdminClient()
