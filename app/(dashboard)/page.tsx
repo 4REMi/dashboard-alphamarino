@@ -112,11 +112,11 @@ export default async function HomePage() {
               <CardContent className="p-5">
                 <div className="flex items-center justify-between mb-3">
                   <p className="text-sm font-medium text-muted-foreground">Ingresos del Mes</p>
-                  <div className="p-2 bg-green-50 rounded-lg">
-                    <TrendingUp className="w-4 h-4 text-green-600" />
+                  <div className="p-2 bg-success-subtle rounded-lg">
+                    <TrendingUp className="w-4 h-4 text-success" />
                   </div>
                 </div>
-                <p className="text-2xl font-bold text-green-700">{formatCurrency(summary.monthlyIncome)}</p>
+                <p className="text-2xl font-bold text-success">{formatCurrency(summary.monthlyIncome)}</p>
               </CardContent>
             </Card>
 
@@ -124,11 +124,11 @@ export default async function HomePage() {
               <CardContent className="p-5">
                 <div className="flex items-center justify-between mb-3">
                   <p className="text-sm font-medium text-muted-foreground">Gastos del Mes</p>
-                  <div className="p-2 bg-red-50 rounded-lg">
-                    <TrendingDown className="w-4 h-4 text-red-600" />
+                  <div className="p-2 bg-destructive/10 rounded-lg">
+                    <TrendingDown className="w-4 h-4 text-destructive" />
                   </div>
                 </div>
-                <p className="text-2xl font-bold text-red-700">{formatCurrency(summary.monthlyExpenses)}</p>
+                <p className="text-2xl font-bold text-destructive">{formatCurrency(summary.monthlyExpenses)}</p>
               </CardContent>
             </Card>
 
@@ -136,11 +136,11 @@ export default async function HomePage() {
               <CardContent className="p-5">
                 <div className="flex items-center justify-between mb-3">
                   <p className="text-sm font-medium text-muted-foreground">Margen Neto</p>
-                  <div className={`p-2 rounded-lg ${summary.netMargin >= 0 ? "bg-blue-50" : "bg-red-50"}`}>
-                    <DollarSign className={`w-4 h-4 ${summary.netMargin >= 0 ? "text-blue-600" : "text-red-600"}`} />
+                  <div className={`p-2 rounded-lg ${summary.netMargin >= 0 ? "bg-info-subtle" : "bg-destructive/10"}`}>
+                    <DollarSign className={`w-4 h-4 ${summary.netMargin >= 0 ? "text-info" : "text-destructive"}`} />
                   </div>
                 </div>
-                <p className={`text-2xl font-bold ${summary.netMargin >= 0 ? "text-blue-700" : "text-red-700"}`}>
+                <p className={`text-2xl font-bold ${summary.netMargin >= 0 ? "text-info-subtle-foreground" : "text-destructive"}`}>
                   {formatCurrency(summary.netMargin)}
                 </p>
               </CardContent>
@@ -150,11 +150,11 @@ export default async function HomePage() {
               <CardContent className="p-5">
                 <div className="flex items-center justify-between mb-3">
                   <p className="text-sm font-medium text-muted-foreground">MRR</p>
-                  <div className="p-2 bg-purple-50 rounded-lg">
-                    <Repeat className="w-4 h-4 text-purple-600" />
+                  <div className="p-2 bg-purple-subtle rounded-lg">
+                    <Repeat className="w-4 h-4 text-purple-subtle-foreground" />
                   </div>
                 </div>
-                <p className="text-2xl font-bold text-purple-700">{formatCurrency(summary.mrr)}</p>
+                <p className="text-2xl font-bold text-purple-subtle-foreground">{formatCurrency(summary.mrr)}</p>
                 <p className="text-xs text-muted-foreground mt-1">fees mensuales activos</p>
               </CardContent>
             </Card>
@@ -164,8 +164,8 @@ export default async function HomePage() {
           <div className="grid grid-cols-3 gap-4">
             <Card>
               <CardContent className="p-4 flex items-center gap-3">
-                <div className="p-2 bg-blue-50 rounded-lg">
-                  <Users className="w-4 h-4 text-blue-600" />
+                <div className="p-2 bg-info-subtle rounded-lg">
+                  <Users className="w-4 h-4 text-info" />
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Clientes</p>
@@ -178,8 +178,8 @@ export default async function HomePage() {
             </Card>
             <Card>
               <CardContent className="p-4 flex items-center gap-3">
-                <div className="p-2 bg-orange-50 rounded-lg">
-                  <FolderKanban className="w-4 h-4 text-orange-600" />
+                <div className="p-2 bg-warning-subtle rounded-lg">
+                  <FolderKanban className="w-4 h-4 text-warning" />
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Proyectos Activos</p>
@@ -190,8 +190,8 @@ export default async function HomePage() {
             </Card>
             <Card>
               <CardContent className="p-4 flex items-center gap-3">
-                <div className="p-2 bg-slate-100 rounded-lg">
-                  <UserCircle className="w-4 h-4 text-slate-600" />
+                <div className="p-2 bg-secondary rounded-lg">
+                  <UserCircle className="w-4 h-4 text-muted-foreground" />
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Equipo</p>
@@ -209,15 +209,15 @@ export default async function HomePage() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {expiringDomains.length > 0 && (
                   <Link href="/finances/domains">
-                    <Card className="border-amber-200 bg-amber-50/40 hover:bg-amber-50/70 transition-colors cursor-pointer">
+                    <Card className="border-warning/30 bg-warning-subtle/60 hover:bg-warning-subtle transition-colors cursor-pointer">
                       <CardContent className="p-4 flex items-start gap-3">
-                        <Globe className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                        <Globe className="w-4 h-4 text-warning mt-0.5 flex-shrink-0" />
                         <div>
-                          <p className="text-sm font-medium text-amber-800">Dominios por vencer</p>
-                          <p className="text-xs text-amber-700 mt-0.5">
+                          <p className="text-sm font-medium text-warning-subtle-foreground">Dominios por vencer</p>
+                          <p className="text-xs text-warning-subtle-foreground/80 mt-0.5">
                             {expiringDomains.length} dominio{expiringDomains.length !== 1 ? "s" : ""} vencen en &lt;30 días
                           </p>
-                          <p className="text-xs text-amber-600 mt-1 truncate">
+                          <p className="text-xs text-warning mt-1 truncate">
                             {expiringDomains.slice(0, 2).map((d) => d.domain).join(", ")}
                             {expiringDomains.length > 2 && ` +${expiringDomains.length - 2}`}
                           </p>
@@ -229,15 +229,15 @@ export default async function HomePage() {
 
                 {blockedPhaseProjects.length > 0 && (
                   <Link href="/projects">
-                    <Card className="border-red-200 bg-red-50/40 hover:bg-red-50/70 transition-colors cursor-pointer">
+                    <Card className="border-destructive/20 bg-destructive/5 hover:bg-destructive/10 transition-colors cursor-pointer">
                       <CardContent className="p-4 flex items-start gap-3">
-                        <AlertTriangle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
+                        <AlertTriangle className="w-4 h-4 text-destructive mt-0.5 flex-shrink-0" />
                         <div>
-                          <p className="text-sm font-medium text-red-800">Fases bloqueadas</p>
-                          <p className="text-xs text-red-700 mt-0.5">
+                          <p className="text-sm font-medium text-destructive">Fases bloqueadas</p>
+                          <p className="text-xs text-destructive/80 mt-0.5">
                             {blockedPhaseProjects.length} proyecto{blockedPhaseProjects.length !== 1 ? "s" : ""} con fase bloqueada
                           </p>
-                          <p className="text-xs text-red-600 mt-1 truncate">
+                          <p className="text-xs text-destructive/70 mt-1 truncate">
                             {blockedPhaseProjects.slice(0, 2).map((p) => p.name).join(", ")}
                             {blockedPhaseProjects.length > 2 && ` +${blockedPhaseProjects.length - 2}`}
                           </p>
@@ -249,15 +249,15 @@ export default async function HomePage() {
 
                 {overdueReportProjects.length > 0 && (
                   <Link href="/projects">
-                    <Card className="border-orange-200 bg-orange-50/40 hover:bg-orange-50/70 transition-colors cursor-pointer">
+                    <Card className="border-warning/30 bg-warning-subtle/60 hover:bg-warning-subtle transition-colors cursor-pointer">
                       <CardContent className="p-4 flex items-start gap-3">
-                        <AlertTriangle className="w-4 h-4 text-orange-600 mt-0.5 flex-shrink-0" />
+                        <AlertTriangle className="w-4 h-4 text-warning mt-0.5 flex-shrink-0" />
                         <div>
-                          <p className="text-sm font-medium text-orange-800">Reportes pendientes</p>
-                          <p className="text-xs text-orange-700 mt-0.5">
+                          <p className="text-sm font-medium text-warning-subtle-foreground">Reportes pendientes</p>
+                          <p className="text-xs text-warning-subtle-foreground/80 mt-0.5">
                             {overdueReportProjects.length} ciclo{overdueReportProjects.length !== 1 ? "s" : ""} sin reporte entregado
                           </p>
-                          <p className="text-xs text-orange-600 mt-1 truncate">
+                          <p className="text-xs text-warning mt-1 truncate">
                             {overdueReportProjects.slice(0, 2).map((p) => p.name).join(", ")}
                             {overdueReportProjects.length > 2 && ` +${overdueReportProjects.length - 2}`}
                           </p>

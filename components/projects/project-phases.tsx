@@ -12,10 +12,10 @@ interface Props {
 }
 
 const STATUS_STYLES: Record<PhaseStatus, { dot: string; badge: string }> = {
-  pending: { dot: "bg-muted-foreground/40", badge: "bg-muted text-muted-foreground border-border" },
-  in_progress: { dot: "bg-amber-500", badge: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800" },
-  completed: { dot: "bg-green-500", badge: "bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300 dark:border-green-800" },
-  blocked: { dot: "bg-destructive", badge: "bg-destructive/10 text-destructive border-destructive/20" },
+  pending:     { dot: "bg-muted-foreground/40", badge: "bg-muted text-muted-foreground border-border" },
+  in_progress: { dot: "bg-warning",             badge: "bg-warning-subtle text-warning-subtle-foreground border-warning-subtle" },
+  completed:   { dot: "bg-success",             badge: "bg-success-subtle text-success-subtle-foreground border-success-subtle" },
+  blocked:     { dot: "bg-destructive",         badge: "bg-destructive/10 text-destructive border-destructive/20" },
 }
 
 export function ProjectPhases({ projectId, initialPhases, canEdit }: Props) {
@@ -73,11 +73,11 @@ export function ProjectPhases({ projectId, initialPhases, canEdit }: Props) {
                   onClick={() => setExpandedId(expandedId === phase.id ? null : phase.id)}
                   className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold border-2 transition-all ${
                     phase.status === "completed"
-                      ? "bg-green-500 border-green-500 text-white"
+                      ? "bg-success border-success text-success-foreground"
                       : phase.status === "in_progress"
-                      ? "bg-amber-500 border-amber-500 text-white"
+                      ? "bg-warning border-warning text-warning-foreground"
                       : phase.status === "blocked"
-                      ? "bg-destructive border-destructive text-white"
+                      ? "bg-destructive border-destructive text-destructive-foreground"
                       : "bg-background border-muted-foreground/30 text-muted-foreground"
                   }`}
                 >
@@ -86,7 +86,7 @@ export function ProjectPhases({ projectId, initialPhases, canEdit }: Props) {
                 {i < phases.length - 1 && (
                   <div className={`h-0.5 flex-1 mx-1 rounded-full transition-colors ${
                     phases[i + 1]?.status !== "pending" || phase.status === "completed"
-                      ? "bg-green-500/50"
+                      ? "bg-success/40"
                       : "bg-muted"
                   }`} />
                 )}

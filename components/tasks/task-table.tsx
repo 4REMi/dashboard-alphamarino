@@ -52,8 +52,8 @@ function StatusPicker({ task, projectId }: { task: Task; projectId: string }) {
           "flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-opacity",
           isPending && "opacity-50",
           optimisticStatus === "Todo"        && "border-transparent bg-secondary text-secondary-foreground",
-          optimisticStatus === "In Progress" && "border-transparent bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200",
-          optimisticStatus === "Done"        && "border-transparent bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200",
+          optimisticStatus === "In Progress" && "border-transparent bg-info-subtle text-info-subtle-foreground",
+          optimisticStatus === "Done"        && "border-transparent bg-success-subtle text-success-subtle-foreground",
         )}
       >
         {STATUS_GROUPS.find((s) => s.value === optimisticStatus)!.label}
@@ -72,9 +72,9 @@ function StatusPicker({ task, projectId }: { task: Task; projectId: string }) {
             >
               <span className={cn(
                 "w-2 h-2 rounded-full flex-shrink-0",
-                opt.value === "Todo"        && "bg-muted-foreground/50",
-                opt.value === "In Progress" && "bg-blue-500",
-                opt.value === "Done"        && "bg-green-500",
+                opt.value === "Todo"        && "bg-muted-foreground/40",
+                opt.value === "In Progress" && "bg-info",
+                opt.value === "Done"        && "bg-success",
               )} />
               {opt.label}
             </button>
@@ -334,9 +334,9 @@ function GroupHeader({ label, count, isOpen, onToggle, status }: {
       }
       <span className={cn(
         "w-2 h-2 rounded-full flex-shrink-0",
-        status === "Todo"        && "bg-muted-foreground/50",
-        status === "In Progress" && "bg-blue-500",
-        status === "Done"        && "bg-green-500",
+        status === "Todo"        && "bg-muted-foreground/40",
+        status === "In Progress" && "bg-info",
+        status === "Done"        && "bg-success",
       )} />
       <span className="text-xs font-semibold">{label}</span>
       <span className="text-xs text-muted-foreground ml-1">{count}</span>

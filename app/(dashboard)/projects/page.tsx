@@ -41,11 +41,11 @@ export default async function ProjectsPage() {
   })
 
   const sections = [
-    { key: "attention", label: t("filter.all") === "All" ? "Needs Attention" : "Requieren Atención", items: needsAttention, color: "text-amber-600" },
-    { key: "inprogress", label: t("filter.inProgress"), items: inProgress, color: "text-blue-600" },
-    { key: "planning", label: t("filter.planning"), items: planning, color: "" },
-    { key: "review", label: t("filter.review"), items: review, color: "text-yellow-600" },
-    { key: "completed", label: t("filter.completed"), items: completed, color: "text-green-600" },
+    { key: "attention", label: t("filter.all") === "All" ? "Needs Attention" : "Requieren Atención", items: needsAttention, color: "text-warning" },
+    { key: "inprogress", label: t("filter.inProgress"), items: inProgress, color: "text-info" },
+    { key: "planning",   label: t("filter.planning"),   items: planning,    color: "text-muted-foreground" },
+    { key: "review",     label: t("filter.review"),     items: review,      color: "text-warning" },
+    { key: "completed",  label: t("filter.completed"),  items: completed,   color: "text-success" },
   ]
 
   return (
@@ -66,10 +66,10 @@ export default async function ProjectsPage() {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: t("filter.inProgress"), count: inProgress.length, color: "text-blue-700 bg-blue-50 dark:bg-blue-950 dark:text-blue-300" },
-          { label: t("filter.planning"), count: planning.length, color: "text-muted-foreground bg-muted/40" },
-          { label: t("filter.review"), count: review.length, color: "text-yellow-700 bg-yellow-50 dark:bg-yellow-950 dark:text-yellow-300" },
-          { label: t("filter.completed"), count: completed.length, color: "text-green-700 bg-green-50 dark:bg-green-950 dark:text-green-300" },
+          { label: t("filter.inProgress"), count: inProgress.length, color: "text-info-subtle-foreground bg-info-subtle" },
+          { label: t("filter.planning"),   count: planning.length,   color: "text-muted-foreground bg-muted/40" },
+          { label: t("filter.review"),     count: review.length,     color: "text-warning-subtle-foreground bg-warning-subtle" },
+          { label: t("filter.completed"),  count: completed.length,  color: "text-success-subtle-foreground bg-success-subtle" },
         ].map((stat) => (
           <div key={stat.label} className={`rounded-xl p-4 ${stat.color}`}>
             <p className="text-2xl font-bold">{stat.count}</p>
