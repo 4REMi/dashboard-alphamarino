@@ -310,6 +310,16 @@ export async function deleteTaskFromSet(taskId: string) {
   revalidatePath("/operations")
 }
 
+export async function reorderTasksInSet(taskSetId: string, orderedIds: string[]) {
+  const supabase = await createClient()
+  const updates = orderedIds.map((id, i) =>
+    supabase.from("task_set_tasks").update({ task_order: i }).eq("id", id)
+  )
+  await Promise.all(updates)
+  revalidatePath("/settings")
+  revalidatePath("/operations")
+}
+
 export async function linkTaskSetToPhase(phaseId: string, taskSetId: string | null) {
   const supabase = await createClient()
   const { error } = await supabase
