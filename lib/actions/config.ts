@@ -193,3 +193,93 @@ export async function linkPhaseSetToProjectType(projectTypeId: string, phaseSetI
   if (error) throw error
   revalidatePath("/settings")
 }
+
+// ============================================================
+// TASK SETS
+// ============================================================
+
+export async function getTaskSets() {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from("task_sets")
+    .select("*, tasks:task_set_tasks(*), default_assignee:profiles(id, full_name, avatar_url)")
+    .order("name")
+  if (error) return []
+  return (data ?? []).map((ts) => ({
+    ...ts,
+    tasks: (ts.tasks ?? []).sort(
+      (a: { task_order: number }, b: { task_order: number }) => a.task_order - b.task_order
+    ),
+  }))
+}
+
+export async function createTaskSet(formData: FormData) {
+  const supabase = await createClient()
+  const assigneeId = formData.get("default_assignee_id") as string
+  const { data, error } = await supabase.from("task_sets").insert({
+    name: formData.get("name") as string,
+    description: (formData.get("description") as string) || null,
+    default_assignee_id: assigneeId && assigneeId !== "none" ? assigneeId : null,
+  }).select().single()
+  if (error) throw error
+  revalidatePath("/settings")
+  return data
+}
+
+export async function updateTaskSet(id: string, formData: FormData) {
+  const supabase = await createClient()
+  const assigneeId = formData.get("default_assignee_id") as string
+  const { error } = await supabase.from("task_sets").update({
+    name: formData.get("name") as string,
+    description: (formData.get("description") as string) || null,
+    default_assignee_id: assigneeId && assigneeId !== "none" ? assigneeId : null,
+  }).eq("id", id)
+  if (error) throw error
+  revalidatePath("/settings")
+}
+
+export async function deleteTaskSet(id: string) {
+  const supabase = await createClient()
+  const { error } = await supabase.from("task_sets").delete().eq("id", id)
+  if (error) throw error
+  revalidatePath("/settings")
+}
+
+export async function addTaskToSet(taskSetId: string, formData: FormData) {
+  const supabase = await createClient()
+  const { data: existing } = await supabase
+    .from("task_set_tasks")
+    .select("task_order")
+    .eq("task_set_id", taskSetId)
+    .order("task_order", { ascending: false })
+    .limit(1)
+  const nextOrder = existing?.[0] ? existing[0].task_order + 1 : 0
+
+  const { data, error } = await supabase.from("task_set_tasks").insert({
+    task_set_id: taskSetId,
+    title: formData.get("title") as string,
+    description: (formData.get("description") as string) || null,
+    priority: (formData.get("priority") as string) || "Medium",
+    task_order: nextOrder,
+  }).select().single()
+  if (error) throw error
+  revalidatePath("/settings")
+  return data
+}
+
+export async function deleteTaskFromSet(taskId: string) {
+  const supabase = await createClient()
+  const { error } = await supabase.from("task_set_tasks").delete().eq("id", taskId)
+  if (error) throw error
+  revalidatePath("/settings")
+}
+
+export async function linkTaskSetToPhase(phaseId: string, taskSetId: string | null) {
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from("phase_set_phases")
+    .update({ default_task_set_id: taskSetId })
+    .eq("id", phaseId)
+  if (error) throw error
+  revalidatePath("/settings")
+}

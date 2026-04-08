@@ -1,26 +1,49 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import type { PhaseSet, PhaseSetPhase, ProjectType } from "@/lib/types"
+import type { PhaseSet, PhaseSetPhase, ProjectType, TaskSet } from "@/lib/types"
 import {
   createPhaseSet,
   deletePhaseSet,
   addPhaseToSet,
   deletePhaseFromSet,
+  linkTaskSetToPhase,
 } from "@/lib/actions/config"
 
 interface Props {
   initialSets: PhaseSet[]
   projectTypes: ProjectType[]
+  taskSets?: TaskSet[]
 }
 
-export function PhaseSetManager({ initialSets, projectTypes }: Props) {
+export function PhaseSetManager({ initialSets, projectTypes, taskSets = [] }: Props) {
   const [sets, setSets] = useState<PhaseSet[]>(initialSets)
   const [expandedId, setExpandedId] = useState<string | null>(initialSets[0]?.id ?? null)
   const [showNew, setShowNew] = useState(false)
   const [addingPhaseFor, setAddingPhaseFor] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+
+  function handleLinkTaskSet(setId: string, phaseId: string, taskSetId: string) {
+    const resolvedId = taskSetId === "none" ? null : taskSetId
+    startTransition(async () => {
+      try {
+        await linkTaskSetToPhase(phaseId, resolvedId)
+        setSets((prev) =>
+          prev.map((s) =>
+            s.id === setId
+              ? {
+                  ...s,
+                  phases: (s.phases ?? []).map((p) =>
+                    p.id === phaseId ? { ...p, default_task_set_id: resolvedId } : p
+                  ),
+                }
+              : s
+          )
+        )
+      } catch { /* ignore */ }
+    })
+  }
 
   function handleCreateSet(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -174,6 +197,20 @@ export function PhaseSetManager({ initialSets, projectTypes }: Props) {
                         <p className="text-sm font-medium text-foreground">{phase.name}</p>
                         {phase.description && <p className="text-xs text-muted-foreground truncate">{phase.description}</p>}
                       </div>
+                      {taskSets.length > 0 && (
+                        <select
+                          value={phase.default_task_set_id ?? "none"}
+                          onChange={(e) => handleLinkTaskSet(set.id, phase.id, e.target.value)}
+                          disabled={isPending}
+                          className="text-xs rounded border border-input bg-background px-2 py-1 text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                          title="Task set predeterminado"
+                        >
+                          <option value="none">Sin task set</option>
+                          {taskSets.map((ts) => (
+                            <option key={ts.id} value={ts.id}>{ts.name}</option>
+                          ))}
+                        </select>
+                      )}
                       <button
                         onClick={() => handleDeletePhase(set.id, phase.id)}
                         className="text-xs text-muted-foreground hover:text-destructive transition-colors flex-shrink-0"

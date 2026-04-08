@@ -3,6 +3,46 @@
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import type { ProjectStatus, PhaseStatus, CycleDeliverableStatus, CampaignStatus } from "@/lib/types"
+import type { SupabaseClient } from "@supabase/supabase-js"
+
+// Helper: copy task set tasks to a project for each phase that has a default_task_set_id
+async function copyTaskSetsToProject(
+  supabase: SupabaseClient,
+  templatePhases: Array<{ default_task_set_id: string | null }>,
+  projectId: string
+) {
+  try {
+    const taskSetIds = templatePhases
+      .map((p) => p.default_task_set_id)
+      .filter((id): id is string => !!id)
+
+    if (taskSetIds.length === 0) return
+
+    const { data: taskSets } = await supabase
+      .from("task_sets")
+      .select("id, default_assignee_id, tasks:task_set_tasks(*)")
+      .in("id", taskSetIds)
+
+    if (!taskSets || taskSets.length === 0) return
+
+    const tasksToInsert = taskSets.flatMap((ts) =>
+      ((ts.tasks ?? []) as Array<{ title: string; description: string | null; priority: string; task_order: number }>)
+        .sort((a, b) => a.task_order - b.task_order)
+        .map((t) => ({
+          project_id: projectId,
+          title: t.title,
+          description: t.description,
+          priority: t.priority,
+          status: "Todo",
+          assignee_id: ts.default_assignee_id ?? null,
+        }))
+    )
+
+    if (tasksToInsert.length > 0) {
+      await supabase.from("tasks").insert(tasksToInsert)
+    }
+  } catch { /* task_sets table may not exist in older deployments */ }
+}
 
 // ============================================================
 // READ
@@ -209,7 +249,7 @@ export async function createProject(
 
   if (error) throw error
 
-  // Copy selected phase set phases to project_phases
+  // Copy selected phase set phases to project_phases (and their task sets to tasks)
   if (selectedPhaseSetPhaseIds && selectedPhaseSetPhaseIds.length > 0) {
     const { data: templatePhases } = await supabase
       .from("phase_set_phases")
@@ -225,6 +265,7 @@ export async function createProject(
         phase_order: i,
       }))
       await supabase.from("project_phases").insert(projectPhases)
+      await copyTaskSetsToProject(supabase, templatePhases, project.id)
     }
   }
 
@@ -257,6 +298,9 @@ export async function applyPhaseSetToProject(projectId: string, phaseSetId: stri
   }))
   const { error: insertError } = await supabase.from("project_phases").insert(projectPhases)
   if (insertError) throw insertError
+
+  // Copy tasks from each phase's default task set
+  await copyTaskSetsToProject(supabase, templatePhases, projectId)
 
   revalidatePath(`/projects/${projectId}`)
 }

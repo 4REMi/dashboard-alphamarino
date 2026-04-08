@@ -66,6 +66,27 @@ export interface PhaseSetPhase {
   name: string
   description: string | null
   phase_order: number
+  default_task_set_id: string | null
+  created_at: string
+}
+
+export interface TaskSet {
+  id: string
+  name: string
+  description: string | null
+  default_assignee_id: string | null
+  created_at: string
+  tasks?: TaskSetTask[]
+  default_assignee?: Profile | null
+}
+
+export interface TaskSetTask {
+  id: string
+  task_set_id: string
+  title: string
+  description: string | null
+  priority: TaskPriority
+  task_order: number
   created_at: string
 }
 
