@@ -300,3 +300,119 @@ export async function linkTaskSetToPhase(phaseId: string, taskSetId: string | nu
   revalidatePath("/settings")
   revalidatePath("/operations")
 }
+
+// ============================================================
+// IMPORT / EXPORT
+// ============================================================
+
+type ImportTask = { title: string; description?: string | null; priority?: "Low" | "Medium" | "High" }
+type ImportTaskSet = { name: string; tasks?: ImportTask[] }
+type ImportPhase = { name: string; description?: string | null; taskSet?: ImportTaskSet | null }
+type ImportTemplate = {
+  projectType: { name: string; description?: string | null }
+  phaseSet?: { name: string; phases?: ImportPhase[] } | null
+}
+
+export async function importOperationsTemplate(jsonStr: string) {
+  const supabase = await createClient()
+
+  let template: ImportTemplate
+  try {
+    template = JSON.parse(jsonStr) as ImportTemplate
+  } catch {
+    throw new Error("JSON inválido — verifica la sintaxis")
+  }
+
+  if (!template?.projectType?.name?.trim()) {
+    throw new Error("Se requiere projectType.name")
+  }
+
+  // 1. Create task sets and collect { phaseIndex → taskSetId }
+  const tsIdByPhase: Record<number, string> = {}
+  const createdTaskSets: Array<{ id: string; name: string; tasks: ImportTask[] }> = []
+
+  const phases = template.phaseSet?.phases ?? []
+  for (let i = 0; i < phases.length; i++) {
+    const ts = phases[i].taskSet
+    if (!ts?.name?.trim()) continue
+
+    const { data: tsRow, error: tsErr } = await supabase
+      .from("task_sets")
+      .insert({ name: ts.name.trim() })
+      .select()
+      .single()
+    if (tsErr) throw new Error(`Error creando task set "${ts.name}": ${tsErr.message}`)
+
+    const tasks = ts.tasks ?? []
+    for (let j = 0; j < tasks.length; j++) {
+      const task = tasks[j]
+      await supabase.from("task_set_tasks").insert({
+        task_set_id: tsRow.id,
+        title: task.title,
+        description: task.description ?? null,
+        priority: task.priority ?? "Medium",
+        task_order: j,
+      })
+    }
+
+    tsIdByPhase[i] = tsRow.id
+    createdTaskSets.push({ id: tsRow.id, name: ts.name.trim(), tasks })
+  }
+
+  // 2. Create phase set + phases
+  let phaseSetId: string | null = null
+  const createdPhases: Array<{ id: string; name: string; description: string | null; phase_order: number; default_task_set_id: string | null }> = []
+
+  if (template.phaseSet?.name?.trim()) {
+    const { data: psRow, error: psErr } = await supabase
+      .from("phase_sets")
+      .insert({ name: template.phaseSet.name.trim() })
+      .select()
+      .single()
+    if (psErr) throw new Error(`Error creando phase set: ${psErr.message}`)
+    phaseSetId = psRow.id
+
+    for (let i = 0; i < phases.length; i++) {
+      const phase = phases[i]
+      if (!phase.name?.trim()) continue
+
+      const { data: phRow, error: phErr } = await supabase
+        .from("phase_set_phases")
+        .insert({
+          phase_set_id: phaseSetId,
+          name: phase.name.trim(),
+          description: phase.description ?? null,
+          phase_order: i,
+          default_task_set_id: tsIdByPhase[i] ?? null,
+        })
+        .select()
+        .single()
+      if (phErr) throw new Error(`Error creando fase "${phase.name}": ${phErr.message}`)
+      createdPhases.push(phRow)
+    }
+  }
+
+  // 3. Create project type
+  const { data: ptRow, error: ptErr } = await supabase
+    .from("project_types")
+    .insert({
+      name: template.projectType.name.trim(),
+      description: template.projectType.description ?? null,
+      default_phase_set_id: phaseSetId,
+    })
+    .select()
+    .single()
+  if (ptErr) throw new Error(`Error creando tipo de proyecto: ${ptErr.message}`)
+
+  revalidatePath("/operations")
+  revalidatePath("/projects")
+
+  // Return full created tree so the client can update state without reload
+  return {
+    projectType: { ...ptRow, default_phase_set_id: phaseSetId },
+    phaseSet: phaseSetId
+      ? { id: phaseSetId, name: template.phaseSet!.name.trim(), phases: createdPhases }
+      : null,
+    taskSets: createdTaskSets,
+  }
+}
