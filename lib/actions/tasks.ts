@@ -91,6 +91,20 @@ export async function updateTask(id: string, formData: FormData) {
   revalidatePath("/tasks")
 }
 
+export async function updateTaskAssignee(id: string, assigneeId: string | null, projectId: string) {
+  await requireTaskPermission(projectId)
+
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from("tasks")
+    .update({ assignee_id: assigneeId })
+    .eq("id", id)
+
+  if (error) throw error
+  revalidatePath(`/projects/${projectId}`)
+  revalidatePath("/tasks")
+}
+
 export async function updateTaskStatus(id: string, status: TaskStatus, projectId: string) {
   await requireTaskPermission(projectId)
 
