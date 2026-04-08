@@ -5,6 +5,7 @@
 export type Role = "admin" | "subadmin" | "employee"
 export type ProjectStatus = "Planning" | "In Progress" | "Review" | "Completed" | "Archived"
 export type TaskStatus = "Todo" | "In Progress" | "Done"
+/** @deprecated Use is_urgent boolean instead */
 export type TaskPriority = "Low" | "Medium" | "High"
 export type CustomerStatus = "Prospect" | "Active" | "Inactive" | "Churned"
 export type ExpenseFrequency = "Monthly" | "Weekly" | "Annual" | "Semestral" | "One-time"
@@ -87,7 +88,8 @@ export interface TaskSetTask {
   task_set_id: string
   title: string
   description: string | null
-  priority: TaskPriority
+  priority: TaskPriority // kept for DB compat
+  is_urgent: boolean
   task_order: number
   created_at: string
 }
@@ -150,7 +152,8 @@ export interface Task {
   title: string
   description: string | null
   status: TaskStatus
-  priority: TaskPriority
+  priority: TaskPriority // kept for DB compat, use is_urgent in UI
+  is_urgent: boolean
   due_date: string | null
   assignee_id: string | null
   created_at: string

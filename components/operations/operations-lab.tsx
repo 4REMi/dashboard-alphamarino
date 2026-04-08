@@ -3,6 +3,7 @@
 import { useState, useTransition, useRef } from "react"
 import { ChevronRight, Plus, Trash2, LayoutList, Link2, Pencil, Check, X, Upload, Download } from "lucide-react"
 import type { ProjectType, PhaseSet, PhaseSetPhase, TaskSet, TaskSetTask, Profile } from "@/lib/types"
+// TaskPriority intentionally removed — tasks now use is_urgent boolean
 import {
   createProjectType, updateProjectType, deleteProjectType,
   createPhaseSet, deletePhaseSet, addPhaseToSet, deletePhaseFromSet,
@@ -18,12 +19,6 @@ interface Props {
   employees: Profile[]
 }
 
-const PRIORITY_PILL: Record<string, string> = {
-  Low: "bg-gray-100 text-gray-600",
-  Medium: "bg-amber-100 text-amber-700",
-  High: "bg-red-100 text-red-700",
-}
-const PRIORITY_LABEL: Record<string, string> = { Low: "Baja", Medium: "Media", High: "Alta" }
 
 function InlineInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
@@ -137,8 +132,8 @@ function ImportModal({
           taskSet: {
             name: "Tareas Discovery",
             tasks: [
-              { title: "Reunión con cliente", priority: "High" },
-              { title: "Brief del cliente", priority: "Medium" },
+              { title: "Reunión con cliente", is_urgent: true },
+              { title: "Brief del cliente", is_urgent: false },
             ],
           },
         },
@@ -450,7 +445,7 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
               tasks: ((ts.tasks ?? []) as TaskSetTask[]).map((t) => ({
                 title: t.title,
                 description: t.description ?? null,
-                priority: t.priority,
+                is_urgent: t.is_urgent ?? false,
               })),
             } : null,
           }
@@ -723,7 +718,9 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
                       <p className="text-sm font-medium">{task.title}</p>
                       {task.description && <p className="text-xs text-muted-foreground truncate mt-0.5">{task.description}</p>}
                     </div>
-                    <span className={`text-xs px-1.5 py-0.5 rounded font-medium flex-shrink-0 ${PRIORITY_PILL[task.priority]}`}>{PRIORITY_LABEL[task.priority]}</span>
+                    {task.is_urgent && (
+                      <span className="text-xs px-1.5 py-0.5 rounded font-medium flex-shrink-0 bg-red-100 text-red-700">Urgente</span>
+                    )}
                     <button onClick={() => handleDeleteTask(task.id)} className="opacity-0 group-hover:opacity-100 p-1 rounded text-muted-foreground hover:text-destructive transition-all flex-shrink-0"><X className="w-3 h-3" /></button>
                   </div>
                 ))}
@@ -737,11 +734,10 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
                     <InlineInput name="title" required autoFocus placeholder="Título de la tarea…" />
                     <div className="grid grid-cols-2 gap-2">
                       <InlineInput name="description" placeholder="Descripción (opcional)" />
-                      <InlineSelect name="priority" defaultValue="Medium">
-                        <option value="Low">Baja</option>
-                        <option value="Medium">Media</option>
-                        <option value="High">Alta</option>
-                      </InlineSelect>
+                      <label className="flex items-center gap-2 px-2 py-1.5 rounded border border-input bg-background text-sm cursor-pointer select-none">
+                        <input type="checkbox" name="is_urgent" value="true" className="accent-red-500" />
+                        Urgente
+                      </label>
                     </div>
                     <div className="flex gap-2 justify-end">
                       <button type="button" onClick={() => setShowAddTask(false)} className="text-xs text-muted-foreground">Cancelar</button>

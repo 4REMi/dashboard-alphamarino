@@ -273,7 +273,7 @@ export async function addTaskToSet(taskSetId: string, formData: FormData) {
     task_set_id: taskSetId,
     title: formData.get("title") as string,
     description: (formData.get("description") as string) || null,
-    priority: (formData.get("priority") as string) || "Medium",
+    is_urgent: formData.get("is_urgent") === "true",
     task_order: nextOrder,
   }).select().single()
   if (error) throw error
@@ -305,7 +305,7 @@ export async function linkTaskSetToPhase(phaseId: string, taskSetId: string | nu
 // IMPORT / EXPORT
 // ============================================================
 
-type ImportTask = { title: string; description?: string | null; priority?: "Low" | "Medium" | "High" }
+type ImportTask = { title: string; description?: string | null; is_urgent?: boolean }
 type ImportTaskSet = { name: string; tasks?: ImportTask[] }
 type ImportPhase = { name: string; description?: string | null; taskSet?: ImportTaskSet | null }
 type ImportTemplate = {
@@ -350,7 +350,7 @@ export async function importOperationsTemplate(jsonStr: string) {
         task_set_id: tsRow.id,
         title: task.title,
         description: task.description ?? null,
-        priority: task.priority ?? "Medium",
+        is_urgent: task.is_urgent ?? false,
         task_order: j,
       })
     }

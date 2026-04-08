@@ -1,11 +1,11 @@
 "use client"
 
 import { useState, useTransition, useRef, useEffect } from "react"
-import { deleteTask, updateTaskStatus, updateTaskAssignee } from "@/lib/actions/tasks"
+import { deleteTask, updateTaskStatus, updateTaskAssignee, updateTaskUrgent } from "@/lib/actions/tasks"
 import { TaskForm } from "./task-form"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Pencil, Trash2, CalendarDays, ChevronDown, UserX } from "lucide-react"
+import { Pencil, Trash2, CalendarDays, ChevronDown, UserX, Flag } from "lucide-react"
 import { formatDate } from "@/lib/utils"
 import { cn } from "@/lib/utils"
 import type { Task, Profile, TaskStatus } from "@/lib/types"
@@ -15,12 +15,6 @@ const STATUS_OPTIONS: { value: TaskStatus; label: string }[] = [
   { value: "In Progress", label: "En Progreso" },
   { value: "Done", label: "Hecho" },
 ]
-
-const priorityConfig = {
-  Low: { label: "Baja", color: "text-gray-500" },
-  Medium: { label: "Media", color: "text-yellow-600" },
-  High: { label: "Alta", color: "text-red-600" },
-}
 
 // ─── Status Picker ────────────────────────────────────────────────────────────
 
@@ -43,11 +37,8 @@ function StatusPicker({ task, projectId }: { task: Task; projectId: string }) {
     if (next === optimisticStatus) return
     setOptimisticStatus(next)
     startTransition(async () => {
-      try {
-        await updateTaskStatus(task.id, next, projectId)
-      } catch {
-        setOptimisticStatus(task.status)
-      }
+      try { await updateTaskStatus(task.id, next, projectId) }
+      catch { setOptimisticStatus(task.status) }
     })
   }
 
@@ -67,7 +58,6 @@ function StatusPicker({ task, projectId }: { task: Task; projectId: string }) {
         {STATUS_OPTIONS.find((s) => s.value === optimisticStatus)!.label}
         <ChevronDown className="w-3 h-3 opacity-60" />
       </button>
-
       {open && (
         <div className="absolute top-full left-0 mt-1 z-50 bg-popover border rounded-lg shadow-md py-1 min-w-[130px]">
           {STATUS_OPTIONS.map((opt) => (
@@ -94,17 +84,42 @@ function StatusPicker({ task, projectId }: { task: Task; projectId: string }) {
   )
 }
 
+// ─── Urgent Flag ──────────────────────────────────────────────────────────────
+
+function UrgentFlag({ task, projectId }: { task: Task; projectId: string }) {
+  const [optimistic, setOptimistic] = useState(task.is_urgent ?? false)
+  const [isPending, startTransition] = useTransition()
+
+  function handleToggle() {
+    const next = !optimistic
+    setOptimistic(next)
+    startTransition(async () => {
+      try { await updateTaskUrgent(task.id, next, projectId) }
+      catch { setOptimistic(task.is_urgent ?? false) }
+    })
+  }
+
+  return (
+    <button
+      onClick={handleToggle}
+      disabled={isPending}
+      title={optimistic ? "Urgente — click para quitar" : "Marcar como urgente"}
+      className={cn(
+        "p-1.5 rounded-md transition-colors",
+        isPending && "opacity-40",
+        optimistic
+          ? "text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40"
+          : "text-muted-foreground/30 hover:text-muted-foreground hover:bg-muted"
+      )}
+    >
+      <Flag className={cn("w-3.5 h-3.5", optimistic && "fill-current")} />
+    </button>
+  )
+}
+
 // ─── Assignee Picker ──────────────────────────────────────────────────────────
 
-function AssigneePicker({
-  task,
-  projectId,
-  employees,
-}: {
-  task: Task
-  projectId: string
-  employees: Profile[]
-}) {
+function AssigneePicker({ task, projectId, employees }: { task: Task; projectId: string; employees: Profile[] }) {
   const [open, setOpen] = useState(false)
   const [optimisticAssignee, setOptimisticAssignee] = useState<Profile | null>(
     (task.assignee as Profile | null | undefined) ?? null
@@ -125,20 +140,13 @@ function AssigneePicker({
     if (employee?.id === optimisticAssignee?.id) return
     setOptimisticAssignee(employee)
     startTransition(async () => {
-      try {
-        await updateTaskAssignee(task.id, employee?.id ?? null, projectId)
-      } catch {
-        setOptimisticAssignee((task.assignee as Profile | null | undefined) ?? null)
-      }
+      try { await updateTaskAssignee(task.id, employee?.id ?? null, projectId) }
+      catch { setOptimisticAssignee((task.assignee as Profile | null | undefined) ?? null) }
     })
   }
 
   const initials = optimisticAssignee?.full_name
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2)
+    .split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
 
   return (
     <div ref={ref} className="relative inline-block">
@@ -166,10 +174,8 @@ function AssigneePicker({
         )}
         <ChevronDown className="w-3 h-3 opacity-40 flex-shrink-0" />
       </button>
-
       {open && (
         <div className="absolute top-full left-0 mt-1 z-50 bg-popover border rounded-lg shadow-md py-1 min-w-[160px] max-h-48 overflow-y-auto">
-          {/* Unassign option */}
           <button
             onClick={() => handleSelect(null)}
             className={cn(
@@ -180,9 +186,7 @@ function AssigneePicker({
             <UserX className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
             <span className="text-muted-foreground">Sin asignar</span>
           </button>
-
           {employees.length > 0 && <div className="border-t my-1" />}
-
           {employees.map((emp) => {
             const empInitials = emp.full_name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
             return (
@@ -251,9 +255,9 @@ export function TaskTable({ tasks, projectId, employees, isAdmin }: TaskTablePro
         <table className="w-full text-sm">
           <thead className="bg-muted/50">
             <tr>
+              <th className="w-8 px-3 py-3" title="Urgente" />
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Tarea</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Estado</th>
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Prioridad</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Asignado</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Vence</th>
               {isAdmin && <th className="text-right px-4 py-3 font-medium text-muted-foreground">Acciones</th>}
@@ -262,30 +266,34 @@ export function TaskTable({ tasks, projectId, employees, isAdmin }: TaskTablePro
           <tbody>
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={isAdmin ? 6 : 5} className="px-4 py-8 text-center text-muted-foreground">
                   No hay tareas en esta categoría
                 </td>
               </tr>
             )}
             {filtered.map((task) => (
-              <tr key={task.id} className="border-t hover:bg-muted/30 transition-colors">
+              <tr
+                key={task.id}
+                className={cn(
+                  "border-t transition-colors",
+                  task.is_urgent
+                    ? "bg-red-50/40 hover:bg-red-50/70 dark:bg-red-950/10 dark:hover:bg-red-950/20"
+                    : "hover:bg-muted/30"
+                )}
+              >
+                <td className="px-3 py-3">
+                  <UrgentFlag task={task} projectId={projectId} />
+                </td>
                 <td className="px-4 py-3">
-                  <div>
-                    <p className={cn("font-medium", task.status === "Done" && "line-through text-muted-foreground")}>
-                      {task.title}
-                    </p>
-                    {task.description && (
-                      <p className="text-xs text-muted-foreground mt-0.5 truncate max-w-xs">{task.description}</p>
-                    )}
-                  </div>
+                  <p className={cn("font-medium", task.status === "Done" && "line-through text-muted-foreground")}>
+                    {task.title}
+                  </p>
+                  {task.description && (
+                    <p className="text-xs text-muted-foreground mt-0.5 truncate max-w-xs">{task.description}</p>
+                  )}
                 </td>
                 <td className="px-4 py-3">
                   <StatusPicker task={task} projectId={projectId} />
-                </td>
-                <td className="px-4 py-3">
-                  <span className={cn("text-xs font-medium", priorityConfig[task.priority].color)}>
-                    {priorityConfig[task.priority].label}
-                  </span>
                 </td>
                 <td className="px-4 py-3">
                   <AssigneePicker task={task} projectId={projectId} employees={employees} />
@@ -320,12 +328,7 @@ export function TaskTable({ tasks, projectId, employees, isAdmin }: TaskTablePro
                           }
                         }}
                       >
-                        <Button
-                          type="submit"
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-destructive hover:text-destructive"
-                        >
+                        <Button type="submit" variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
                           <Trash2 className="w-3.5 h-3.5" />
                         </Button>
                       </form>

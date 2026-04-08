@@ -4,10 +4,8 @@ import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { can } from "@/lib/permissions"
-import type { TaskStatus, TaskPriority } from "@/lib/types"
+import type { TaskStatus } from "@/lib/types"
 
-// Verify the caller is authenticated, has manage_tasks permission,
-// and has access to the given project. Returns the user.
 async function requireTaskPermission(projectId: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -21,7 +19,6 @@ async function requireTaskPermission(projectId: string) {
 
   if (!can(profile, "manage_tasks")) throw new Error("Permission denied")
 
-  // Verify project access via RLS (employee must be a member)
   const { data: project } = await supabase
     .from("projects")
     .select("id")
@@ -59,7 +56,7 @@ export async function createTask(formData: FormData) {
     title: formData.get("title") as string,
     description: (formData.get("description") as string) || null,
     status: (formData.get("status") as TaskStatus) ?? "Todo",
-    priority: (formData.get("priority") as TaskPriority) ?? "Medium",
+    is_urgent: formData.get("is_urgent") === "true",
     due_date: (formData.get("due_date") as string) || null,
     assignee_id: (formData.get("assignee_id") as string) || null,
   })
@@ -80,10 +77,24 @@ export async function updateTask(id: string, formData: FormData) {
       title: formData.get("title") as string,
       description: (formData.get("description") as string) || null,
       status: formData.get("status") as TaskStatus,
-      priority: formData.get("priority") as TaskPriority,
+      is_urgent: formData.get("is_urgent") === "true",
       due_date: (formData.get("due_date") as string) || null,
       assignee_id: (formData.get("assignee_id") as string) || null,
     })
+    .eq("id", id)
+
+  if (error) throw error
+  revalidatePath(`/projects/${projectId}`)
+  revalidatePath("/tasks")
+}
+
+export async function updateTaskUrgent(id: string, isUrgent: boolean, projectId: string) {
+  await requireTaskPermission(projectId)
+
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from("tasks")
+    .update({ is_urgent: isUrgent })
     .eq("id", id)
 
   if (error) throw error
