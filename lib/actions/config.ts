@@ -47,6 +47,7 @@ export async function createProjectType(formData: FormData) {
   }).select().single()
   if (error) throw error
   revalidatePath("/settings")
+  revalidatePath("/operations")
   revalidatePath("/projects")
   return data
 }
@@ -66,6 +67,7 @@ export async function updateProjectType(id: string, formData: FormData) {
     .single()
   if (error) throw error
   revalidatePath("/settings")
+  revalidatePath("/operations")
   revalidatePath("/projects")
   return data
 }
@@ -75,6 +77,7 @@ export async function deleteProjectType(id: string) {
   const { error } = await supabase.from("project_types").delete().eq("id", id)
   if (error) throw error
   revalidatePath("/settings")
+  revalidatePath("/operations")
 }
 
 // ============================================================
@@ -105,6 +108,7 @@ export async function createPhaseSet(formData: FormData) {
   }).select().single()
   if (error) throw error
   revalidatePath("/settings")
+  revalidatePath("/operations")
   return data
 }
 
@@ -120,6 +124,7 @@ export async function updatePhaseSet(id: string, formData: FormData) {
     .eq("id", id)
   if (error) throw error
   revalidatePath("/settings")
+  revalidatePath("/operations")
 }
 
 export async function deletePhaseSet(id: string) {
@@ -127,6 +132,7 @@ export async function deletePhaseSet(id: string) {
   const { error } = await supabase.from("phase_sets").delete().eq("id", id)
   if (error) throw error
   revalidatePath("/settings")
+  revalidatePath("/operations")
 }
 
 // ============================================================
@@ -152,6 +158,7 @@ export async function addPhaseToSet(phaseSetId: string, formData: FormData) {
   }).select().single()
   if (error) throw error
   revalidatePath("/settings")
+  revalidatePath("/operations")
   return data
 }
 
@@ -166,6 +173,7 @@ export async function updatePhaseInSet(phaseId: string, formData: FormData) {
     .eq("id", phaseId)
   if (error) throw error
   revalidatePath("/settings")
+  revalidatePath("/operations")
 }
 
 export async function deletePhaseFromSet(phaseId: string) {
@@ -173,6 +181,7 @@ export async function deletePhaseFromSet(phaseId: string) {
   const { error } = await supabase.from("phase_set_phases").delete().eq("id", phaseId)
   if (error) throw error
   revalidatePath("/settings")
+  revalidatePath("/operations")
 }
 
 export async function reorderPhaseInSet(phaseSetId: string, orderedIds: string[]) {
@@ -182,6 +191,7 @@ export async function reorderPhaseInSet(phaseSetId: string, orderedIds: string[]
   )
   await Promise.all(updates)
   revalidatePath("/settings")
+  revalidatePath("/operations")
 }
 
 export async function linkPhaseSetToProjectType(projectTypeId: string, phaseSetId: string | null) {
@@ -192,6 +202,7 @@ export async function linkPhaseSetToProjectType(projectTypeId: string, phaseSetI
     .eq("id", projectTypeId)
   if (error) throw error
   revalidatePath("/settings")
+  revalidatePath("/operations")
 }
 
 // ============================================================
@@ -223,6 +234,7 @@ export async function createTaskSet(formData: FormData) {
   }).select().single()
   if (error) throw error
   revalidatePath("/settings")
+  revalidatePath("/operations")
   return data
 }
 
@@ -236,6 +248,7 @@ export async function updateTaskSet(id: string, formData: FormData) {
   }).eq("id", id)
   if (error) throw error
   revalidatePath("/settings")
+  revalidatePath("/operations")
 }
 
 export async function deleteTaskSet(id: string) {
@@ -243,6 +256,7 @@ export async function deleteTaskSet(id: string) {
   const { error } = await supabase.from("task_sets").delete().eq("id", id)
   if (error) throw error
   revalidatePath("/settings")
+  revalidatePath("/operations")
 }
 
 export async function addTaskToSet(taskSetId: string, formData: FormData) {
@@ -264,6 +278,7 @@ export async function addTaskToSet(taskSetId: string, formData: FormData) {
   }).select().single()
   if (error) throw error
   revalidatePath("/settings")
+  revalidatePath("/operations")
   return data
 }
 
@@ -272,6 +287,7 @@ export async function deleteTaskFromSet(taskId: string) {
   const { error } = await supabase.from("task_set_tasks").delete().eq("id", taskId)
   if (error) throw error
   revalidatePath("/settings")
+  revalidatePath("/operations")
 }
 
 export async function linkTaskSetToPhase(phaseId: string, taskSetId: string | null) {
@@ -282,4 +298,5 @@ export async function linkTaskSetToPhase(phaseId: string, taskSetId: string | nu
     .eq("id", phaseId)
   if (error) throw error
   revalidatePath("/settings")
+  revalidatePath("/operations")
 }
