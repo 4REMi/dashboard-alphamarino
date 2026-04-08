@@ -71,8 +71,8 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   ])
 
   const tasks = (project.tasks ?? []) as Task[]
-  const members = (project.members ?? [])
-    .map((m: { profile: Profile | null }) => m.profile)
+  const members = ((project.members ?? []) as { profile: Profile | null }[])
+    .map((m) => m.profile)
     .filter((p): p is Profile => p !== null && p?.full_name != null)
   const phases = (project.phases ?? []) as ProjectPhase[]
 
