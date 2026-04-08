@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation"
 import Link from "next/link"
-import { getProject, getProjectCycles, getProjectLog } from "@/lib/actions/projects"
+import { getProject, getProjectCycles, getProjectLog, getProjectMembers } from "@/lib/actions/projects"
 import { getEmployees } from "@/lib/actions/employees"
 import { getIncome, getProjectExpenses } from "@/lib/actions/finances"
 import { getProjectTypes, getPhaseSets } from "@/lib/actions/config"
@@ -59,7 +59,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const hasPhases = (project.phases ?? []).length > 0
   const isArchived = project.status === "Archived"
 
-  const [employees, customers, projectTypes, phaseSets, income, expenses, cycles, logEntries] = await Promise.all([
+  const [employees, customers, projectTypes, phaseSets, income, expenses, cycles, logEntries, members] = await Promise.all([
     getEmployees().catch(() => []),
     getCustomers().catch(() => []),
     getProjectTypes().catch(() => []),
@@ -68,12 +68,10 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     canViewFinancials ? getProjectExpenses(id).catch(() => []) : Promise.resolve([]),
     isPaidMedia ? getProjectCycles(id).catch(() => []) : Promise.resolve([]),
     getProjectLog(id).catch(() => []),
+    getProjectMembers(id).catch(() => []),
   ])
 
   const tasks = (project.tasks ?? []) as Task[]
-  const members = ((project.members ?? []) as { profile: Profile | null }[])
-    .map((m) => m.profile)
-    .filter((p): p is Profile => p !== null && p?.full_name != null)
   const phases = (project.phases ?? []) as ProjectPhase[]
 
   // Extract one-to-one relations (Supabase may return as array)
@@ -255,7 +253,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         <h2 className="text-base font-semibold mb-3">Equipo ({members.length})</h2>
         <TeamManager
           projectId={project.id}
-          members={members}
+          members={members as Profile[]}
           allEmployees={employees as Profile[]}
           isAdmin={canManageTeam}
         />

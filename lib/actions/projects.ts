@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import type { ProjectStatus, PhaseStatus, CycleDeliverableStatus, CampaignStatus } from "@/lib/types"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
@@ -563,10 +564,47 @@ export async function incrementRevision(projectId: string) {
 // PROJECT LOG
 // ============================================================
 
+// Returns all members of a project with their full profile data.
+// Uses the admin client for the profile join so RLS on profiles
+// doesn't hide teammates from employees.
+export async function getProjectMembers(projectId: string) {
+  const supabase = await createClient()
+
+  // Verify the caller has access to this project via RLS
+  const { data: check } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("id", projectId)
+    .single()
+  if (!check) return []
+
+  const admin = createAdminClient()
+  const { data, error } = await admin
+    .from("project_members")
+    .select("profile:profiles(id, full_name, avatar_url, position, role)")
+    .eq("project_id", projectId)
+
+  if (error) return []
+  return ((data ?? []) as { profile: Record<string, unknown> | null }[])
+    .map((m) => m.profile)
+    .filter((p): p is Record<string, unknown> => p !== null && p?.full_name != null)
+}
+
 export async function getProjectLog(projectId: string) {
   const supabase = await createClient()
+
+  // Verify access via RLS first
+  const { data: check } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("id", projectId)
+    .single()
+  if (!check) return []
+
+  // Use admin client so author profiles are visible regardless of profile RLS
+  const admin = createAdminClient()
   try {
-    const { data, error } = await supabase
+    const { data, error } = await admin
       .from("project_log_entries")
       .select("*, author:profiles(id, full_name, avatar_url)")
       .eq("project_id", projectId)
