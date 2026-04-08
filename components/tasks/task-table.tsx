@@ -5,15 +5,15 @@ import { deleteTask, updateTaskStatus, updateTaskAssignee, updateTaskUrgent } fr
 import { TaskForm } from "./task-form"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Pencil, Trash2, CalendarDays, ChevronDown, UserX, Flag } from "lucide-react"
+import { Pencil, Trash2, CalendarDays, ChevronDown, ChevronRight, UserX, Flag } from "lucide-react"
 import { formatDate } from "@/lib/utils"
 import { cn } from "@/lib/utils"
 import type { Task, Profile, TaskStatus } from "@/lib/types"
 
-const STATUS_OPTIONS: { value: TaskStatus; label: string }[] = [
-  { value: "Todo", label: "Por Hacer" },
-  { value: "In Progress", label: "En Progreso" },
-  { value: "Done", label: "Hecho" },
+const STATUS_GROUPS: { value: TaskStatus; label: string; defaultOpen: boolean }[] = [
+  { value: "In Progress", label: "En Progreso", defaultOpen: true },
+  { value: "Todo",        label: "Por Hacer",   defaultOpen: true },
+  { value: "Done",        label: "Hecho",        defaultOpen: false },
 ]
 
 // ─── Status Picker ────────────────────────────────────────────────────────────
@@ -50,17 +50,17 @@ function StatusPicker({ task, projectId }: { task: Task; projectId: string }) {
         className={cn(
           "flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-opacity",
           isPending && "opacity-50",
-          optimisticStatus === "Todo" && "border-transparent bg-secondary text-secondary-foreground",
+          optimisticStatus === "Todo"        && "border-transparent bg-secondary text-secondary-foreground",
           optimisticStatus === "In Progress" && "border-transparent bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200",
-          optimisticStatus === "Done" && "border-transparent bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200",
+          optimisticStatus === "Done"        && "border-transparent bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200",
         )}
       >
-        {STATUS_OPTIONS.find((s) => s.value === optimisticStatus)!.label}
+        {STATUS_GROUPS.find((s) => s.value === optimisticStatus)!.label}
         <ChevronDown className="w-3 h-3 opacity-60" />
       </button>
       {open && (
         <div className="absolute top-full left-0 mt-1 z-50 bg-popover border rounded-lg shadow-md py-1 min-w-[130px]">
-          {STATUS_OPTIONS.map((opt) => (
+          {STATUS_GROUPS.map((opt) => (
             <button
               key={opt.value}
               onClick={() => handleSelect(opt.value)}
@@ -71,9 +71,9 @@ function StatusPicker({ task, projectId }: { task: Task; projectId: string }) {
             >
               <span className={cn(
                 "w-2 h-2 rounded-full flex-shrink-0",
-                opt.value === "Todo" && "bg-muted-foreground/50",
+                opt.value === "Todo"        && "bg-muted-foreground/50",
                 opt.value === "In Progress" && "bg-blue-500",
-                opt.value === "Done" && "bg-green-500",
+                opt.value === "Done"        && "bg-green-500",
               )} />
               {opt.label}
             </button>
@@ -167,10 +167,10 @@ function AssigneePicker({ task, projectId, employees }: { task: Task; projectId:
                 <AvatarFallback className="text-[10px]">{initials}</AvatarFallback>
               )}
             </Avatar>
-            <span className="max-w-[100px] truncate">{optimisticAssignee.full_name.split(" ")[0]}</span>
+            <span className="max-w-[90px] truncate">{optimisticAssignee.full_name.split(" ")[0]}</span>
           </>
         ) : (
-          <span className="text-muted-foreground">Sin asignar</span>
+          <span className="text-muted-foreground italic text-xs">Sin asignar</span>
         )}
         <ChevronDown className="w-3 h-3 opacity-40 flex-shrink-0" />
       </button>
@@ -215,6 +215,109 @@ function AssigneePicker({ task, projectId, employees }: { task: Task; projectId:
   )
 }
 
+// ─── Task Row ─────────────────────────────────────────────────────────────────
+
+function TaskRow({ task, projectId, employees, isAdmin }: {
+  task: Task; projectId: string; employees: Profile[]; isAdmin: boolean
+}) {
+  return (
+    <tr className={cn(
+      "border-t transition-colors",
+      task.is_urgent
+        ? "bg-red-50/40 hover:bg-red-50/70 dark:bg-red-950/10 dark:hover:bg-red-950/20"
+        : "hover:bg-muted/30"
+    )}>
+      <td className="px-3 py-2.5">
+        <UrgentFlag task={task} projectId={projectId} />
+      </td>
+      <td className="px-4 py-2.5">
+        <p className={cn("font-medium text-sm", task.status === "Done" && "line-through text-muted-foreground")}>
+          {task.title}
+        </p>
+        {task.description && (
+          <p className="text-xs text-muted-foreground mt-0.5 truncate max-w-xs">{task.description}</p>
+        )}
+      </td>
+      <td className="px-4 py-2.5">
+        <StatusPicker task={task} projectId={projectId} />
+      </td>
+      <td className="px-4 py-2.5">
+        <AssigneePicker task={task} projectId={projectId} employees={employees} />
+      </td>
+      <td className="px-4 py-2.5">
+        {task.due_date ? (
+          <div className={cn(
+            "flex items-center gap-1 text-xs",
+            new Date(task.due_date) < new Date() && task.status !== "Done"
+              ? "text-red-600 font-medium"
+              : "text-muted-foreground"
+          )}>
+            <CalendarDays className="w-3.5 h-3.5 flex-shrink-0" />
+            {formatDate(task.due_date)}
+          </div>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        )}
+      </td>
+      {isAdmin && (
+        <td className="px-4 py-2.5">
+          <div className="flex items-center justify-end gap-1">
+            <TaskForm
+              projectId={projectId}
+              task={task}
+              employees={employees}
+              trigger={
+                <Button variant="ghost" size="icon" className="h-7 w-7">
+                  <Pencil className="w-3 h-3" />
+                </Button>
+              }
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-destructive hover:text-destructive"
+              onClick={async () => {
+                if (confirm(`¿Eliminar "${task.title}"?`)) {
+                  await deleteTask(task.id, projectId)
+                }
+              }}
+            >
+              <Trash2 className="w-3 h-3" />
+            </Button>
+          </div>
+        </td>
+      )}
+    </tr>
+  )
+}
+
+// ─── Group Header ─────────────────────────────────────────────────────────────
+
+function GroupHeader({ label, count, isOpen, onToggle, status }: {
+  label: string; count: number; isOpen: boolean; onToggle: () => void; status: TaskStatus
+}) {
+  return (
+    <button
+      onClick={onToggle}
+      className="w-full flex items-center gap-2 px-4 py-2 text-left hover:bg-muted/50 transition-colors border-t first:border-t-0"
+    >
+      {isOpen
+        ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+        : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+      }
+      <span className={cn(
+        "w-2 h-2 rounded-full flex-shrink-0",
+        status === "Todo"        && "bg-muted-foreground/50",
+        status === "In Progress" && "bg-blue-500",
+        status === "Done"        && "bg-green-500",
+      )} />
+      <span className="text-xs font-semibold">{label}</span>
+      <span className="text-xs text-muted-foreground ml-1">{count}</span>
+    </button>
+  )
+}
+
 // ─── Task Table ───────────────────────────────────────────────────────────────
 
 interface TaskTableProps {
@@ -225,121 +328,72 @@ interface TaskTableProps {
 }
 
 export function TaskTable({ tasks, projectId, employees, isAdmin }: TaskTableProps) {
-  const [filter, setFilter] = useState<"all" | TaskStatus>("all")
+  const initialOpen = Object.fromEntries(
+    STATUS_GROUPS.map((g) => [g.value, g.defaultOpen])
+  ) as Record<TaskStatus, boolean>
+  const [open, setOpen] = useState<Record<TaskStatus, boolean>>(initialOpen)
 
-  const filtered = filter === "all" ? tasks : tasks.filter((t) => t.status === filter)
+  function toggleGroup(status: TaskStatus) {
+    setOpen((prev) => ({ ...prev, [status]: !prev[status] }))
+  }
+
+  const grouped = STATUS_GROUPS.map((g) => ({
+    ...g,
+    tasks: tasks
+      .filter((t) => t.status === g.value)
+      .sort((a, b) => (b.is_urgent ? 1 : 0) - (a.is_urgent ? 1 : 0)), // urgent first
+  })).filter((g) => g.tasks.length > 0)
+
+  if (tasks.length === 0) {
+    return (
+      <div className="border rounded-lg py-10 text-center text-sm text-muted-foreground bg-card">
+        Sin tareas aún.
+      </div>
+    )
+  }
 
   return (
-    <div className="space-y-4">
-      <div className="flex gap-2 flex-wrap">
-        {(["all", "Todo", "In Progress", "Done"] as const).map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={cn(
-              "px-3 py-1 rounded-full text-xs font-medium transition-colors",
-              filter === f
-                ? "bg-primary text-primary-foreground"
-                : "bg-muted text-muted-foreground hover:bg-accent"
-            )}
-          >
-            {f === "all" ? "Todas" : STATUS_OPTIONS.find((s) => s.value === f)!.label}
-            <span className="ml-1.5 opacity-70">
-              ({f === "all" ? tasks.length : tasks.filter((t) => t.status === f).length})
-            </span>
-          </button>
-        ))}
-      </div>
-
-      <div className="border rounded-lg overflow-hidden bg-card">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/50">
-            <tr>
-              <th className="w-8 px-3 py-3" title="Urgente" />
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Tarea</th>
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Estado</th>
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Asignado</th>
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Vence</th>
-              {isAdmin && <th className="text-right px-4 py-3 font-medium text-muted-foreground">Acciones</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 && (
-              <tr>
-                <td colSpan={isAdmin ? 6 : 5} className="px-4 py-8 text-center text-muted-foreground">
-                  No hay tareas en esta categoría
+    <div className="border rounded-lg overflow-hidden bg-card">
+      <table className="w-full text-sm">
+        <thead className="bg-muted/50 border-b">
+          <tr>
+            <th className="w-8 px-3 py-2.5" />
+            <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Tarea</th>
+            <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Estado</th>
+            <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Asignado</th>
+            <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Vence</th>
+            {isAdmin && <th className="text-right px-4 py-2.5 font-medium text-muted-foreground" />}
+          </tr>
+        </thead>
+        <tbody>
+          {grouped.map((group) => (
+            <>
+              {/* Group header row */}
+              <tr key={`header-${group.value}`}>
+                <td colSpan={isAdmin ? 6 : 5} className="p-0">
+                  <GroupHeader
+                    label={group.label}
+                    count={group.tasks.length}
+                    isOpen={open[group.value]}
+                    onToggle={() => toggleGroup(group.value)}
+                    status={group.value}
+                  />
                 </td>
               </tr>
-            )}
-            {filtered.map((task) => (
-              <tr
-                key={task.id}
-                className={cn(
-                  "border-t transition-colors",
-                  task.is_urgent
-                    ? "bg-red-50/40 hover:bg-red-50/70 dark:bg-red-950/10 dark:hover:bg-red-950/20"
-                    : "hover:bg-muted/30"
-                )}
-              >
-                <td className="px-3 py-3">
-                  <UrgentFlag task={task} projectId={projectId} />
-                </td>
-                <td className="px-4 py-3">
-                  <p className={cn("font-medium", task.status === "Done" && "line-through text-muted-foreground")}>
-                    {task.title}
-                  </p>
-                  {task.description && (
-                    <p className="text-xs text-muted-foreground mt-0.5 truncate max-w-xs">{task.description}</p>
-                  )}
-                </td>
-                <td className="px-4 py-3">
-                  <StatusPicker task={task} projectId={projectId} />
-                </td>
-                <td className="px-4 py-3">
-                  <AssigneePicker task={task} projectId={projectId} employees={employees} />
-                </td>
-                <td className="px-4 py-3">
-                  {task.due_date ? (
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <CalendarDays className="w-3.5 h-3.5" />
-                      {formatDate(task.due_date)}
-                    </div>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">—</span>
-                  )}
-                </td>
-                {isAdmin && (
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-1">
-                      <TaskForm
-                        projectId={projectId}
-                        task={task}
-                        employees={employees}
-                        trigger={
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <Pencil className="w-3.5 h-3.5" />
-                          </Button>
-                        }
-                      />
-                      <form
-                        action={async () => {
-                          if (confirm(`¿Eliminar "${task.title}"?`)) {
-                            await deleteTask(task.id, projectId)
-                          }
-                        }}
-                      >
-                        <Button type="submit" variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                      </form>
-                    </div>
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+              {/* Task rows */}
+              {open[group.value] && group.tasks.map((task) => (
+                <TaskRow
+                  key={task.id}
+                  task={task}
+                  projectId={projectId}
+                  employees={employees}
+                  isAdmin={isAdmin}
+                />
+              ))}
+            </>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
