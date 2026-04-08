@@ -15,6 +15,7 @@ interface Props {
   project?: Project
   customers?: Customer[]
   projectTypes?: ProjectType[]
+  canViewFinancials?: boolean
 }
 
 export function ProjectActions({
@@ -25,6 +26,7 @@ export function ProjectActions({
   project,
   customers = [],
   projectTypes = [],
+  canViewFinancials = true,
 }: Props) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -61,6 +63,7 @@ export function ProjectActions({
           customers={customers}
           projectTypes={projectTypes}
           trigger={<Button variant="outline" size="sm">Editar</Button>}
+          canViewFinancials={canViewFinancials}
         />
       )}
       {isArchived ? (

@@ -129,6 +129,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             project={canEditProjects ? project as Project : undefined}
             customers={customers as Customer[]}
             projectTypes={projectTypes as ProjectType[]}
+            canViewFinancials={canViewFinancials}
           />
         </div>
       </div>

@@ -57,6 +57,7 @@ export default async function ProjectsPage() {
           <ProjectForm
             customers={customers as Customer[]}
             projectTypes={projectTypes as ProjectType[]}
+            canViewFinancials={canViewFinancials}
           />
         )}
       </div>

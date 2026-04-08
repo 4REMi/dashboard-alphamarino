@@ -15,9 +15,10 @@ interface ProjectFormProps {
   customers: Customer[]
   projectTypes: ProjectType[]
   trigger?: React.ReactNode
+  canViewFinancials?: boolean
 }
 
-export function ProjectForm({ project, customers, projectTypes, trigger }: ProjectFormProps) {
+export function ProjectForm({ project, customers, projectTypes, trigger, canViewFinancials = true }: ProjectFormProps) {
   const [open, setOpen] = useState(false)
   const [status, setStatus] = useState<string>(project?.status ?? "Planning")
   const [customerId, setCustomerId] = useState(project?.customer_id ?? "none")
@@ -127,18 +128,20 @@ export function ProjectForm({ project, customers, projectTypes, trigger }: Proje
             </Select>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="project_value">Valor del Proyecto ($)</Label>
-              <Input id="project_value" name="project_value" type="number" min="0" step="0.01"
-                defaultValue={project?.project_value ?? ""} />
+          {canViewFinancials && (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="project_value">Valor del Proyecto ($)</Label>
+                <Input id="project_value" name="project_value" type="number" min="0" step="0.01"
+                  defaultValue={project?.project_value ?? ""} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="monthly_fee">Fee Mensual ($)</Label>
+                <Input id="monthly_fee" name="monthly_fee" type="number" min="0" step="0.01"
+                  defaultValue={project?.monthly_fee ?? ""} />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="monthly_fee">Fee Mensual ($)</Label>
-              <Input id="monthly_fee" name="monthly_fee" type="number" min="0" step="0.01"
-                defaultValue={project?.monthly_fee ?? ""} />
-            </div>
-          </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
