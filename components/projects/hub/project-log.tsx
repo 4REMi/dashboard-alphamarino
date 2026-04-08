@@ -92,8 +92,12 @@ export function ProjectLog({ projectId, initialEntries, currentUserId, isAdmin }
           return (
             <div key={entry.id} className="px-5 py-4">
               <div className="flex items-start gap-3">
-                <div className="w-7 h-7 rounded-full bg-primary/15 flex items-center justify-center flex-shrink-0 text-xs font-bold text-primary">
-                  {authorName[0]?.toUpperCase() ?? "?"}
+                <div className="w-7 h-7 rounded-full bg-primary/15 flex items-center justify-center flex-shrink-0 text-xs font-bold text-primary overflow-hidden">
+                  {entry.author?.avatar_url ? (
+                    <img src={entry.author.avatar_url} alt={authorName} className="w-full h-full object-cover" />
+                  ) : (
+                    authorName[0]?.toUpperCase() ?? "?"
+                  )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-baseline gap-2 mb-1">

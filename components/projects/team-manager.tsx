@@ -61,10 +61,11 @@ export function TeamManager({ projectId, members, allEmployees, isAdmin }: TeamM
             <Link href={`/employees/${member.id}`}>
               <div className="flex items-center gap-2 bg-muted rounded-lg px-3 py-2 hover:bg-accent transition-colors pr-7">
                 <Avatar className="h-7 w-7">
-                  {member.avatar_url && (
+                  {member.avatar_url ? (
                     <img src={member.avatar_url} alt={member.full_name} className="aspect-square h-full w-full object-cover" />
+                  ) : (
+                    <AvatarFallback className="text-xs">{initials}</AvatarFallback>
                   )}
-                  <AvatarFallback className="text-xs">{initials}</AvatarFallback>
                 </Avatar>
                 <div>
                   <p className="text-sm font-medium leading-tight">{member.full_name}</p>
