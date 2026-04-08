@@ -31,6 +31,8 @@ export function LoginForm({ logoUrl }: Props) {
       setLoading(false)
       return
     }
+    // Sync profile language preference → NEXT_LOCALE cookie before navigating
+    await fetch("/api/sync-locale").catch(() => {})
     router.push("/")
     router.refresh()
   }
