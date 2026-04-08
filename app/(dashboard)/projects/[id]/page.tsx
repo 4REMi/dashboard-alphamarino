@@ -16,6 +16,7 @@ import { PaidMediaCycleCard } from "@/components/projects/hub/paid-media-cycle-c
 import { PaidMediaCycleHistory } from "@/components/projects/hub/paid-media-cycle-history"
 import { WebContextCard } from "@/components/projects/hub/web-context-card"
 import { ProjectLog } from "@/components/projects/hub/project-log"
+import { ExpandableDescription } from "@/components/projects/expandable-description"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
@@ -27,11 +28,11 @@ import type { Customer, Profile, Project, Task, ProjectType, PaidMediaContext, P
 import { can } from "@/lib/permissions"
 
 const statusConfig = {
-  Planning:    { label: "Planificación", variant: "secondary" as const },
-  "In Progress": { label: "En Progreso",  variant: "info"      as const },
-  Review:      { label: "Revisión",      variant: "warning"   as const },
-  Completed:   { label: "Completado",    variant: "success"   as const },
-  Archived:    { label: "Archivado",     variant: "secondary" as const },
+  Planning:      { label: "Planificación", variant: "secondary" as const },
+  "In Progress": { label: "En Progreso",   variant: "info"      as const },
+  Review:        { label: "Revisión",      variant: "warning"   as const },
+  Completed:     { label: "Completado",    variant: "success"   as const },
+  Archived:      { label: "Archivado",     variant: "secondary" as const },
 }
 
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -44,7 +45,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const { data: { user } } = await supabase.auth.getUser()
   const { data: profile } = await supabase.from("profiles").select("role, permissions").eq("id", user!.id).single()
   const role = profile?.role ?? "employee"
-  const isAdmin = role === "admin"
+  const isAdmin           = role === "admin"
   const isAdminOrSubadmin = role === "admin" || role === "subadmin"
 
   const canViewFinancials = can(profile as Profile, "view_project_financials")
@@ -53,7 +54,8 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const canManageTasks    = can(profile as Profile, "manage_tasks")
 
   const projectType = project.project_type as { name: string } | null
-  const isPaidMedia = projectType?.name?.toLowerCase().includes("paid media") || projectType?.name?.toLowerCase().includes("media")
+  const isPaidMedia = projectType?.name?.toLowerCase().includes("paid media") ||
+                      projectType?.name?.toLowerCase().includes("media")
   const hasPhases   = (project.phases ?? []).length > 0
   const isArchived  = project.status === "Archived"
 
@@ -62,9 +64,9 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     getCustomers().catch(() => []),
     getProjectTypes().catch(() => []),
     getPhaseSets().catch(() => []),
-    canViewFinancials ? getIncome(id).catch(() => [])            : Promise.resolve([]),
-    canViewFinancials ? getProjectExpenses(id).catch(() => [])   : Promise.resolve([]),
-    isPaidMedia       ? getProjectCycles(id).catch(() => [])     : Promise.resolve([]),
+    canViewFinancials ? getIncome(id).catch(() => [])          : Promise.resolve([]),
+    canViewFinancials ? getProjectExpenses(id).catch(() => []) : Promise.resolve([]),
+    isPaidMedia       ? getProjectCycles(id).catch(() => [])   : Promise.resolve([]),
     getProjectLog(id).catch(() => []),
     getProjectMembers(id).catch(() => []),
   ])
@@ -76,35 +78,34 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     if (Array.isArray(val)) return val[0] ?? null
     return val ?? null
   }
-  const paidMediaContext = unwrapSingle(project.paid_media_context)  as PaidMediaContext   | null
-  const webContext       = unwrapSingle(project.web_project_context) as WebProjectContext  | null
+  const paidMediaContext = unwrapSingle(project.paid_media_context)  as PaidMediaContext  | null
+  const webContext       = unwrapSingle(project.web_project_context) as WebProjectContext | null
 
   const activeCycle   = (cycles as PaidMediaCycle[]).find((c) =>  c.is_active) ?? null
   const historyCycles = (cycles as PaidMediaCycle[]).filter((c) => !c.is_active)
 
-  const totalIncome      = income.reduce((s, i) => s + Number(i.amount), 0)
-  const totalExpenses    = expenses.reduce((s, e) => s + Number(e.amount), 0)
-  const projectValue     = project.project_value ?? 0
+  const totalIncome        = income.reduce((s, i) => s + Number(i.amount), 0)
+  const totalExpenses      = expenses.reduce((s, e) => s + Number(e.amount), 0)
+  const projectValue       = project.project_value ?? 0
   const accountsReceivable = projectValue - totalIncome
 
-  const config = statusConfig[project.status as keyof typeof statusConfig] ?? statusConfig["Planning"]
+  const config        = statusConfig[project.status as keyof typeof statusConfig] ?? statusConfig["Planning"]
+  const memberProfiles = members as Profile[]
 
-  // Team member initials helper
   function initials(name: string) {
     return name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
   }
 
-  const memberProfiles = members as Profile[]
-  const VISIBLE_AVATARS = 5
+  const hasContextSection = hasPhases || (isAdminOrSubadmin && phaseSets.length > 0) || isPaidMedia
 
   return (
     <div className="flex flex-col min-h-full">
 
-      {/* ── Compact header ──────────────────────────────────────────────── */}
-      <div className="border-b border-border bg-card/60 backdrop-blur supports-[backdrop-filter]:bg-card/40 sticky top-0 z-10">
-        <div className="px-6 pt-4 pb-3 max-w-7xl">
+      {/* ── Sticky header ──────────────────────────────────────────────── */}
+      <div className="border-b border-border bg-card/80 backdrop-blur supports-[backdrop-filter]:bg-card/60 sticky top-0 z-10">
+        <div className="px-6 pt-4 pb-3">
 
-          {/* Row 1: back + name + badges + actions */}
+          {/* Row 1: back · name · badges · actions */}
           <div className="flex items-center gap-3 min-w-0">
             <Link
               href="/projects"
@@ -136,12 +137,12 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             />
           </div>
 
-          {/* Row 2: meta + progress */}
-          <div className="flex items-center gap-4 mt-2 ml-9">
+          {/* Row 2: client · dates · progress */}
+          <div className="flex items-center gap-4 mt-2 ml-9 flex-wrap">
             {project.customer && (
               <Link
                 href={`/customers/${project.customer_id}`}
-                className="text-xs text-muted-foreground hover:text-primary transition-colors truncate"
+                className="text-xs text-muted-foreground hover:text-primary transition-colors"
               >
                 {(project.customer as { name: string }).name}
               </Link>
@@ -154,208 +155,193 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                 {project.end_date && formatDate(project.end_date)}
               </div>
             )}
-            <div className="flex items-center gap-2 flex-1 max-w-xs">
+            <div className="flex items-center gap-2 flex-1 max-w-xs min-w-24">
               <Progress value={project.progress} className="h-1.5 flex-1" />
               <span className="text-xs font-semibold text-primary flex-shrink-0">{project.progress}%</span>
             </div>
-            {project.description && (
-              <p className="hidden lg:block text-xs text-muted-foreground truncate max-w-sm">{project.description}</p>
-            )}
           </div>
         </div>
       </div>
 
-      {/* ── Body: 2-column grid ─────────────────────────────────────────── */}
-      <div className="flex-1 p-6">
-        <div className="max-w-7xl grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+      {/* ── Page body ──────────────────────────────────────────────────── */}
+      <div className="flex-1 p-6 space-y-6">
 
-          {/* ── Main column ──────────────────────────────────────────────── */}
-          <div className="lg:col-span-2 space-y-6">
+        {/* Description — full width, expandable */}
+        {project.description && (
+          <div className="border border-border rounded-xl px-5 py-4 bg-card">
+            <ExpandableDescription text={project.description} />
+          </div>
+        )}
 
-            {/* Tasks */}
-            <section>
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-semibold text-foreground">
-                  Tareas
-                  <span className="ml-2 text-muted-foreground font-normal">({tasks.length})</span>
-                </h2>
-                {canManageTasks && (
-                  <TaskForm
-                    projectId={project.id}
-                    employees={employees as Profile[]}
-                    trigger={
-                      <button className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
-                        <Plus className="w-3.5 h-3.5" />
-                        Nueva tarea
-                      </button>
-                    }
-                  />
-                )}
-              </div>
-              <TaskTable
-                tasks={tasks}
+        {/* ── Tasks — full width ──────────────────────────────────────── */}
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold">
+              Tareas
+              <span className="ml-2 font-normal text-muted-foreground">({tasks.length})</span>
+            </h2>
+            {canManageTasks && (
+              <TaskForm
                 projectId={project.id}
                 employees={employees as Profile[]}
-                isAdmin={canManageTasks}
+                trigger={
+                  <button className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                    <Plus className="w-3.5 h-3.5" />
+                    Nueva tarea
+                  </button>
+                }
               />
-            </section>
-
-            {/* Phases */}
-            {(hasPhases || (isAdminOrSubadmin && phaseSets.length > 0)) && (
-              <section>
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-sm font-semibold">Fases del Proyecto</h2>
-                  {isAdminOrSubadmin && phaseSets.length > 0 && (
-                    <ApplyPhasesButton
-                      projectId={project.id}
-                      phaseSets={phaseSets as Parameters<typeof ApplyPhasesButton>[0]["phaseSets"]}
-                      defaultPhaseSetId={(project.project_type as { default_phase_set_id?: string } | null)?.default_phase_set_id ?? null}
-                    />
-                  )}
-                </div>
-                {(!isPaidMedia || webContext !== null) && (
-                  <WebContextCard
-                    projectId={project.id}
-                    context={webContext}
-                    canEdit={isAdminOrSubadmin}
-                  />
-                )}
-                <ProjectPhases
-                  projectId={project.id}
-                  initialPhases={phases}
-                  canEdit={isAdminOrSubadmin}
-                />
-              </section>
-            )}
-
-            {/* Paid Media Hub */}
-            {isPaidMedia && (
-              <section className="space-y-4">
-                <h2 className="text-sm font-semibold">Hub Paid Media</h2>
-                <PaidMediaContextCard
-                  projectId={project.id}
-                  context={paidMediaContext}
-                  canEdit={isAdminOrSubadmin}
-                />
-                <PaidMediaCycleCard
-                  projectId={project.id}
-                  activeCycle={activeCycle}
-                  context={paidMediaContext}
-                  canEdit={isAdminOrSubadmin}
-                />
-                {historyCycles.length > 0 && <PaidMediaCycleHistory cycles={historyCycles} />}
-              </section>
             )}
           </div>
+          <TaskTable
+            tasks={tasks}
+            projectId={project.id}
+            employees={employees as Profile[]}
+            isAdmin={canManageTasks}
+          />
+        </section>
 
-          {/* ── Sidebar ───────────────────────────────────────────────────── */}
-          <div className="space-y-4 lg:sticky lg:top-[89px]">
+        {/* ── Lower grid: context (left) + sidebar (right) ───────────── */}
+        {(hasContextSection || true) && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
 
-            {/* Team */}
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold">Equipo</h3>
-                  <span className="text-xs text-muted-foreground">{memberProfiles.length} miembros</span>
-                </div>
-
-                {/* Avatar stack + names */}
-                <div className="space-y-2">
-                  {memberProfiles.slice(0, VISIBLE_AVATARS).map((member) => (
-                    <Link
-                      key={member.id}
-                      href={`/employees/${member.id}`}
-                      className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-muted transition-colors group"
-                    >
-                      <Avatar className="h-7 w-7 flex-shrink-0">
-                        {member.avatar_url ? (
-                          <img src={member.avatar_url} alt={member.full_name} className="h-full w-full object-cover" />
-                        ) : (
-                          <AvatarFallback className="text-xs">{initials(member.full_name)}</AvatarFallback>
-                        )}
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium truncate">{member.full_name}</p>
-                        {member.position && (
-                          <p className="text-xs text-muted-foreground truncate">{member.position}</p>
-                        )}
-                      </div>
-                    </Link>
-                  ))}
-
-                  {memberProfiles.length > VISIBLE_AVATARS && (
-                    <p className="text-xs text-muted-foreground pl-2">
-                      +{memberProfiles.length - VISIBLE_AVATARS} más
-                    </p>
-                  )}
-
-                  {memberProfiles.length === 0 && (
-                    <p className="text-xs text-muted-foreground py-1">Sin miembros asignados</p>
-                  )}
-                </div>
-
-                {/* Add member control */}
-                {canManageTeam && (
-                  <div className="mt-3 pt-3 border-t border-border">
-                    <TeamManager
-                      projectId={project.id}
-                      members={memberProfiles}
-                      allEmployees={employees as Profile[]}
-                      isAdmin={canManageTeam}
-                      addOnly
-                    />
+            {/* Left: phases + hubs */}
+            <div className="lg:col-span-2 space-y-6">
+              {(hasPhases || (isAdminOrSubadmin && phaseSets.length > 0)) && (
+                <section>
+                  <div className="flex items-center justify-between mb-3">
+                    <h2 className="text-sm font-semibold">Fases del Proyecto</h2>
+                    {isAdminOrSubadmin && phaseSets.length > 0 && (
+                      <ApplyPhasesButton
+                        projectId={project.id}
+                        phaseSets={phaseSets as Parameters<typeof ApplyPhasesButton>[0]["phaseSets"]}
+                        defaultPhaseSetId={(project.project_type as { default_phase_set_id?: string } | null)?.default_phase_set_id ?? null}
+                      />
+                    )}
                   </div>
-                )}
-              </CardContent>
-            </Card>
+                  {(!isPaidMedia || webContext !== null) && (
+                    <div className="mb-4">
+                      <WebContextCard projectId={project.id} context={webContext} canEdit={isAdminOrSubadmin} />
+                    </div>
+                  )}
+                  <ProjectPhases projectId={project.id} initialPhases={phases} canEdit={isAdminOrSubadmin} />
+                </section>
+              )}
 
-            {/* Log */}
-            <ProjectLog
-              projectId={project.id}
-              initialEntries={logEntries as ProjectLogEntry[]}
-              currentUserId={user!.id}
-              isAdmin={isAdmin}
-              compact
-            />
+              {isPaidMedia && (
+                <section className="space-y-4">
+                  <h2 className="text-sm font-semibold">Hub Paid Media</h2>
+                  <PaidMediaContextCard projectId={project.id} context={paidMediaContext} canEdit={isAdminOrSubadmin} />
+                  <PaidMediaCycleCard   projectId={project.id} activeCycle={activeCycle} context={paidMediaContext} canEdit={isAdminOrSubadmin} />
+                  {historyCycles.length > 0 && <PaidMediaCycleHistory cycles={historyCycles} />}
+                </section>
+              )}
 
-            {/* Finances */}
-            {canViewFinancials && (
+              {/* Placeholder so the left column always exists and grid holds its shape */}
+              {!hasPhases && !(isAdminOrSubadmin && phaseSets.length > 0) && !isPaidMedia && (
+                <div />
+              )}
+            </div>
+
+            {/* Right: sidebar */}
+            <div className="space-y-4 lg:sticky lg:top-[89px]">
+
+              {/* Team */}
               <Card>
-                <CardContent className="p-4 space-y-3">
-                  <h3 className="text-sm font-semibold">Finanzas</h3>
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs text-muted-foreground">Valor del proyecto</span>
-                      <span className="text-xs font-semibold">{formatCurrency(projectValue)}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs text-muted-foreground">Cobrado</span>
-                      <span className="text-xs font-semibold text-green-600">{formatCurrency(totalIncome)}</span>
-                    </div>
-                    <div className="flex justify-between items-center border-t pt-2">
-                      <span className="text-xs text-muted-foreground">Por cobrar</span>
-                      <span className={`text-xs font-semibold ${accountsReceivable > 0 ? "text-amber-500" : "text-green-600"}`}>
-                        {formatCurrency(accountsReceivable)}
-                      </span>
-                    </div>
-                    {project.monthly_fee && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs text-muted-foreground">Fee mensual</span>
-                        <span className="text-xs font-semibold">{formatCurrency(project.monthly_fee)}</span>
-                      </div>
-                    )}
-                    {totalExpenses > 0 && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs text-muted-foreground">Gastos</span>
-                        <span className="text-xs font-semibold text-red-500">{formatCurrency(totalExpenses)}</span>
-                      </div>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold">Equipo</h3>
+                    <span className="text-xs text-muted-foreground">{memberProfiles.length} miembros</span>
+                  </div>
+
+                  <div className="space-y-1">
+                    {memberProfiles.map((member) => (
+                      <Link
+                        key={member.id}
+                        href={`/employees/${member.id}`}
+                        className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-muted transition-colors"
+                      >
+                        <Avatar className="h-7 w-7 flex-shrink-0">
+                          {member.avatar_url ? (
+                            <img src={member.avatar_url} alt={member.full_name} className="h-full w-full object-cover" />
+                          ) : (
+                            <AvatarFallback className="text-xs">{initials(member.full_name)}</AvatarFallback>
+                          )}
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium truncate">{member.full_name}</p>
+                          {member.position && <p className="text-xs text-muted-foreground truncate">{member.position}</p>}
+                        </div>
+                      </Link>
+                    ))}
+
+                    {memberProfiles.length === 0 && (
+                      <p className="text-xs text-muted-foreground py-1 px-2">Sin miembros asignados</p>
                     )}
                   </div>
+
+                  {canManageTeam && (
+                    <div className="mt-3 pt-3 border-t border-border">
+                      <TeamManager
+                        projectId={project.id}
+                        members={memberProfiles}
+                        allEmployees={employees as Profile[]}
+                        isAdmin={canManageTeam}
+                        addOnly
+                      />
+                    </div>
+                  )}
                 </CardContent>
               </Card>
-            )}
+
+              {/* Log */}
+              <ProjectLog
+                projectId={project.id}
+                initialEntries={logEntries as ProjectLogEntry[]}
+                currentUserId={user!.id}
+                isAdmin={isAdmin}
+                compact
+              />
+
+              {/* Finances */}
+              {canViewFinancials && (
+                <Card>
+                  <CardContent className="p-4">
+                    <h3 className="text-sm font-semibold mb-3">Finanzas</h3>
+                    <div className="space-y-2 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Valor del proyecto</span>
+                        <span className="font-semibold">{formatCurrency(projectValue)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Cobrado</span>
+                        <span className="font-semibold text-green-600">{formatCurrency(totalIncome)}</span>
+                      </div>
+                      <div className="flex justify-between border-t pt-2">
+                        <span className="text-muted-foreground">Por cobrar</span>
+                        <span className={`font-semibold ${accountsReceivable > 0 ? "text-amber-500" : "text-green-600"}`}>
+                          {formatCurrency(accountsReceivable)}
+                        </span>
+                      </div>
+                      {project.monthly_fee && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Fee mensual</span>
+                          <span className="font-semibold">{formatCurrency(project.monthly_fee)}</span>
+                        </div>
+                      )}
+                      {totalExpenses > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Gastos del proyecto</span>
+                          <span className="font-semibold text-red-500">{formatCurrency(totalExpenses)}</span>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   )
