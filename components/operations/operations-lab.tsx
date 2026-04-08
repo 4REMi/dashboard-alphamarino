@@ -1,14 +1,14 @@
 "use client"
 
 import { useState, useTransition, useRef } from "react"
-import { ChevronRight, Plus, Trash2, LayoutList, Link2, Pencil, Check, X, Upload, Download } from "lucide-react"
+import { ChevronRight, Plus, Trash2, LayoutList, Link2, Pencil, Check, X, Upload, Download, Paperclip } from "lucide-react"
 import type { ProjectType, PhaseSet, PhaseSetPhase, TaskSet, TaskSetTask, Profile } from "@/lib/types"
 // TaskPriority intentionally removed — tasks now use is_urgent boolean
 import {
   createProjectType, updateProjectType, deleteProjectType,
   createPhaseSet, deletePhaseSet, addPhaseToSet, deletePhaseFromSet,
   linkPhaseSetToProjectType, linkTaskSetToPhase,
-  createTaskSet, updateTaskSet, deleteTaskSet, addTaskToSet, deleteTaskFromSet,
+  createTaskSet, updateTaskSet, deleteTaskSet, addTaskToSet, updateTaskInSet, deleteTaskFromSet,
   importOperationsTemplate,
 } from "@/lib/actions/config"
 
@@ -132,8 +132,8 @@ function ImportModal({
           taskSet: {
             name: "Tareas Discovery",
             tasks: [
-              { title: "Reunión con cliente", is_urgent: true },
-              { title: "Brief del cliente", is_urgent: false },
+              { title: "Reunión con cliente", is_urgent: true, requires_deliverable: false },
+              { title: "Brief del cliente", is_urgent: false, requires_deliverable: true },
             ],
           },
         },
@@ -217,6 +217,7 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
   const [editingTS, setEditingTS] = useState(false)
   const [showNewTS, setShowNewTS] = useState(false)
   const [showAddTask, setShowAddTask] = useState(false)
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
   const [showImport, setShowImport] = useState(false)
 
   const [isPending, startTransition] = useTransition()
@@ -406,6 +407,20 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
       setTaskSets((prev) => prev.map((ts) =>
         ts.id === linkedTS.id ? { ...ts, tasks: (ts.tasks ?? []).filter((t) => t.id !== taskId) } : ts
       ))
+    })
+  }
+
+  function handleUpdateTask(taskId: string, e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault(); if (!linkedTS) return
+    const fd = new FormData(e.currentTarget)
+    run(async () => {
+      const updated = await updateTaskInSet(taskId, fd) as TaskSetTask
+      setTaskSets((prev) => prev.map((ts) =>
+        ts.id === linkedTS.id
+          ? { ...ts, tasks: (ts.tasks ?? []).map((t) => t.id === taskId ? { ...t, ...updated } : t) }
+          : ts
+      ))
+      setEditingTaskId(null)
     })
   }
 
@@ -712,16 +727,51 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
 
                 {/* Tasks list */}
                 {tasks.map((task, i) => (
-                  <div key={task.id} className="group flex items-center gap-3 px-4 py-3 border-b border-border/50 hover:bg-muted/30 transition-colors">
-                    <span className="w-5 h-5 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground flex-shrink-0">{i + 1}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium">{task.title}</p>
-                      {task.description && <p className="text-xs text-muted-foreground truncate mt-0.5">{task.description}</p>}
+                  <div key={task.id} className="border-b border-border/50">
+                    <div className="group flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors">
+                      <span className="w-5 h-5 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground flex-shrink-0">{i + 1}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium">{task.title}</p>
+                        {task.description && <p className="text-xs text-muted-foreground truncate mt-0.5">{task.description}</p>}
+                      </div>
+                      {task.requires_deliverable && (
+                        <Paperclip className="w-3.5 h-3.5 text-info flex-shrink-0" />
+                      )}
+                      {task.is_urgent && (
+                        <span className="text-xs px-1.5 py-0.5 rounded font-medium flex-shrink-0 bg-destructive/10 text-destructive">Urgente</span>
+                      )}
+                      <button
+                        onClick={() => setEditingTaskId(editingTaskId === task.id ? null : task.id)}
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded text-muted-foreground hover:text-foreground transition-all flex-shrink-0"
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                      <button onClick={() => handleDeleteTask(task.id)} className="opacity-0 group-hover:opacity-100 p-1 rounded text-muted-foreground hover:text-destructive transition-all flex-shrink-0"><X className="w-3 h-3" /></button>
                     </div>
-                    {task.is_urgent && (
-                      <span className="text-xs px-1.5 py-0.5 rounded font-medium flex-shrink-0 bg-red-100 text-red-700">Urgente</span>
+
+                    {/* Inline edit form */}
+                    {editingTaskId === task.id && (
+                      <form onSubmit={(e) => handleUpdateTask(task.id, e)} className="px-4 py-3 space-y-2 bg-muted/20 border-t border-border">
+                        <InlineInput name="title" required defaultValue={task.title} placeholder="Título" />
+                        <div className="grid grid-cols-2 gap-2">
+                          <InlineInput name="description" defaultValue={task.description ?? ""} placeholder="Descripción (opcional)" />
+                          <div className="flex gap-2">
+                            <label className="flex items-center gap-2 px-2 py-1.5 rounded border border-input bg-background text-sm cursor-pointer select-none flex-1">
+                              <input type="checkbox" name="is_urgent" value="true" defaultChecked={task.is_urgent} className="accent-destructive" />
+                              Urgente
+                            </label>
+                            <label className="flex items-center gap-2 px-2 py-1.5 rounded border border-input bg-background text-sm cursor-pointer select-none flex-1">
+                              <input type="checkbox" name="requires_deliverable" value="true" defaultChecked={task.requires_deliverable} className="accent-info" />
+                              Entregable
+                            </label>
+                          </div>
+                        </div>
+                        <div className="flex gap-2 justify-end">
+                          <button type="button" onClick={() => setEditingTaskId(null)} className="text-xs text-muted-foreground hover:text-foreground">Cancelar</button>
+                          <button type="submit" disabled={isPending} className="text-xs px-2.5 py-1 rounded bg-primary text-primary-foreground disabled:opacity-50">Guardar</button>
+                        </div>
+                      </form>
                     )}
-                    <button onClick={() => handleDeleteTask(task.id)} className="opacity-0 group-hover:opacity-100 p-1 rounded text-muted-foreground hover:text-destructive transition-all flex-shrink-0"><X className="w-3 h-3" /></button>
                   </div>
                 ))}
 
@@ -734,10 +784,16 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
                     <InlineInput name="title" required autoFocus placeholder="Título de la tarea…" />
                     <div className="grid grid-cols-2 gap-2">
                       <InlineInput name="description" placeholder="Descripción (opcional)" />
-                      <label className="flex items-center gap-2 px-2 py-1.5 rounded border border-input bg-background text-sm cursor-pointer select-none">
-                        <input type="checkbox" name="is_urgent" value="true" className="accent-red-500" />
-                        Urgente
-                      </label>
+                      <div className="flex gap-2">
+                        <label className="flex items-center gap-2 px-2 py-1.5 rounded border border-input bg-background text-sm cursor-pointer select-none flex-1">
+                          <input type="checkbox" name="is_urgent" value="true" className="accent-destructive" />
+                          Urgente
+                        </label>
+                        <label className="flex items-center gap-2 px-2 py-1.5 rounded border border-input bg-background text-sm cursor-pointer select-none flex-1">
+                          <input type="checkbox" name="requires_deliverable" value="true" className="accent-info" />
+                          Entregable
+                        </label>
+                      </div>
                     </div>
                     <div className="flex gap-2 justify-end">
                       <button type="button" onClick={() => setShowAddTask(false)} className="text-xs text-muted-foreground">Cancelar</button>

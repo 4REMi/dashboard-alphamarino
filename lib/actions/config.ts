@@ -274,8 +274,28 @@ export async function addTaskToSet(taskSetId: string, formData: FormData) {
     title: formData.get("title") as string,
     description: (formData.get("description") as string) || null,
     is_urgent: formData.get("is_urgent") === "true",
+    requires_deliverable: formData.get("requires_deliverable") === "true",
     task_order: nextOrder,
   }).select().single()
+  if (error) throw error
+  revalidatePath("/settings")
+  revalidatePath("/operations")
+  return data
+}
+
+export async function updateTaskInSet(taskId: string, formData: FormData) {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from("task_set_tasks")
+    .update({
+      title: formData.get("title") as string,
+      description: (formData.get("description") as string) || null,
+      is_urgent: formData.get("is_urgent") === "true",
+      requires_deliverable: formData.get("requires_deliverable") === "true",
+    })
+    .eq("id", taskId)
+    .select()
+    .single()
   if (error) throw error
   revalidatePath("/settings")
   revalidatePath("/operations")
@@ -305,7 +325,7 @@ export async function linkTaskSetToPhase(phaseId: string, taskSetId: string | nu
 // IMPORT / EXPORT
 // ============================================================
 
-type ImportTask = { title: string; description?: string | null; is_urgent?: boolean }
+type ImportTask = { title: string; description?: string | null; is_urgent?: boolean; requires_deliverable?: boolean }
 type ImportTaskSet = { name: string; tasks?: ImportTask[] }
 type ImportPhase = { name: string; description?: string | null; taskSet?: ImportTaskSet | null }
 type ImportTemplate = {
@@ -351,6 +371,7 @@ export async function importOperationsTemplate(jsonStr: string) {
         title: task.title,
         description: task.description ?? null,
         is_urgent: task.is_urgent ?? false,
+        requires_deliverable: task.requires_deliverable ?? false,
         task_order: j,
       })
     }

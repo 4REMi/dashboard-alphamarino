@@ -90,6 +90,7 @@ export interface TaskSetTask {
   description: string | null
   priority: TaskPriority // kept for DB compat
   is_urgent: boolean
+  requires_deliverable: boolean
   task_order: number
   created_at: string
 }
