@@ -3,12 +3,13 @@
 import { useState, useTransition, useRef, useEffect } from "react"
 import { deleteTask, updateTaskStatus, updateTaskAssignee, updateTaskUrgent } from "@/lib/actions/tasks"
 import { TaskForm } from "./task-form"
+import { DeliverableDrawer } from "@/components/projects/deliverable-drawer"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Pencil, Trash2, CalendarDays, ChevronDown, ChevronRight, UserX, Flag } from "lucide-react"
+import { Pencil, Trash2, CalendarDays, ChevronDown, ChevronRight, UserX, Flag, Paperclip } from "lucide-react"
 import { formatDate } from "@/lib/utils"
 import { cn } from "@/lib/utils"
-import type { Task, Profile, TaskStatus } from "@/lib/types"
+import type { Task, Profile, TaskStatus, Deliverable } from "@/lib/types"
 
 const STATUS_GROUPS: { value: TaskStatus; label: string; defaultOpen: boolean }[] = [
   { value: "In Progress", label: "En Progreso", defaultOpen: true },
@@ -217,9 +218,16 @@ function AssigneePicker({ task, projectId, employees }: { task: Task; projectId:
 
 // ─── Task Row ─────────────────────────────────────────────────────────────────
 
-function TaskRow({ task, projectId, employees, isAdmin }: {
-  task: Task; projectId: string; employees: Profile[]; isAdmin: boolean
+function TaskRow({ task, projectId, employees, isAdmin, deliverable, onDeliverableClick }: {
+  task: Task
+  projectId: string
+  employees: Profile[]
+  isAdmin: boolean
+  deliverable: Deliverable | null
+  onDeliverableClick: (task: Task) => void
 }) {
+  const hasDeliverable = !!deliverable
+
   return (
     <tr className={cn(
       "border-t transition-colors",
@@ -231,12 +239,30 @@ function TaskRow({ task, projectId, employees, isAdmin }: {
         <UrgentFlag task={task} projectId={projectId} />
       </td>
       <td className="px-4 py-2.5">
-        <p className={cn("font-medium text-sm", task.status === "Done" && "line-through text-muted-foreground")}>
-          {task.title}
-        </p>
-        {task.description && (
-          <p className="text-xs text-muted-foreground mt-0.5 truncate max-w-xs">{task.description}</p>
-        )}
+        <div className="flex items-center gap-2">
+          <div className="min-w-0">
+            <p className={cn("font-medium text-sm", task.status === "Done" && "line-through text-muted-foreground")}>
+              {task.title}
+            </p>
+            {task.description && (
+              <p className="text-xs text-muted-foreground mt-0.5 truncate max-w-xs">{task.description}</p>
+            )}
+          </div>
+          {task.requires_deliverable && (
+            <button
+              onClick={() => onDeliverableClick(task)}
+              title={hasDeliverable ? "Ver entregable" : "Entregable pendiente"}
+              className={cn(
+                "flex-shrink-0 p-1 rounded transition-colors",
+                hasDeliverable
+                  ? "text-green-600 hover:bg-green-50 dark:hover:bg-green-950/40"
+                  : "text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/40"
+              )}
+            >
+              <Paperclip className={cn("w-3.5 h-3.5", hasDeliverable && "fill-current opacity-80")} />
+            </button>
+          )}
+        </div>
       </td>
       <td className="px-4 py-2.5">
         <StatusPicker task={task} projectId={projectId} />
@@ -325,13 +351,15 @@ interface TaskTableProps {
   projectId: string
   employees: Profile[]
   isAdmin: boolean
+  deliverablesByTaskId?: Record<string, Deliverable>
 }
 
-export function TaskTable({ tasks, projectId, employees, isAdmin }: TaskTableProps) {
+export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesByTaskId = {} }: TaskTableProps) {
   const initialOpen = Object.fromEntries(
     STATUS_GROUPS.map((g) => [g.value, g.defaultOpen])
   ) as Record<TaskStatus, boolean>
   const [open, setOpen] = useState<Record<TaskStatus, boolean>>(initialOpen)
+  const [drawerTask, setDrawerTask] = useState<Task | null>(null)
 
   function toggleGroup(status: TaskStatus) {
     setOpen((prev) => ({ ...prev, [status]: !prev[status] }))
@@ -341,7 +369,7 @@ export function TaskTable({ tasks, projectId, employees, isAdmin }: TaskTablePro
     ...g,
     tasks: tasks
       .filter((t) => t.status === g.value)
-      .sort((a, b) => (b.is_urgent ? 1 : 0) - (a.is_urgent ? 1 : 0)), // urgent first
+      .sort((a, b) => (b.is_urgent ? 1 : 0) - (a.is_urgent ? 1 : 0)),
   })).filter((g) => g.tasks.length > 0)
 
   if (tasks.length === 0) {
@@ -352,48 +380,60 @@ export function TaskTable({ tasks, projectId, employees, isAdmin }: TaskTablePro
     )
   }
 
+  const drawerDeliverable = drawerTask ? (deliverablesByTaskId[drawerTask.id] ?? null) : null
+
   return (
-    <div className="border rounded-lg overflow-hidden bg-card">
-      <table className="w-full text-sm">
-        <thead className="bg-muted/50 border-b">
-          <tr>
-            <th className="w-8 px-3 py-2.5" />
-            <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Tarea</th>
-            <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Estado</th>
-            <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Asignado</th>
-            <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Vence</th>
-            {isAdmin && <th className="text-right px-4 py-2.5 font-medium text-muted-foreground" />}
-          </tr>
-        </thead>
-        <tbody>
-          {grouped.map((group) => (
-            <>
-              {/* Group header row */}
-              <tr key={`header-${group.value}`}>
-                <td colSpan={isAdmin ? 6 : 5} className="p-0">
-                  <GroupHeader
-                    label={group.label}
-                    count={group.tasks.length}
-                    isOpen={open[group.value]}
-                    onToggle={() => toggleGroup(group.value)}
-                    status={group.value}
+    <>
+      <div className="border rounded-lg overflow-hidden bg-card">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/50 border-b">
+            <tr>
+              <th className="w-8 px-3 py-2.5" />
+              <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Tarea</th>
+              <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Estado</th>
+              <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Asignado</th>
+              <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Vence</th>
+              {isAdmin && <th className="text-right px-4 py-2.5 font-medium text-muted-foreground" />}
+            </tr>
+          </thead>
+          <tbody>
+            {grouped.map((group) => (
+              <>
+                <tr key={`header-${group.value}`}>
+                  <td colSpan={isAdmin ? 6 : 5} className="p-0">
+                    <GroupHeader
+                      label={group.label}
+                      count={group.tasks.length}
+                      isOpen={open[group.value]}
+                      onToggle={() => toggleGroup(group.value)}
+                      status={group.value}
+                    />
+                  </td>
+                </tr>
+                {open[group.value] && group.tasks.map((task) => (
+                  <TaskRow
+                    key={task.id}
+                    task={task}
+                    projectId={projectId}
+                    employees={employees}
+                    isAdmin={isAdmin}
+                    deliverable={deliverablesByTaskId[task.id] ?? null}
+                    onDeliverableClick={setDrawerTask}
                   />
-                </td>
-              </tr>
-              {/* Task rows */}
-              {open[group.value] && group.tasks.map((task) => (
-                <TaskRow
-                  key={task.id}
-                  task={task}
-                  projectId={projectId}
-                  employees={employees}
-                  isAdmin={isAdmin}
-                />
-              ))}
-            </>
-          ))}
-        </tbody>
-      </table>
-    </div>
+                ))}
+              </>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <DeliverableDrawer
+        task={drawerTask}
+        projectId={projectId}
+        deliverable={drawerDeliverable}
+        isAdmin={isAdmin}
+        onClose={() => setDrawerTask(null)}
+      />
+    </>
   )
 }

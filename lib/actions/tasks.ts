@@ -57,9 +57,10 @@ export async function createTask(formData: FormData) {
     description: (formData.get("description") as string) || null,
     status: (formData.get("status") as TaskStatus) ?? "Todo",
     is_urgent: formData.get("is_urgent") === "true",
+    requires_deliverable: formData.get("requires_deliverable") === "true",
     due_date: (formData.get("due_date") as string) || null,
     assignee_id: (formData.get("assignee_id") as string) || null,
-  })
+  } as Record<string, unknown>)
 
   if (error) throw error
   revalidatePath(`/projects/${projectId}`)
@@ -78,9 +79,10 @@ export async function updateTask(id: string, formData: FormData) {
       description: (formData.get("description") as string) || null,
       status: formData.get("status") as TaskStatus,
       is_urgent: formData.get("is_urgent") === "true",
+      requires_deliverable: formData.get("requires_deliverable") === "true",
       due_date: (formData.get("due_date") as string) || null,
       assignee_id: (formData.get("assignee_id") as string) || null,
-    })
+    } as Record<string, unknown>)
     .eq("id", id)
 
   if (error) throw error

@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
-import { Plus, Flag } from "lucide-react"
+import { Plus, Flag, Paperclip } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { Task, Profile } from "@/lib/types"
 
@@ -23,6 +23,7 @@ export function TaskForm({ projectId, task, employees, trigger }: TaskFormProps)
   const [status, setStatus] = useState<string>(task?.status ?? "Todo")
   const [assigneeId, setAssigneeId] = useState<string>(task?.assignee_id ?? "none")
   const [isUrgent, setIsUrgent] = useState(task?.is_urgent ?? false)
+  const [requiresDeliverable, setRequiresDeliverable] = useState(task?.requires_deliverable ?? false)
   const [loading, setLoading] = useState(false)
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -31,6 +32,7 @@ export function TaskForm({ projectId, task, employees, trigger }: TaskFormProps)
     const formData = new FormData(e.currentTarget)
     formData.set("status", status)
     formData.set("is_urgent", String(isUrgent))
+    formData.set("requires_deliverable", String(requiresDeliverable))
     formData.set("assignee_id", assigneeId === "none" ? "" : assigneeId)
     formData.set("project_id", projectId)
 
@@ -136,6 +138,35 @@ export function TaskForm({ projectId, task, employees, trigger }: TaskFormProps)
               <div className={cn(
                 "w-4 h-4 rounded-full bg-white shadow transition-transform",
                 isUrgent ? "translate-x-4" : "translate-x-0"
+              )} />
+            </div>
+          </button>
+
+          {/* Requires deliverable toggle */}
+          <button
+            type="button"
+            onClick={() => setRequiresDeliverable((v) => !v)}
+            className={cn(
+              "w-full flex items-center gap-3 rounded-lg border px-4 py-3 text-sm transition-colors",
+              requiresDeliverable
+                ? "border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-400"
+                : "border-border bg-muted/30 text-muted-foreground hover:bg-muted/60"
+            )}
+          >
+            <Paperclip className="w-4 h-4 flex-shrink-0" />
+            <div className="text-left">
+              <p className="font-medium">{requiresDeliverable ? "Requiere entregable" : "Sin entregable"}</p>
+              <p className="text-xs opacity-70">
+                {requiresDeliverable ? "Este task exige que se entregue un resultado" : "Click para requerir un entregable"}
+              </p>
+            </div>
+            <div className={cn(
+              "ml-auto w-8 h-4 rounded-full transition-colors flex-shrink-0",
+              requiresDeliverable ? "bg-blue-500" : "bg-muted-foreground/30"
+            )}>
+              <div className={cn(
+                "w-4 h-4 rounded-full bg-white shadow transition-transform",
+                requiresDeliverable ? "translate-x-4" : "translate-x-0"
               )} />
             </div>
           </button>

@@ -5,6 +5,7 @@ import { getEmployees } from "@/lib/actions/employees"
 import { getIncome, getProjectExpenses } from "@/lib/actions/finances"
 import { getProjectTypes, getPhaseSets } from "@/lib/actions/config"
 import { getCustomers } from "@/lib/actions/customers"
+import { getProjectDeliverables } from "@/lib/actions/deliverables"
 import { ProjectActions } from "@/components/projects/project-actions"
 import { ApplyPhasesButton } from "@/components/projects/apply-phases-button"
 import { TaskForm } from "@/components/tasks/task-form"
@@ -17,6 +18,7 @@ import { PaidMediaCycleHistory } from "@/components/projects/hub/paid-media-cycl
 import { WebContextCard } from "@/components/projects/hub/web-context-card"
 import { ProjectLog } from "@/components/projects/hub/project-log"
 import { ExpandableDescription } from "@/components/projects/expandable-description"
+import { DeliverablesSectionClient } from "@/components/projects/deliverables-section"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
@@ -24,7 +26,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { createClient } from "@/lib/supabase/server"
 import { ArrowLeft, CalendarDays, Plus } from "lucide-react"
 import { formatDate, formatCurrency } from "@/lib/utils"
-import type { Customer, Profile, Project, Task, ProjectType, PaidMediaContext, PaidMediaCycle, WebProjectContext, ProjectLogEntry, ProjectPhase } from "@/lib/types"
+import type { Customer, Profile, Project, Task, ProjectType, PaidMediaContext, PaidMediaCycle, WebProjectContext, ProjectLogEntry, ProjectPhase, Deliverable } from "@/lib/types"
 import { can } from "@/lib/permissions"
 
 const statusConfig = {
@@ -59,7 +61,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const hasPhases   = (project.phases ?? []).length > 0
   const isArchived  = project.status === "Archived"
 
-  const [employees, customers, projectTypes, phaseSets, income, expenses, cycles, logEntries, members] = await Promise.all([
+  const [employees, customers, projectTypes, phaseSets, income, expenses, cycles, logEntries, members, rawDeliverables] = await Promise.all([
     getEmployees().catch(() => []),
     getCustomers().catch(() => []),
     getProjectTypes().catch(() => []),
@@ -69,10 +71,15 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     isPaidMedia       ? getProjectCycles(id).catch(() => [])   : Promise.resolve([]),
     getProjectLog(id).catch(() => []),
     getProjectMembers(id).catch(() => []),
+    getProjectDeliverables(id).catch(() => []),
   ])
 
   const tasks  = (project.tasks  ?? []) as Task[]
   const phases = (project.phases ?? []) as ProjectPhase[]
+  const deliverables = rawDeliverables as Deliverable[]
+  const deliverablesByTaskId = Object.fromEntries(
+    deliverables.map((d) => [d.task_id, d])
+  ) as Record<string, Deliverable>
 
   function unwrapSingle<T>(val: T | T[] | null | undefined): T | null {
     if (Array.isArray(val)) return val[0] ?? null
@@ -198,8 +205,18 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             projectId={project.id}
             employees={employees as Profile[]}
             isAdmin={canManageTasks}
+            deliverablesByTaskId={deliverablesByTaskId}
           />
         </section>
+
+        {/* ── Entregables ────────────────────────────────────────────── */}
+        {deliverables.length > 0 && (
+          <DeliverablesSectionClient
+            deliverables={deliverables}
+            projectId={project.id}
+            isAdmin={canManageTasks}
+          />
+        )}
 
         {/* ── Lower grid: context (left) + sidebar (right) ───────────── */}
         {(hasContextSection || true) && (

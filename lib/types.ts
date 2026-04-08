@@ -146,6 +146,25 @@ export interface ProjectPhase {
 // TASKS
 // ============================================================
 
+export type DeliverableType = "text" | "document" | "image"
+
+export interface Deliverable {
+  id: string
+  task_id: string
+  project_id: string
+  type: DeliverableType
+  title: string
+  content: string | null      // for type = 'text'
+  file_url: string | null     // for type = 'document' | 'image'
+  file_name: string | null
+  uploaded_by: string | null
+  created_at: string
+  updated_at: string
+  // Relations
+  task?: { title: string } | null
+  uploader?: Profile | null
+}
+
 export interface Task {
   id: string
   project_id: string
@@ -154,6 +173,7 @@ export interface Task {
   status: TaskStatus
   priority: TaskPriority // kept for DB compat, use is_urgent in UI
   is_urgent: boolean
+  requires_deliverable: boolean
   due_date: string | null
   assignee_id: string | null
   created_at: string
