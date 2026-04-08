@@ -6,20 +6,25 @@ import { ProjectCard } from "@/components/projects/project-card"
 import { ProjectForm } from "@/components/projects/project-form"
 import { ArchivedProjectsSection } from "@/components/projects/archived-projects-section"
 import type { Customer, Project, ProjectType } from "@/lib/types"
+import { can } from "@/lib/permissions"
 
 export default async function ProjectsPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user!.id).single()
+  const { data: profile } = await supabase.from("profiles").select("role, permissions").eq("id", user!.id).single()
   const isAdminOrSubadmin = profile?.role === "admin" || profile?.role === "subadmin"
+  const canEditProjects = can(profile, "edit_projects")
+  const canViewAll = can(profile, "view_all_projects")
 
   const [allProjects, customers, projectTypes] = await Promise.all([
     getProjects(true).catch(() => []),
     getCustomers().catch(() => []),
-    getProjectTypes().catch(() => []),
+    canEditProjects ? getProjectTypes().catch(() => []) : Promise.resolve([]),
   ])
 
-  const allList = allProjects as Project[]
+  const allList = (allProjects as Project[]).filter((p) =>
+    canViewAll || (p.members as unknown as string[])?.includes(user!.id)
+  )
   const projectList = allList.filter((p) => p.status !== "Archived")
   const archived = allList.filter((p) => p.status === "Archived")
 
@@ -47,7 +52,7 @@ export default async function ProjectsPage() {
           <h1 className="text-2xl font-bold">Proyectos</h1>
           <p className="text-muted-foreground text-sm mt-1">{projectList.length} proyectos activos</p>
         </div>
-        {isAdminOrSubadmin && (
+        {canEditProjects && (
           <ProjectForm
             customers={customers as Customer[]}
             projectTypes={projectTypes as ProjectType[]}
@@ -85,13 +90,13 @@ export default async function ProjectsPage() {
       {projectList.length === 0 && archived.length === 0 && (
         <div className="text-center py-16 text-muted-foreground">
           <p className="text-lg">No hay proyectos aún</p>
-          {isAdminOrSubadmin && <p className="text-sm mt-1">Crea el primer proyecto usando el botón de arriba</p>}
+          {canEditProjects && <p className="text-sm mt-1">Crea el primer proyecto usando el botón de arriba</p>}
         </div>
       )}
 
       <ArchivedProjectsSection
         projects={archived as Parameters<typeof ArchivedProjectsSection>[0]["projects"]}
-        isAdminOrSubadmin={isAdminOrSubadmin}
+        isAdminOrSubadmin={canEditProjects}
       />
     </div>
   )

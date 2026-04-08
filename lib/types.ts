@@ -26,6 +26,7 @@ export interface Profile {
   position: string | null
   phone: string | null
   avatar_url: string | null
+  permissions: Record<string, boolean> | null
   created_at: string
 }
 

@@ -4,6 +4,17 @@ import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import type { Role } from "@/lib/types"
+import type { UserPermissions } from "@/lib/permissions"
+
+export async function updateUserPermissions(userId: string, permissions: UserPermissions) {
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from("profiles")
+    .update({ permissions })
+    .eq("id", userId)
+  if (error) throw error
+  revalidatePath(`/employees/${userId}`)
+}
 
 export async function getEmployees() {
   const supabase = await createClient()

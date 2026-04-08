@@ -5,13 +5,14 @@ import { getCustomers } from "@/lib/actions/customers"
 import { DomainTable } from "@/components/finances/domain-table"
 import { Globe } from "lucide-react"
 import type { Domain, Customer } from "@/lib/types"
+import { can } from "@/lib/permissions"
 
 export default async function DomainsPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user!.id).single()
+  const { data: profile } = await supabase.from("profiles").select("role, permissions").eq("id", user!.id).single()
 
-  if (profile?.role !== "admin") {
+  if (!can(profile, "view_global_finances")) {
     redirect("/")
   }
 

@@ -21,6 +21,7 @@ import { useState } from "react"
 import Image from "next/image"
 import { signOut } from "@/lib/auth-actions"
 import { Button } from "@/components/ui/button"
+import { can } from "@/lib/permissions"
 import type { Profile } from "@/lib/types"
 
 const navItems = [
@@ -28,8 +29,8 @@ const navItems = [
   { href: "/customers", icon: Users, label: "Clientes" },
   { href: "/projects", icon: FolderKanban, label: "Proyectos" },
   { href: "/tasks", icon: CheckSquare, label: "Tareas" },
-  { href: "/finances", icon: DollarSign, label: "Finanzas", adminOnly: true },
-  { href: "/finances/domains", icon: Globe, label: "Dominios", adminOnly: true },
+  { href: "/finances", icon: DollarSign, label: "Finanzas", permission: "view_global_finances" as const },
+  { href: "/finances/domains", icon: Globe, label: "Dominios", permission: "view_global_finances" as const },
   { href: "/employees", icon: UserCircle, label: "Empleados" },
   { href: "/settings", icon: Settings, label: "Configuración", adminOnly: true },
 ]
@@ -50,7 +51,11 @@ export function Sidebar({ profile, logoUrl }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
 
   const isAdmin = profile?.role === "admin"
-  const visibleItems = navItems.filter((item) => !item.adminOnly || isAdmin)
+  const visibleItems = navItems.filter((item) => {
+    if (item.adminOnly) return isAdmin
+    if (item.permission) return can(profile, item.permission)
+    return true
+  })
 
   return (
     <aside

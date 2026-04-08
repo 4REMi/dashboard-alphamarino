@@ -11,6 +11,7 @@ import { ArrowLeft, Mail, Phone, Briefcase, FolderKanban, CheckSquare, CalendarD
 import { formatDate } from "@/lib/utils"
 import { cn } from "@/lib/utils"
 import { EmployeeEditActions } from "@/components/employees/employee-edit-actions"
+import { EmployeePermissions } from "@/components/employees/employee-permissions"
 import type { Task, Profile } from "@/lib/types"
 
 const taskStatusConfig = {
@@ -102,6 +103,18 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
           </div>
         </div>
       </div>
+
+      {/* Permissions (admin only, not shown for other admins) */}
+      {isAdmin && profile.role !== "admin" && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">Permisos</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <EmployeePermissions employee={profile as Profile} />
+          </CardContent>
+        </Card>
+      )}
 
       {/* Stats row */}
       <div className="grid grid-cols-3 gap-4">

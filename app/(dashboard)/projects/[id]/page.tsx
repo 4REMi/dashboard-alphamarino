@@ -24,6 +24,7 @@ import { createClient } from "@/lib/supabase/server"
 import { ArrowLeft, CalendarDays, DollarSign } from "lucide-react"
 import { formatDate, formatCurrency } from "@/lib/utils"
 import type { Customer, Profile, Project, Task, ProjectType, PaidMediaContext, PaidMediaCycle, WebProjectContext, ProjectLogEntry, ProjectPhase } from "@/lib/types"
+import { can } from "@/lib/permissions"
 
 const statusConfig = {
   Planning: { label: "Planificación", variant: "secondary" as const },
@@ -44,10 +45,14 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user!.id).single()
+  const { data: profile } = await supabase.from("profiles").select("role, permissions").eq("id", user!.id).single()
   const role = profile?.role ?? "employee"
   const isAdmin = role === "admin"
   const isAdminOrSubadmin = role === "admin" || role === "subadmin"
+
+  const canViewFinancials = can(profile as Profile, "view_project_financials")
+  const canEditProjects = can(profile as Profile, "edit_projects")
+  const canManageTeam = can(profile as Profile, "manage_team")
 
   const projectType = project.project_type as { name: string } | null
   const isPaidMedia = projectType?.name?.toLowerCase().includes("paid media") || projectType?.name?.toLowerCase().includes("media")
@@ -59,8 +64,8 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     getCustomers().catch(() => []),
     getProjectTypes().catch(() => []),
     getPhaseSets().catch(() => []),
-    isAdminOrSubadmin ? getIncome(id).catch(() => []) : Promise.resolve([]),
-    isAdminOrSubadmin ? getProjectExpenses(id).catch(() => []) : Promise.resolve([]),
+    canViewFinancials ? getIncome(id).catch(() => []) : Promise.resolve([]),
+    canViewFinancials ? getProjectExpenses(id).catch(() => []) : Promise.resolve([]),
     isPaidMedia ? getProjectCycles(id).catch(() => []) : Promise.resolve([]),
     getProjectLog(id).catch(() => []),
   ])
@@ -120,8 +125,8 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             projectId={project.id}
             isArchived={isArchived}
             isAdmin={isAdmin}
-            isAdminOrSubadmin={isAdminOrSubadmin}
-            project={project as Project}
+            isAdminOrSubadmin={canEditProjects}
+            project={canEditProjects ? project as Project : undefined}
             customers={customers as Customer[]}
             projectTypes={projectTypes as ProjectType[]}
           />
@@ -162,8 +167,8 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         </CardContent>
       </Card>
 
-      {/* Finances (admin + subadmin) */}
-      {isAdminOrSubadmin && (
+      {/* Finances */}
+      {canViewFinancials && (
         <div className="grid grid-cols-3 gap-4">
           <Card>
             <CardContent className="p-4">
@@ -250,7 +255,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           projectId={project.id}
           members={members}
           allEmployees={employees as Profile[]}
-          isAdmin={isAdminOrSubadmin}
+          isAdmin={canManageTeam}
         />
       </div>
 
