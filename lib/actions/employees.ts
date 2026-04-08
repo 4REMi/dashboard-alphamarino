@@ -61,7 +61,7 @@ export async function createEmployee(formData: FormData) {
   const adminClient = createAdminClient()
   const { data: invited, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
     data: { full_name: fullName, role },
-    redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/callback`,
+    redirectTo: `${(process.env.NEXT_PUBLIC_SITE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/\/$/, '')}/auth/callback`,
   })
 
   if (inviteError) throw inviteError
@@ -128,7 +128,7 @@ export async function uploadAvatar(id: string, formData: FormData) {
 export async function resendPasswordLink(email: string) {
   const supabase = await createClient()
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/callback`,
+    redirectTo: `${(process.env.NEXT_PUBLIC_SITE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/\/$/, '')}/auth/callback`,
   })
   if (error) throw error
 }
