@@ -47,6 +47,8 @@ export function DeliverablesSectionClient({
         status: "Done" as const,
         priority: "Low" as const,
         is_urgent: false,
+        task_order: 0,
+        phase_id: null,
         due_date: null,
         assignee_id: null,
         created_at: "",

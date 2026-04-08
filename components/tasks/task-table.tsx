@@ -10,6 +10,7 @@ import { Pencil, Trash2, CalendarDays, ChevronDown, ChevronRight, UserX, Flag, P
 import { formatDate } from "@/lib/utils"
 import { cn } from "@/lib/utils"
 import type { Task, Profile, TaskStatus, Deliverable } from "@/lib/types"
+import { phaseColor } from "@/lib/phase-colors"
 
 const STATUS_GROUPS: { value: TaskStatus; label: string; defaultOpen: boolean }[] = [
   { value: "In Progress", label: "En Progreso", defaultOpen: true },
@@ -218,6 +219,18 @@ function AssigneePicker({ task, projectId, employees }: { task: Task; projectId:
 
 // ─── Task Row ─────────────────────────────────────────────────────────────────
 
+function PhaseBadge({ phase }: { phase: { name: string; phase_order: number } }) {
+  const c = phaseColor(phase.phase_order)
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className={cn("w-2 h-2 rounded-full flex-shrink-0", c.bg)} />
+      <span className={cn("text-xs font-medium truncate max-w-[80px]", c.text)}>
+        {phase.name}
+      </span>
+    </div>
+  )
+}
+
 function TaskRow({ task, projectId, employees, isAdmin, deliverable, onDeliverableClick }: {
   task: Task
   projectId: string
@@ -227,6 +240,7 @@ function TaskRow({ task, projectId, employees, isAdmin, deliverable, onDeliverab
   onDeliverableClick: (task: Task) => void
 }) {
   const hasDeliverable = !!deliverable
+  const phase = (task.phase as { id: string; name: string; phase_order: number } | null | undefined) ?? null
 
   return (
     <tr className={cn(
@@ -269,6 +283,9 @@ function TaskRow({ task, projectId, employees, isAdmin, deliverable, onDeliverab
       </td>
       <td className="px-4 py-2.5">
         <AssigneePicker task={task} projectId={projectId} employees={employees} />
+      </td>
+      <td className="px-4 py-2.5">
+        {phase ? <PhaseBadge phase={phase} /> : <span className="text-xs text-muted-foreground">—</span>}
       </td>
       <td className="px-4 py-2.5">
         {task.due_date ? (
@@ -369,7 +386,13 @@ export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesBy
     ...g,
     tasks: tasks
       .filter((t) => t.status === g.value)
-      .sort((a, b) => (b.is_urgent ? 1 : 0) - (a.is_urgent ? 1 : 0)),
+      .sort((a, b) => {
+        // task_order primary (preserves Operations Lab sequence)
+        const orderDiff = (a.task_order ?? 0) - (b.task_order ?? 0)
+        if (orderDiff !== 0) return orderDiff
+        // urgent first as tiebreaker
+        return (b.is_urgent ? 1 : 0) - (a.is_urgent ? 1 : 0)
+      }),
   })).filter((g) => g.tasks.length > 0)
 
   if (tasks.length === 0) {
@@ -392,6 +415,7 @@ export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesBy
               <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Tarea</th>
               <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Estado</th>
               <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Asignado</th>
+              <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Fase</th>
               <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Vence</th>
               {isAdmin && <th className="text-right px-4 py-2.5 font-medium text-muted-foreground" />}
             </tr>
@@ -400,7 +424,7 @@ export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesBy
             {grouped.map((group) => (
               <>
                 <tr key={`header-${group.value}`}>
-                  <td colSpan={isAdmin ? 6 : 5} className="p-0">
+                  <td colSpan={isAdmin ? 7 : 6} className="p-0">
                     <GroupHeader
                       label={group.label}
                       count={group.tasks.length}

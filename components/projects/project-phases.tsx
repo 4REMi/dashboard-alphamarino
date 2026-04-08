@@ -4,6 +4,7 @@ import { useState, useTransition } from "react"
 import type { ProjectPhase, PhaseStatus } from "@/lib/types"
 import { PHASE_STATUS_LABELS } from "@/lib/types"
 import { updateProjectPhaseStatus, updateProjectPhaseNotes } from "@/lib/actions/projects"
+import { phaseColor } from "@/lib/phase-colors"
 
 interface Props {
   projectId: string
@@ -62,23 +63,23 @@ export function ProjectPhases({ projectId, initialPhases, canEdit }: Props) {
           <h3 className="font-semibold text-sm text-foreground">Fases del Proyecto</h3>
           <span className="text-xs text-muted-foreground">{done}/{phases.length} completadas</span>
         </div>
-        {/* Stepper dots */}
+        {/* Stepper dots — border color is unique per phase, background reflects status */}
         <div className="flex items-center gap-1">
           {phases.map((phase, i) => {
-            const styles = STATUS_STYLES[phase.status]
+            const pc = phaseColor(phase.phase_order)
             return (
               <div key={phase.id} className="flex items-center flex-1">
                 <button
                   title={phase.name}
                   onClick={() => setExpandedId(expandedId === phase.id ? null : phase.id)}
-                  className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold border-2 transition-all ${
+                  className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold border-2 transition-all ${pc.border} ${
                     phase.status === "completed"
-                      ? "bg-success border-success text-success-foreground"
+                      ? `${pc.bg} text-white`
                       : phase.status === "in_progress"
-                      ? "bg-warning border-warning text-warning-foreground"
+                      ? `${pc.light} ${pc.text}`
                       : phase.status === "blocked"
-                      ? "bg-destructive border-destructive text-destructive-foreground"
-                      : "bg-background border-muted-foreground/30 text-muted-foreground"
+                      ? "bg-destructive/10 text-destructive"
+                      : "bg-background text-muted-foreground"
                   }`}
                 >
                   {phase.status === "completed" ? "✓" : i + 1}
@@ -86,7 +87,7 @@ export function ProjectPhases({ projectId, initialPhases, canEdit }: Props) {
                 {i < phases.length - 1 && (
                   <div className={`h-0.5 flex-1 mx-1 rounded-full transition-colors ${
                     phases[i + 1]?.status !== "pending" || phase.status === "completed"
-                      ? "bg-success/40"
+                      ? `${phaseColor(i + 1).bg} opacity-30`
                       : "bg-muted"
                   }`} />
                 )}
@@ -101,6 +102,7 @@ export function ProjectPhases({ projectId, initialPhases, canEdit }: Props) {
         {phases.map((phase) => {
           const isExpanded = expandedId === phase.id
           const styles = STATUS_STYLES[phase.status]
+          const pc = phaseColor(phase.phase_order)
 
           return (
             <div key={phase.id} className={`transition-colors ${isExpanded && phase.status !== "pending" ? "bg-muted/20" : ""}`}>
@@ -112,6 +114,7 @@ export function ProjectPhases({ projectId, initialPhases, canEdit }: Props) {
                 <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border flex-shrink-0 ${styles.badge}`}>
                   {PHASE_STATUS_LABELS[phase.status]}
                 </span>
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${pc.bg}`} />
                 <span className="flex-1 text-sm font-medium text-foreground">{phase.name}</span>
                 {phase.status === "in_progress" && phase.started_at && (
                   <span className="text-xs text-muted-foreground hidden sm:block">

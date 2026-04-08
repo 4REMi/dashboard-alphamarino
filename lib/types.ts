@@ -175,11 +175,14 @@ export interface Task {
   priority: TaskPriority // kept for DB compat, use is_urgent in UI
   is_urgent: boolean
   requires_deliverable: boolean
+  task_order: number
+  phase_id: string | null
   due_date: string | null
   assignee_id: string | null
   created_at: string
   project?: Project | null
   assignee?: Profile | null
+  phase?: { id: string; name: string; phase_order: number } | null
 }
 
 // ============================================================

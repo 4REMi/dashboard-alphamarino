@@ -6,11 +6,13 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import type { ProjectStatus, PhaseStatus, CycleDeliverableStatus, CampaignStatus } from "@/lib/types"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
-// Helper: copy task set tasks to a project for each phase that has a default_task_set_id
+// Helper: copy task set tasks to a project for each phase that has a default_task_set_id.
+// phaseIdByTaskSetId maps task_set.id → project_phase.id so tasks are linked to their phase.
 async function copyTaskSetsToProject(
   supabase: SupabaseClient,
   templatePhases: Array<{ default_task_set_id: string | null }>,
-  projectId: string
+  projectId: string,
+  phaseIdByTaskSetId: Record<string, string> = {}
 ) {
   try {
     const taskSetIds = templatePhases
@@ -27,20 +29,28 @@ async function copyTaskSetsToProject(
     if (!taskSets || taskSets.length === 0) return
 
     const tasksToInsert = taskSets.flatMap((ts) =>
-      ((ts.tasks ?? []) as Array<{ title: string; description: string | null; priority: string; task_order: number }>)
+      ((ts.tasks ?? []) as Array<{
+        title: string; description: string | null; priority: string
+        task_order: number; is_urgent: boolean; requires_deliverable: boolean
+      }>)
         .sort((a, b) => a.task_order - b.task_order)
-        .map((t) => ({
+        .map((t, j) => ({
           project_id: projectId,
           title: t.title,
           description: t.description,
           priority: t.priority,
           status: "Todo",
+          is_urgent: t.is_urgent ?? false,
+          requires_deliverable: t.requires_deliverable ?? false,
+          task_order: j,
+          phase_id: phaseIdByTaskSetId[ts.id] ?? null,
           assignee_id: ts.default_assignee_id ?? null,
         }))
     )
 
     if (tasksToInsert.length > 0) {
-      await supabase.from("tasks").insert(tasksToInsert)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await supabase.from("tasks").insert(tasksToInsert as any[])
     }
   } catch { /* task_sets table may not exist in older deployments */ }
 }
@@ -149,7 +159,7 @@ export async function getProject(id: string) {
       *,
       customer:customers(id, name, company, email, phone),
       project_type:project_types(id, name, description, default_phase_set_id),
-      tasks(*, assignee:profiles(id, full_name, avatar_url, position)),
+      tasks(*, assignee:profiles(id, full_name, avatar_url, position), phase:project_phases(id, name, phase_order)),
       members:project_members(profile:profiles(id, full_name, avatar_url, position, role)),
       phases:project_phases(*)
     `)
@@ -169,7 +179,7 @@ export async function getProject(id: string) {
       .select(`
         *,
         customer:customers(id, name, company, email, phone),
-        tasks(*, assignee:profiles(id, full_name, avatar_url, position)),
+        tasks(*, assignee:profiles(id, full_name, avatar_url, position), phase:project_phases(id, name, phase_order)),
         members:project_members(profile:profiles(id, full_name, avatar_url, position, role))
       `)
       .eq("id", id)
@@ -210,13 +220,8 @@ export async function getProject(id: string) {
     web_project_context: webProjectContext ? [webProjectContext] : [],
     phases: ((data.phases ?? []) as Array<{ phase_order: number }>)
       .sort((a, b) => a.phase_order - b.phase_order),
-    tasks: ((data.tasks ?? []) as Array<{ due_date: string | null }>)
-      .sort((a, b) => {
-        if (!a.due_date && !b.due_date) return 0
-        if (!a.due_date) return 1
-        if (!b.due_date) return -1
-        return a.due_date.localeCompare(b.due_date)
-      }),
+    tasks: ((data.tasks ?? []) as Array<{ task_order: number }>)
+      .sort((a, b) => (a.task_order ?? 0) - (b.task_order ?? 0)),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any
 }
@@ -265,8 +270,14 @@ export async function createProject(
         description: tp.description,
         phase_order: i,
       }))
-      await supabase.from("project_phases").insert(projectPhases)
-      await copyTaskSetsToProject(supabase, templatePhases, project.id)
+      const { data: createdPhases } = await supabase.from("project_phases").insert(projectPhases).select()
+      const phaseIdByTaskSetId: Record<string, string> = {}
+      templatePhases.forEach((tp, i) => {
+        if (tp.default_task_set_id && createdPhases?.[i]) {
+          phaseIdByTaskSetId[tp.default_task_set_id] = createdPhases[i].id
+        }
+      })
+      await copyTaskSetsToProject(supabase, templatePhases, project.id, phaseIdByTaskSetId)
     }
   }
 
@@ -297,11 +308,19 @@ export async function applyPhaseSetToProject(projectId: string, phaseSetId: stri
     description: tp.description,
     phase_order: i,
   }))
-  const { error: insertError } = await supabase.from("project_phases").insert(projectPhases)
+  const { data: createdPhases, error: insertError } = await supabase.from("project_phases").insert(projectPhases).select()
   if (insertError) throw insertError
 
+  // Build task_set_id → project_phase.id mapping so tasks get linked to their phase
+  const phaseIdByTaskSetId: Record<string, string> = {}
+  templatePhases.forEach((tp, i) => {
+    if (tp.default_task_set_id && createdPhases?.[i]) {
+      phaseIdByTaskSetId[tp.default_task_set_id] = createdPhases[i].id
+    }
+  })
+
   // Copy tasks from each phase's default task set
-  await copyTaskSetsToProject(supabase, templatePhases, projectId)
+  await copyTaskSetsToProject(supabase, templatePhases, projectId, phaseIdByTaskSetId)
 
   revalidatePath(`/projects/${projectId}`)
 }
