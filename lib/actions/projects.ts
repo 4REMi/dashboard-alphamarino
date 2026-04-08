@@ -234,7 +234,7 @@ export async function createProject(
   formData: FormData,
   selectedPhaseSetPhaseIds?: string[]
 ) {
-  const supabase = await createClient()
+  const supabase = createAdminClient()
   const projectTypeId = formData.get("project_type_id") as string
 
   const { data: project, error } = await supabase
@@ -286,7 +286,7 @@ export async function createProject(
 }
 
 export async function applyPhaseSetToProject(projectId: string, phaseSetId: string) {
-  const supabase = await createClient()
+  const supabase = createAdminClient()
 
   // Get phases from the phase set
   const { data: templatePhases, error } = await supabase
@@ -326,7 +326,7 @@ export async function applyPhaseSetToProject(projectId: string, phaseSetId: stri
 }
 
 export async function updateProject(id: string, formData: FormData) {
-  const supabase = await createClient()
+  const supabase = createAdminClient()
   const projectTypeId = formData.get("project_type_id") as string
 
   const { error } = await supabase
@@ -350,14 +350,14 @@ export async function updateProject(id: string, formData: FormData) {
 }
 
 export async function deleteProject(id: string) {
-  const supabase = await createClient()
+  const supabase = createAdminClient()
   const { error } = await supabase.from("projects").delete().eq("id", id)
   if (error) throw error
   revalidatePath("/projects")
 }
 
 export async function archiveProject(id: string) {
-  const supabase = await createClient()
+  const supabase = createAdminClient()
   const { error } = await supabase
     .from("projects")
     .update({ status: "Archived" })
@@ -368,7 +368,7 @@ export async function archiveProject(id: string) {
 }
 
 export async function unarchiveProject(id: string) {
-  const supabase = await createClient()
+  const supabase = createAdminClient()
   const { error } = await supabase
     .from("projects")
     .update({ status: "Planning" })
