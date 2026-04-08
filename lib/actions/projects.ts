@@ -585,7 +585,7 @@ export async function getProjectMembers(projectId: string) {
     .eq("project_id", projectId)
 
   if (error) return []
-  return ((data ?? []) as { profile: Record<string, unknown> | null }[])
+  return ((data ?? []) as unknown as { profile: Record<string, unknown> | null }[])
     .map((m) => m.profile)
     .filter((p): p is Record<string, unknown> => p !== null && p?.full_name != null)
 }
