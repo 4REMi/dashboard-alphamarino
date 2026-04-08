@@ -9,6 +9,7 @@ interface Props {
   initialEntries: ProjectLogEntry[]
   currentUserId: string
   isAdmin: boolean
+  compact?: boolean
 }
 
 function timeAgo(iso: string): string {
@@ -23,7 +24,7 @@ function timeAgo(iso: string): string {
   return new Date(iso).toLocaleDateString("es-MX", { day: "numeric", month: "short" })
 }
 
-export function ProjectLog({ projectId, initialEntries, currentUserId, isAdmin }: Props) {
+export function ProjectLog({ projectId, initialEntries, currentUserId, isAdmin, compact }: Props) {
   const [entries, setEntries] = useState<ProjectLogEntry[]>(initialEntries)
   const [body, setBody] = useState("")
   const [isPending, startTransition] = useTransition()
@@ -46,53 +47,45 @@ export function ProjectLog({ projectId, initialEntries, currentUserId, isAdmin }
     })
   }
 
-  function handleDelete(entryId: string) {
-    setEntries((prev) => prev.filter((e) => e.id !== entryId))
-    startTransition(async () => {
-      await deleteLogEntry(entryId, projectId)
-    })
-  }
-
   return (
-    <div className="rounded-xl border border-border bg-card">
-      <div className="px-5 py-4 border-b border-border">
-        <h3 className="font-semibold text-sm text-foreground">Bitácora</h3>
+    <div className="rounded-xl border border-border bg-card flex flex-col overflow-hidden">
+      <div className="px-4 py-3 border-b border-border flex-shrink-0">
+        <h3 className="font-semibold text-sm">Bitácora</h3>
       </div>
 
-      {/* Add entry */}
-      <form onSubmit={handleAdd} className="px-5 py-4 border-b border-border flex gap-3">
+      {/* Input */}
+      <form onSubmit={handleAdd} className="px-4 py-3 border-b border-border flex gap-2 flex-shrink-0">
         <textarea
           value={body}
           onChange={(e) => setBody(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleAdd(e)
           }}
-          placeholder="Escribe una actualización, decisión o nota… (Ctrl+Enter para enviar)"
-          rows={2}
+          placeholder={compact ? "Nueva nota… (Ctrl+Enter)" : "Escribe una actualización… (Ctrl+Enter)"}
+          rows={compact ? 2 : 2}
           className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
         />
         <button
           type="submit"
           disabled={isPending || !body.trim()}
-          className="self-end px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
+          className="self-end px-3 py-2 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors flex-shrink-0"
         >
-          Agregar
+          +
         </button>
       </form>
 
       {/* Entries */}
-      <div className="divide-y divide-border">
+      <div className={compact ? "overflow-y-auto max-h-64 divide-y divide-border" : "divide-y divide-border"}>
         {entries.length === 0 && (
-          <p className="px-5 py-6 text-sm text-muted-foreground text-center">Sin entradas todavía.</p>
+          <p className="px-4 py-5 text-sm text-muted-foreground text-center">Sin entradas todavía.</p>
         )}
         {entries.map((entry) => {
           const canDelete = isAdmin || entry.author_id === currentUserId
           const authorName = entry.author?.full_name ?? "—"
-
           return (
-            <div key={entry.id} className="px-5 py-4">
-              <div className="flex items-start gap-3">
-                <div className="w-7 h-7 rounded-full bg-primary/15 flex items-center justify-center flex-shrink-0 text-xs font-bold text-primary overflow-hidden">
+            <div key={entry.id} className="px-4 py-3">
+              <div className="flex items-start gap-2">
+                <div className="w-6 h-6 rounded-full bg-primary/15 flex items-center justify-center flex-shrink-0 text-xs font-bold text-primary overflow-hidden">
                   {entry.author?.avatar_url ? (
                     <img src={entry.author.avatar_url} alt={authorName} className="w-full h-full object-cover" />
                   ) : (
@@ -100,17 +93,19 @@ export function ProjectLog({ projectId, initialEntries, currentUserId, isAdmin }
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-baseline gap-2 mb-1">
-                    <span className="text-xs font-medium text-foreground">{authorName}</span>
+                  <div className="flex items-baseline gap-1.5 mb-0.5">
+                    <span className="text-xs font-medium">{authorName}</span>
                     <span className="text-xs text-muted-foreground">{timeAgo(entry.created_at)}</span>
                   </div>
-                  <p className="text-sm text-foreground whitespace-pre-wrap">{entry.body}</p>
+                  <p className="text-sm whitespace-pre-wrap">{entry.body}</p>
                 </div>
                 {canDelete && (
                   <button
-                    onClick={() => handleDelete(entry.id)}
-                    title="Eliminar"
-                    className="p-1 rounded text-muted-foreground hover:text-destructive transition-colors text-xs flex-shrink-0"
+                    onClick={() => {
+                      setEntries((prev) => prev.filter((e) => e.id !== entry.id))
+                      startTransition(async () => { await deleteLogEntry(entry.id, projectId) })
+                    }}
+                    className="p-0.5 rounded text-muted-foreground hover:text-destructive transition-colors flex-shrink-0"
                   >
                     ✕
                   </button>

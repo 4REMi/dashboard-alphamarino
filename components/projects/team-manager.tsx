@@ -14,9 +14,11 @@ interface TeamManagerProps {
   members: Profile[]
   allEmployees: Profile[]
   isAdmin: boolean
+  /** When true, renders only the add-member control (list rendered externally) */
+  addOnly?: boolean
 }
 
-export function TeamManager({ projectId, members, allEmployees, isAdmin }: TeamManagerProps) {
+export function TeamManager({ projectId, members, allEmployees, isAdmin, addOnly }: TeamManagerProps) {
   const [optimisticMembers, setOptimisticMembers] = useState<Profile[]>(members)
   const [isPending, startTransition] = useTransition()
   const [selectedId, setSelectedId] = useState("none")
@@ -44,6 +46,34 @@ export function TeamManager({ projectId, members, allEmployees, isAdmin }: TeamM
     startTransition(async () => {
       await removeProjectMember(projectId, profileId)
     })
+  }
+
+  // addOnly mode: just show the add-member dropdown (list rendered by parent)
+  if (addOnly) {
+    return isAdmin && available.length > 0 ? (
+      <Select value={selectedId} onValueChange={handleAdd}>
+        <SelectTrigger className="w-full h-8 border-dashed text-xs">
+          <div className="flex items-center gap-1.5 text-muted-foreground">
+            <UserPlus className="w-3.5 h-3.5" />
+            <span>Agregar miembro</span>
+          </div>
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="none" disabled>Seleccionar empleado</SelectItem>
+          {available.map((e) => {
+            const ini = e.full_name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
+            return (
+              <SelectItem key={e.id} value={e.id}>
+                <div className="flex items-center gap-2">
+                  <Avatar className="h-5 w-5"><AvatarFallback className="text-xs">{ini}</AvatarFallback></Avatar>
+                  <span>{e.full_name}</span>
+                </div>
+              </SelectItem>
+            )
+          })}
+        </SelectContent>
+      </Select>
+    ) : null
   }
 
   return (
