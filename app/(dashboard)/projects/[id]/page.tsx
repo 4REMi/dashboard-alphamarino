@@ -5,7 +5,6 @@ import { getEmployees } from "@/lib/actions/employees"
 import { getIncome, getProjectExpenses } from "@/lib/actions/finances"
 import { getProjectTypes, getPhaseSets } from "@/lib/actions/config"
 import { getCustomers } from "@/lib/actions/customers"
-import { ProjectForm } from "@/components/projects/project-form"
 import { ProjectActions } from "@/components/projects/project-actions"
 import { ApplyPhasesButton } from "@/components/projects/apply-phases-button"
 import { TaskForm } from "@/components/tasks/task-form"
@@ -24,7 +23,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { createClient } from "@/lib/supabase/server"
 import { ArrowLeft, CalendarDays, DollarSign } from "lucide-react"
 import { formatDate, formatCurrency } from "@/lib/utils"
-import type { Customer, Profile, Task, ProjectType, PaidMediaContext, PaidMediaCycle, WebProjectContext, ProjectLogEntry, ProjectPhase } from "@/lib/types"
+import type { Customer, Profile, Project, Task, ProjectType, PaidMediaContext, PaidMediaCycle, WebProjectContext, ProjectLogEntry, ProjectPhase } from "@/lib/types"
 
 const statusConfig = {
   Planning: { label: "Planificación", variant: "secondary" as const },
@@ -117,19 +116,14 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           )}
         </div>
         <div className="flex items-center gap-2">
-          {isAdminOrSubadmin && (
-            <ProjectForm
-              project={project as Parameters<typeof ProjectForm>[0]["project"]}
-              customers={customers as Customer[]}
-              projectTypes={projectTypes as ProjectType[]}
-              trigger={<Button variant="outline" size="sm">Editar</Button>}
-            />
-          )}
           <ProjectActions
             projectId={project.id}
             isArchived={isArchived}
             isAdmin={isAdmin}
             isAdminOrSubadmin={isAdminOrSubadmin}
+            project={project as Project}
+            customers={customers as Customer[]}
+            projectTypes={projectTypes as ProjectType[]}
           />
         </div>
       </div>
