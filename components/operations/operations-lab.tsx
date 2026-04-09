@@ -119,11 +119,13 @@ function ColorPicker({ value, onChange }: { value: string; onChange: (c: string)
 }
 
 function IconPicker({ value, onChange, activeColor }: { value: string; onChange: (v: string) => void; activeColor?: string }) {
-  return (
-    <div className="space-y-1.5">
-      <p className="text-xs text-muted-foreground">Ícono</p>
+  const general = PROJECT_TYPE_ICONS.filter((e) => e.group === "general")
+  const brands  = PROJECT_TYPE_ICONS.filter((e) => e.group === "brand")
+
+  function renderGrid(entries: typeof PROJECT_TYPE_ICONS) {
+    return (
       <div className="flex flex-wrap gap-1">
-        {PROJECT_TYPE_ICONS.map(({ name, icon: Icon, label }) => {
+        {entries.map(({ name, icon: Icon, label }) => {
           const isSelected = value === name
           return (
             <button
@@ -144,6 +146,15 @@ function IconPicker({ value, onChange, activeColor }: { value: string; onChange:
           )
         })}
       </div>
+    )
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">Ícono</p>
+      {renderGrid(general)}
+      <p className="text-xs text-muted-foreground pt-1">Marcas</p>
+      {renderGrid(brands)}
       <input type="hidden" name="icon" value={value} />
     </div>
   )
