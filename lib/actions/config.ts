@@ -357,6 +357,16 @@ export async function importOperationsTemplate(jsonStr: string) {
     throw new Error("Se requiere projectType.name")
   }
 
+  // Guard: prevent re-importing a template with the same project type name
+  const { data: existingPT } = await supabase
+    .from("project_types")
+    .select("id")
+    .eq("name", template.projectType.name.trim())
+    .maybeSingle()
+  if (existingPT) {
+    throw new Error(`Ya existe un tipo de proyecto llamado "${template.projectType.name.trim()}". Elimínalo primero o cambia el nombre en el JSON.`)
+  }
+
   // 1. Create task sets and collect { phaseIndex → taskSetId }
   const tsIdByPhase: Record<number, string> = {}
   const createdTaskSets: Array<{ id: string; name: string; tasks: ImportTask[] }> = []
