@@ -8,11 +8,65 @@ export async function getCustomers() {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("customers")
-    .select("*")
+    .select("*, projects(id, name, status)")
     .order("created_at", { ascending: false })
 
   if (error) throw error
   return data
+}
+
+export async function importCustomers(
+  rows: Array<{
+    name: string
+    company?: string | null
+    email?: string | null
+    phone?: string | null
+    status?: string
+  }>
+): Promise<{ inserted: number; skipped: number }> {
+  const supabase = await createClient()
+
+  const { data: existing } = await supabase
+    .from("customers")
+    .select("name, email")
+
+  const existingNames = new Set(
+    (existing ?? []).map((c) => c.name.toLowerCase().trim())
+  )
+  const existingEmails = new Set(
+    (existing ?? [])
+      .filter((c) => c.email)
+      .map((c) => (c.email as string).toLowerCase().trim())
+  )
+
+  const toInsert = rows.filter((row) => {
+    const nameDup = existingNames.has(row.name.toLowerCase().trim())
+    const emailDup =
+      row.email && existingEmails.has(row.email.toLowerCase().trim())
+    return !nameDup && !emailDup
+  })
+
+  if (toInsert.length === 0) {
+    return { inserted: 0, skipped: rows.length }
+  }
+
+  const validStatuses: CustomerStatus[] = ["Prospect", "Active", "Inactive"]
+
+  const { error } = await supabase.from("customers").insert(
+    toInsert.map((row) => ({
+      name: row.name.trim(),
+      company: row.company?.trim() || null,
+      email: row.email?.trim() || null,
+      phone: row.phone?.trim() || null,
+      status: validStatuses.includes(row.status as CustomerStatus)
+        ? (row.status as CustomerStatus)
+        : "Prospect",
+    }))
+  )
+
+  if (error) throw error
+  revalidatePath("/customers")
+  return { inserted: toInsert.length, skipped: rows.length - toInsert.length }
 }
 
 export async function getCustomer(id: string) {

@@ -8,9 +8,8 @@ import type { Customer, CustomerStatus } from "@/lib/types"
 
 const COLUMNS: { status: CustomerStatus; label: string; color: string }[] = [
   { status: "Prospect", label: "Prospectos", color: "border-blue-200 bg-blue-50" },
-  { status: "Active", label: "Activos", color: "border-green-200 bg-green-50" },
-  { status: "Inactive", label: "Inactivos", color: "border-gray-200 bg-gray-50" },
-  { status: "Churned", label: "Perdidos", color: "border-red-200 bg-red-50" },
+  { status: "Active",   label: "Activos",    color: "border-green-200 bg-green-50" },
+  { status: "Inactive", label: "Inactivos",  color: "border-gray-200 bg-gray-50" },
 ]
 
 interface StatusBoardProps {

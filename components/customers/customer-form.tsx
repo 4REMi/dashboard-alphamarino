@@ -70,7 +70,6 @@ export function CustomerForm({ customer, trigger }: CustomerFormProps) {
                   <SelectItem value="Prospect">Prospecto</SelectItem>
                   <SelectItem value="Active">Activo</SelectItem>
                   <SelectItem value="Inactive">Inactivo</SelectItem>
-                  <SelectItem value="Churned">Perdido</SelectItem>
                 </SelectContent>
               </Select>
             </div>

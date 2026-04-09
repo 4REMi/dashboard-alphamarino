@@ -7,7 +7,7 @@ export type ProjectStatus = "Active" | "Completed" | "Archived"
 export type TaskStatus = "Todo" | "In Progress" | "Done"
 /** @deprecated Use is_urgent boolean instead */
 export type TaskPriority = "Low" | "Medium" | "High"
-export type CustomerStatus = "Prospect" | "Active" | "Inactive" | "Churned"
+export type CustomerStatus = "Prospect" | "Active" | "Inactive"
 export type ExpenseFrequency = "Monthly" | "Weekly" | "Annual" | "Semestral" | "One-time"
 export type ExpenseCategory = "Payroll" | "Software" | "Rent" | "Services" | "Other"
 export type PhaseStatus = "pending" | "in_progress" | "completed" | "blocked"
@@ -42,6 +42,7 @@ export interface Customer {
   phone: string | null
   status: CustomerStatus
   created_at: string
+  projects?: Array<{ id: string; name: string; status: string }>
 }
 
 // ============================================================
