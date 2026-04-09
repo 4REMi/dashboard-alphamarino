@@ -234,6 +234,10 @@ export async function createProject(
   formData: FormData,
   selectedPhaseSetPhaseIds?: string[]
 ) {
+  // Get authenticated user before switching to admin client
+  const authClient = await createClient()
+  const { data: { user } } = await authClient.auth.getUser()
+
   const supabase = createAdminClient()
   const projectTypeId = formData.get("project_type_id") as string
 
@@ -281,6 +285,13 @@ export async function createProject(
     }
   }
 
+  // Auto-add creator as project team member
+  if (user) {
+    await supabase
+      .from("project_members")
+      .upsert({ project_id: project.id, profile_id: user.id }, { onConflict: "project_id,profile_id", ignoreDuplicates: true })
+  }
+
   revalidatePath("/projects")
   return project
 }
@@ -298,7 +309,8 @@ export async function applyPhaseSetToProject(projectId: string, phaseSetId: stri
   if (error) throw error
   if (!templatePhases || templatePhases.length === 0) throw new Error("El phase set no tiene fases")
 
-  // Delete existing phases first (allow re-applying)
+  // Delete existing tasks and phases (clean slate before re-applying)
+  await supabase.from("tasks").delete().eq("project_id", projectId)
   await supabase.from("project_phases").delete().eq("project_id", projectId)
 
   // Insert new phases
