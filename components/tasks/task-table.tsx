@@ -581,7 +581,7 @@ function TaskDetailModal({
 
 // ─── Task Row ─────────────────────────────────────────────────────────────────
 
-function TaskRow({ task, projectId, employees, isAdmin, deliverable, onDeliverableClick, onRowClick }: {
+function TaskRow({ task, projectId, employees, isAdmin, deliverable, onDeliverableClick, onRowClick, showPhaseCol = true }: {
   task: Task
   projectId: string
   employees: Profile[]
@@ -589,6 +589,7 @@ function TaskRow({ task, projectId, employees, isAdmin, deliverable, onDeliverab
   deliverable: Deliverable | null
   onDeliverableClick: (task: Task) => void
   onRowClick: (task: Task) => void
+  showPhaseCol?: boolean
 }) {
   const hasDeliverable = !!deliverable
   const phase = (task.phase as { id: string; name: string; phase_order: number } | null | undefined) ?? null
@@ -660,17 +661,19 @@ function TaskRow({ task, projectId, employees, isAdmin, deliverable, onDeliverab
         <AssigneePicker task={task} projectId={projectId} employees={employees} />
       </td>
 
-      {/* Phase */}
-      <td className="px-4 py-2.5">
-        {phase ? <PhaseBadge phase={phase} /> : <span className="text-xs text-muted-foreground">—</span>}
-      </td>
+      {/* Phase — hidden in phase-grouping mode */}
+      {showPhaseCol && (
+        <td className="px-4 py-2.5">
+          {phase ? <PhaseBadge phase={phase} /> : <span className="text-xs text-muted-foreground">—</span>}
+        </td>
+      )}
     </tr>
   )
 }
 
-// ─── Group Header ─────────────────────────────────────────────────────────────
+// ─── Status Group Header ──────────────────────────────────────────────────────
 
-function GroupHeader({ label, count, isOpen, onToggle, status }: {
+function StatusGroupHeader({ label, count, isOpen, onToggle, status }: {
   label: string; count: number; isOpen: boolean; onToggle: () => void; status: TaskStatus
 }) {
   return (
@@ -694,9 +697,40 @@ function GroupHeader({ label, count, isOpen, onToggle, status }: {
   )
 }
 
+// ─── Phase Group Header ───────────────────────────────────────────────────────
+
+function PhaseGroupHeader({ name, phaseOrder, total, done, isOpen, onToggle }: {
+  name: string
+  phaseOrder: number
+  total: number
+  done: number
+  isOpen: boolean
+  onToggle: () => void
+}) {
+  const c = phaseColor(phaseOrder)
+  return (
+    <button
+      onClick={onToggle}
+      className="w-full flex items-center gap-2 px-4 py-2 text-left hover:bg-muted/50 transition-colors border-t first:border-t-0"
+    >
+      {isOpen
+        ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+        : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+      }
+      <span className={cn("w-2 h-2 rounded-full flex-shrink-0", c.bg)} />
+      <span className="text-xs font-semibold">{name}</span>
+      <span className="text-xs text-muted-foreground ml-1">{total}</span>
+      {done > 0 && (
+        <span className="ml-auto text-xs text-success font-medium pr-1">{done} hechas</span>
+      )}
+    </button>
+  )
+}
+
 // ─── Task Table ───────────────────────────────────────────────────────────────
 
-type TaskFilter = "all" | "mine" | "unassigned"
+type TaskFilter  = "all" | "mine" | "unassigned"
+type GroupMode   = "status" | "phase"
 
 interface TaskTableProps {
   tasks: Task[]
@@ -709,46 +743,99 @@ interface TaskTableProps {
 }
 
 export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesByTaskId = {}, currentUserId, sops = [] }: TaskTableProps) {
-  const initialOpen = Object.fromEntries(
+  // ── state ──────────────────────────────────────────────────────────────────
+  const initialStatusOpen = Object.fromEntries(
     STATUS_GROUPS.map((g) => [g.value, g.defaultOpen])
   ) as Record<TaskStatus, boolean>
-  const [open, setOpen] = useState<Record<TaskStatus, boolean>>(initialOpen)
+
+  const [statusOpen, setStatusOpen] = useState<Record<TaskStatus, boolean>>(initialStatusOpen)
+  const [phaseOpen,  setPhaseOpen]  = useState<Record<string, boolean>>({})
   const [drawerTask, setDrawerTask] = useState<Task | null>(null)
   const [detailTask, setDetailTask] = useState<Task | null>(null)
-  const [filter, setFilter] = useState<TaskFilter>("all")
+  const [filter,     setFilter]     = useState<TaskFilter>("all")
+  const [groupMode,  setGroupMode]  = useState<GroupMode>("status")
 
-  function toggleGroup(status: TaskStatus) {
-    setOpen((prev) => ({ ...prev, [status]: !prev[status] }))
-  }
+  // ── derived ────────────────────────────────────────────────────────────────
+  // Detect whether this project has phases
+  const hasPhases = tasks.some((t) => t.phase)
 
   const filteredTasks = tasks.filter((t) => {
-    if (filter === "mine") return currentUserId && t.assignee_id === currentUserId
+    if (filter === "mine")       return currentUserId && t.assignee_id === currentUserId
     if (filter === "unassigned") return !t.assignee_id
     return true
   })
 
-  const grouped = STATUS_GROUPS.map((g) => ({
+  // ── status grouping ────────────────────────────────────────────────────────
+  const statusGroups = STATUS_GROUPS.map((g) => ({
     ...g,
     tasks: filteredTasks
       .filter((t) => t.status === g.value)
       .sort((a, b) => {
-        // 1. Phase order (earlier phases first; tasks without phase go last)
-        const aPhaseOrder = (a.phase as { phase_order: number } | null)?.phase_order ?? 999
-        const bPhaseOrder = (b.phase as { phase_order: number } | null)?.phase_order ?? 999
-        if (aPhaseOrder !== bPhaseOrder) return aPhaseOrder - bPhaseOrder
-        // 2. task_order within the phase
-        const orderDiff = (a.task_order ?? 0) - (b.task_order ?? 0)
-        if (orderDiff !== 0) return orderDiff
-        // 3. created_at fallback
+        const aOrder = (a.phase as { phase_order: number } | null)?.phase_order ?? 999
+        const bOrder = (b.phase as { phase_order: number } | null)?.phase_order ?? 999
+        if (aOrder !== bOrder) return aOrder - bOrder
+        const diff = (a.task_order ?? 0) - (b.task_order ?? 0)
+        if (diff !== 0) return diff
         return a.created_at.localeCompare(b.created_at)
       }),
   })).filter((g) => g.tasks.length > 0)
+
+  // ── phase grouping ─────────────────────────────────────────────────────────
+  type PhaseGroup = {
+    key: string
+    name: string
+    phaseOrder: number
+    tasks: Task[]
+  }
+
+  const phaseGroups: PhaseGroup[] = (() => {
+    const map = new Map<string, PhaseGroup>()
+
+    for (const t of filteredTasks) {
+      const phase = (t.phase as { id: string; name: string; phase_order: number } | null) ?? null
+      const key   = phase?.id ?? "__no_phase__"
+
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          name:        phase?.name        ?? "Sin fase",
+          phaseOrder:  phase?.phase_order ?? 9999,
+          tasks: [],
+        })
+      }
+      map.get(key)!.tasks.push(t)
+    }
+
+    // Sort within each group by task_order then created_at
+    for (const g of map.values()) {
+      g.tasks.sort((a, b) =>
+        (a.task_order ?? 0) - (b.task_order ?? 0) ||
+        a.created_at.localeCompare(b.created_at)
+      )
+    }
+
+    // Sort groups: phases by phase_order, "Sin fase" always last
+    return Array.from(map.values()).sort((a, b) => a.phaseOrder - b.phaseOrder)
+  })()
+
+  // ── helpers ────────────────────────────────────────────────────────────────
+  function toggleStatus(s: TaskStatus) {
+    setStatusOpen((prev) => ({ ...prev, [s]: !prev[s] }))
+  }
+  function togglePhase(key: string) {
+    setPhaseOpen((prev) => ({ ...prev, [key]: !prev[key] }))
+  }
+  function isPhaseOpen(key: string) {
+    return phaseOpen[key] ?? false  // default collapsed
+  }
 
   const FILTERS: { value: TaskFilter; label: string }[] = [
     { value: "all",        label: "Todas" },
     { value: "mine",       label: "Mis tareas" },
     { value: "unassigned", label: "Sin asignar" },
   ]
+
+  const colSpan = groupMode === "phase" ? 4 : 5
 
   if (tasks.length === 0) {
     return (
@@ -763,26 +850,49 @@ export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesBy
 
   return (
     <>
-      {/* Filter pills */}
-      <div className="flex items-center gap-1 mb-2">
-        {FILTERS.map((f) => (
-          <button
-            key={f.value}
-            onClick={() => setFilter(f.value)}
-            className={cn(
-              "px-3 py-1 rounded-full text-xs font-medium transition-colors",
-              filter === f.value
-                ? "bg-foreground text-background"
-                : "bg-muted text-muted-foreground hover:bg-muted/70"
-            )}
-          >
-            {f.label}
-          </button>
-        ))}
-        {filter !== "all" && (
-          <span className="ml-2 text-xs text-muted-foreground">
-            {filteredTasks.length} de {tasks.length} tareas
-          </span>
+      {/* Toolbar: filters + group toggle */}
+      <div className="flex items-center gap-2 mb-2 flex-wrap">
+        {/* Filter pills */}
+        <div className="flex items-center gap-1">
+          {FILTERS.map((f) => (
+            <button
+              key={f.value}
+              onClick={() => setFilter(f.value)}
+              className={cn(
+                "px-3 py-1 rounded-full text-xs font-medium transition-colors",
+                filter === f.value
+                  ? "bg-foreground text-background"
+                  : "bg-muted text-muted-foreground hover:bg-muted/70"
+              )}
+            >
+              {f.label}
+            </button>
+          ))}
+          {filter !== "all" && (
+            <span className="ml-2 text-xs text-muted-foreground">
+              {filteredTasks.length} de {tasks.length} tareas
+            </span>
+          )}
+        </div>
+
+        {/* Group mode toggle — only shown when project has phases */}
+        {hasPhases && (
+          <div className="ml-auto flex items-center gap-0.5 rounded-full bg-muted p-0.5">
+            {(["status", "phase"] as GroupMode[]).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => setGroupMode(mode)}
+                className={cn(
+                  "px-3 py-1 rounded-full text-xs font-medium transition-colors",
+                  groupMode === mode
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {mode === "status" ? "Estado" : "Fase"}
+              </button>
+            ))}
+          </div>
         )}
       </div>
 
@@ -794,44 +904,94 @@ export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesBy
               <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Tarea</th>
               <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Estado</th>
               <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Asignado</th>
-              <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Fase</th>
+              {groupMode === "status" && (
+                <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Fase</th>
+              )}
             </tr>
           </thead>
           <tbody>
-            {grouped.length === 0 && (
-              <tr>
-                <td colSpan={5} className="py-10 text-center text-sm text-muted-foreground">
-                  {filter === "mine" ? "No tienes tareas asignadas." : "No hay tareas sin asignar."}
-                </td>
-              </tr>
-            )}
-            {grouped.map((group) => (
+            {/* ── STATUS MODE ──────────────────────────────────────── */}
+            {groupMode === "status" && (
               <>
-                <tr key={`header-${group.value}`}>
-                  <td colSpan={5} className="p-0">
-                    <GroupHeader
-                      label={group.label}
-                      count={group.tasks.length}
-                      isOpen={open[group.value]}
-                      onToggle={() => toggleGroup(group.value)}
-                      status={group.value}
-                    />
-                  </td>
-                </tr>
-                {open[group.value] && group.tasks.map((task) => (
-                  <TaskRow
-                    key={task.id}
-                    task={task}
-                    projectId={projectId}
-                    employees={employees}
-                    isAdmin={isAdmin}
-                    deliverable={deliverablesByTaskId[task.id] ?? null}
-                    onDeliverableClick={setDrawerTask}
-                    onRowClick={setDetailTask}
-                  />
+                {statusGroups.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="py-10 text-center text-sm text-muted-foreground">
+                      {filter === "mine" ? "No tienes tareas asignadas." : "No hay tareas sin asignar."}
+                    </td>
+                  </tr>
+                )}
+                {statusGroups.map((group) => (
+                  <>
+                    <tr key={`sh-${group.value}`}>
+                      <td colSpan={5} className="p-0">
+                        <StatusGroupHeader
+                          label={group.label}
+                          count={group.tasks.length}
+                          isOpen={statusOpen[group.value]}
+                          onToggle={() => toggleStatus(group.value)}
+                          status={group.value}
+                        />
+                      </td>
+                    </tr>
+                    {statusOpen[group.value] && group.tasks.map((task) => (
+                      <TaskRow
+                        key={task.id}
+                        task={task}
+                        projectId={projectId}
+                        employees={employees}
+                        isAdmin={isAdmin}
+                        deliverable={deliverablesByTaskId[task.id] ?? null}
+                        onDeliverableClick={setDrawerTask}
+                        onRowClick={setDetailTask}
+                        showPhaseCol
+                      />
+                    ))}
+                  </>
                 ))}
               </>
-            ))}
+            )}
+
+            {/* ── PHASE MODE ───────────────────────────────────────── */}
+            {groupMode === "phase" && (
+              <>
+                {phaseGroups.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="py-10 text-center text-sm text-muted-foreground">
+                      {filter === "mine" ? "No tienes tareas asignadas." : "No hay tareas sin asignar."}
+                    </td>
+                  </tr>
+                )}
+                {phaseGroups.map((group) => (
+                  <>
+                    <tr key={`ph-${group.key}`}>
+                      <td colSpan={4} className="p-0">
+                        <PhaseGroupHeader
+                          name={group.name}
+                          phaseOrder={group.phaseOrder}
+                          total={group.tasks.length}
+                          done={group.tasks.filter((t) => t.status === "Done").length}
+                          isOpen={isPhaseOpen(group.key)}
+                          onToggle={() => togglePhase(group.key)}
+                        />
+                      </td>
+                    </tr>
+                    {isPhaseOpen(group.key) && group.tasks.map((task) => (
+                      <TaskRow
+                        key={task.id}
+                        task={task}
+                        projectId={projectId}
+                        employees={employees}
+                        isAdmin={isAdmin}
+                        deliverable={deliverablesByTaskId[task.id] ?? null}
+                        onDeliverableClick={setDrawerTask}
+                        onRowClick={setDetailTask}
+                        showPhaseCol={false}
+                      />
+                    ))}
+                  </>
+                ))}
+              </>
+            )}
           </tbody>
         </table>
       </div>
