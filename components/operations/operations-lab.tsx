@@ -65,6 +65,58 @@ function InlineSelect(props: React.SelectHTMLAttributes<HTMLSelectElement> & { c
   )
 }
 
+const TYPE_COLORS = [
+  "#3b82f6", // blue
+  "#8b5cf6", // violet
+  "#f59e0b", // amber
+  "#10b981", // emerald
+  "#f43f5e", // rose
+  "#06b6d4", // cyan
+  "#f97316", // orange
+  "#6366f1", // indigo
+  "#ec4899", // pink
+  "#14b8a6", // teal
+  "#84cc16", // lime
+  "#ef4444", // red
+]
+
+function ColorPicker({ value, onChange }: { value: string; onChange: (c: string) => void }) {
+  return (
+    <div className="space-y-1.5">
+      <p className="text-xs text-muted-foreground">Color de etiqueta</p>
+      <div className="flex flex-wrap gap-1.5">
+        {TYPE_COLORS.map((c) => (
+          <button
+            key={c}
+            type="button"
+            title={c}
+            onClick={() => onChange(value === c ? "" : c)}
+            className="w-5 h-5 rounded-full border-2 transition-all flex-shrink-0"
+            style={{
+              backgroundColor: c,
+              borderColor: value === c ? "#000" : "transparent",
+              outline: value === c ? `2px solid ${c}` : "none",
+              outlineOffset: "2px",
+            }}
+          />
+        ))}
+        {value && (
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            title="Sin color"
+            className="w-5 h-5 rounded-full border border-dashed border-border flex items-center justify-center text-muted-foreground hover:text-foreground text-[9px]"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+      {/* hidden input so FormData picks up the value */}
+      <input type="hidden" name="color" value={value} />
+    </div>
+  )
+}
+
 function PanelHeader({
   title, subtitle, onAdd, onDelete,
 }: {
@@ -360,6 +412,8 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
 
   const [showNewType, setShowNewType] = useState(false)
   const [editingTypeId, setEditingTypeId] = useState<string | null>(null)
+  const [newTypeColor, setNewTypeColor] = useState("")
+  const [editTypeColor, setEditTypeColor] = useState("")
   const [showNewPS, setShowNewPS] = useState(false)
   const [showAddPhase, setShowAddPhase] = useState(false)
   const [editingTS, setEditingTS] = useState(false)
@@ -394,7 +448,7 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
     run(async () => {
       const created = await createProjectType(fd) as ProjectType
       setTypes((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
-      setSelectedTypeId(created.id); setSelectedPhaseId(null); setShowNewType(false); form.reset()
+      setSelectedTypeId(created.id); setSelectedPhaseId(null); setShowNewType(false); setNewTypeColor(""); form.reset()
     })
   }
 
@@ -681,6 +735,7 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
               <form onSubmit={handleCreateType} className="p-3 space-y-2 border-b border-border bg-primary/5">
                 <InlineInput name="name" required autoFocus placeholder="Nombre…" />
                 <InlineInput name="description" placeholder="Descripción (opcional)" />
+                <ColorPicker value={newTypeColor} onChange={setNewTypeColor} />
                 <div className="flex gap-2 justify-end">
                   <button type="button" onClick={() => setShowNewType(false)} className="p-1 rounded text-muted-foreground hover:text-foreground"><X className="w-3.5 h-3.5" /></button>
                   <button type="submit" disabled={isPending} className="p-1 rounded text-primary hover:text-primary/80 disabled:opacity-50"><Check className="w-3.5 h-3.5" /></button>
@@ -699,6 +754,7 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
                   <form key={type.id} onSubmit={(e) => handleUpdateType(type.id, e)} className="p-3 space-y-2 border-b border-border bg-muted/30">
                     <InlineInput name="name" defaultValue={type.name} required autoFocus />
                     <InlineInput name="description" defaultValue={type.description ?? ""} placeholder="Descripción" />
+                    <ColorPicker value={editTypeColor} onChange={setEditTypeColor} />
                     <div className="flex gap-2 justify-end">
                       <button type="button" onClick={() => setEditingTypeId(null)} className="p-1 rounded text-muted-foreground hover:text-foreground"><X className="w-3.5 h-3.5" /></button>
                       <button type="submit" disabled={isPending} className="p-1 rounded text-primary disabled:opacity-50"><Check className="w-3.5 h-3.5" /></button>
@@ -714,11 +770,16 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
                   className={`group flex items-center gap-2 px-3 py-3 cursor-pointer border-b border-border/50 transition-colors ${isSelected ? "bg-primary/10 border-l-2 border-l-primary" : "hover:bg-muted/40"}`}
                 >
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{type.name}</p>
+                    <div className="flex items-center gap-1.5">
+                      {type.color && (
+                        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: type.color }} />
+                      )}
+                      <p className="text-sm font-medium truncate">{type.name}</p>
+                    </div>
                     <p className={`text-xs truncate mt-0.5 ${psName ? "text-primary/80" : "text-muted-foreground"}`}>{psName ?? "Sin phase set"}</p>
                   </div>
                   <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                    <button onClick={(e) => { e.stopPropagation(); setEditingTypeId(type.id); setShowNewType(false) }} className="p-1 rounded text-muted-foreground hover:text-foreground"><Pencil className="w-3 h-3" /></button>
+                    <button onClick={(e) => { e.stopPropagation(); setEditingTypeId(type.id); setEditTypeColor(type.color ?? ""); setShowNewType(false) }} className="p-1 rounded text-muted-foreground hover:text-foreground"><Pencil className="w-3 h-3" /></button>
                     <button onClick={(e) => { e.stopPropagation(); handleDeleteType(type.id) }} className="p-1 rounded text-muted-foreground hover:text-destructive"><X className="w-3 h-3" /></button>
                   </div>
                   {isSelected && <ChevronRight className="w-3.5 h-3.5 text-primary flex-shrink-0" />}

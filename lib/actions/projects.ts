@@ -71,7 +71,7 @@ export async function getProjects(includeArchived = false) {
     .select(`
       *,
       customer:customers(id, name, company),
-      project_type:project_types(id, name),
+      project_type:project_types(id, name, color),
       members:project_members(profile_id),
       tasks(id, status, due_date),
       phases:project_phases(id, status)

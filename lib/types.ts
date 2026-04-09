@@ -51,6 +51,7 @@ export interface ProjectType {
   name: string
   description: string | null
   default_phase_set_id: string | null
+  color: string | null
   created_at: string
   default_phase_set?: PhaseSet
 }

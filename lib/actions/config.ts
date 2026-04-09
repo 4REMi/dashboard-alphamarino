@@ -44,6 +44,7 @@ export async function createProjectType(formData: FormData) {
   const { data, error } = await supabase.from("project_types").insert({
     name: formData.get("name") as string,
     description: (formData.get("description") as string) || null,
+    color: (formData.get("color") as string) || null,
   }).select().single()
   if (error) throw error
   revalidatePath("/settings")
@@ -61,6 +62,7 @@ export async function updateProjectType(id: string, formData: FormData) {
       name: formData.get("name") as string,
       description: (formData.get("description") as string) || null,
       default_phase_set_id: defaultPhaseSetId && defaultPhaseSetId !== "none" ? defaultPhaseSetId : null,
+      color: (formData.get("color") as string) || null,
     })
     .eq("id", id)
     .select()

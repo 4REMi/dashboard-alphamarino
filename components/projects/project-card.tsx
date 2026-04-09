@@ -17,7 +17,7 @@ const statusConfig = {
 interface ProjectCardProps {
   project: Project & {
     customer?: { name: string; company?: string | null } | null
-    project_type?: { name: string } | null
+    project_type?: { name: string; color?: string | null } | null
     attention?: {
       hasOverdueTasks: boolean
       hasBlockedPhase: boolean
@@ -49,7 +49,14 @@ export function ProjectCard({ project, canViewFinancials = false }: ProjectCardP
                   {project.name}
                 </h3>
                 {project.project_type && (
-                  <span className="text-xs px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground font-medium flex-shrink-0">
+                  <span
+                    className={`text-xs px-1.5 py-0.5 rounded font-medium flex-shrink-0${!project.project_type.color ? " bg-secondary text-secondary-foreground" : ""}`}
+                    style={project.project_type.color ? {
+                      backgroundColor: project.project_type.color + "22",
+                      color: project.project_type.color,
+                      border: `1px solid ${project.project_type.color}44`,
+                    } : undefined}
+                  >
                     {project.project_type.name}
                   </span>
                 )}
