@@ -16,8 +16,8 @@ import { phaseColor } from "@/lib/phase-colors"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 const STATUS_GROUPS: { value: TaskStatus; label: string; defaultOpen: boolean }[] = [
-  { value: "In Progress", label: "En Progreso", defaultOpen: true },
-  { value: "Todo",        label: "Por Hacer",   defaultOpen: true },
+  { value: "In Progress", label: "En Progreso", defaultOpen: false },
+  { value: "Todo",        label: "Por Hacer",   defaultOpen: false },
   { value: "Done",        label: "Hecho",        defaultOpen: false },
 ]
 
