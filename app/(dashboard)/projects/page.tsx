@@ -2,22 +2,19 @@ import { createClient } from "@/lib/supabase/server"
 import { getProjects } from "@/lib/actions/projects"
 import { getCustomers } from "@/lib/actions/customers"
 import { getProjectTypes } from "@/lib/actions/config"
-import { ProjectCard } from "@/components/projects/project-card"
 import { ProjectForm } from "@/components/projects/project-form"
-import { ArchivedProjectsSection } from "@/components/projects/archived-projects-section"
+import { ProjectsClient } from "@/components/projects/projects-client"
 import type { Customer, Project, ProjectType } from "@/lib/types"
 import { can } from "@/lib/permissions"
-import { getTranslations } from "next-intl/server"
 
 export default async function ProjectsPage() {
-  const t = await getTranslations("projects")
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   const { data: profile } = await supabase.from("profiles").select("role, permissions").eq("id", user!.id).single()
-  const isAdminOrSubadmin = profile?.role === "admin" || profile?.role === "subadmin"
-  const canEditProjects = can(profile, "edit_projects")
-  const canViewAll = can(profile, "view_all_projects")
+  const canEditProjects   = can(profile, "edit_projects")
+  const canViewAll        = can(profile, "view_all_projects")
   const canViewFinancials = can(profile, "view_project_financials")
+  const isAdminOrSubadmin = profile?.role === "admin" || profile?.role === "subadmin"
 
   const [allProjects, customers, projectTypes] = await Promise.all([
     getProjects(true).catch(() => []),
@@ -25,35 +22,22 @@ export default async function ProjectsPage() {
     canEditProjects ? getProjectTypes().catch(() => []) : Promise.resolve([]),
   ])
 
-  const allList = (allProjects as Project[]).filter((p) =>
+  const visible = (allProjects as Project[]).filter((p) =>
     canViewAll || (p.members as unknown as string[])?.includes(user!.id)
   )
-  const projectList = allList.filter((p) => p.status !== "Archived")
-  const archived = allList.filter((p) => p.status === "Archived")
 
-  const inProgress = projectList.filter((p) => p.status === "In Progress")
-  const planning = projectList.filter((p) => p.status === "Planning")
-  const review = projectList.filter((p) => p.status === "Review")
-  const completed = projectList.filter((p) => p.status === "Completed")
-  const needsAttention = projectList.filter((p) => {
-    const a = (p as Project & { attention?: { hasOverdueTasks: boolean; hasBlockedPhase: boolean; inactiveForDays: number } }).attention
-    return a && (a.hasOverdueTasks || a.hasBlockedPhase || a.inactiveForDays > 7)
-  })
-
-  const sections = [
-    { key: "attention", label: t("filter.all") === "All" ? "Needs Attention" : "Requieren Atención", items: needsAttention, color: "text-warning" },
-    { key: "inprogress", label: t("filter.inProgress"), items: inProgress, color: "text-info" },
-    { key: "planning",   label: t("filter.planning"),   items: planning,    color: "text-muted-foreground" },
-    { key: "review",     label: t("filter.review"),     items: review,      color: "text-purple-subtle-foreground" },
-    { key: "completed",  label: t("filter.completed"),  items: completed,   color: "text-success" },
-  ]
+  const active    = visible.filter((p) => p.status === "Active")
+  const completed = visible.filter((p) => p.status === "Completed")
+  const archived  = visible.filter((p) => p.status === "Archived")
 
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">{t("title")}</h1>
-          <p className="text-muted-foreground text-sm mt-1">{projectList.length} {t("title").toLowerCase()}</p>
+          <h1 className="text-2xl font-bold">Proyectos</h1>
+          <p className="text-muted-foreground text-sm mt-1">
+            {active.length + completed.length} proyectos
+          </p>
         </div>
         {canEditProjects && (
           <ProjectForm
@@ -64,43 +48,13 @@ export default async function ProjectsPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { label: t("filter.inProgress"), count: inProgress.length, color: "text-info-subtle-foreground bg-info-subtle" },
-          { label: t("filter.planning"),   count: planning.length,   color: "text-secondary-foreground bg-secondary" },
-          { label: t("filter.review"),     count: review.length,     color: "text-warning-subtle-foreground bg-warning-subtle" },
-          { label: t("filter.completed"),  count: completed.length,  color: "text-success-subtle-foreground bg-success-subtle" },
-        ].map((stat) => (
-          <div key={stat.label} className={`rounded-xl p-4 ${stat.color}`}>
-            <p className="text-2xl font-bold">{stat.count}</p>
-            <p className="text-sm font-medium mt-0.5">{stat.label}</p>
-          </div>
-        ))}
-      </div>
-
-      {sections.map(({ key, label, items, color }) =>
-        items.length > 0 ? (
-          <section key={key}>
-            <h2 className={`text-base font-semibold mb-3 ${color}`}>{label}</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {items.map((project) => (
-                <ProjectCard key={project.id} project={project as Parameters<typeof ProjectCard>[0]["project"]} canViewFinancials={canViewFinancials} />
-              ))}
-            </div>
-          </section>
-        ) : null
-      )}
-
-      {projectList.length === 0 && archived.length === 0 && (
-        <div className="text-center py-16 text-muted-foreground">
-          <p className="text-lg">{t("noProjects")}</p>
-          {canEditProjects && <p className="text-sm mt-1">{t("new")}</p>}
-        </div>
-      )}
-
-      <ArchivedProjectsSection
-        projects={archived as Parameters<typeof ArchivedProjectsSection>[0]["projects"]}
-        isAdminOrSubadmin={canEditProjects}
+      <ProjectsClient
+        active={active as Parameters<typeof ProjectsClient>[0]["active"]}
+        completed={completed as Parameters<typeof ProjectsClient>[0]["completed"]}
+        archived={archived as Project[]}
+        canViewFinancials={canViewFinancials}
+        canEditProjects={canEditProjects}
+        isAdminOrSubadmin={isAdminOrSubadmin}
       />
     </div>
   )

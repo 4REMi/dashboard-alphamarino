@@ -38,7 +38,7 @@ export default async function HomePage() {
 
   // Fetch projects (RLS filters by role automatically)
   const projects = (await getProjects()) as ProjectWithAttention[]
-  const activeProjects = projects.filter((p) => p.status === "In Progress")
+  const activeProjects = projects.filter((p) => p.status === "Active")
   const attentionProjects = activeProjects.filter(
     (p) => p.attention?.hasOverdueTasks || p.attention?.hasBlockedPhase ||
            p.attention?.hasPendingCycleReport || p.attention?.inactiveForDays > 7

@@ -94,7 +94,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
               <span className="text-sm text-muted-foreground">proyectos</span>
             </div>
             <div className="flex gap-2 mt-2 flex-wrap">
-              <Badge variant="success">{projects.filter((p) => p.status === "In Progress").length} activos</Badge>
+              <Badge variant="success">{projects.filter((p) => p.status === "Active").length} activos</Badge>
               <Badge variant="secondary">{projects.filter((p) => p.status === "Completed").length} completados</Badge>
             </div>
           </CardContent>
@@ -111,8 +111,8 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between mb-2">
                       <span className="font-medium">{project.name}</span>
-                      <Badge variant={project.status === "Completed" ? "success" : project.status === "In Progress" ? "info" : "secondary"}>
-                        {project.status}
+                      <Badge variant={project.status === "Completed" ? "success" : project.status === "Active" ? "info" : "secondary"}>
+                        {project.status === "Active" ? "Activo" : project.status === "Completed" ? "Completado" : "Archivado"}
                       </Badge>
                     </div>
                     <div className="flex items-center gap-3">

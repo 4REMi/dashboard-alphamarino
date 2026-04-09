@@ -247,7 +247,7 @@ export async function createProject(
       name: formData.get("name") as string,
       customer_id: (formData.get("customer_id") as string) || null,
       project_type_id: projectTypeId && projectTypeId !== "none" ? projectTypeId : null,
-      status: (formData.get("status") as ProjectStatus) ?? "Planning",
+      status: "Active" as ProjectStatus,
       project_value: formData.get("project_value") ? Number(formData.get("project_value")) : null,
       monthly_fee: formData.get("monthly_fee") ? Number(formData.get("monthly_fee")) : null,
       start_date: (formData.get("start_date") as string) || null,
@@ -383,7 +383,29 @@ export async function unarchiveProject(id: string) {
   const supabase = createAdminClient()
   const { error } = await supabase
     .from("projects")
-    .update({ status: "Planning" })
+    .update({ status: "Active" })
+    .eq("id", id)
+  if (error) throw error
+  revalidatePath("/projects")
+  revalidatePath(`/projects/${id}`)
+}
+
+export async function completeProject(id: string) {
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from("projects")
+    .update({ status: "Completed" })
+    .eq("id", id)
+  if (error) throw error
+  revalidatePath("/projects")
+  revalidatePath(`/projects/${id}`)
+}
+
+export async function reactivateProject(id: string) {
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from("projects")
+    .update({ status: "Active" })
     .eq("id", id)
   if (error) throw error
   revalidatePath("/projects")

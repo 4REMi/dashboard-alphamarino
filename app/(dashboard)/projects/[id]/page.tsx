@@ -134,7 +134,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
 
             <ProjectActions
               projectId={project.id}
-              isArchived={isArchived}
+              status={project.status as import("@/lib/types").ProjectStatus}
               isAdmin={isAdmin}
               isAdminOrSubadmin={canEditProjects}
               project={canEditProjects ? project as Project : undefined}

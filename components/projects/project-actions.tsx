@@ -2,14 +2,14 @@
 
 import { useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { archiveProject, unarchiveProject, deleteProject } from "@/lib/actions/projects"
+import { archiveProject, completeProject, reactivateProject, deleteProject } from "@/lib/actions/projects"
 import { ProjectForm } from "@/components/projects/project-form"
 import { Button } from "@/components/ui/button"
-import type { Project, Customer, ProjectType } from "@/lib/types"
+import type { Project, Customer, ProjectType, ProjectStatus } from "@/lib/types"
 
 interface Props {
   projectId: string
-  isArchived: boolean
+  status: ProjectStatus
   isAdmin: boolean
   isAdminOrSubadmin: boolean
   project?: Project
@@ -20,7 +20,7 @@ interface Props {
 
 export function ProjectActions({
   projectId,
-  isArchived,
+  status,
   isAdmin,
   isAdminOrSubadmin,
   project,
@@ -31,25 +31,11 @@ export function ProjectActions({
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
 
-  function handleArchive() {
+  function run(action: () => Promise<void>, redirect = false) {
     startTransition(async () => {
-      await archiveProject(projectId)
-      router.push("/projects")
-    })
-  }
-
-  function handleRestore() {
-    startTransition(async () => {
-      await unarchiveProject(projectId)
-      router.push("/projects")
-    })
-  }
-
-  function handleDelete() {
-    if (!confirm("¿Eliminar permanentemente? Esto borrará todas las tareas, fases e ingresos del proyecto.")) return
-    startTransition(async () => {
-      await deleteProject(projectId)
-      router.push("/projects")
+      await action()
+      if (redirect) router.push("/projects")
+      else router.refresh()
     })
   }
 
@@ -66,21 +52,44 @@ export function ProjectActions({
           canViewFinancials={canViewFinancials}
         />
       )}
-      {isArchived ? (
-        <Button variant="outline" size="sm" onClick={handleRestore} disabled={isPending}>
+
+      {status === "Active" && (
+        <>
+          <Button variant="outline" size="sm" onClick={() => run(() => completeProject(projectId))} disabled={isPending}>
+            Marcar completado
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => run(() => archiveProject(projectId), true)} disabled={isPending}>
+            Archivar
+          </Button>
+        </>
+      )}
+
+      {status === "Completed" && (
+        <>
+          <Button variant="outline" size="sm" onClick={() => run(() => reactivateProject(projectId))} disabled={isPending}>
+            Reactivar
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => run(() => archiveProject(projectId), true)} disabled={isPending}>
+            Archivar
+          </Button>
+        </>
+      )}
+
+      {status === "Archived" && (
+        <Button variant="outline" size="sm" onClick={() => run(() => reactivateProject(projectId), true)} disabled={isPending}>
           Restaurar
         </Button>
-      ) : (
-        <Button variant="outline" size="sm" onClick={handleArchive} disabled={isPending}>
-          Archivar
-        </Button>
       )}
+
       {isAdmin && (
         <Button
           variant="outline"
           size="sm"
-          onClick={handleDelete}
           disabled={isPending}
+          onClick={() => {
+            if (!confirm("¿Eliminar permanentemente? Esto borrará todas las tareas, fases e ingresos del proyecto.")) return
+            run(() => deleteProject(projectId), true)
+          }}
           className="text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30"
         >
           Eliminar

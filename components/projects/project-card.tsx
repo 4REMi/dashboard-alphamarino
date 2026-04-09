@@ -7,13 +7,6 @@ import { formatDate, formatCurrency } from "@/lib/utils"
 import type { Project } from "@/lib/types"
 import { getProjectTypeIcon } from "@/lib/project-type-icons"
 
-const statusConfig = {
-  Planning: { label: "Planificación", variant: "secondary" as const },
-  "In Progress": { label: "En Progreso", variant: "info" as const },
-  Review: { label: "Revisión", variant: "warning" as const },
-  Completed: { label: "Completado", variant: "success" as const },
-  Archived: { label: "Archivado", variant: "secondary" as const },
-}
 
 interface ProjectCardProps {
   project: Project & {
@@ -30,7 +23,6 @@ interface ProjectCardProps {
 }
 
 export function ProjectCard({ project, canViewFinancials = false }: ProjectCardProps) {
-  const config = statusConfig[project.status] ?? statusConfig["Planning"]
   const attention = project.attention
   const needsAttention = attention && (
     attention.hasOverdueTasks ||
@@ -82,7 +74,9 @@ export function ProjectCard({ project, canViewFinancials = false }: ProjectCardP
                 <p className="text-xs text-muted-foreground mt-0.5">{project.customer.name}</p>
               )}
             </div>
-            <Badge variant={config.variant} className="ml-2 flex-shrink-0">{config.label}</Badge>
+            {project.status === "Completed" && (
+              <Badge variant="success" className="ml-2 flex-shrink-0">Completado</Badge>
+            )}
           </div>
 
           <div className="space-y-2 mb-4">
