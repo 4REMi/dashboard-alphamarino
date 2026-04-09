@@ -206,6 +206,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             employees={employees as Profile[]}
             isAdmin={canManageTasks}
             deliverablesByTaskId={deliverablesByTaskId}
+            currentUserId={user!.id}
           />
         </section>
 

@@ -525,29 +525,39 @@ function GroupHeader({ label, count, isOpen, onToggle, status }: {
 
 // ─── Task Table ───────────────────────────────────────────────────────────────
 
+type TaskFilter = "all" | "mine" | "unassigned"
+
 interface TaskTableProps {
   tasks: Task[]
   projectId: string
   employees: Profile[]
   isAdmin: boolean
   deliverablesByTaskId?: Record<string, Deliverable>
+  currentUserId?: string
 }
 
-export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesByTaskId = {} }: TaskTableProps) {
+export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesByTaskId = {}, currentUserId }: TaskTableProps) {
   const initialOpen = Object.fromEntries(
     STATUS_GROUPS.map((g) => [g.value, g.defaultOpen])
   ) as Record<TaskStatus, boolean>
   const [open, setOpen] = useState<Record<TaskStatus, boolean>>(initialOpen)
   const [drawerTask, setDrawerTask] = useState<Task | null>(null)
   const [detailTask, setDetailTask] = useState<Task | null>(null)
+  const [filter, setFilter] = useState<TaskFilter>("all")
 
   function toggleGroup(status: TaskStatus) {
     setOpen((prev) => ({ ...prev, [status]: !prev[status] }))
   }
 
+  const filteredTasks = tasks.filter((t) => {
+    if (filter === "mine") return currentUserId && t.assignee_id === currentUserId
+    if (filter === "unassigned") return !t.assignee_id
+    return true
+  })
+
   const grouped = STATUS_GROUPS.map((g) => ({
     ...g,
-    tasks: tasks
+    tasks: filteredTasks
       .filter((t) => t.status === g.value)
       .sort((a, b) => {
         // 1. Phase order (earlier phases first; tasks without phase go last)
@@ -562,6 +572,12 @@ export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesBy
       }),
   })).filter((g) => g.tasks.length > 0)
 
+  const FILTERS: { value: TaskFilter; label: string }[] = [
+    { value: "all",        label: "Todas" },
+    { value: "mine",       label: "Mis tareas" },
+    { value: "unassigned", label: "Sin asignar" },
+  ]
+
   if (tasks.length === 0) {
     return (
       <div className="border rounded-lg py-10 text-center text-sm text-muted-foreground bg-card">
@@ -575,6 +591,29 @@ export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesBy
 
   return (
     <>
+      {/* Filter pills */}
+      <div className="flex items-center gap-1 mb-2">
+        {FILTERS.map((f) => (
+          <button
+            key={f.value}
+            onClick={() => setFilter(f.value)}
+            className={cn(
+              "px-3 py-1 rounded-full text-xs font-medium transition-colors",
+              filter === f.value
+                ? "bg-foreground text-background"
+                : "bg-muted text-muted-foreground hover:bg-muted/70"
+            )}
+          >
+            {f.label}
+          </button>
+        ))}
+        {filter !== "all" && (
+          <span className="ml-2 text-xs text-muted-foreground">
+            {filteredTasks.length} de {tasks.length} tareas
+          </span>
+        )}
+      </div>
+
       <div className="border rounded-lg overflow-hidden bg-card">
         <table className="w-full text-sm">
           <thead className="bg-muted/50 border-b">
@@ -587,6 +626,13 @@ export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesBy
             </tr>
           </thead>
           <tbody>
+            {grouped.length === 0 && (
+              <tr>
+                <td colSpan={5} className="py-10 text-center text-sm text-muted-foreground">
+                  {filter === "mine" ? "No tienes tareas asignadas." : "No hay tareas sin asignar."}
+                </td>
+              </tr>
+            )}
             {grouped.map((group) => (
               <>
                 <tr key={`header-${group.value}`}>
