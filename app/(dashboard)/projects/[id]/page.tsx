@@ -180,6 +180,33 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           </div>
         )}
 
+        {/* ── Phases — full width, above tasks ───────────────────────── */}
+        {(hasPhases || (isAdminOrSubadmin && phaseSets.length > 0)) && (
+          <section>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold">Fases del Proyecto</h2>
+              {isAdminOrSubadmin && phaseSets.length > 0 && (
+                <ApplyPhasesButton
+                  projectId={project.id}
+                  phaseSets={phaseSets as Parameters<typeof ApplyPhasesButton>[0]["phaseSets"]}
+                  defaultPhaseSetId={(project.project_type as { default_phase_set_id?: string } | null)?.default_phase_set_id ?? null}
+                />
+              )}
+            </div>
+            <ProjectPhases
+              projectId={project.id}
+              initialPhases={phases}
+              canEdit={isAdminOrSubadmin}
+              taskCountByPhaseId={Object.fromEntries(
+                phases.map((ph) => {
+                  const phaseTasks = tasks.filter((t) => t.phase_id === ph.id)
+                  return [ph.id, { done: phaseTasks.filter((t) => t.status === "Done").length, total: phaseTasks.length }]
+                }).filter(([, v]) => (v as { total: number }).total > 0)
+              )}
+            />
+          </section>
+        )}
+
         {/* ── Tasks — full width ──────────────────────────────────────── */}
         <section>
           <div className="flex items-center justify-between mb-3">
@@ -219,36 +246,26 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           />
         )}
 
-        {/* ── Lower grid: context (left) + sidebar (right) ───────────── */}
+        {/* ── Lower grid: context hubs (left) + sidebar (right) ─────── */}
         {(hasContextSection || true) && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
 
-            {/* Left: phases + hubs */}
+            {/* Left: web context + paid media hub */}
             <div className="lg:col-span-2 space-y-6">
-              {(hasPhases || (isAdminOrSubadmin && phaseSets.length > 0)) && (
+              {webContext !== null && !isPaidMedia && (
                 <section>
-                  <div className="flex items-center justify-between mb-3">
-                    <h2 className="text-sm font-semibold">Fases del Proyecto</h2>
-                    {isAdminOrSubadmin && phaseSets.length > 0 && (
-                      <ApplyPhasesButton
-                        projectId={project.id}
-                        phaseSets={phaseSets as Parameters<typeof ApplyPhasesButton>[0]["phaseSets"]}
-                        defaultPhaseSetId={(project.project_type as { default_phase_set_id?: string } | null)?.default_phase_set_id ?? null}
-                      />
-                    )}
-                  </div>
-                  {(!isPaidMedia || webContext !== null) && (
-                    <div className="mb-4">
-                      <WebContextCard projectId={project.id} context={webContext} canEdit={isAdminOrSubadmin} />
-                    </div>
-                  )}
-                  <ProjectPhases projectId={project.id} initialPhases={phases} canEdit={isAdminOrSubadmin} />
+                  <WebContextCard projectId={project.id} context={webContext} canEdit={isAdminOrSubadmin} />
                 </section>
               )}
 
               {isPaidMedia && (
                 <section className="space-y-4">
                   <h2 className="text-sm font-semibold">Hub Paid Media</h2>
+                  {webContext !== null && (
+                    <div className="mb-4">
+                      <WebContextCard projectId={project.id} context={webContext} canEdit={isAdminOrSubadmin} />
+                    </div>
+                  )}
                   <PaidMediaContextCard projectId={project.id} context={paidMediaContext} canEdit={isAdminOrSubadmin} />
                   <PaidMediaCycleCard   projectId={project.id} activeCycle={activeCycle} context={paidMediaContext} canEdit={isAdminOrSubadmin} />
                   {historyCycles.length > 0 && <PaidMediaCycleHistory cycles={historyCycles} />}
@@ -256,9 +273,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               )}
 
               {/* Placeholder so the left column always exists and grid holds its shape */}
-              {!hasPhases && !(isAdminOrSubadmin && phaseSets.length > 0) && !isPaidMedia && (
-                <div />
-              )}
+              {webContext === null && !isPaidMedia && <div />}
             </div>
 
             {/* Right: sidebar */}

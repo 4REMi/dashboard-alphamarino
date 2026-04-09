@@ -6,10 +6,13 @@ import { PHASE_STATUS_LABELS } from "@/lib/types"
 import { updateProjectPhaseStatus, updateProjectPhaseNotes } from "@/lib/actions/projects"
 import { phaseColor } from "@/lib/phase-colors"
 
+interface TaskCount { done: number; total: number }
+
 interface Props {
   projectId: string
   initialPhases: ProjectPhase[]
   canEdit: boolean // admin or subadmin
+  taskCountByPhaseId?: Record<string, TaskCount>
 }
 
 const STATUS_STYLES: Record<PhaseStatus, { dot: string; badge: string }> = {
@@ -19,7 +22,7 @@ const STATUS_STYLES: Record<PhaseStatus, { dot: string; badge: string }> = {
   blocked:     { dot: "bg-destructive",         badge: "bg-destructive/10 text-destructive border-destructive/20" },
 }
 
-export function ProjectPhases({ projectId, initialPhases, canEdit }: Props) {
+export function ProjectPhases({ projectId, initialPhases, canEdit, taskCountByPhaseId = {} }: Props) {
   const [phases, setPhases] = useState<ProjectPhase[]>(initialPhases)
   const [expandedId, setExpandedId] = useState<string | null>(
     initialPhases.find((p) => p.status === "in_progress")?.id ??
@@ -116,6 +119,11 @@ export function ProjectPhases({ projectId, initialPhases, canEdit }: Props) {
                 </span>
                 <span className={`w-2 h-2 rounded-full flex-shrink-0 ${pc.bg}`} />
                 <span className="flex-1 text-sm font-medium text-foreground">{phase.name}</span>
+                {taskCountByPhaseId[phase.id] && (
+                  <span className="text-xs text-muted-foreground flex-shrink-0">
+                    {taskCountByPhaseId[phase.id].done}/{taskCountByPhaseId[phase.id].total}
+                  </span>
+                )}
                 {phase.status === "in_progress" && phase.started_at && (
                   <span className="text-xs text-muted-foreground hidden sm:block">
                     Iniciada {new Date(phase.started_at).toLocaleDateString("es-MX")}
