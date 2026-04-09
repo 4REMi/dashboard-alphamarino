@@ -6,8 +6,10 @@ import { ProjectForm } from "@/components/projects/project-form"
 import { ProjectsClient } from "@/components/projects/projects-client"
 import type { Customer, Project, ProjectType } from "@/lib/types"
 import { can } from "@/lib/permissions"
+import { getTranslations } from "next-intl/server"
 
 export default async function ProjectsPage() {
+  const t = await getTranslations("projects")
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   const { data: profile } = await supabase.from("profiles").select("role, permissions").eq("id", user!.id).single()
@@ -34,9 +36,9 @@ export default async function ProjectsPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Proyectos</h1>
+          <h1 className="text-2xl font-bold">{t("title")}</h1>
           <p className="text-muted-foreground text-sm mt-1">
-            {active.length + completed.length} proyectos
+            {t("countLabel", { count: active.length + completed.length })}
           </p>
         </div>
         {canEditProjects && (

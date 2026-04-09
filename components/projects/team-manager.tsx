@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import { useTranslations } from "next-intl"
 import Link from "next/link"
 import { addProjectMember, removeProjectMember } from "@/lib/actions/projects"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -19,6 +20,7 @@ interface TeamManagerProps {
 }
 
 export function TeamManager({ projectId, members, allEmployees, isAdmin, addOnly }: TeamManagerProps) {
+  const t = useTranslations("projects.members")
   const [optimisticMembers, setOptimisticMembers] = useState<Profile[]>(members)
   const [isPending, startTransition] = useTransition()
   const [selectedId, setSelectedId] = useState("none")
@@ -55,11 +57,11 @@ export function TeamManager({ projectId, members, allEmployees, isAdmin, addOnly
         <SelectTrigger className="w-full h-8 border-dashed text-xs">
           <div className="flex items-center gap-1.5 text-muted-foreground">
             <UserPlus className="w-3.5 h-3.5" />
-            <span>Agregar miembro</span>
+            <span>{t("add")}</span>
           </div>
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="none" disabled>Seleccionar empleado</SelectItem>
+          <SelectItem value="none" disabled>{t("selectEmployee")}</SelectItem>
           {available.map((e) => {
             const ini = e.full_name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
             return (
@@ -127,7 +129,7 @@ export function TeamManager({ projectId, members, allEmployees, isAdmin, addOnly
             </div>
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="none" disabled>Seleccionar empleado</SelectItem>
+            <SelectItem value="none" disabled>{t("selectEmployee")}</SelectItem>
             {available.map((e) => {
               const initials = e.full_name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
               return (
@@ -146,7 +148,7 @@ export function TeamManager({ projectId, members, allEmployees, isAdmin, addOnly
       )}
 
       {optimisticMembers.length === 0 && !isAdmin && (
-        <p className="text-sm text-muted-foreground">Sin miembros asignados</p>
+        <p className="text-sm text-muted-foreground">{t("noMembers")}</p>
       )}
     </div>
   )

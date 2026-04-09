@@ -1,4 +1,7 @@
+"use client"
+
 import Link from "next/link"
+import { useTranslations } from "next-intl"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
@@ -47,6 +50,7 @@ function currentPhase(phases: Phase[] | undefined): Phase | null {
 }
 
 export function ProjectCard({ project, canViewFinancials = false }: ProjectCardProps) {
+  const t = useTranslations("projects")
   const attention = project.attention
   const needsAttention = attention && (
     attention.hasOverdueTasks ||
@@ -116,14 +120,14 @@ export function ProjectCard({ project, canViewFinancials = false }: ProjectCardP
               )}
             </div>
             {project.status === "Completed" && (
-              <Badge variant="success" className="flex-shrink-0">Completado</Badge>
+              <Badge variant="success" className="flex-shrink-0">{t("completed")}</Badge>
             )}
           </div>
 
           {/* ── Progress ────────────────────────────────────────── */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>Progreso</span>
+              <span>{t("progress")}</span>
               <span className="font-semibold text-foreground">{project.progress}%</span>
             </div>
             <Progress value={project.progress} className="h-1.5" />
@@ -139,7 +143,7 @@ export function ProjectCard({ project, canViewFinancials = false }: ProjectCardP
                   {phase.name}
                 </span>
                 {phase.status === "blocked" && (
-                  <span className="text-xs text-destructive flex-shrink-0">· bloqueada</span>
+                  <span className="text-xs text-destructive flex-shrink-0">· {t("blockedLabel")}</span>
                 )}
               </div>
             )
@@ -203,13 +207,13 @@ export function ProjectCard({ project, canViewFinancials = false }: ProjectCardP
           {needsAttention && (
             <div className="flex flex-wrap gap-1 pt-0.5">
               {attention?.hasOverdueTasks && (
-                <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Tareas vencidas</span>
+                <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">{t("attention.overdueTasks")}</span>
               )}
               {attention?.hasBlockedPhase && (
-                <span className="text-xs bg-destructive/10 text-destructive px-1.5 py-0.5 rounded">Fase bloqueada</span>
+                <span className="text-xs bg-destructive/10 text-destructive px-1.5 py-0.5 rounded">{t("attention.blockedPhase")}</span>
               )}
               {attention?.inactiveForDays > 7 && (
-                <span className="text-xs bg-muted text-muted-foreground px-1.5 py-0.5 rounded">{attention.inactiveForDays}d sin actividad</span>
+                <span className="text-xs bg-muted text-muted-foreground px-1.5 py-0.5 rounded">{t("attention.inactiveDays", { days: attention.inactiveForDays })}</span>
               )}
             </div>
           )}

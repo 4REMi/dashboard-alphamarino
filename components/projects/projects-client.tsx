@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useTranslations } from "next-intl"
 import { ProjectCard } from "@/components/projects/project-card"
 import { ArchivedProjectsSection } from "@/components/projects/archived-projects-section"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -19,6 +20,7 @@ function ProjectRow({ project, canViewFinancials }: {
   project: Parameters<typeof ProjectCard>[0]["project"]
   canViewFinancials: boolean
 }) {
+  const tP = useTranslations("projects")
   const pt      = project.project_type
   const Icon    = pt?.icon ? getProjectTypeIcon(pt.icon) : null
   const members = ((project.members ?? []) as Array<{ id: string; full_name: string; avatar_url: string | null }>).slice(0, 3)
@@ -55,7 +57,7 @@ function ProjectRow({ project, canViewFinancials }: {
               <span className={cn("text-xs flex items-center gap-1 flex-shrink-0", pc.text)}>
                 <span className={cn("w-1.5 h-1.5 rounded-full inline-block flex-shrink-0", pc.bg)} />
                 {activePhase.name}
-                {activePhase.status === "blocked" && <span className="text-destructive">· bloqueada</span>}
+                {activePhase.status === "blocked" && <span className="text-destructive">· {tP("blockedLabel")}</span>}
               </span>
             )
           })()}
@@ -73,7 +75,7 @@ function ProjectRow({ project, canViewFinancials }: {
       {/* Status badge — only Completed */}
       {project.status === "Completed" && (
         <span className="text-xs bg-success-subtle text-success-subtle-foreground px-2 py-0.5 rounded-full font-medium flex-shrink-0">
-          Completado
+          {tP("completed")}
         </span>
       )}
 
@@ -114,6 +116,7 @@ interface Props {
 }
 
 export function ProjectsClient({ active, completed, archived, canViewFinancials, canEditProjects, isAdminOrSubadmin }: Props) {
+  const tP = useTranslations("projects")
   const [view, setView] = useState<ViewMode>("grid")
   const [tab, setTab] = useState<StatusFilter>("active")
 
@@ -135,8 +138,8 @@ export function ProjectsClient({ active, completed, archived, canViewFinancials,
         {/* Status tabs */}
         <div className="flex items-center gap-1 bg-muted rounded-lg p-1 flex-1">
           {([
-            { value: "active",    label: `Activos (${active.length})` },
-            { value: "completed", label: `Completados (${completed.length})` },
+            { value: "active",    label: `${tP("tabActive")} (${active.length})` },
+            { value: "completed", label: `${tP("tabCompleted")} (${completed.length})` },
           ] as { value: StatusFilter; label: string }[]).map(({ value, label }) => (
             <button
               key={value}
@@ -158,14 +161,14 @@ export function ProjectsClient({ active, completed, archived, canViewFinancials,
           <button
             onClick={() => setViewPersist("grid")}
             className={cn("p-2 transition-colors", view === "grid" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}
-            title="Vista cuadrícula"
+            title={tP("viewGrid")}
           >
             <LayoutGrid className="w-4 h-4" />
           </button>
           <button
             onClick={() => setViewPersist("list")}
             className={cn("p-2 transition-colors", view === "list" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}
-            title="Vista lista"
+            title={tP("viewList")}
           >
             <List className="w-4 h-4" />
           </button>
@@ -175,7 +178,7 @@ export function ProjectsClient({ active, completed, archived, canViewFinancials,
       {/* Project grid or list */}
       {projects.length === 0 ? (
         <div className="text-center py-16 text-muted-foreground text-sm">
-          {tab === "active" ? "No hay proyectos activos." : "No hay proyectos completados."}
+          {tab === "active" ? tP("noActive") : tP("noCompleted")}
         </div>
       ) : view === "grid" ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

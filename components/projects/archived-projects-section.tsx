@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
+import { useTranslations } from "next-intl"
 import Link from "next/link"
 import { Card, CardContent } from "@/components/ui/card"
 import { unarchiveProject } from "@/lib/actions/projects"
@@ -20,6 +21,7 @@ interface Props {
 
 function RestoreButton({ projectId }: { projectId: string }) {
   const router = useRouter()
+  const tP = useTranslations("projects")
   const [isPending, startTransition] = useTransition()
 
   function handle(e: React.MouseEvent) {
@@ -37,12 +39,13 @@ function RestoreButton({ projectId }: { projectId: string }) {
       disabled={isPending}
       className="text-xs px-2.5 py-1 rounded-md border border-border hover:bg-muted transition-colors disabled:opacity-50 flex-shrink-0"
     >
-      {isPending ? "…" : "Restaurar"}
+      {isPending ? "…" : tP("restore")}
     </button>
   )
 }
 
 export function ArchivedProjectsSection({ projects, isAdminOrSubadmin }: Props) {
+  const tP = useTranslations("projects")
   const [expanded, setExpanded] = useState(false)
 
   if (projects.length === 0) return null
@@ -54,7 +57,7 @@ export function ArchivedProjectsSection({ projects, isAdminOrSubadmin }: Props) 
         className="flex items-center gap-2 text-base font-semibold text-muted-foreground hover:text-foreground transition-colors mb-3"
       >
         {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-        Archivados ({projects.length})
+        {tP("archived")} ({projects.length})
       </button>
 
       {expanded && (
@@ -68,7 +71,7 @@ export function ArchivedProjectsSection({ projects, isAdminOrSubadmin }: Props) 
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="font-semibold text-base truncate">{project.name}</h3>
                         <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium flex-shrink-0">
-                          Archivado
+                          {tP("archivedLabel")}
                         </span>
                         {project.project_type && (
                           <span className="text-xs px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground font-medium flex-shrink-0">

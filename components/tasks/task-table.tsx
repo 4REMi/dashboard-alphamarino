@@ -2,6 +2,7 @@
 
 import { useState, useTransition, useRef, useEffect } from "react"
 import { createPortal } from "react-dom"
+import { useTranslations } from "next-intl"
 import { deleteTask, updateTask, updateTaskStatus, updateTaskAssignee, updateTaskUrgent } from "@/lib/actions/tasks"
 import { assignSopToTask } from "@/lib/actions/sops"
 import { DeliverableDrawer } from "@/components/projects/deliverable-drawer"
@@ -16,15 +17,22 @@ import type { Task, Profile, TaskStatus, Deliverable, Sop } from "@/lib/types"
 import { phaseColor } from "@/lib/phase-colors"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
-const STATUS_GROUPS: { value: TaskStatus; label: string; defaultOpen: boolean }[] = [
-  { value: "In Progress", label: "En Progreso", defaultOpen: false },
-  { value: "Todo",        label: "Por Hacer",   defaultOpen: false },
-  { value: "Done",        label: "Hecho",        defaultOpen: false },
+const STATUS_GROUPS: { value: TaskStatus; defaultOpen: boolean }[] = [
+  { value: "In Progress", defaultOpen: false },
+  { value: "Todo",        defaultOpen: false },
+  { value: "Done",        defaultOpen: false },
 ]
+
+const TASK_STATUS_KEY: Record<TaskStatus, "todo" | "inProgress" | "done"> = {
+  "Todo":        "todo",
+  "In Progress": "inProgress",
+  "Done":        "done",
+}
 
 // ─── Status Picker ────────────────────────────────────────────────────────────
 
 function StatusPicker({ task, projectId }: { task: Task; projectId: string }) {
+  const tTaskStatus = useTranslations("taskStatus")
   const [open, setOpen] = useState(false)
   const [dropPos, setDropPos] = useState({ top: 0, left: 0 })
   const [optimisticStatus, setOptimisticStatus] = useState<TaskStatus>(task.status)
@@ -76,7 +84,7 @@ function StatusPicker({ task, projectId }: { task: Task; projectId: string }) {
           optimisticStatus === "Done"        && "border-transparent bg-success-subtle text-success-subtle-foreground",
         )}
       >
-        {STATUS_GROUPS.find((s) => s.value === optimisticStatus)!.label}
+        {tTaskStatus(TASK_STATUS_KEY[optimisticStatus])}
         <ChevronDown className="w-3 h-3 opacity-60" />
       </button>
       {open && createPortal(
@@ -100,7 +108,7 @@ function StatusPicker({ task, projectId }: { task: Task; projectId: string }) {
                 opt.value === "In Progress" && "bg-info",
                 opt.value === "Done"        && "bg-success",
               )} />
-              {opt.label}
+              {tTaskStatus(TASK_STATUS_KEY[opt.value])}
             </button>
           ))}
         </div>,
@@ -147,6 +155,7 @@ function UrgentFlag({ task, projectId }: { task: Task; projectId: string }) {
 // ─── Assignee Picker ──────────────────────────────────────────────────────────
 
 function AssigneePicker({ task, projectId, employees }: { task: Task; projectId: string; employees: Profile[] }) {
+  const tCommon = useTranslations("common")
   const [open, setOpen] = useState(false)
   const [dropPos, setDropPos] = useState({ top: 0, left: 0 })
   const [optimisticAssignee, setOptimisticAssignee] = useState<Profile | null>(
@@ -212,7 +221,7 @@ function AssigneePicker({ task, projectId, employees }: { task: Task; projectId:
             <span className="max-w-[90px] truncate">{optimisticAssignee.full_name.split(" ")[0]}</span>
           </>
         ) : (
-          <span className="text-muted-foreground italic text-xs">Sin asignar</span>
+          <span className="text-muted-foreground italic text-xs">{tCommon("unassigned")}</span>
         )}
         <ChevronDown className="w-3 h-3 opacity-40 flex-shrink-0" />
       </button>
@@ -230,7 +239,7 @@ function AssigneePicker({ task, projectId, employees }: { task: Task; projectId:
             )}
           >
             <UserX className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-            <span className="text-muted-foreground">Sin asignar</span>
+            <span className="text-muted-foreground">{tCommon("unassigned")}</span>
           </button>
           {employees.length > 0 && <div className="border-t my-1" />}
           {employees.map((emp) => {
@@ -289,6 +298,8 @@ function SopBlock({
   sops: Sop[]
   isAdmin: boolean
 }) {
+  const tT = useTranslations("tasks")
+  const tCommonSop = useTranslations("common")
   // Option C: effective SOP = task override ?? template SOP
   const effectiveSop = (task.sop as Sop | null) ??
     ((task.task_set_task as { sop?: Sop | null } | null)?.sop ?? null)
@@ -318,7 +329,7 @@ function SopBlock({
         <BookOpen className="w-3.5 h-3.5" />
         SOP
         {isInherited && (
-          <span className="ml-1 text-[10px] text-muted-foreground font-normal">(heredado de plantilla)</span>
+          <span className="ml-1 text-[10px] text-muted-foreground font-normal">{tT("sopInherited")}</span>
         )}
       </Label>
 
@@ -339,7 +350,7 @@ function SopBlock({
               onClick={(e) => e.stopPropagation()}
               className="flex items-center gap-0.5 text-xs hover:underline flex-shrink-0"
             >
-              Documento <ExternalLink className="w-3 h-3" />
+              {tT("sopDocument")} <ExternalLink className="w-3 h-3" />
             </a>
           )}
           {effectiveSop.video_url && (
@@ -350,7 +361,7 @@ function SopBlock({
               onClick={(e) => e.stopPropagation()}
               className="flex items-center gap-0.5 text-xs hover:underline flex-shrink-0"
             >
-              Video <ExternalLink className="w-3 h-3" />
+              {tT("sopVideo")} <ExternalLink className="w-3 h-3" />
             </a>
           )}
           {isAdmin && (
@@ -361,7 +372,7 @@ function SopBlock({
                 disabled={isPending}
                 className="text-xs text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded hover:bg-muted transition-colors"
               >
-                Cambiar
+                {tT("sopChange")}
               </button>
               {!isInherited && (
                 <button
@@ -369,7 +380,7 @@ function SopBlock({
                   onClick={() => handleAssign(null)}
                   disabled={isPending}
                   className="p-0.5 rounded text-muted-foreground hover:text-destructive transition-colors"
-                  title="Quitar override (heredar de plantilla)"
+                  title={tT("sopRemoveHint")}
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -389,12 +400,12 @@ function SopBlock({
                     type="text"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Buscar SOP…"
+                    placeholder={tT("searchSop")}
                     className="w-full rounded-md border border-input bg-background pl-8 pr-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                   />
                 </div>
                 {filtered.length === 0 ? (
-                  <p className="text-xs text-muted-foreground px-1 py-1">Sin resultados.</p>
+                  <p className="text-xs text-muted-foreground px-1 py-1">{tT("noSop")}</p>
                 ) : (
                   <div className="max-h-40 overflow-y-auto rounded-md border border-border divide-y divide-border/50">
                     {filtered.map((sop) => (
@@ -418,7 +429,7 @@ function SopBlock({
                   onClick={() => { setPicking(false); setSearch("") }}
                   className="text-xs text-muted-foreground hover:text-foreground"
                 >
-                  Cancelar
+                  {tCommonSop("cancel")}
                 </button>
               </div>
             ) : (
@@ -429,11 +440,11 @@ function SopBlock({
                 className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground border border-dashed border-border rounded-lg px-3 py-2 w-full transition-colors"
               >
                 <BookOpen className="w-3.5 h-3.5" />
-                Asignar SOP
+                {tT("assignSop")}
               </button>
             )
           ) : (
-            <p className="text-sm text-muted-foreground">Sin SOP asignado.</p>
+            <p className="text-sm text-muted-foreground">{tT("noSop")}</p>
           )}
         </>
       )}
@@ -462,6 +473,8 @@ function TaskDetailModal({
   onDeliverableClick: (task: Task) => void
   onClose: () => void
 }) {
+  const tT = useTranslations("tasks")
+  const tC = useTranslations("common")
   const [isPending, startTransition] = useTransition()
   const phase = (task.phase as { id: string; name: string; phase_order: number } | null | undefined) ?? null
 
@@ -488,7 +501,7 @@ function TaskDetailModal({
   }
 
   async function handleDelete() {
-    if (!confirm(`¿Eliminar "${task.title}"?`)) return
+    if (!confirm(tT("deleteConfirm"))) return
     await deleteTask(task.id, projectId)
     onClose()
   }
@@ -517,7 +530,7 @@ function TaskDetailModal({
         <form onSubmit={handleSave} className="px-5 py-4 space-y-4">
           {/* Title */}
           <div className="space-y-1.5">
-            <Label htmlFor="modal-title">Título</Label>
+            <Label htmlFor="modal-title">{tT("titleLabel")}</Label>
             <Input
               id="modal-title"
               name="title"
@@ -529,13 +542,13 @@ function TaskDetailModal({
 
           {/* Description */}
           <div className="space-y-1.5">
-            <Label htmlFor="modal-desc">Descripción</Label>
+            <Label htmlFor="modal-desc">{tT("description")}</Label>
             <textarea
               id="modal-desc"
               name="description"
               rows={4}
               defaultValue={task.description ?? ""}
-              placeholder="Sin descripción"
+              placeholder={tT("descriptionPlaceholder")}
               className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
             />
           </div>
@@ -543,11 +556,11 @@ function TaskDetailModal({
           {/* Assignee + Due date row */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label>Asignado</Label>
+              <Label>{tT("assignee")}</Label>
               <AssigneePicker task={task} projectId={projectId} employees={employees} />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="modal-due">Fecha límite</Label>
+              <Label htmlFor="modal-due">{tT("dueDate")}</Label>
               <Input id="modal-due" name="due_date" type="date" defaultValue={task.due_date ?? ""} className="text-sm" />
             </div>
           </div>
@@ -562,7 +575,7 @@ function TaskDetailModal({
             )}>
               <input type="checkbox" name="is_urgent" value="true" defaultChecked={task.is_urgent} className="accent-destructive" />
               <Flag className="w-3.5 h-3.5" />
-              Urgente
+              {tT("urgent")}
             </label>
             <label className={cn(
               "flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer select-none flex-1 text-sm transition-colors",
@@ -572,7 +585,7 @@ function TaskDetailModal({
             )}>
               <input type="checkbox" name="requires_deliverable" value="true" defaultChecked={task.requires_deliverable} className="accent-info" />
               <Paperclip className="w-3.5 h-3.5" />
-              Entregable
+              {tT("deliverable")}
             </label>
           </div>
 
@@ -589,7 +602,7 @@ function TaskDetailModal({
               )}
             >
               <Paperclip className="w-3.5 h-3.5 flex-shrink-0" />
-              {deliverable ? "Ver entregable entregado" : "Entregable pendiente — click para subir"}
+              {deliverable ? tT("deliverableView") : tT("deliverablePending")}
             </button>
           )}
 
@@ -604,13 +617,13 @@ function TaskDetailModal({
                 onClick={handleDelete}
                 className="text-xs text-destructive hover:underline"
               >
-                Eliminar tarea
+                {tT("deleteTask")}
               </button>
             ) : <span />}
             <div className="flex gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
+              <Button type="button" variant="outline" size="sm" onClick={onClose}>{tC("cancel")}</Button>
               <Button type="submit" size="sm" disabled={isPending}>
-                {isPending ? "Guardando…" : "Guardar"}
+                {isPending ? tC("saving") : tC("save")}
               </Button>
             </div>
           </div>
@@ -748,6 +761,7 @@ function PhaseGroupHeader({ name, phaseOrder, total, done, isOpen, onToggle }: {
   isOpen: boolean
   onToggle: () => void
 }) {
+  const tT = useTranslations("tasks")
   const c = phaseColor(phaseOrder)
   return (
     <button
@@ -762,7 +776,7 @@ function PhaseGroupHeader({ name, phaseOrder, total, done, isOpen, onToggle }: {
       <span className="text-xs font-semibold">{name}</span>
       <span className="text-xs text-muted-foreground ml-1">{total}</span>
       {done > 0 && (
-        <span className="ml-auto text-xs text-success font-medium pr-1">{done} hechas</span>
+        <span className="ml-auto text-xs text-success font-medium pr-1">{tT("doneCount", { count: done })}</span>
       )}
     </button>
   )
@@ -784,6 +798,9 @@ interface TaskTableProps {
 }
 
 export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesByTaskId = {}, currentUserId, sops = [] }: TaskTableProps) {
+  const tT = useTranslations("tasks")
+  const tTaskStatus = useTranslations("taskStatus")
+
   // ── state ──────────────────────────────────────────────────────────────────
   const initialStatusOpen = Object.fromEntries(
     STATUS_GROUPS.map((g) => [g.value, g.defaultOpen])
@@ -809,6 +826,7 @@ export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesBy
   // ── status grouping ────────────────────────────────────────────────────────
   const statusGroups = STATUS_GROUPS.map((g) => ({
     ...g,
+    label: tTaskStatus(TASK_STATUS_KEY[g.value]),
     tasks: filteredTasks
       .filter((t) => t.status === g.value)
       .sort((a, b) => {
@@ -839,7 +857,7 @@ export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesBy
       if (!map.has(key)) {
         map.set(key, {
           key,
-          name:        phase?.name        ?? "Sin fase",
+          name:        phase?.name        ?? tT("noPhase"),
           phaseOrder:  phase?.phase_order ?? 9999,
           tasks: [],
         })
@@ -871,9 +889,9 @@ export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesBy
   }
 
   const FILTERS: { value: TaskFilter; label: string }[] = [
-    { value: "all",        label: "Todas" },
-    { value: "mine",       label: "Mis tareas" },
-    { value: "unassigned", label: "Sin asignar" },
+    { value: "all",        label: tT("all") },
+    { value: "mine",       label: tT("mine") },
+    { value: "unassigned", label: tT("unassigned") },
   ]
 
   const colSpan = groupMode === "phase" ? 4 : 5
@@ -881,7 +899,7 @@ export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesBy
   if (tasks.length === 0) {
     return (
       <div className="border rounded-lg py-10 text-center text-sm text-muted-foreground bg-card">
-        Sin tareas aún.
+        {tT("noTasksYet")}
       </div>
     )
   }
@@ -911,7 +929,7 @@ export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesBy
           ))}
           {filter !== "all" && (
             <span className="ml-2 text-xs text-muted-foreground">
-              {filteredTasks.length} de {tasks.length} tareas
+              {tT("filterCount", { filtered: filteredTasks.length, total: tasks.length })}
             </span>
           )}
         </div>
@@ -930,7 +948,7 @@ export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesBy
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                {mode === "status" ? "Estado" : "Fase"}
+                {mode === "status" ? tT("groupByStatus") : tT("groupByPhase")}
               </button>
             ))}
           </div>
@@ -942,11 +960,11 @@ export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesBy
           <thead className="bg-muted/50 border-b">
             <tr>
               <th className="w-8 px-3 py-2.5" />
-              <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Tarea</th>
-              <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Estado</th>
-              <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Asignado</th>
+              <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">{tT("taskCol")}</th>
+              <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">{tT("statusCol")}</th>
+              <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">{tT("assigneeCol")}</th>
               {groupMode === "status" && (
-                <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Fase</th>
+                <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">{tT("phaseCol")}</th>
               )}
             </tr>
           </thead>
@@ -957,7 +975,7 @@ export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesBy
                 {statusGroups.length === 0 && (
                   <tr>
                     <td colSpan={5} className="py-10 text-center text-sm text-muted-foreground">
-                      {filter === "mine" ? "No tienes tareas asignadas." : "No hay tareas sin asignar."}
+                      {filter === "mine" ? tT("noMineTasks") : tT("noUnassignedTasks")}
                     </td>
                   </tr>
                 )}
@@ -998,7 +1016,7 @@ export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesBy
                 {phaseGroups.length === 0 && (
                   <tr>
                     <td colSpan={4} className="py-10 text-center text-sm text-muted-foreground">
-                      {filter === "mine" ? "No tienes tareas asignadas." : "No hay tareas sin asignar."}
+                      {filter === "mine" ? tT("noMineTasks") : tT("noUnassignedTasks")}
                     </td>
                   </tr>
                 )}

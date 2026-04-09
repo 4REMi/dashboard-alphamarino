@@ -1,8 +1,8 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import { useTranslations, useFormatter } from "next-intl"
 import type { ProjectPhase, PhaseStatus } from "@/lib/types"
-import { PHASE_STATUS_LABELS } from "@/lib/types"
 import { updateProjectPhaseStatus, updateProjectPhaseNotes } from "@/lib/actions/projects"
 import { phaseColor } from "@/lib/phase-colors"
 
@@ -23,6 +23,9 @@ const STATUS_STYLES: Record<PhaseStatus, { dot: string; badge: string }> = {
 }
 
 export function ProjectPhases({ projectId, initialPhases, canEdit, taskCountByPhaseId = {} }: Props) {
+  const t = useTranslations("projects.phases")
+  const tStatus = useTranslations("phaseStatus")
+  const format = useFormatter()
   const [phases, setPhases] = useState<ProjectPhase[]>(initialPhases)
   const [expandedId, setExpandedId] = useState<string | null>(
     initialPhases.find((p) => p.status === "in_progress")?.id ??
@@ -50,10 +53,12 @@ export function ProjectPhases({ projectId, initialPhases, canEdit, taskCountByPh
     })
   }
 
+  const tC = useTranslations("common")
+
   if (phases.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-border bg-card p-6 text-center text-sm text-muted-foreground">
-        Este proyecto no tiene fases configuradas.
+        {t("noPhases")}
       </div>
     )
   }
@@ -63,8 +68,8 @@ export function ProjectPhases({ projectId, initialPhases, canEdit, taskCountByPh
       {/* Header with mini stepper */}
       <div className="px-5 py-4 border-b border-border">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="font-semibold text-sm text-foreground">Fases del Proyecto</h3>
-          <span className="text-xs text-muted-foreground">{done}/{phases.length} completadas</span>
+          <h3 className="font-semibold text-sm text-foreground">{t("title")}</h3>
+          <span className="text-xs text-muted-foreground">{t("completedOf", { done, total: phases.length })}</span>
         </div>
         {/* Stepper dots — border color is unique per phase, background reflects status */}
         <div className="flex items-center gap-1">
@@ -115,7 +120,7 @@ export function ProjectPhases({ projectId, initialPhases, canEdit, taskCountByPh
                 onClick={() => setExpandedId(isExpanded ? null : phase.id)}
               >
                 <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border flex-shrink-0 ${styles.badge}`}>
-                  {PHASE_STATUS_LABELS[phase.status]}
+                  {tStatus(phase.status)}
                 </span>
                 <span className={`w-2 h-2 rounded-full flex-shrink-0 ${pc.bg}`} />
                 <span className="flex-1 text-sm font-medium text-foreground">{phase.name}</span>
@@ -126,7 +131,7 @@ export function ProjectPhases({ projectId, initialPhases, canEdit, taskCountByPh
                 )}
                 {phase.status === "in_progress" && phase.started_at && (
                   <span className="text-xs text-muted-foreground hidden sm:block">
-                    Iniciada {new Date(phase.started_at).toLocaleDateString("es-MX")}
+                    {t("started", { date: format.dateTime(new Date(phase.started_at), { dateStyle: "short" }) })}
                   </span>
                 )}
                 <span className={`text-muted-foreground text-xs transition-transform ${isExpanded ? "rotate-180" : ""}`}>▾</span>
@@ -149,7 +154,7 @@ export function ProjectPhases({ projectId, initialPhases, canEdit, taskCountByPh
                               : "bg-muted text-muted-foreground hover:bg-muted/80"
                           }`}
                         >
-                          {PHASE_STATUS_LABELS[s]}
+                          {tStatus(s)}
                         </button>
                       ))}
                     </div>
@@ -163,12 +168,12 @@ export function ProjectPhases({ projectId, initialPhases, canEdit, taskCountByPh
                         onChange={(e) => setNotesValue(e.target.value)}
                         rows={3}
                         autoFocus
-                        placeholder="Notas de la fase…"
+                        placeholder={t("notesPlaceholder")}
                         className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
                       />
                       <div className="flex gap-2 justify-end">
-                        <button onClick={() => setEditingNotesId(null)} className="text-sm text-muted-foreground hover:text-foreground transition-colors">Cancelar</button>
-                        <button onClick={() => handleSaveNotes(phase.id)} className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 transition-colors">Guardar</button>
+                        <button onClick={() => setEditingNotesId(null)} className="text-sm text-muted-foreground hover:text-foreground transition-colors">{tC("cancel")}</button>
+                        <button onClick={() => handleSaveNotes(phase.id)} className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 transition-colors">{tC("save")}</button>
                       </div>
                     </div>
                   ) : (
@@ -180,7 +185,7 @@ export function ProjectPhases({ projectId, initialPhases, canEdit, taskCountByPh
                           onClick={() => { setEditingNotesId(phase.id); setNotesValue(phase.notes ?? "") }}
                           className="text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors"
                         >
-                          + Agregar notas
+                          {t("addNotes")}
                         </button>
                       ) : null}
                       {phase.notes && canEdit && (
@@ -188,7 +193,7 @@ export function ProjectPhases({ projectId, initialPhases, canEdit, taskCountByPh
                           onClick={() => { setEditingNotesId(phase.id); setNotesValue(phase.notes ?? "") }}
                           className="text-xs text-muted-foreground hover:text-foreground transition-colors mt-1 block"
                         >
-                          Editar notas
+                          {t("editNotes")}
                         </button>
                       )}
                     </div>
@@ -196,8 +201,8 @@ export function ProjectPhases({ projectId, initialPhases, canEdit, taskCountByPh
 
                   {/* Dates */}
                   <div className="flex gap-4 text-xs text-muted-foreground">
-                    {phase.started_at && <span>Inicio: {new Date(phase.started_at).toLocaleDateString("es-MX")}</span>}
-                    {phase.completed_at && <span>Completada: {new Date(phase.completed_at).toLocaleDateString("es-MX")}</span>}
+                    {phase.started_at && <span>{t("startLabel", { date: format.dateTime(new Date(phase.started_at), { dateStyle: "short" }) })}</span>}
+                    {phase.completed_at && <span>{t("completedLabel", { date: format.dateTime(new Date(phase.completed_at), { dateStyle: "short" }) })}</span>}
                   </div>
                 </div>
               )}

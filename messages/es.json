@@ -96,6 +96,7 @@
   },
   "projects": {
     "title": "Proyectos",
+    "countLabel": "{count, plural, one {# proyecto} other {# proyectos}}",
     "new": "Nuevo Proyecto",
     "edit": "Editar Proyecto",
     "archive": "Archivar",
@@ -104,6 +105,7 @@
     "deleteConfirm": "¿Eliminar permanentemente? Esto borrará todas las tareas, fases e ingresos.",
     "archiveConfirm": "¿Archivar este proyecto?",
     "archived": "Archivados",
+    "archivedLabel": "Archivado",
     "name": "Nombre del proyecto",
     "type": "Tipo de proyecto",
     "client": "Cliente",
@@ -113,13 +115,25 @@
     "endDate": "Fecha de fin",
     "description": "Descripción",
     "team": "Equipo",
-    "tasks": "Tareas",
-    "phases": "Fases",
+    "tasksLabel": "Tareas",
     "value": "Valor",
     "monthlyFee": "Fee mensual",
     "noProjects": "Sin proyectos",
     "selectType": "Seleccionar tipo",
     "selectClient": "Seleccionar cliente",
+    "completed": "Completado",
+    "blockedLabel": "bloqueada",
+    "viewGrid": "Vista cuadrícula",
+    "viewList": "Vista lista",
+    "tabActive": "Activos",
+    "tabCompleted": "Completados",
+    "noActive": "No hay proyectos activos.",
+    "noCompleted": "No hay proyectos completados.",
+    "attention": {
+      "overdueTasks": "Tareas vencidas",
+      "blockedPhase": "Fase bloqueada",
+      "inactiveDays": "{days}d sin actividad"
+    },
     "filter": {
       "all": "Todos",
       "planning": "Planificación",
@@ -135,30 +149,70 @@
       "empty": "Sin entradas aún."
     },
     "phases": {
-      "title": "Fases",
-      "noPhases": "Sin fases"
+      "title": "Fases del Proyecto",
+      "noPhases": "Este proyecto no tiene fases configuradas.",
+      "completedOf": "{done}/{total} completadas",
+      "addNotes": "+ Agregar notas",
+      "editNotes": "Editar notas",
+      "notesPlaceholder": "Notas de la fase…",
+      "started": "Iniciada {date}",
+      "startLabel": "Inicio: {date}",
+      "completedLabel": "Completada: {date}"
     },
     "members": {
       "title": "Equipo",
       "add": "Agregar miembro",
-      "remove": "Quitar"
+      "remove": "Quitar",
+      "noMembers": "Sin miembros asignados",
+      "selectEmployee": "Seleccionar empleado"
     }
   },
   "tasks": {
     "title": "Tareas",
     "new": "Nueva Tarea",
+    "newTask": "+ Nueva tarea",
     "edit": "Editar Tarea",
     "taskTitle": "Título",
+    "titleLabel": "Título",
     "description": "Descripción",
+    "descriptionPlaceholder": "Sin descripción",
     "status": "Estado",
     "priority": "Prioridad",
     "assignee": "Asignado a",
     "dueDate": "Fecha límite",
     "project": "Proyecto",
     "noTasks": "Sin tareas",
+    "noTasksYet": "Sin tareas aún.",
     "allProjects": "Todos los proyectos",
     "allStatuses": "Todos los estados",
-    "deleteConfirm": "¿Eliminar esta tarea?"
+    "deleteConfirm": "¿Eliminar esta tarea?",
+    "deleteTask": "Eliminar tarea",
+    "all": "Todas",
+    "mine": "Mis tareas",
+    "unassigned": "Sin asignar",
+    "filterCount": "{filtered} de {total} tareas",
+    "taskCol": "Tarea",
+    "statusCol": "Estado",
+    "assigneeCol": "Asignado",
+    "phaseCol": "Fase",
+    "noPhase": "Sin fase",
+    "doneCount": "{count} hechas",
+    "urgent": "Urgente",
+    "deliverable": "Entregable",
+    "deliverablePending": "Entregable pendiente — click para subir",
+    "deliverableView": "Ver entregable entregado",
+    "groupByStatus": "Estado",
+    "groupByPhase": "Fase",
+    "searchSop": "Buscar SOP…",
+    "assignSop": "Asignar SOP",
+    "noSop": "Sin SOP asignado.",
+    "sopInherited": "(heredado de plantilla)",
+    "sopChange": "Cambiar",
+    "sopDocument": "Documento",
+    "sopVideo": "Video",
+    "sopRemoveHint": "Quitar override (heredar de plantilla)",
+    "noMineTasks": "No tienes tareas asignadas.",
+    "noUnassignedTasks": "No hay tareas sin asignar."
   },
   "customers": {
     "title": "Clientes",
@@ -174,8 +228,7 @@
     "statuses": {
       "prospect": "Prospecto",
       "active": "Activo",
-      "inactive": "Inactivo",
-      "churned": "Perdido"
+      "inactive": "Inactivo"
     }
   },
   "finances": {

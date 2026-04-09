@@ -96,6 +96,7 @@
   },
   "projects": {
     "title": "Projects",
+    "countLabel": "{count, plural, one {# project} other {# projects}}",
     "new": "New Project",
     "edit": "Edit Project",
     "archive": "Archive",
@@ -104,6 +105,7 @@
     "deleteConfirm": "Delete permanently? This will remove all tasks, phases and income.",
     "archiveConfirm": "Archive this project?",
     "archived": "Archived",
+    "archivedLabel": "Archived",
     "name": "Project name",
     "type": "Project type",
     "client": "Client",
@@ -113,13 +115,25 @@
     "endDate": "End date",
     "description": "Description",
     "team": "Team",
-    "tasks": "Tasks",
-    "phases": "Phases",
+    "tasksLabel": "Tasks",
     "value": "Value",
     "monthlyFee": "Monthly fee",
     "noProjects": "No projects",
     "selectType": "Select type",
     "selectClient": "Select client",
+    "completed": "Completed",
+    "blockedLabel": "blocked",
+    "viewGrid": "Grid view",
+    "viewList": "List view",
+    "tabActive": "Active",
+    "tabCompleted": "Completed",
+    "noActive": "No active projects.",
+    "noCompleted": "No completed projects.",
+    "attention": {
+      "overdueTasks": "Overdue tasks",
+      "blockedPhase": "Blocked phase",
+      "inactiveDays": "{days}d inactive"
+    },
     "filter": {
       "all": "All",
       "planning": "Planning",
@@ -129,36 +143,76 @@
       "archived": "Archived"
     },
     "log": {
-      "title": "Log",
+      "title": "Activity Log",
       "placeholder": "Write a note…",
       "add": "Add note",
       "empty": "No entries yet."
     },
     "phases": {
-      "title": "Phases",
-      "noPhases": "No phases"
+      "title": "Project Phases",
+      "noPhases": "This project has no phases configured.",
+      "completedOf": "{done}/{total} completed",
+      "addNotes": "+ Add notes",
+      "editNotes": "Edit notes",
+      "notesPlaceholder": "Phase notes…",
+      "started": "Started {date}",
+      "startLabel": "Start: {date}",
+      "completedLabel": "Completed: {date}"
     },
     "members": {
       "title": "Team",
       "add": "Add member",
-      "remove": "Remove"
+      "remove": "Remove",
+      "noMembers": "No members assigned",
+      "selectEmployee": "Select employee"
     }
   },
   "tasks": {
     "title": "Tasks",
     "new": "New Task",
+    "newTask": "+ New task",
     "edit": "Edit Task",
     "taskTitle": "Title",
+    "titleLabel": "Title",
     "description": "Description",
+    "descriptionPlaceholder": "No description",
     "status": "Status",
     "priority": "Priority",
     "assignee": "Assigned to",
     "dueDate": "Due date",
     "project": "Project",
     "noTasks": "No tasks",
+    "noTasksYet": "No tasks yet.",
     "allProjects": "All projects",
     "allStatuses": "All statuses",
-    "deleteConfirm": "Delete this task?"
+    "deleteConfirm": "Delete this task?",
+    "deleteTask": "Delete task",
+    "all": "All",
+    "mine": "My tasks",
+    "unassigned": "Unassigned",
+    "filterCount": "{filtered} of {total} tasks",
+    "taskCol": "Task",
+    "statusCol": "Status",
+    "assigneeCol": "Assigned",
+    "phaseCol": "Phase",
+    "noPhase": "No phase",
+    "doneCount": "{count} done",
+    "urgent": "Urgent",
+    "deliverable": "Deliverable",
+    "deliverablePending": "Deliverable pending — click to upload",
+    "deliverableView": "View submitted deliverable",
+    "groupByStatus": "Status",
+    "groupByPhase": "Phase",
+    "searchSop": "Search SOP…",
+    "assignSop": "Assign SOP",
+    "noSop": "No SOP assigned.",
+    "sopInherited": "(inherited from template)",
+    "sopChange": "Change",
+    "sopDocument": "Document",
+    "sopVideo": "Video",
+    "sopRemoveHint": "Remove override (inherit from template)",
+    "noMineTasks": "You have no assigned tasks.",
+    "noUnassignedTasks": "No unassigned tasks."
   },
   "customers": {
     "title": "Clients",
@@ -174,8 +228,7 @@
     "statuses": {
       "prospect": "Prospect",
       "active": "Active",
-      "inactive": "Inactive",
-      "churned": "Churned"
+      "inactive": "Inactive"
     }
   },
   "finances": {
@@ -207,7 +260,7 @@
       "monthly": "Monthly",
       "weekly": "Weekly",
       "annual": "Annual",
-      "semestral": "Biannual",
+      "semestral": "Semiannual",
       "oneTime": "One-time"
     }
   },
@@ -247,7 +300,7 @@
   },
   "operations": {
     "title": "Operations Lab",
-    "subtitle": "Project Types → Phase Sets → Task Sets. Select in each column to navigate the hierarchy.",
+    "subtitle": "Project types → Phase Sets → Task Sets. Select in each column to navigate the hierarchy.",
     "projectTypes": "Project Types",
     "phaseSets": "Phase Sets",
     "taskSets": "Task Sets",
@@ -283,11 +336,11 @@
     "campaignStatus": "Campaign status",
     "report": "Report",
     "creatives": "Creatives",
-    "realSpend": "Real spend",
-    "realResults": "Real results",
-    "realRoas": "Real ROAS",
-    "realCpa": "Real CPA",
-    "realCpl": "Real CPL",
+    "realSpend": "Actual spend",
+    "realResults": "Actual results",
+    "realRoas": "Actual ROAS",
+    "realCpa": "Actual CPA",
+    "realCpl": "Actual CPL",
     "objectives": {
       "conversions": "Conversions",
       "leads": "Leads",
