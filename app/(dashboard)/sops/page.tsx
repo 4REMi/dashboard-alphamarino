@@ -2,9 +2,10 @@ export const dynamic = "force-dynamic"
 
 import { createClient } from "@/lib/supabase/server"
 import { getSops } from "@/lib/actions/sops"
+import { getProjectTypes } from "@/lib/actions/config"
 import { SopsClient } from "@/components/sops/sops-client"
 import { BookOpen } from "lucide-react"
-import type { Profile, Sop } from "@/lib/types"
+import type { Profile, ProjectType, Sop } from "@/lib/types"
 
 export default async function SopsPage() {
   const supabase = await createClient()
@@ -15,7 +16,10 @@ export default async function SopsPage() {
     .eq("id", user!.id)
     .single()
 
-  const sops = await getSops().catch(() => [])
+  const [sops, projectTypes] = await Promise.all([
+    getSops().catch(() => []),
+    getProjectTypes().catch(() => []),
+  ])
   const isAdmin = profile?.role === "admin" || profile?.role === "subadmin"
 
   return (
@@ -34,6 +38,7 @@ export default async function SopsPage() {
         sops={sops as Sop[]}
         currentUser={profile as Profile}
         isAdmin={isAdmin}
+        projectTypes={projectTypes as ProjectType[]}
       />
     </div>
   )

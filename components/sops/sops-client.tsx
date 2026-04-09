@@ -3,13 +3,9 @@
 import { useState, useTransition } from "react"
 import { createSop, updateSop, deleteSop } from "@/lib/actions/sops"
 import { BookOpen, ExternalLink, Plus, Pencil, Trash2, X, Search, Video, FileText, Tag } from "lucide-react"
-import type { Sop, Profile } from "@/lib/types"
+import type { Sop, Profile, ProjectType } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { formatDate } from "@/lib/utils"
-
-// ── helpers ──────────────────────────────────────────────────────────────────
-
-const CATEGORIES = ["Diseño", "Copywriting", "Paid Media", "SEO", "Web", "Finanzas", "CRM", "General"]
 
 // ── SOP form (shared by create + edit) ───────────────────────────────────────
 
@@ -18,11 +14,13 @@ function SopForm({
   isPending,
   onSubmit,
   onClose,
+  projectTypes,
 }: {
   initial?: Sop
   isPending: boolean
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void
   onClose: () => void
+  projectTypes: ProjectType[]
 }) {
   return (
     <form onSubmit={onSubmit} className="space-y-4">
@@ -73,16 +71,16 @@ function SopForm({
         </div>
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground block">Categoría</label>
-          <input
+          <select
             name="category"
-            list="sop-categories"
             defaultValue={initial?.category ?? ""}
-            placeholder="Paid Media"
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-          />
-          <datalist id="sop-categories">
-            {CATEGORIES.map((c) => <option key={c} value={c} />)}
-          </datalist>
+          >
+            <option value="">Sin categoría</option>
+            {projectTypes.map((pt) => (
+              <option key={pt.id} value={pt.name}>{pt.name}</option>
+            ))}
+          </select>
         </div>
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 block">
@@ -178,9 +176,10 @@ interface Props {
   sops: Sop[]
   currentUser: Profile
   isAdmin: boolean
+  projectTypes: ProjectType[]
 }
 
-export function SopsClient({ sops: initSops, currentUser, isAdmin }: Props) {
+export function SopsClient({ sops: initSops, currentUser, isAdmin, projectTypes }: Props) {
   const [sops, setSops] = useState<Sop[]>(initSops)
   const [showCreate, setShowCreate] = useState(false)
   const [editingSop, setEditingSop] = useState<Sop | null>(null)
@@ -427,7 +426,7 @@ export function SopsClient({ sops: initSops, currentUser, isAdmin }: Props) {
       {/* Create modal */}
       {showCreate && (
         <SopModal title="Nuevo SOP" onClose={() => setShowCreate(false)}>
-          <SopForm isPending={isPending} onSubmit={handleCreate} onClose={() => setShowCreate(false)} />
+          <SopForm isPending={isPending} onSubmit={handleCreate} onClose={() => setShowCreate(false)} projectTypes={projectTypes} />
         </SopModal>
       )}
 
@@ -439,6 +438,7 @@ export function SopsClient({ sops: initSops, currentUser, isAdmin }: Props) {
             isPending={isPending}
             onSubmit={(e) => handleUpdate(editingSop.id, e)}
             onClose={() => setEditingSop(null)}
+            projectTypes={projectTypes}
           />
         </SopModal>
       )}
