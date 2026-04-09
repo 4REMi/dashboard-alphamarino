@@ -28,14 +28,8 @@ import { ArrowLeft, CalendarDays, Plus } from "lucide-react"
 import { formatDate, formatCurrency } from "@/lib/utils"
 import type { Customer, Profile, Project, Task, ProjectType, PaidMediaContext, PaidMediaCycle, WebProjectContext, ProjectLogEntry, ProjectPhase, Deliverable } from "@/lib/types"
 import { can } from "@/lib/permissions"
+import { getProjectTypeIcon } from "@/lib/project-type-icons"
 
-const statusConfig = {
-  Planning:      { label: "Planificación", variant: "secondary" as const },
-  "In Progress": { label: "En Progreso",   variant: "info"      as const },
-  Review:        { label: "Revisión",      variant: "warning"   as const },
-  Completed:     { label: "Completado",    variant: "success"   as const },
-  Archived:      { label: "Archivado",     variant: "secondary" as const },
-}
 
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -55,7 +49,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const canManageTeam     = can(profile as Profile, "manage_team")
   const canManageTasks    = can(profile as Profile, "manage_tasks")
 
-  const projectType = project.project_type as { name: string } | null
+  const projectType = project.project_type as { name: string; color?: string | null; icon?: string | null } | null
   const isPaidMedia = projectType?.name?.toLowerCase().includes("paid media") ||
                       projectType?.name?.toLowerCase().includes("media")
   const hasPhases   = (project.phases ?? []).length > 0
@@ -96,7 +90,6 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const projectValue       = project.project_value ?? 0
   const accountsReceivable = projectValue - totalIncome
 
-  const config        = statusConfig[project.status as keyof typeof statusConfig] ?? statusConfig["Planning"]
   const memberProfiles = members as Profile[]
 
   function initials(name: string) {
@@ -124,12 +117,32 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             <h1 className="text-lg font-bold truncate flex-1">{project.name}</h1>
 
             <div className="flex items-center gap-2 flex-shrink-0">
-              <Badge variant={config.variant} className="text-xs">{config.label}</Badge>
-              {projectType && (
-                <span className="hidden sm:inline text-xs px-2 py-0.5 rounded bg-secondary text-secondary-foreground font-medium">
-                  {projectType.name}
-                </span>
-              )}
+              {project.status === "Completed" && <Badge variant="success" className="text-xs">Completado</Badge>}
+              {project.status === "Archived"  && <Badge variant="secondary" className="text-xs">Archivado</Badge>}
+              {projectType && (() => {
+                const Icon       = getProjectTypeIcon(projectType.icon ?? null)
+                const colorStyle = projectType.color ? {
+                  backgroundColor: projectType.color + "22",
+                  color: projectType.color,
+                  border: `1px solid ${projectType.color}44`,
+                } : undefined
+                return Icon ? (
+                  <span
+                    title={projectType.name}
+                    className={`p-1.5 rounded inline-flex items-center justify-center${!projectType.color ? " bg-secondary text-secondary-foreground" : ""}`}
+                    style={colorStyle}
+                  >
+                    <Icon className="w-4 h-4" />
+                  </span>
+                ) : (
+                  <span
+                    className={`hidden sm:inline text-xs px-2 py-0.5 rounded font-medium${!projectType.color ? " bg-secondary text-secondary-foreground" : ""}`}
+                    style={colorStyle}
+                  >
+                    {projectType.name}
+                  </span>
+                )
+              })()}
             </div>
 
             <ProjectActions
