@@ -20,7 +20,6 @@ interface ProjectFormProps {
 
 export function ProjectForm({ project, customers, projectTypes, trigger, canViewFinancials = true }: ProjectFormProps) {
   const [open, setOpen] = useState(false)
-  const [status, setStatus] = useState<string>(project?.status ?? "Planning")
   const [customerId, setCustomerId] = useState(project?.customer_id ?? "none")
   const [projectTypeId, setProjectTypeId] = useState(project?.project_type_id ?? "none")
   const [selectedPhaseIds, setSelectedPhaseIds] = useState<string[]>([])
@@ -48,7 +47,6 @@ export function ProjectForm({ project, customers, projectTypes, trigger, canView
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const formData = new FormData(e.currentTarget)
-    formData.set("status", status)
     formData.set("customer_id", customerId === "none" ? "" : customerId)
     formData.set("project_type_id", projectTypeId === "none" ? "" : projectTypeId)
 
@@ -72,7 +70,7 @@ export function ProjectForm({ project, customers, projectTypes, trigger, canView
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto [&_input]:bg-white [&_textarea]:bg-white [&_[role=combobox]]:bg-white">
         <DialogHeader>
           <DialogTitle>{project ? "Editar Proyecto" : "Nuevo Proyecto"}</DialogTitle>
         </DialogHeader>
@@ -113,21 +111,6 @@ export function ProjectForm({ project, customers, projectTypes, trigger, canView
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label>Estado</Label>
-            <Select value={status} onValueChange={setStatus}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Planning">Planificación</SelectItem>
-                <SelectItem value="In Progress">En Progreso</SelectItem>
-                <SelectItem value="Review">Revisión</SelectItem>
-                <SelectItem value="Completed">Completado</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
           {canViewFinancials && (
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -161,7 +144,7 @@ export function ProjectForm({ project, customers, projectTypes, trigger, canView
               name="description"
               rows={2}
               defaultValue={project?.description ?? ""}
-              className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
+              className="w-full rounded-md border border-input bg-white px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
             />
           </div>
 

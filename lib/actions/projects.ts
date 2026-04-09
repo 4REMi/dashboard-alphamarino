@@ -346,13 +346,15 @@ export async function updateProject(id: string, formData: FormData) {
   const supabase = createAdminClient()
   const projectTypeId = formData.get("project_type_id") as string
 
+  const statusValue = formData.get("status") as string | null
+
   const { error } = await supabase
     .from("projects")
     .update({
       name: formData.get("name") as string,
       customer_id: (formData.get("customer_id") as string) || null,
       project_type_id: projectTypeId && projectTypeId !== "none" ? projectTypeId : null,
-      status: formData.get("status") as ProjectStatus,
+      ...(statusValue ? { status: statusValue as ProjectStatus } : {}),
       project_value: formData.get("project_value") ? Number(formData.get("project_value")) : null,
       monthly_fee: formData.get("monthly_fee") ? Number(formData.get("monthly_fee")) : null,
       start_date: (formData.get("start_date") as string) || null,
