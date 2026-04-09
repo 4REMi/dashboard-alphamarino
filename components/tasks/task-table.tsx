@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useTransition, useRef, useEffect } from "react"
+import { createPortal } from "react-dom"
 import { deleteTask, updateTask, updateTaskStatus, updateTaskAssignee, updateTaskUrgent } from "@/lib/actions/tasks"
 import { assignSopToTask } from "@/lib/actions/sops"
 import { DeliverableDrawer } from "@/components/projects/deliverable-drawer"
@@ -25,17 +26,31 @@ const STATUS_GROUPS: { value: TaskStatus; label: string; defaultOpen: boolean }[
 
 function StatusPicker({ task, projectId }: { task: Task; projectId: string }) {
   const [open, setOpen] = useState(false)
+  const [dropPos, setDropPos] = useState({ top: 0, left: 0 })
   const [optimisticStatus, setOptimisticStatus] = useState<TaskStatus>(task.status)
   const [isPending, startTransition] = useTransition()
-  const ref = useRef<HTMLDivElement>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const dropRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+      if (
+        dropRef.current && !dropRef.current.contains(e.target as Node) &&
+        buttonRef.current && !buttonRef.current.contains(e.target as Node)
+      ) setOpen(false)
     }
     if (open) document.addEventListener("mousedown", handleClick)
     return () => document.removeEventListener("mousedown", handleClick)
   }, [open])
+
+  function handleOpen(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect()
+      setDropPos({ top: rect.bottom + 4, left: rect.left })
+    }
+    setOpen((v) => !v)
+  }
 
   function handleSelect(next: TaskStatus) {
     setOpen(false)
@@ -48,9 +63,10 @@ function StatusPicker({ task, projectId }: { task: Task; projectId: string }) {
   }
 
   return (
-    <div ref={ref} className="relative inline-block">
+    <>
       <button
-        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v) }}
+        ref={buttonRef}
+        onClick={handleOpen}
         disabled={isPending}
         className={cn(
           "flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-opacity",
@@ -63,8 +79,12 @@ function StatusPicker({ task, projectId }: { task: Task; projectId: string }) {
         {STATUS_GROUPS.find((s) => s.value === optimisticStatus)!.label}
         <ChevronDown className="w-3 h-3 opacity-60" />
       </button>
-      {open && (
-        <div className="absolute top-full left-0 mt-1 z-50 bg-popover border rounded-lg shadow-md py-1 min-w-[130px]">
+      {open && createPortal(
+        <div
+          ref={dropRef}
+          className="fixed z-[9999] bg-popover border rounded-lg shadow-md py-1 min-w-[130px]"
+          style={{ top: dropPos.top, left: dropPos.left }}
+        >
           {STATUS_GROUPS.map((opt) => (
             <button
               key={opt.value}
@@ -83,9 +103,10 @@ function StatusPicker({ task, projectId }: { task: Task; projectId: string }) {
               {opt.label}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
-    </div>
+    </>
   )
 }
 
@@ -127,19 +148,33 @@ function UrgentFlag({ task, projectId }: { task: Task; projectId: string }) {
 
 function AssigneePicker({ task, projectId, employees }: { task: Task; projectId: string; employees: Profile[] }) {
   const [open, setOpen] = useState(false)
+  const [dropPos, setDropPos] = useState({ top: 0, left: 0 })
   const [optimisticAssignee, setOptimisticAssignee] = useState<Profile | null>(
     (task.assignee as Profile | null | undefined) ?? null
   )
   const [isPending, startTransition] = useTransition()
-  const ref = useRef<HTMLDivElement>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const dropRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+      if (
+        dropRef.current && !dropRef.current.contains(e.target as Node) &&
+        buttonRef.current && !buttonRef.current.contains(e.target as Node)
+      ) setOpen(false)
     }
     if (open) document.addEventListener("mousedown", handleClick)
     return () => document.removeEventListener("mousedown", handleClick)
   }, [open])
+
+  function handleOpen(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect()
+      setDropPos({ top: rect.bottom + 4, left: rect.left })
+    }
+    setOpen((v) => !v)
+  }
 
   function handleSelect(employee: Profile | null) {
     setOpen(false)
@@ -155,9 +190,10 @@ function AssigneePicker({ task, projectId, employees }: { task: Task; projectId:
     .split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
 
   return (
-    <div ref={ref} className="relative inline-block">
+    <>
       <button
-        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v) }}
+        ref={buttonRef}
+        onClick={handleOpen}
         disabled={isPending}
         className={cn(
           "flex items-center gap-1.5 rounded-md px-1.5 py-1 text-xs hover:bg-muted transition-colors",
@@ -180,8 +216,12 @@ function AssigneePicker({ task, projectId, employees }: { task: Task; projectId:
         )}
         <ChevronDown className="w-3 h-3 opacity-40 flex-shrink-0" />
       </button>
-      {open && (
-        <div className="absolute top-full left-0 mt-1 z-50 bg-popover border rounded-lg shadow-md py-1 min-w-[160px] max-h-48 overflow-y-auto">
+      {open && createPortal(
+        <div
+          ref={dropRef}
+          className="fixed z-[9999] bg-popover border rounded-lg shadow-md py-1 min-w-[160px] max-h-48 overflow-y-auto"
+          style={{ top: dropPos.top, left: dropPos.left }}
+        >
           <button
             onClick={(e) => { e.stopPropagation(); handleSelect(null) }}
             className={cn(
@@ -215,9 +255,10 @@ function AssigneePicker({ task, projectId, employees }: { task: Task; projectId:
               </button>
             )
           })}
-        </div>
+        </div>,
+        document.body
       )}
-    </div>
+    </>
   )
 }
 
