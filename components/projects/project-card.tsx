@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { CalendarDays, DollarSign, AlertTriangle } from "lucide-react"
 import { formatDate, formatCurrency } from "@/lib/utils"
 import type { Project } from "@/lib/types"
+import { getProjectTypeIcon } from "@/lib/project-type-icons"
 
 const statusConfig = {
   Planning: { label: "Planificación", variant: "secondary" as const },
@@ -17,7 +18,7 @@ const statusConfig = {
 interface ProjectCardProps {
   project: Project & {
     customer?: { name: string; company?: string | null } | null
-    project_type?: { name: string; color?: string | null } | null
+    project_type?: { name: string; color?: string | null; icon?: string | null } | null
     attention?: {
       hasOverdueTasks: boolean
       hasBlockedPhase: boolean
@@ -48,18 +49,31 @@ export function ProjectCard({ project, canViewFinancials = false }: ProjectCardP
                 <h3 className="font-semibold text-base group-hover:text-primary transition-colors truncate">
                   {project.name}
                 </h3>
-                {project.project_type && (
-                  <span
-                    className={`text-xs px-1.5 py-0.5 rounded font-medium flex-shrink-0${!project.project_type.color ? " bg-secondary text-secondary-foreground" : ""}`}
-                    style={project.project_type.color ? {
-                      backgroundColor: project.project_type.color + "22",
-                      color: project.project_type.color,
-                      border: `1px solid ${project.project_type.color}44`,
-                    } : undefined}
-                  >
-                    {project.project_type.name}
-                  </span>
-                )}
+                {project.project_type && (() => {
+                  const { name, color, icon } = project.project_type!
+                  const Icon = getProjectTypeIcon(icon ?? null)
+                  const colorStyle = color ? {
+                    backgroundColor: color + "22",
+                    color,
+                    border: `1px solid ${color}44`,
+                  } : undefined
+                  return Icon ? (
+                    <span
+                      title={name}
+                      className={`p-1 rounded flex-shrink-0 inline-flex items-center justify-center${!color ? " bg-secondary text-secondary-foreground" : ""}`}
+                      style={colorStyle}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                    </span>
+                  ) : (
+                    <span
+                      className={`text-xs px-1.5 py-0.5 rounded font-medium flex-shrink-0${!color ? " bg-secondary text-secondary-foreground" : ""}`}
+                      style={colorStyle}
+                    >
+                      {name}
+                    </span>
+                  )
+                })()}
                 {needsAttention && (
                   <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
                 )}

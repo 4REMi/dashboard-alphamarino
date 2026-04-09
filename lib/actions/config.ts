@@ -45,6 +45,7 @@ export async function createProjectType(formData: FormData) {
     name: formData.get("name") as string,
     description: (formData.get("description") as string) || null,
     color: (formData.get("color") as string) || null,
+    icon: (formData.get("icon") as string) || null,
   }).select().single()
   if (error) throw error
   revalidatePath("/settings")
@@ -63,6 +64,7 @@ export async function updateProjectType(id: string, formData: FormData) {
       description: (formData.get("description") as string) || null,
       default_phase_set_id: defaultPhaseSetId && defaultPhaseSetId !== "none" ? defaultPhaseSetId : null,
       color: (formData.get("color") as string) || null,
+      icon: (formData.get("icon") as string) || null,
     })
     .eq("id", id)
     .select()

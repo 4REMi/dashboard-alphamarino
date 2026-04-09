@@ -3,6 +3,7 @@
 import { useState, useTransition, useRef } from "react"
 import { ChevronRight, Plus, Trash2, LayoutList, Link2, Pencil, Check, X, Upload, Download, Paperclip, GripVertical } from "lucide-react"
 import type { ProjectType, PhaseSet, PhaseSetPhase, TaskSet, TaskSetTask, Profile } from "@/lib/types"
+import { PROJECT_TYPE_ICONS, getProjectTypeIcon } from "@/lib/project-type-icons"
 import {
   DndContext,
   closestCenter,
@@ -113,6 +114,37 @@ function ColorPicker({ value, onChange }: { value: string; onChange: (c: string)
       </div>
       {/* hidden input so FormData picks up the value */}
       <input type="hidden" name="color" value={value} />
+    </div>
+  )
+}
+
+function IconPicker({ value, onChange, activeColor }: { value: string; onChange: (v: string) => void; activeColor?: string }) {
+  return (
+    <div className="space-y-1.5">
+      <p className="text-xs text-muted-foreground">Ícono</p>
+      <div className="flex flex-wrap gap-1">
+        {PROJECT_TYPE_ICONS.map(({ name, icon: Icon, label }) => {
+          const isSelected = value === name
+          return (
+            <button
+              key={name}
+              type="button"
+              title={label}
+              onClick={() => onChange(isSelected ? "" : name)}
+              className="w-7 h-7 rounded flex items-center justify-center transition-all border"
+              style={isSelected && activeColor
+                ? { backgroundColor: activeColor + "22", borderColor: activeColor + "66", color: activeColor }
+                : isSelected
+                ? { backgroundColor: "var(--primary)", borderColor: "transparent", color: "white" }
+                : { backgroundColor: "transparent", borderColor: "transparent", color: "var(--muted-foreground)" }
+              }
+            >
+              <Icon className="w-3.5 h-3.5" />
+            </button>
+          )
+        })}
+      </div>
+      <input type="hidden" name="icon" value={value} />
     </div>
   )
 }
@@ -414,6 +446,8 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
   const [editingTypeId, setEditingTypeId] = useState<string | null>(null)
   const [newTypeColor, setNewTypeColor] = useState("")
   const [editTypeColor, setEditTypeColor] = useState("")
+  const [newTypeIcon, setNewTypeIcon] = useState("")
+  const [editTypeIcon, setEditTypeIcon] = useState("")
   const [showNewPS, setShowNewPS] = useState(false)
   const [showAddPhase, setShowAddPhase] = useState(false)
   const [editingTS, setEditingTS] = useState(false)
@@ -448,7 +482,7 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
     run(async () => {
       const created = await createProjectType(fd) as ProjectType
       setTypes((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
-      setSelectedTypeId(created.id); setSelectedPhaseId(null); setShowNewType(false); setNewTypeColor(""); form.reset()
+      setSelectedTypeId(created.id); setSelectedPhaseId(null); setShowNewType(false); setNewTypeColor(""); setNewTypeIcon(""); form.reset()
     })
   }
 
@@ -736,6 +770,7 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
                 <InlineInput name="name" required autoFocus placeholder="Nombre…" />
                 <InlineInput name="description" placeholder="Descripción (opcional)" />
                 <ColorPicker value={newTypeColor} onChange={setNewTypeColor} />
+                <IconPicker value={newTypeIcon} onChange={setNewTypeIcon} activeColor={newTypeColor} />
                 <div className="flex gap-2 justify-end">
                   <button type="button" onClick={() => setShowNewType(false)} className="p-1 rounded text-muted-foreground hover:text-foreground"><X className="w-3.5 h-3.5" /></button>
                   <button type="submit" disabled={isPending} className="p-1 rounded text-primary hover:text-primary/80 disabled:opacity-50"><Check className="w-3.5 h-3.5" /></button>
@@ -755,6 +790,7 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
                     <InlineInput name="name" defaultValue={type.name} required autoFocus />
                     <InlineInput name="description" defaultValue={type.description ?? ""} placeholder="Descripción" />
                     <ColorPicker value={editTypeColor} onChange={setEditTypeColor} />
+                    <IconPicker value={editTypeIcon} onChange={setEditTypeIcon} activeColor={editTypeColor} />
                     <div className="flex gap-2 justify-end">
                       <button type="button" onClick={() => setEditingTypeId(null)} className="p-1 rounded text-muted-foreground hover:text-foreground"><X className="w-3.5 h-3.5" /></button>
                       <button type="submit" disabled={isPending} className="p-1 rounded text-primary disabled:opacity-50"><Check className="w-3.5 h-3.5" /></button>
@@ -771,15 +807,18 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
-                      {type.color && (
-                        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: type.color }} />
-                      )}
+                      {(() => {
+                        const Icon = getProjectTypeIcon(type.icon)
+                        if (Icon) return <Icon className="w-3.5 h-3.5 flex-shrink-0" style={type.color ? { color: type.color } : undefined} />
+                        if (type.color) return <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: type.color }} />
+                        return null
+                      })()}
                       <p className="text-sm font-medium truncate">{type.name}</p>
                     </div>
                     <p className={`text-xs truncate mt-0.5 ${psName ? "text-primary/80" : "text-muted-foreground"}`}>{psName ?? "Sin phase set"}</p>
                   </div>
                   <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                    <button onClick={(e) => { e.stopPropagation(); setEditingTypeId(type.id); setEditTypeColor(type.color ?? ""); setShowNewType(false) }} className="p-1 rounded text-muted-foreground hover:text-foreground"><Pencil className="w-3 h-3" /></button>
+                    <button onClick={(e) => { e.stopPropagation(); setEditingTypeId(type.id); setEditTypeColor(type.color ?? ""); setEditTypeIcon(type.icon ?? ""); setShowNewType(false) }} className="p-1 rounded text-muted-foreground hover:text-foreground"><Pencil className="w-3 h-3" /></button>
                     <button onClick={(e) => { e.stopPropagation(); handleDeleteType(type.id) }} className="p-1 rounded text-muted-foreground hover:text-destructive"><X className="w-3 h-3" /></button>
                   </div>
                   {isSelected && <ChevronRight className="w-3.5 h-3.5 text-primary flex-shrink-0" />}
