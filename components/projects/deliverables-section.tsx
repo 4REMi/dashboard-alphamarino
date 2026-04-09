@@ -51,6 +51,8 @@ export function DeliverablesSectionClient({
         phase_id: null,
         due_date: null,
         assignee_id: null,
+        sop_id: null,
+        task_set_task_id: null,
         created_at: "",
       }
     : null

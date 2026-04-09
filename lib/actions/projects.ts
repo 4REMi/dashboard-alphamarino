@@ -30,7 +30,7 @@ async function copyTaskSetsToProject(
 
     const tasksToInsert = taskSets.flatMap((ts) =>
       ((ts.tasks ?? []) as Array<{
-        title: string; description: string | null; priority: string
+        id: string; title: string; description: string | null; priority: string
         task_order: number; is_urgent: boolean; requires_deliverable: boolean
       }>)
         .sort((a, b) => a.task_order - b.task_order)
@@ -45,6 +45,8 @@ async function copyTaskSetsToProject(
           task_order: j,
           phase_id: phaseIdByTaskSetId[ts.id] ?? null,
           assignee_id: ts.default_assignee_id ?? null,
+          task_set_task_id: t.id,        // Option C: link back to template
+          sop_id: null,                  // Option C: null = inherit from template
         }))
     )
 
@@ -162,7 +164,7 @@ export async function getProject(id: string) {
       *,
       customer:customers(id, name, company, email, phone),
       project_type:project_types(id, name, description, default_phase_set_id, color, icon),
-      tasks(*, assignee:profiles(id, full_name, avatar_url, position), phase:project_phases(id, name, phase_order)),
+      tasks(*, assignee:profiles(id, full_name, avatar_url, position), phase:project_phases(id, name, phase_order), sop:sops(id, title, doc_url, video_url), task_set_task:task_set_tasks(sop_id, sop:sops(id, title, doc_url, video_url))),
       members:project_members(profile:profiles(id, full_name, avatar_url, position, role)),
       phases:project_phases(*)
     `)

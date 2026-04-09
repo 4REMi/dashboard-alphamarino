@@ -1,8 +1,8 @@
 "use client"
 
 import { useState, useTransition, useRef } from "react"
-import { ChevronRight, Plus, Trash2, LayoutList, Link2, Pencil, Check, X, Upload, Download, Paperclip, GripVertical } from "lucide-react"
-import type { ProjectType, PhaseSet, PhaseSetPhase, TaskSet, TaskSetTask, Profile } from "@/lib/types"
+import { ChevronRight, Plus, Trash2, LayoutList, Link2, Pencil, Check, X, Upload, Download, Paperclip, GripVertical, BookOpen, Search } from "lucide-react"
+import type { ProjectType, PhaseSet, PhaseSetPhase, TaskSet, TaskSetTask, Profile, Sop } from "@/lib/types"
 import { PROJECT_TYPE_ICONS, getProjectTypeIcon } from "@/lib/project-type-icons"
 import {
   DndContext,
@@ -34,6 +34,7 @@ interface Props {
   phaseSets: PhaseSet[]
   taskSets: TaskSet[]
   employees: Profile[]
+  sops: Sop[]
 }
 
 
@@ -323,6 +324,7 @@ function SortableTaskRow({
   index: number
   onEdit: (task: TaskSetTask) => void
   onDelete: (id: string) => void
+  sops?: Sop[]
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id })
 
@@ -362,6 +364,17 @@ function SortableTaskRow({
       {task.is_urgent && (
         <span className="text-xs px-1.5 py-0.5 rounded font-medium flex-shrink-0 bg-destructive/10 text-destructive">Urgente</span>
       )}
+      {task.sop_id && (
+        <span
+          title={(task.sop as { title?: string } | null)?.title ?? "SOP asignado"}
+          className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded font-medium flex-shrink-0 bg-primary/10 text-primary"
+        >
+          <BookOpen className="w-3 h-3" />
+          <span className="hidden sm:inline max-w-[80px] truncate">
+            {(task.sop as { title?: string } | null)?.title ?? "SOP"}
+          </span>
+        </span>
+      )}
       <button
         onClick={() => onEdit(task)}
         className="opacity-0 group-hover:opacity-100 p-1 rounded text-muted-foreground hover:text-foreground transition-all flex-shrink-0"
@@ -381,29 +394,40 @@ function SortableTaskRow({
 // ── Edit task modal ───────────────────────────────────────────────────────────
 function EditTaskModal({
   task,
+  sops,
   isPending,
   onClose,
   onSubmit,
 }: {
   task: TaskSetTask
+  sops: Sop[]
   isPending: boolean
   onClose: () => void
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void
 }) {
+  const [sopId, setSopId] = useState(task.sop_id ?? "")
+  const [sopSearch, setSopSearch] = useState("")
+
+  const filteredSops = sops.filter((s) =>
+    s.title.toLowerCase().includes(sopSearch.toLowerCase()) ||
+    (s.category ?? "").toLowerCase().includes(sopSearch.toLowerCase())
+  )
+  const selectedSop = sops.find((s) => s.id === sopId) ?? null
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
       <div
-        className="bg-card border border-border rounded-xl shadow-xl w-full max-w-md mx-4"
+        className="bg-card border border-border rounded-xl shadow-xl w-full max-w-md mx-4 max-h-[90vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
           <h2 className="font-semibold text-sm">Editar tarea</h2>
           <button onClick={onClose} className="p-1 rounded text-muted-foreground hover:text-foreground">
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <form onSubmit={onSubmit} className="px-5 py-4 space-y-4">
+        <form onSubmit={onSubmit} className="px-5 py-4 space-y-4 overflow-y-auto">
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Título *</label>
             <InlineInput name="title" required defaultValue={task.title} />
@@ -412,7 +436,7 @@ function EditTaskModal({
             <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Descripción</label>
             <textarea
               name="description"
-              rows={4}
+              rows={3}
               defaultValue={task.description ?? ""}
               placeholder="Descripción detallada de la tarea…"
               className="w-full rounded border border-input bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none"
@@ -428,6 +452,67 @@ function EditTaskModal({
               Requiere entregable
             </label>
           </div>
+
+          {/* SOP picker */}
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1.5 block">
+              <BookOpen className="w-3.5 h-3.5" />
+              SOP asignado
+            </label>
+            {selectedSop ? (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-md border border-primary/30 bg-primary/5 text-sm">
+                <BookOpen className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                <span className="flex-1 min-w-0 truncate font-medium text-primary">{selectedSop.title}</span>
+                {selectedSop.category && (
+                  <span className="text-xs text-muted-foreground flex-shrink-0">{selectedSop.category}</span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => { setSopId(""); setSopSearch("") }}
+                  className="p-0.5 rounded text-muted-foreground hover:text-destructive transition-colors flex-shrink-0"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                  <input
+                    type="text"
+                    value={sopSearch}
+                    onChange={(e) => setSopSearch(e.target.value)}
+                    placeholder="Buscar SOP…"
+                    className="w-full rounded border border-input bg-background pl-8 pr-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                  />
+                </div>
+                {sops.length === 0 ? (
+                  <p className="text-xs text-muted-foreground px-1 py-1.5">No hay SOPs en el banco aún.</p>
+                ) : filteredSops.length === 0 ? (
+                  <p className="text-xs text-muted-foreground px-1 py-1.5">Sin resultados.</p>
+                ) : (
+                  <div className="max-h-36 overflow-y-auto rounded-md border border-border divide-y divide-border/50">
+                    {filteredSops.map((sop) => (
+                      <button
+                        key={sop.id}
+                        type="button"
+                        onClick={() => { setSopId(sop.id); setSopSearch("") }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-muted/50 transition-colors"
+                      >
+                        <BookOpen className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                        <span className="flex-1 min-w-0 text-sm truncate">{sop.title}</span>
+                        {sop.category && (
+                          <span className="text-xs text-muted-foreground flex-shrink-0">{sop.category}</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            <input type="hidden" name="sop_id" value={sopId} />
+          </div>
+
           <div className="flex gap-2 justify-end pt-1">
             <button type="button" onClick={onClose}
               className="px-4 py-2 text-sm rounded-md border border-border hover:bg-muted transition-colors">
@@ -445,7 +530,7 @@ function EditTaskModal({
 }
 
 // ── main component ────────────────────────────────────────────────────────────
-export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets: initTS, employees }: Props) {
+export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets: initTS, employees, sops }: Props) {
   const [types, setTypes] = useState<ProjectType[]>(init)
   const [phaseSets, setPhaseSets] = useState<PhaseSet[]>(initPS)
   const [taskSets, setTaskSets] = useState<TaskSet[]>(initTS)
@@ -1058,6 +1143,7 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
       {editingTask && linkedTS && (
         <EditTaskModal
           task={editingTask}
+          sops={sops}
           isPending={isPending}
           onClose={() => setEditingTask(null)}
           onSubmit={(e) => handleUpdateTask(editingTask.id, linkedTS.id, e)}

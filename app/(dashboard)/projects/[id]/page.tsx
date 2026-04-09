@@ -6,6 +6,7 @@ import { getIncome, getProjectExpenses } from "@/lib/actions/finances"
 import { getProjectTypes, getPhaseSets } from "@/lib/actions/config"
 import { getCustomers } from "@/lib/actions/customers"
 import { getProjectDeliverables } from "@/lib/actions/deliverables"
+import { getSops } from "@/lib/actions/sops"
 import { ProjectActions } from "@/components/projects/project-actions"
 import { ApplyPhasesButton } from "@/components/projects/apply-phases-button"
 import { TaskForm } from "@/components/tasks/task-form"
@@ -26,7 +27,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { createClient } from "@/lib/supabase/server"
 import { ArrowLeft, CalendarDays, Plus } from "lucide-react"
 import { formatDate, formatCurrency } from "@/lib/utils"
-import type { Customer, Profile, Project, Task, ProjectType, PaidMediaContext, PaidMediaCycle, WebProjectContext, ProjectLogEntry, ProjectPhase, Deliverable } from "@/lib/types"
+import type { Customer, Profile, Project, Task, ProjectType, PaidMediaContext, PaidMediaCycle, WebProjectContext, ProjectLogEntry, ProjectPhase, Deliverable, Sop } from "@/lib/types"
 import { can } from "@/lib/permissions"
 import { getProjectTypeIcon } from "@/lib/project-type-icons"
 
@@ -55,7 +56,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const hasPhases   = (project.phases ?? []).length > 0
   const isArchived  = project.status === "Archived"
 
-  const [employees, customers, projectTypes, phaseSets, income, expenses, cycles, logEntries, members, rawDeliverables] = await Promise.all([
+  const [employees, customers, projectTypes, phaseSets, income, expenses, cycles, logEntries, members, rawDeliverables, sops] = await Promise.all([
     getEmployees().catch(() => []),
     getCustomers().catch(() => []),
     getProjectTypes().catch(() => []),
@@ -66,6 +67,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     getProjectLog(id).catch(() => []),
     getProjectMembers(id).catch(() => []),
     getProjectDeliverables(id).catch(() => []),
+    isAdminOrSubadmin ? getSops().catch(() => []) : Promise.resolve([]),
   ])
 
   const tasks  = (project.tasks  ?? []) as Task[]
@@ -247,6 +249,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             isAdmin={canManageTasks}
             deliverablesByTaskId={deliverablesByTaskId}
             currentUserId={user!.id}
+            sops={sops as Sop[]}
           />
         </section>
 

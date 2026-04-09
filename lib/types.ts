@@ -13,6 +13,8 @@ export type ExpenseCategory = "Payroll" | "Software" | "Rent" | "Services" | "Ot
 export type PhaseStatus = "pending" | "in_progress" | "completed" | "blocked"
 export type CycleDeliverableStatus = "pending" | "in_progress" | "delivered"
 export type CampaignStatus = "active" | "paused" | "review" | "optimizing"
+export type SopVisibility = "public" | "restricted"
+export type SopRequestStatus = "pending" | "fulfilled" | "dismissed"
 export type MainObjective = "conversions" | "leads" | "traffic" | "awareness"
 
 // ============================================================
@@ -94,7 +96,9 @@ export interface TaskSetTask {
   is_urgent: boolean
   requires_deliverable: boolean
   task_order: number
+  sop_id: string | null
   created_at: string
+  sop?: Sop | null
 }
 
 // ============================================================
@@ -181,10 +185,48 @@ export interface Task {
   phase_id: string | null
   due_date: string | null
   assignee_id: string | null
+  sop_id: string | null
+  task_set_task_id: string | null
   created_at: string
   project?: Project | null
   assignee?: Profile | null
   phase?: { id: string; name: string; phase_order: number } | null
+  sop?: Sop | null
+  task_set_task?: { sop_id: string | null; sop?: Sop | null } | null
+}
+
+// ============================================================
+// SOPs
+// ============================================================
+
+export interface Sop {
+  id: string
+  title: string
+  description: string | null
+  doc_url: string | null
+  video_url: string | null
+  category: string | null
+  tags: string[]
+  visibility: SopVisibility
+  author_id: string | null
+  created_at: string
+  updated_at: string
+  author?: Profile | null
+}
+
+export interface SopRequest {
+  id: string
+  task_set_task_id: string | null
+  task_id: string | null
+  requested_by: string | null
+  assigned_to: string | null
+  note: string | null
+  status: SopRequestStatus
+  created_at: string
+  requester?: Profile | null
+  assignee?: Profile | null
+  task?: { title: string } | null
+  task_set_task?: { title: string } | null
 }
 
 // ============================================================

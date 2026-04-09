@@ -217,7 +217,7 @@ export async function getTaskSets() {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("task_sets")
-    .select("*, tasks:task_set_tasks(*), default_assignee:profiles(id, full_name, avatar_url)")
+    .select("*, tasks:task_set_tasks(*, sop:sops(id, title)), default_assignee:profiles(id, full_name, avatar_url)")
     .order("name")
   if (error) return []
   return (data ?? []).map((ts) => ({
@@ -289,6 +289,7 @@ export async function addTaskToSet(taskSetId: string, formData: FormData) {
 
 export async function updateTaskInSet(taskId: string, formData: FormData) {
   const supabase = await createClient()
+  const sopIdRaw = formData.get("sop_id") as string
   const { data, error } = await supabase
     .from("task_set_tasks")
     .update({
@@ -296,9 +297,10 @@ export async function updateTaskInSet(taskId: string, formData: FormData) {
       description: (formData.get("description") as string) || null,
       is_urgent: formData.get("is_urgent") === "true",
       requires_deliverable: formData.get("requires_deliverable") === "true",
+      sop_id: sopIdRaw || null,
     })
     .eq("id", taskId)
-    .select()
+    .select("*, sop:sops(id, title)")
     .single()
   if (error) throw error
   revalidatePath("/settings")

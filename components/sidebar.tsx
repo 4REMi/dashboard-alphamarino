@@ -17,6 +17,7 @@ import {
   Settings,
   Globe,
   FlaskConical,
+  BookOpen,
 } from "lucide-react"
 import { useState } from "react"
 import Image from "next/image"
@@ -46,6 +47,7 @@ export function Sidebar({ profile, logoUrl }: SidebarProps) {
     { href: "/finances", icon: DollarSign, label: t("finances"), permission: "view_global_finances" as const },
     { href: "/finances/domains", icon: Globe, label: t("domains"), permission: "view_global_finances" as const },
     { href: "/employees", icon: UserCircle, label: t("team") },
+    { href: "/sops", icon: BookOpen, label: "SOPs" },
     { href: "/operations", icon: FlaskConical, label: t("operationsLab"), adminOnly: true },
     { href: "/settings", icon: Settings, label: t("settings"), adminOnly: true },
   ]

@@ -37,6 +37,16 @@ const PERMISSION_LABELS: { key: keyof UserPermissions; label: string; descriptio
     label: "Gestionar tareas",
     description: "Crear, editar y eliminar tareas en proyectos",
   },
+  {
+    key: "request_sops",
+    label: "Solicitar SOPs",
+    description: "Solicitar la creación de un SOP para una tarea específica",
+  },
+  {
+    key: "assign_sops",
+    label: "Asignar SOPs",
+    description: "Asignar SOPs a tareas y plantillas del banco",
+  },
 ]
 
 interface Props {

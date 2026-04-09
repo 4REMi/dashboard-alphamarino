@@ -2,15 +2,16 @@
 
 import { useState, useTransition, useRef, useEffect } from "react"
 import { deleteTask, updateTask, updateTaskStatus, updateTaskAssignee, updateTaskUrgent } from "@/lib/actions/tasks"
+import { assignSopToTask } from "@/lib/actions/sops"
 import { DeliverableDrawer } from "@/components/projects/deliverable-drawer"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Trash2, CalendarDays, ChevronDown, ChevronRight, UserX, Flag, Paperclip, X } from "lucide-react"
+import { Trash2, CalendarDays, ChevronDown, ChevronRight, UserX, Flag, Paperclip, X, BookOpen, Search, ExternalLink } from "lucide-react"
 import { formatDate } from "@/lib/utils"
 import { cn } from "@/lib/utils"
-import type { Task, Profile, TaskStatus, Deliverable } from "@/lib/types"
+import type { Task, Profile, TaskStatus, Deliverable, Sop } from "@/lib/types"
 import { phaseColor } from "@/lib/phase-colors"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
@@ -234,6 +235,171 @@ function PhaseBadge({ phase }: { phase: { name: string; phase_order: number } })
   )
 }
 
+// ─── SOP Block ────────────────────────────────────────────────────────────────
+
+function SopBlock({
+  task,
+  projectId,
+  sops,
+  isAdmin,
+}: {
+  task: Task
+  projectId: string
+  sops: Sop[]
+  isAdmin: boolean
+}) {
+  // Option C: effective SOP = task override ?? template SOP
+  const effectiveSop = (task.sop as Sop | null) ??
+    ((task.task_set_task as { sop?: Sop | null } | null)?.sop ?? null)
+  const isInherited = !task.sop_id && !!effectiveSop
+
+  const [picking, setPicking] = useState(false)
+  const [search, setSearch] = useState("")
+  const [isPending, startTransition] = useTransition()
+
+  const filtered = sops.filter((s) =>
+    s.title.toLowerCase().includes(search.toLowerCase()) ||
+    (s.category ?? "").toLowerCase().includes(search.toLowerCase())
+  )
+
+  function handleAssign(sopId: string | null) {
+    setPicking(false)
+    setSearch("")
+    startTransition(async () => {
+      try { await assignSopToTask(task.id, sopId, projectId) }
+      catch { /* ignore */ }
+    })
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <Label className="flex items-center gap-1.5">
+        <BookOpen className="w-3.5 h-3.5" />
+        SOP
+        {isInherited && (
+          <span className="ml-1 text-[10px] text-muted-foreground font-normal">(heredado de plantilla)</span>
+        )}
+      </Label>
+
+      {effectiveSop && !picking ? (
+        <div className={cn(
+          "flex items-center gap-2 px-3 py-2 rounded-lg border text-sm",
+          isInherited
+            ? "border-border bg-muted/30 text-foreground"
+            : "border-primary/30 bg-primary/5 text-primary"
+        )}>
+          <BookOpen className="w-3.5 h-3.5 flex-shrink-0" />
+          <span className="flex-1 font-medium truncate">{effectiveSop.title}</span>
+          {effectiveSop.doc_url && (
+            <a
+              href={effectiveSop.doc_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="flex items-center gap-0.5 text-xs hover:underline flex-shrink-0"
+            >
+              Documento <ExternalLink className="w-3 h-3" />
+            </a>
+          )}
+          {effectiveSop.video_url && (
+            <a
+              href={effectiveSop.video_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="flex items-center gap-0.5 text-xs hover:underline flex-shrink-0"
+            >
+              Video <ExternalLink className="w-3 h-3" />
+            </a>
+          )}
+          {isAdmin && (
+            <div className="flex gap-1 flex-shrink-0 ml-1">
+              <button
+                type="button"
+                onClick={() => setPicking(true)}
+                disabled={isPending}
+                className="text-xs text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded hover:bg-muted transition-colors"
+              >
+                Cambiar
+              </button>
+              {!isInherited && (
+                <button
+                  type="button"
+                  onClick={() => handleAssign(null)}
+                  disabled={isPending}
+                  className="p-0.5 rounded text-muted-foreground hover:text-destructive transition-colors"
+                  title="Quitar override (heredar de plantilla)"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      ) : (
+        <>
+          {isAdmin ? (
+            picking ? (
+              <div className="space-y-1.5">
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                  <input
+                    autoFocus
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Buscar SOP…"
+                    className="w-full rounded-md border border-input bg-background pl-8 pr-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                  />
+                </div>
+                {filtered.length === 0 ? (
+                  <p className="text-xs text-muted-foreground px-1 py-1">Sin resultados.</p>
+                ) : (
+                  <div className="max-h-40 overflow-y-auto rounded-md border border-border divide-y divide-border/50">
+                    {filtered.map((sop) => (
+                      <button
+                        key={sop.id}
+                        type="button"
+                        onClick={() => handleAssign(sop.id)}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-muted/50 transition-colors"
+                      >
+                        <BookOpen className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                        <span className="flex-1 text-sm truncate">{sop.title}</span>
+                        {sop.category && (
+                          <span className="text-xs text-muted-foreground flex-shrink-0">{sop.category}</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => { setPicking(false); setSearch("") }}
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Cancelar
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setPicking(true)}
+                disabled={isPending}
+                className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground border border-dashed border-border rounded-lg px-3 py-2 w-full transition-colors"
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                Asignar SOP
+              </button>
+            )
+          ) : (
+            <p className="text-sm text-muted-foreground">Sin SOP asignado.</p>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 // ─── Task Detail Modal ────────────────────────────────────────────────────────
 
 function TaskDetailModal({
@@ -241,6 +407,7 @@ function TaskDetailModal({
   projectId,
   employees,
   isAdmin,
+  sops,
   deliverable,
   onDeliverableClick,
   onClose,
@@ -249,6 +416,7 @@ function TaskDetailModal({
   projectId: string
   employees: Profile[]
   isAdmin: boolean
+  sops: Sop[]
   deliverable: Deliverable | null
   onDeliverableClick: (task: Task) => void
   onClose: () => void
@@ -383,6 +551,9 @@ function TaskDetailModal({
               {deliverable ? "Ver entregable entregado" : "Entregable pendiente — click para subir"}
             </button>
           )}
+
+          {/* SOP block */}
+          <SopBlock task={task} projectId={projectId} sops={sops} isAdmin={isAdmin} />
 
           {/* Footer */}
           <div className="flex items-center justify-between pt-2 border-t border-border">
@@ -534,9 +705,10 @@ interface TaskTableProps {
   isAdmin: boolean
   deliverablesByTaskId?: Record<string, Deliverable>
   currentUserId?: string
+  sops?: Sop[]
 }
 
-export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesByTaskId = {}, currentUserId }: TaskTableProps) {
+export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesByTaskId = {}, currentUserId, sops = [] }: TaskTableProps) {
   const initialOpen = Object.fromEntries(
     STATUS_GROUPS.map((g) => [g.value, g.defaultOpen])
   ) as Record<TaskStatus, boolean>
@@ -680,6 +852,7 @@ export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesBy
           projectId={projectId}
           employees={employees}
           isAdmin={isAdmin}
+          sops={sops}
           deliverable={detailDeliverable}
           onDeliverableClick={setDrawerTask}
           onClose={() => setDetailTask(null)}
