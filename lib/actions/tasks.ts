@@ -34,7 +34,7 @@ export async function getTasks(projectId?: string) {
   const supabase = await createClient()
   let query = supabase
     .from("tasks")
-    .select("*, project:projects(id, name), assignee:profiles(id, full_name, avatar_url)")
+    .select("*, project:projects(id, name), assignee:profiles(id, full_name, avatar_url), phase:project_phases(id, name, phase_order)")
     .order("created_at", { ascending: false })
 
   if (projectId) {
