@@ -72,9 +72,10 @@ export async function getProjects(includeArchived = false) {
       *,
       customer:customers(id, name, company),
       project_type:project_types(id, name, color, icon),
-      members:project_members(profile_id),
+      members:project_members(profile:profiles(id, full_name, avatar_url)),
       tasks(id, status, due_date),
-      phases:project_phases(id, status)
+      phases:project_phases(id, name, status, phase_order),
+      income(amount)
     `)
     .order("created_at", { ascending: false })
 
@@ -93,7 +94,7 @@ export async function getProjects(includeArchived = false) {
       .select(`
         *,
         customer:customers(id, name, company),
-        members:project_members(profile_id),
+        members:project_members(profile:profiles(id, full_name, avatar_url)),
         tasks(id, status, due_date)
       `)
       .order("created_at", { ascending: false })
@@ -135,7 +136,9 @@ export async function getProjects(includeArchived = false) {
 
     return {
       ...p,
-      members: ((p.members ?? []) as Array<{ profile_id: string }>).map((m) => m.profile_id),
+      members: ((p.members ?? []) as Array<{ profile: { id: string; full_name: string; avatar_url: string | null } | null }>)
+        .map((m) => m.profile)
+        .filter(Boolean),
       attention: {
         hasOverdueTasks,
         hasBlockedPhase,

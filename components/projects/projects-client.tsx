@@ -3,21 +3,35 @@
 import { useState, useEffect } from "react"
 import { ProjectCard } from "@/components/projects/project-card"
 import { ArchivedProjectsSection } from "@/components/projects/archived-projects-section"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { getProjectTypeIcon } from "@/lib/project-type-icons"
 import { LayoutGrid, List } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { cn, formatCurrency } from "@/lib/utils"
 import type { Project } from "@/lib/types"
+
+function initials(name: string) {
+  return name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
+}
 
 // Compact list row for the list view
 function ProjectRow({ project, canViewFinancials }: {
   project: Parameters<typeof ProjectCard>[0]["project"]
   canViewFinancials: boolean
 }) {
-  const pt = project.project_type
-  const Icon = pt?.icon ? getProjectTypeIcon(pt.icon) : null
+  const pt      = project.project_type
+  const Icon    = pt?.icon ? getProjectTypeIcon(pt.icon) : null
+  const members = ((project.members ?? []) as Array<{ id: string; full_name: string; avatar_url: string | null }>).slice(0, 3)
+
+  const phases     = (project.phases ?? []) as Array<{ id: string; name: string; status: string; phase_order: number }>
+  const sorted     = [...phases].sort((a, b) => a.phase_order - b.phase_order)
+  const activePhase = sorted.find((p) => p.status === "blocked") ?? sorted.find((p) => p.status === "in_progress")
+
+  const projectValue = project.project_value ?? 0
+  const totalIncome  = ((project.income ?? []) as { amount: number }[]).reduce((s, i) => s + i.amount, 0)
+  const receivable   = Math.max(0, projectValue - totalIncome)
 
   return (
-    <a href={`/projects/${project.id}`} className="flex items-center gap-4 px-4 py-3 hover:bg-muted/40 transition-colors border-b last:border-b-0">
+    <a href={`/projects/${project.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/40 transition-colors border-b last:border-b-0">
       {/* Type icon */}
       <span
         className={cn("w-7 h-7 rounded flex items-center justify-center flex-shrink-0 text-xs font-bold",
@@ -29,11 +43,31 @@ function ProjectRow({ project, canViewFinancials }: {
         {Icon ? <Icon className="w-3.5 h-3.5" /> : (pt?.name?.slice(0, 2) ?? "—")}
       </span>
 
-      {/* Name + customer */}
+      {/* Name + customer + active phase */}
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium truncate">{project.name}</p>
-        {project.customer && <p className="text-xs text-muted-foreground truncate">{(project.customer as { name: string }).name}</p>}
+        <div className="flex items-center gap-2 mt-0.5">
+          {project.customer && <p className="text-xs text-muted-foreground truncate">{(project.customer as { name: string }).name}</p>}
+          {activePhase && (
+            <span className={cn("text-xs flex items-center gap-1 flex-shrink-0",
+              activePhase.status === "blocked" ? "text-destructive" : "text-warning"
+            )}>
+              <span className={cn("w-1.5 h-1.5 rounded-full inline-block",
+                activePhase.status === "blocked" ? "bg-destructive" : "bg-warning"
+              )} />
+              {activePhase.name}
+            </span>
+          )}
+        </div>
       </div>
+
+      {/* Financials */}
+      {canViewFinancials && projectValue > 0 && (
+        <div className="hidden md:flex flex-col items-end gap-0.5 flex-shrink-0">
+          <span className="text-xs text-muted-foreground">{formatCurrency(projectValue)}</span>
+          {receivable > 0 && <span className="text-xs text-warning font-medium">{formatCurrency(receivable)} p/c</span>}
+        </div>
+      )}
 
       {/* Status badge — only Completed */}
       {project.status === "Completed" && (
@@ -43,12 +77,25 @@ function ProjectRow({ project, canViewFinancials }: {
       )}
 
       {/* Progress */}
-      <div className="hidden sm:flex items-center gap-2 w-32 flex-shrink-0">
+      <div className="hidden sm:flex items-center gap-2 w-28 flex-shrink-0">
         <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
           <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${project.progress}%` }} />
         </div>
         <span className="text-xs text-muted-foreground w-7 text-right">{project.progress}%</span>
       </div>
+
+      {/* Team avatars */}
+      {members.length > 0 && (
+        <div className="hidden sm:flex items-center flex-shrink-0">
+          {members.map((m, i) => (
+            <Avatar key={m.id} className="w-6 h-6 border-2 border-card" style={{ marginLeft: i === 0 ? 0 : "-6px" }}>
+              {m.avatar_url
+                ? <img src={m.avatar_url} alt={m.full_name} className="h-full w-full object-cover" />
+                : <AvatarFallback className="text-[9px] bg-muted">{initials(m.full_name)}</AvatarFallback>}
+            </Avatar>
+          ))}
+        </div>
+      )}
     </a>
   )
 }
