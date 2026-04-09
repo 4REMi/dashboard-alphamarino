@@ -5,6 +5,7 @@ import { ProjectCard } from "@/components/projects/project-card"
 import { ArchivedProjectsSection } from "@/components/projects/archived-projects-section"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { getProjectTypeIcon } from "@/lib/project-type-icons"
+import { phaseColor } from "@/lib/phase-colors"
 import { LayoutGrid, List } from "lucide-react"
 import { cn, formatCurrency } from "@/lib/utils"
 import type { Project } from "@/lib/types"
@@ -48,16 +49,16 @@ function ProjectRow({ project, canViewFinancials }: {
         <p className="text-sm font-medium truncate">{project.name}</p>
         <div className="flex items-center gap-2 mt-0.5">
           {project.customer && <p className="text-xs text-muted-foreground truncate">{(project.customer as { name: string }).name}</p>}
-          {activePhase && (
-            <span className={cn("text-xs flex items-center gap-1 flex-shrink-0",
-              activePhase.status === "blocked" ? "text-destructive" : "text-warning"
-            )}>
-              <span className={cn("w-1.5 h-1.5 rounded-full inline-block",
-                activePhase.status === "blocked" ? "bg-destructive" : "bg-warning"
-              )} />
-              {activePhase.name}
-            </span>
-          )}
+          {activePhase && (() => {
+            const pc = phaseColor(activePhase.phase_order)
+            return (
+              <span className={cn("text-xs flex items-center gap-1 flex-shrink-0", pc.text)}>
+                <span className={cn("w-1.5 h-1.5 rounded-full inline-block flex-shrink-0", pc.bg)} />
+                {activePhase.name}
+                {activePhase.status === "blocked" && <span className="text-destructive">· bloqueada</span>}
+              </span>
+            )
+          })()}
         </div>
       </div>
 

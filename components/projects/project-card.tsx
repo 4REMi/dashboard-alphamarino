@@ -8,6 +8,7 @@ import { formatDate, formatCurrency } from "@/lib/utils"
 import { cn } from "@/lib/utils"
 import type { Project } from "@/lib/types"
 import { getProjectTypeIcon } from "@/lib/project-type-icons"
+import { phaseColor } from "@/lib/phase-colors"
 
 interface Member { id: string; full_name: string; avatar_url: string | null }
 interface Phase  { id: string; name: string; status: string; phase_order: number }
@@ -33,15 +34,15 @@ function initials(name: string) {
   return name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
 }
 
-function currentPhase(phases: Phase[] | undefined): { name: string; status: "in_progress" | "blocked" | "completed" } | null {
+function currentPhase(phases: Phase[] | undefined): Phase | null {
   if (!phases || phases.length === 0) return null
   const sorted = [...phases].sort((a, b) => a.phase_order - b.phase_order)
   const blocked    = sorted.find((p) => p.status === "blocked")
   const inProgress = sorted.find((p) => p.status === "in_progress")
-  if (blocked)    return { name: blocked.name,    status: "blocked"     }
-  if (inProgress) return { name: inProgress.name, status: "in_progress" }
+  if (blocked)    return blocked
+  if (inProgress) return inProgress
   const last = sorted[sorted.length - 1]
-  if (last?.status === "completed") return { name: last.name, status: "completed" }
+  if (last?.status === "completed") return last
   return null
 }
 
@@ -69,11 +70,6 @@ export function ProjectCard({ project, canViewFinancials = false }: ProjectCardP
 
   // Current phase
   const phase = currentPhase(project.phases)
-  const phaseStyle = {
-    blocked:     "text-destructive",
-    in_progress: "text-warning",
-    completed:   "text-success",
-  } as const
 
   // Financials
   const totalIncome     = (project.income ?? []).reduce((s, i) => s + (i.amount ?? 0), 0)
@@ -134,18 +130,20 @@ export function ProjectCard({ project, canViewFinancials = false }: ProjectCardP
           </div>
 
           {/* ── Current phase ───────────────────────────────────── */}
-          {phase && (
-            <div className="flex items-center gap-1.5">
-              <span className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0",
-                phase.status === "blocked"     && "bg-destructive",
-                phase.status === "in_progress" && "bg-warning",
-                phase.status === "completed"   && "bg-success",
-              )} />
-              <span className={cn("text-xs truncate", phaseStyle[phase.status])}>
-                {phase.name}
-              </span>
-            </div>
-          )}
+          {phase && (() => {
+            const pc = phaseColor(phase.phase_order)
+            return (
+              <div className="flex items-center gap-1.5">
+                <span className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", pc.bg)} />
+                <span className={cn("text-xs truncate", pc.text)}>
+                  {phase.name}
+                </span>
+                {phase.status === "blocked" && (
+                  <span className="text-xs text-destructive flex-shrink-0">· bloqueada</span>
+                )}
+              </div>
+            )
+          })()}
 
           {/* ── Footer ──────────────────────────────────────────── */}
           <div className="flex items-end justify-between gap-2 pt-1">
