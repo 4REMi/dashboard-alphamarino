@@ -161,7 +161,7 @@ export async function getProject(id: string) {
     .select(`
       *,
       customer:customers(id, name, company, email, phone),
-      project_type:project_types(id, name, description, default_phase_set_id),
+      project_type:project_types(id, name, description, default_phase_set_id, color, icon),
       tasks(*, assignee:profiles(id, full_name, avatar_url, position), phase:project_phases(id, name, phase_order)),
       members:project_members(profile:profiles(id, full_name, avatar_url, position, role)),
       phases:project_phases(*)
