@@ -197,36 +197,47 @@ export async function getFinancialSummary() {
   const supabase = await createClient()
 
   const now = new Date()
-  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0]
-  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0]
+  const firstDay    = new Date(now.getFullYear(), now.getMonth(),     1).toISOString().split("T")[0]
+  const lastDay     = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0]
+  const prevFirst   = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split("T")[0]
+  const prevLast    = new Date(now.getFullYear(), now.getMonth(),     0).toISOString().split("T")[0]
 
-  const [incomeRes, projectExpensesRes, recurringRes, mrrRes] = await Promise.all([
+  const [incomeRes, projectExpensesRes, recurringRes, mrrRes,
+         prevIncomeRes, prevExpensesRes] = await Promise.all([
     supabase.from("income").select("amount").gte("date", firstDay).lte("date", lastDay),
     supabase.from("project_expenses").select("amount").gte("date", firstDay).lte("date", lastDay),
     supabase.from("recurring_expenses").select("amount, frequency").eq("is_active", true),
-    // MRR: sum of monthly_fee from Active paid media projects
-    supabase
-      .from("projects")
-      .select("monthly_fee")
-      .eq("status", "In Progress")
-      .not("monthly_fee", "is", null),
+    supabase.from("projects").select("monthly_fee").eq("status", "In Progress").not("monthly_fee", "is", null),
+    supabase.from("income").select("amount").gte("date", prevFirst).lte("date", prevLast),
+    supabase.from("project_expenses").select("amount").gte("date", prevFirst).lte("date", prevLast),
   ])
 
-  const monthlyIncome = (incomeRes.data ?? []).reduce((s, i) => s + Number(i.amount), 0)
-  const monthlyProjectExpenses = (projectExpensesRes.data ?? []).reduce((s, e) => s + Number(e.amount), 0)
   const monthlyRecurring = (recurringRes.data ?? []).reduce(
-    (s, e) => s + normalizeToMonthly(Number(e.amount), e.frequency as ExpenseFrequency),
-    0
+    (s, e) => s + normalizeToMonthly(Number(e.amount), e.frequency as ExpenseFrequency), 0
   )
-  const mrr = (mrrRes.data ?? []).reduce((s, p) => s + Number(p.monthly_fee ?? 0), 0)
+
+  const monthlyIncome          = (incomeRes.data ?? []).reduce((s, i) => s + Number(i.amount), 0)
+  const monthlyProjectExpenses = (projectExpensesRes.data ?? []).reduce((s, e) => s + Number(e.amount), 0)
+  const mrr                    = (mrrRes.data ?? []).reduce((s, p) => s + Number(p.monthly_fee ?? 0), 0)
+
+  const prevIncome   = (prevIncomeRes.data ?? []).reduce((s, i) => s + Number(i.amount), 0)
+  const prevExpenses = (prevExpensesRes.data ?? []).reduce((s, e) => s + Number(e.amount), 0) + monthlyRecurring
+
+  const monthlyExpenses = monthlyProjectExpenses + monthlyRecurring
+  const netMargin       = monthlyIncome - monthlyExpenses
+  const prevNetMargin   = prevIncome - prevExpenses
 
   return {
     monthlyIncome,
-    monthlyExpenses: monthlyProjectExpenses + monthlyRecurring,
+    monthlyExpenses,
     monthlyRecurring,
     monthlyProjectExpenses,
-    netMargin: monthlyIncome - monthlyProjectExpenses - monthlyRecurring,
+    netMargin,
     mrr,
+    prevIncome,
+    prevExpenses,
+    prevNetMargin,
+    marginPct: monthlyIncome > 0 ? (netMargin / monthlyIncome) * 100 : 0,
   }
 }
 
@@ -242,23 +253,29 @@ export async function getMonthlyChartData() {
   twelveMonthsAgo.setDate(1)
   const startDate = twelveMonthsAgo.toISOString().split("T")[0]
 
-  const [incomeRes, expensesRes] = await Promise.all([
+  const [incomeRes, expensesRes, recurringRes] = await Promise.all([
     supabase.from("income").select("amount, date").gte("date", startDate),
     supabase.from("project_expenses").select("amount, date").gte("date", startDate),
+    supabase.from("recurring_expenses").select("amount, frequency").eq("is_active", true),
   ])
 
-  const months: Record<string, { month: string; ingresos: number; gastos: number; margen: number }> = {}
+  // Normalized monthly recurring cost (fixed, same every month)
+  const fixedMonthly = (recurringRes.data ?? []).reduce(
+    (s, e) => s + normalizeToMonthly(Number(e.amount), e.frequency as ExpenseFrequency), 0
+  )
 
-  // Build 12-month skeleton
+  const months: Record<string, { month: string; label: string; ingresos: number; gastos: number; margen: number }> = {}
+
   for (let i = 11; i >= 0; i--) {
     const d = new Date()
     d.setDate(1)
     d.setMonth(d.getMonth() - i)
     const key = d.toISOString().slice(0, 7)
     months[key] = {
-      month: d.toLocaleDateString("es-MX", { month: "short", year: "2-digit" }),
+      month: key,
+      label: d.toLocaleDateString("es-MX", { month: "short", year: "2-digit" }),
       ingresos: 0,
-      gastos: 0,
+      gastos: fixedMonthly,  // base: recurring expenses normalized
       margen: 0,
     }
   }
@@ -273,5 +290,46 @@ export async function getMonthlyChartData() {
     if (months[key]) months[key].gastos += Number(entry.amount)
   }
 
-  return Object.values(months).map((m) => ({ ...m, margen: m.ingresos - m.gastos }))
+  return Object.values(months).map((m) => ({
+    ...m,
+    ingresos: Math.round(m.ingresos),
+    gastos: Math.round(m.gastos),
+    margen: Math.round(m.ingresos - m.gastos),
+  }))
+}
+
+// ============================================================
+// TOP CLIENTS (last 12 months)
+// ============================================================
+
+export async function getTopClients() {
+  const supabase = await createClient()
+
+  const twelveMonthsAgo = new Date()
+  twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 11)
+  twelveMonthsAgo.setDate(1)
+  const startDate = twelveMonthsAgo.toISOString().split("T")[0]
+
+  const { data, error } = await supabase
+    .from("income")
+    .select("amount, project:projects(id, name, customer:customers(id, name, company))")
+    .gte("date", startDate)
+
+  if (error || !data) return []
+
+  const clientMap: Record<string, { id: string; name: string; company: string | null; total: number }> = {}
+
+  for (const entry of data) {
+    const project = (entry.project as unknown) as { id: string; name: string; customer: { id: string; name: string; company: string | null } | null } | null
+    const customer = project?.customer
+    if (!customer) continue
+    if (!clientMap[customer.id]) {
+      clientMap[customer.id] = { id: customer.id, name: customer.name, company: customer.company, total: 0 }
+    }
+    clientMap[customer.id].total += Number(entry.amount)
+  }
+
+  return Object.values(clientMap)
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 8)
 }
