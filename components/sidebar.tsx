@@ -31,9 +31,11 @@ import type { Profile } from "@/lib/types"
 interface SidebarProps {
   profile: Profile | null
   logoUrl?: string | null
+  mobileOpen?: boolean
+  onMobileClose?: () => void
 }
 
-export function Sidebar({ profile, logoUrl }: SidebarProps) {
+export function Sidebar({ profile, logoUrl, mobileOpen = false, onMobileClose }: SidebarProps) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
   const t = useTranslations("nav")
@@ -64,8 +66,16 @@ export function Sidebar({ profile, logoUrl }: SidebarProps) {
   return (
     <aside
       className={cn(
-        "flex flex-col h-screen bg-sidebar border-r border-sidebar-border transition-all duration-300 sticky top-0",
-        collapsed ? "w-16" : "w-60"
+        "flex flex-col h-screen bg-sidebar border-r border-sidebar-border transition-all duration-300",
+        // Mobile: fixed overlay drawer
+        "fixed inset-y-0 left-0 z-50",
+        // Desktop: sticky in-flow sidebar
+        "md:sticky md:top-0",
+        // Mobile open/close via translate; desktop always visible
+        mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
+        // Width: always w-60 on mobile, collapsible on desktop
+        "w-60",
+        collapsed && "md:w-16",
       )}
     >
       {/* Logo */}
@@ -90,9 +100,10 @@ export function Sidebar({ profile, logoUrl }: SidebarProps) {
             <p className="text-xs text-muted-foreground">Dashboard</p>
           </div>
         )}
+        {/* Collapse toggle — desktop only */}
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="ml-auto p-1 rounded hover:bg-sidebar-accent text-muted-foreground hover:text-foreground transition-colors"
+          className="ml-auto p-1 rounded hover:bg-sidebar-accent text-muted-foreground hover:text-foreground transition-colors hidden md:flex"
         >
           {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
         </button>
@@ -109,6 +120,7 @@ export function Sidebar({ profile, logoUrl }: SidebarProps) {
             <Link
               key={item.href}
               href={item.href}
+              onClick={onMobileClose}
               className={cn(
                 "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
                 isActive
