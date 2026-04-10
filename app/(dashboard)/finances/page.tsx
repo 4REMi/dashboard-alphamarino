@@ -181,13 +181,13 @@ export default async function FinancesPage() {
           <div className="flex justify-end">
             <IncomeForm projects={projects as Project[]} />
           </div>
-          <div className="border rounded-lg overflow-hidden bg-card">
-            <table className="w-full text-sm">
+          <div className="border rounded-lg overflow-hidden bg-card overflow-x-auto">
+            <table className="w-full text-sm min-w-[480px]">
               <thead className="bg-muted/50">
                 <tr>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">{t("date")}</th>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">{t("description")}</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">{t("invoiceNumber")}</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden sm:table-cell">{t("invoiceNumber")}</th>
                   <th className="text-right px-4 py-3 font-medium text-muted-foreground">{t("amount")}</th>
                   <th className="text-right px-4 py-3 font-medium text-muted-foreground"></th>
                 </tr>
@@ -204,7 +204,7 @@ export default async function FinancesPage() {
                   <tr key={item.id} className="border-t hover:bg-muted/30 transition-colors">
                     <td className="px-4 py-3 text-muted-foreground">{formatDate(item.date)}</td>
                     <td className="px-4 py-3">{item.description ?? "—"}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{item.invoice_number ?? "—"}</td>
+                    <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">{item.invoice_number ?? "—"}</td>
                     <td className="px-4 py-3 text-right font-semibold text-green-600">
                       {formatCurrency(item.amount)}
                     </td>
@@ -221,7 +221,8 @@ export default async function FinancesPage() {
               {(income as Income[]).length > 0 && (
                 <tfoot className="bg-muted/30 border-t">
                   <tr>
-                    <td colSpan={3} className="px-4 py-3 font-semibold">Total</td>
+                    <td colSpan={2} className="px-4 py-3 font-semibold">Total</td>
+                    <td className="hidden sm:table-cell" />
                     <td className="px-4 py-3 text-right font-bold text-green-600">
                       {formatCurrency((income as Income[]).reduce((s, i) => s + Number(i.amount), 0))}
                     </td>
@@ -256,14 +257,14 @@ export default async function FinancesPage() {
                   </span>
                   <span className="text-sm text-muted-foreground">{formatCurrency(categoryTotal)}/mes</span>
                 </div>
-                <div className="border rounded-lg overflow-hidden bg-card mb-4">
-                  <table className="w-full text-sm">
+                <div className="border rounded-lg overflow-hidden bg-card mb-4 overflow-x-auto">
+                  <table className="w-full text-sm min-w-[520px]">
                     <thead className="bg-muted/50">
                       <tr>
                         <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">{t("description")}</th>
-                        <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">{t("frequency")}</th>
+                        <th className="text-left px-4 py-2.5 font-medium text-muted-foreground hidden sm:table-cell">{t("frequency")}</th>
                         <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">{t("date")}</th>
-                        <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">{tCommon("active")}</th>
+                        <th className="text-left px-4 py-2.5 font-medium text-muted-foreground hidden sm:table-cell">{tCommon("active")}</th>
                         <th className="text-right px-4 py-2.5 font-medium text-muted-foreground">{t("amount")}</th>
                         <th className="text-right px-4 py-2.5 font-medium text-muted-foreground"></th>
                       </tr>
@@ -276,12 +277,12 @@ export default async function FinancesPage() {
                         return (
                           <tr key={expense.id} className="border-t hover:bg-muted/30 transition-colors">
                             <td className="px-4 py-3">{expense.name}</td>
-                            <td className="px-4 py-3 text-muted-foreground">{frequencyLabels[expense.frequency]}</td>
+                            <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">{frequencyLabels[expense.frequency]}</td>
                             <td className={`px-4 py-3 text-sm ${isUpcoming ? "text-amber-600 font-medium" : "text-muted-foreground"}`}>
                               {expense.next_payment_date ? formatDate(expense.next_payment_date) : "—"}
                               {isUpcoming && " ⚠"}
                             </td>
-                            <td className="px-4 py-3">
+                            <td className="px-4 py-3 hidden sm:table-cell">
                               <Badge variant={expense.is_active ? "success" : "secondary"}>
                                 {expense.is_active ? tCommon("active") : tCommon("inactive")}
                               </Badge>

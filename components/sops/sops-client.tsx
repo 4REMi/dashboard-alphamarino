@@ -316,12 +316,12 @@ export function SopsClient({ sops: initSops, currentUser, isAdmin, projectTypes 
           </p>
         </div>
       ) : (
-        <div className="border rounded-xl overflow-hidden bg-card">
-          <table className="w-full text-sm">
+        <div className="border rounded-xl overflow-hidden bg-card overflow-x-auto">
+          <table className="w-full text-sm min-w-[480px]">
             <thead className="bg-muted/50 border-b">
               <tr>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Título</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Categoría</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden sm:table-cell">Categoría</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden lg:table-cell">Tags</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Autor</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Recursos</th>

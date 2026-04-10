@@ -633,6 +633,80 @@ function TaskDetailModal({
   )
 }
 
+// ─── Task Card (mobile) ───────────────────────────────────────────────────────
+
+function TaskCard({ task, projectId, deliverable, onDeliverableClick, onCardClick }: {
+  task: Task
+  projectId: string
+  deliverable: Deliverable | null
+  onDeliverableClick: (task: Task) => void
+  onCardClick: (task: Task) => void
+}) {
+  const tTaskStatus = useTranslations("taskStatus")
+  const phase = (task.phase as { id: string; name: string; phase_order: number } | null | undefined) ?? null
+  const assignee = task.assignee as { full_name: string; avatar_url: string | null } | null | undefined
+
+  return (
+    <div
+      onClick={() => onCardClick(task)}
+      className={cn(
+        "border rounded-lg bg-card px-4 py-3 space-y-2 cursor-pointer active:bg-muted/50 transition-colors",
+        task.is_urgent && "border-destructive/30 bg-destructive/5"
+      )}
+    >
+      {/* Title row */}
+      <div className="flex items-start gap-2">
+        {task.is_urgent && <Flag className="w-3.5 h-3.5 text-destructive flex-shrink-0 mt-0.5 fill-current" />}
+        <p className={cn("text-sm font-medium flex-1 min-w-0", task.status === "Done" && "line-through text-muted-foreground")}>
+          {task.title}
+        </p>
+        {task.requires_deliverable && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onDeliverableClick(task) }}
+            className={cn("flex-shrink-0 p-1 rounded transition-colors", deliverable ? "text-success" : "text-warning")}
+          >
+            <Paperclip className={cn("w-3.5 h-3.5", deliverable && "fill-current opacity-80")} />
+          </button>
+        )}
+      </div>
+
+      {/* Meta row */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {/* Status badge */}
+        <span className={cn(
+          "text-xs font-semibold px-2 py-0.5 rounded-full",
+          task.status === "Todo"        && "bg-secondary text-secondary-foreground",
+          task.status === "In Progress" && "bg-info-subtle text-info-subtle-foreground",
+          task.status === "Done"        && "bg-success-subtle text-success-subtle-foreground",
+        )}>
+          {tTaskStatus(TASK_STATUS_KEY[task.status])}
+        </span>
+
+        {/* Phase */}
+        {phase && <PhaseBadge phase={phase} />}
+
+        {/* Assignee */}
+        {assignee && (
+          <span className="text-xs text-muted-foreground">{assignee.full_name.split(" ")[0]}</span>
+        )}
+
+        {/* Due date */}
+        {task.due_date && (
+          <span className={cn(
+            "flex items-center gap-0.5 text-xs ml-auto flex-shrink-0",
+            new Date(task.due_date) < new Date() && task.status !== "Done"
+              ? "text-destructive font-medium"
+              : "text-muted-foreground"
+          )}>
+            <CalendarDays className="w-3 h-3" />
+            {formatDate(task.due_date)}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Task Row ─────────────────────────────────────────────────────────────────
 
 function TaskRow({ task, projectId, employees, isAdmin, deliverable, onDeliverableClick, onRowClick, showPhaseCol = true }: {
@@ -955,7 +1029,28 @@ export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesBy
         )}
       </div>
 
-      <div className="border rounded-lg overflow-hidden bg-card">
+      {/* ── Mobile: flat card list ─────────────────────────────── */}
+      <div className="md:hidden space-y-2">
+        {filteredTasks.length === 0 ? (
+          <p className="text-center text-sm text-muted-foreground py-8">
+            {filter === "mine" ? tT("noMineTasks") : filter === "unassigned" ? tT("noUnassignedTasks") : tT("noTasksYet")}
+          </p>
+        ) : (
+          filteredTasks.map((task) => (
+            <TaskCard
+              key={task.id}
+              task={task}
+              projectId={projectId}
+              deliverable={deliverablesByTaskId[task.id] ?? null}
+              onDeliverableClick={setDrawerTask}
+              onCardClick={setDetailTask}
+            />
+          ))
+        )}
+      </div>
+
+      {/* ── Desktop: grouped table ──────────────────────────────── */}
+      <div className="hidden md:block border rounded-lg overflow-hidden bg-card">
         <table className="w-full text-sm">
           <thead className="bg-muted/50 border-b">
             <tr>

@@ -186,16 +186,16 @@ export function DomainTable({ initialDomains, customers }: DomainTableProps) {
       )}
 
       {/* Table */}
-      <div className="border rounded-lg overflow-hidden bg-card">
-        <table className="w-full text-sm">
+      <div className="border rounded-lg overflow-hidden bg-card overflow-x-auto">
+        <table className="w-full text-sm min-w-[540px]">
           <thead className="bg-muted/50">
             <tr>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Dominio</th>
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Cliente</th>
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Registrador</th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden sm:table-cell">Cliente</th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Registrador</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Renovación</th>
               <th className="text-right px-4 py-3 font-medium text-muted-foreground">Costo</th>
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Notas</th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden lg:table-cell">Notas</th>
               <th className="px-4 py-3" />
             </tr>
           </thead>
@@ -245,17 +245,17 @@ export function DomainTable({ initialDomains, customers }: DomainTableProps) {
                       )}
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-muted-foreground">
+                  <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">
                     {(domain.customer as { name: string } | null | undefined)?.name ?? "—"}
                   </td>
-                  <td className="px-4 py-3 text-muted-foreground">{domain.registrar ?? "—"}</td>
+                  <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">{domain.registrar ?? "—"}</td>
                   <td className={`px-4 py-3 ${isExpiringSoon ? "text-amber-600 font-medium" : isExpired ? "text-red-600" : "text-muted-foreground"}`}>
                     {domain.renewal_date ? formatDate(domain.renewal_date) : "—"}
                   </td>
                   <td className="px-4 py-3 text-right">
                     {domain.renewal_cost ? formatCurrency(domain.renewal_cost) : "—"}
                   </td>
-                  <td className="px-4 py-3 text-muted-foreground text-xs max-w-[200px] truncate">
+                  <td className="px-4 py-3 text-muted-foreground text-xs max-w-[200px] truncate hidden lg:table-cell">
                     {domain.notes ?? "—"}
                   </td>
                   <td className="px-4 py-3">
