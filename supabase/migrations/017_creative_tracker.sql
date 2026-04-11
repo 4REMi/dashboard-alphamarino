@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS creative_concepts (
   central_tension   TEXT,
   awareness_stage   INT CHECK (awareness_stage BETWEEN 1 AND 5),
   mechanism         TEXT,
-  references        TEXT,
+  ref_links         TEXT,
   proposed_hook     TEXT,
 
   status      TEXT CHECK (status IN ('Active', 'Archived', 'Transmuted', 'Evergreen')) DEFAULT 'Active',

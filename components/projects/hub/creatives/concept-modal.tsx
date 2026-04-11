@@ -195,7 +195,7 @@ export function ConceptModal({ projectId, cycleId, concept, isAdminOrSubadmin, o
           {/* References */}
           <div className="space-y-1">
             <label className={labelCls}>Referencias / Inspiración</label>
-            <textarea name="references" defaultValue={concept?.references ?? ""} rows={2} placeholder="Links o descripciones de referencia" className={fieldCls} />
+            <textarea name="ref_links" defaultValue={concept?.ref_links ?? ""} rows={2} placeholder="Links o descripciones de referencia" className={fieldCls} />
           </div>
 
           {/* Insight — admin only */}

@@ -394,7 +394,7 @@ export interface CreativeConcept {
   central_tension: string | null
   awareness_stage: number | null
   mechanism: string | null
-  references: string | null
+  ref_links: string | null
   proposed_hook: string | null
   status: ConceptStatus
   insight: string | null  // admin/subadmin only
