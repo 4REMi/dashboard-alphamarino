@@ -16,6 +16,10 @@ export type CampaignStatus = "active" | "paused" | "review" | "optimizing"
 export type SopVisibility = "public" | "restricted"
 export type SopRequestStatus = "pending" | "fulfilled" | "dismissed"
 export type MainObjective = "conversions" | "leads" | "traffic" | "awareness"
+export type ConceptStatus = "Active" | "Archived" | "Transmuted" | "Evergreen"
+export type ProductionStatus = "Pending" | "In Production" | "In Review" | "Approved" | "Published"
+export type AssetVerdict = "Winner" | "Scale" | "Iterate" | "Archive"
+export type OrganizingPrinciple = "Pain-First" | "Desire-First"
 
 // ============================================================
 // ENTITIES
@@ -371,6 +375,64 @@ export interface Domain {
   notes: string | null
   created_at: string
   customer?: Customer | null
+}
+
+// ============================================================
+// CREATIVE TRACKER
+// ============================================================
+
+export interface CreativeConcept {
+  id: string
+  project_id: string
+  cycle_id: string | null
+  parent_concept_id: string | null
+  organizing_principle: OrganizingPrinciple | null
+  angle_type: string | null
+  target_persona: string
+  pain_or_desire: string
+  emotional_insight: string | null
+  central_tension: string | null
+  awareness_stage: number | null
+  mechanism: string | null
+  references: string | null
+  proposed_hook: string | null
+  status: ConceptStatus
+  insight: string | null  // admin/subadmin only
+  created_by: string | null
+  created_at: string
+  // relations
+  parent?: Pick<CreativeConcept, "id" | "angle_type" | "status" | "insight"> | null
+  creator?: Pick<Profile, "id" | "full_name"> | null
+}
+
+export interface CreativeAsset {
+  id: string
+  project_id: string
+  cycle_id: string | null
+  concept_id: string | null
+  format: string | null
+  platform: string | null
+  variant: string | null
+  iteration: string | null
+  hook: string | null
+  copy: string | null
+  cta: string | null
+  asset_url: string | null
+  production_status: ProductionStatus
+  // admin/subadmin only
+  ctr: number | null
+  cpc: number | null
+  cpm: number | null
+  roas: number | null
+  cpa: number | null
+  spend: number | null
+  results: number | null
+  results_type: string | null
+  verdict: AssetVerdict | null
+  verdict_notes: string | null
+  created_at: string
+  // relations
+  concept?: Pick<CreativeConcept, "id" | "angle_type" | "target_persona"> | null
 }
 
 // ============================================================
