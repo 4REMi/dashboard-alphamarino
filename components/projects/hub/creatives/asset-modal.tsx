@@ -1,12 +1,12 @@
 "use client"
 
-import { useTransition } from "react"
+import { useState, useTransition } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { createAsset, updateAsset, deleteAsset } from "@/lib/actions/creatives"
+import { createAsset, updateAsset, deleteAsset, generateAssetCopy } from "@/lib/actions/creatives"
 import { PRODUCTION_STATUS_COLORS, VERDICT_COLORS } from "@/lib/constants/creatives"
 import type { CreativeAsset, CreativeConcept } from "@/lib/types"
-import { ExternalLink, Trash2 } from "lucide-react"
+import { ExternalLink, Trash2, Sparkles, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const FORMATS   = ["Static", "Carousel", "Video B-roll+VO", "Video UGC", "Story", "Reel"]
@@ -28,11 +28,41 @@ interface AssetModalProps {
 export function AssetModal({ projectId, cycleId, asset, concepts, defaultConceptId, isAdminOrSubadmin, open, onClose }: AssetModalProps) {
   const isEdit = !!asset
   const [isPending, startTransition] = useTransition()
+  const [isGenerating, startGenerate] = useTransition()
+
+  // Controlled fields for AI generation
+  const [selectedConceptId, setSelectedConceptId] = useState(
+    asset?.concept_id ?? defaultConceptId ?? ""
+  )
+  const [selectedFormat, setSelectedFormat]     = useState(asset?.format ?? "")
+  const [selectedPlatform, setSelectedPlatform] = useState(asset?.platform ?? "")
+  const [hook, setHook] = useState(asset?.hook ?? "")
+  const [copy, setCopy] = useState(asset?.copy ?? "")
+  const [cta,  setCta]  = useState(asset?.cta  ?? "")
+
+  function handleGenerate() {
+    if (!selectedConceptId) return
+    startGenerate(async () => {
+      const result = await generateAssetCopy(
+        projectId,
+        selectedConceptId,
+        selectedFormat || null,
+        selectedPlatform || null,
+      )
+      setHook(result.hook)
+      setCopy(result.copy)
+      setCta(result.cta)
+    })
+  }
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const fd = new FormData(e.currentTarget)
     if (cycleId) fd.set("cycle_id", cycleId)
+    // Override with controlled field values
+    fd.set("hook", hook)
+    fd.set("copy", copy)
+    fd.set("cta",  cta)
     startTransition(async () => {
       if (isEdit) {
         await updateAsset(asset.id, projectId, fd)
@@ -54,6 +84,7 @@ export function AssetModal({ projectId, cycleId, asset, concepts, defaultConcept
 
   const fieldCls = "w-full text-sm border rounded px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-ring resize-none"
   const labelCls = "text-xs font-medium text-muted-foreground"
+  const canGenerate = !!selectedConceptId && isAdminOrSubadmin
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -68,7 +99,12 @@ export function AssetModal({ projectId, cycleId, asset, concepts, defaultConcept
           <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1">
               <label className={labelCls}>Concepto padre</label>
-              <select name="concept_id" defaultValue={asset?.concept_id ?? defaultConceptId ?? ""} className={fieldCls}>
+              <select
+                name="concept_id"
+                value={selectedConceptId}
+                onChange={(e) => setSelectedConceptId(e.target.value)}
+                className={fieldCls}
+              >
                 <option value="">Sin concepto</option>
                 {concepts.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -79,14 +115,24 @@ export function AssetModal({ projectId, cycleId, asset, concepts, defaultConcept
             </div>
             <div className="space-y-1">
               <label className={labelCls}>Formato</label>
-              <select name="format" defaultValue={asset?.format ?? ""} className={fieldCls}>
+              <select
+                name="format"
+                value={selectedFormat}
+                onChange={(e) => setSelectedFormat(e.target.value)}
+                className={fieldCls}
+              >
                 <option value="">—</option>
                 {FORMATS.map((f) => <option key={f} value={f}>{f}</option>)}
               </select>
             </div>
             <div className="space-y-1">
               <label className={labelCls}>Plataforma</label>
-              <select name="platform" defaultValue={asset?.platform ?? ""} className={fieldCls}>
+              <select
+                name="platform"
+                value={selectedPlatform}
+                onChange={(e) => setSelectedPlatform(e.target.value)}
+                className={fieldCls}
+              >
                 <option value="">—</option>
                 {PLATFORMS.map((p) => <option key={p} value={p}>{p}</option>)}
               </select>
@@ -113,34 +159,82 @@ export function AssetModal({ projectId, cycleId, asset, concepts, defaultConcept
             </div>
           </div>
 
-          {/* Hook */}
-          <div className="space-y-1">
-            <label className={labelCls}>Hook</label>
-            <textarea name="hook" defaultValue={asset?.hook ?? ""} rows={2} placeholder="Primera línea del anuncio" className={fieldCls} />
-          </div>
+          {/* ── Copy section ── */}
+          <div className="border rounded-lg p-3 space-y-3 bg-muted/20">
+            {/* Section header with AI button */}
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Copy</p>
+              {canGenerate && (
+                <button
+                  type="button"
+                  onClick={handleGenerate}
+                  disabled={isGenerating}
+                  className="flex items-center gap-1.5 text-xs text-purple-600 hover:text-purple-700 disabled:opacity-50 transition-colors"
+                >
+                  {isGenerating
+                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    : <Sparkles className="w-3.5 h-3.5" />
+                  }
+                  {isGenerating ? "Generando…" : "Generar con IA"}
+                </button>
+              )}
+              {!canGenerate && !selectedConceptId && (
+                <span className="text-xs text-muted-foreground">Selecciona un concepto para generar con IA</span>
+              )}
+            </div>
 
-          {/* Copy */}
-          <div className="space-y-1">
-            <label className={labelCls}>Copy</label>
-            <textarea name="copy" defaultValue={asset?.copy ?? ""} rows={3} placeholder="Cuerpo del anuncio" className={fieldCls} />
-          </div>
+            {/* Hook */}
+            <div className="space-y-1">
+              <label className={labelCls}>Hook</label>
+              <textarea
+                name="hook"
+                value={hook}
+                onChange={(e) => setHook(e.target.value)}
+                rows={2}
+                placeholder="Primera línea del anuncio"
+                className={cn(fieldCls, isGenerating && "opacity-50")}
+                disabled={isGenerating}
+              />
+            </div>
 
-          {/* CTA + Asset URL */}
-          <div className="grid grid-cols-2 gap-3">
+            {/* Copy */}
+            <div className="space-y-1">
+              <label className={labelCls}>Copy</label>
+              <textarea
+                name="copy"
+                value={copy}
+                onChange={(e) => setCopy(e.target.value)}
+                rows={4}
+                placeholder="Cuerpo del anuncio"
+                className={cn(fieldCls, isGenerating && "opacity-50")}
+                disabled={isGenerating}
+              />
+            </div>
+
+            {/* CTA */}
             <div className="space-y-1">
               <label className={labelCls}>CTA</label>
-              <input name="cta" defaultValue={asset?.cta ?? ""} placeholder="Ej. Comprar ahora, Ver más" className={fieldCls} />
+              <input
+                name="cta"
+                value={cta}
+                onChange={(e) => setCta(e.target.value)}
+                placeholder="Ej. Comprar ahora, Ver más"
+                className={cn(fieldCls, isGenerating && "opacity-50")}
+                disabled={isGenerating}
+              />
             </div>
-            <div className="space-y-1">
-              <label className={labelCls}>Link del asset</label>
-              <div className="relative">
-                <input name="asset_url" defaultValue={asset?.asset_url ?? ""} placeholder="Drive, Frame.io, Dropbox…" className={cn(fieldCls, "pr-8")} />
-                {asset?.asset_url && (
-                  <a href={asset.asset_url} target="_blank" rel="noopener noreferrer" className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                )}
-              </div>
+          </div>
+
+          {/* Asset URL */}
+          <div className="space-y-1">
+            <label className={labelCls}>Link del asset</label>
+            <div className="relative">
+              <input name="asset_url" defaultValue={asset?.asset_url ?? ""} placeholder="Drive, Frame.io, Dropbox…" className={cn(fieldCls, "pr-8")} />
+              {asset?.asset_url && (
+                <a href={asset.asset_url} target="_blank" rel="noopener noreferrer" className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              )}
             </div>
           </div>
 
@@ -150,12 +244,12 @@ export function AssetModal({ projectId, cycleId, asset, concepts, defaultConcept
               <p className="text-xs font-semibold text-muted-foreground">Métricas de performance</p>
               <div className="grid grid-cols-3 gap-3">
                 {[
-                  { name: "ctr",     label: "CTR (%)",    val: asset?.ctr },
-                  { name: "cpc",     label: "CPC ($)",    val: asset?.cpc },
-                  { name: "cpm",     label: "CPM ($)",    val: asset?.cpm },
-                  { name: "roas",    label: "ROAS",       val: asset?.roas },
-                  { name: "cpa",     label: "CPA ($)",    val: asset?.cpa },
-                  { name: "spend",   label: "Spend ($)",  val: asset?.spend },
+                  { name: "ctr",   label: "CTR (%)",  val: asset?.ctr },
+                  { name: "cpc",   label: "CPC ($)",  val: asset?.cpc },
+                  { name: "cpm",   label: "CPM ($)",  val: asset?.cpm },
+                  { name: "roas",  label: "ROAS",     val: asset?.roas },
+                  { name: "cpa",   label: "CPA ($)",  val: asset?.cpa },
+                  { name: "spend", label: "Spend ($)", val: asset?.spend },
                 ].map(({ name, label, val }) => (
                   <div key={name} className="space-y-1">
                     <label className={labelCls}>{label}</label>
@@ -203,7 +297,7 @@ export function AssetModal({ projectId, cycleId, asset, concepts, defaultConcept
             </div>
             <div className="flex gap-2">
               <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={isPending}>Cancelar</Button>
-              <Button type="submit" size="sm" disabled={isPending || !isAdminOrSubadmin}>
+              <Button type="submit" size="sm" disabled={isPending || isGenerating || !isAdminOrSubadmin}>
                 {isPending ? "Guardando..." : isEdit ? "Guardar" : "Crear asset"}
               </Button>
             </div>

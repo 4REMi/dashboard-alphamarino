@@ -346,6 +346,92 @@ Genera 5 conceptos creativos nuevos. Evita repetir combinaciones de ángulo+pers
   }
 }
 
+// Generate hook / copy / CTA for a single asset from its parent concept
+export async function generateAssetCopy(
+  projectId: string,
+  conceptId: string,
+  format: string | null,
+  platform: string | null
+): Promise<{ hook: string; copy: string; cta: string }> {
+  const supabase = await createClient()
+  const { role } = await getRole()
+  if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
+
+  const [conceptRes, ctxRes] = await Promise.all([
+    supabase.from("creative_concepts")
+      .select("angle_type, organizing_principle, target_persona, pain_or_desire, emotional_insight, central_tension, mechanism, proposed_hook, awareness_stage")
+      .eq("id", conceptId)
+      .single(),
+    supabase.from("paid_media_context")
+      .select("main_objective, account_notes, platforms")
+      .eq("project_id", projectId)
+      .single(),
+  ])
+
+  const c   = conceptRes.data
+  const ctx = ctxRes.data
+  if (!c) throw new Error("Concept not found")
+
+  const isVideo   = format?.toLowerCase().includes("video") || format === "Reel"
+  const isStory   = format === "Story"
+  const isStatic  = format === "Static" || format === "Carousel"
+
+  const formatGuide = isVideo
+    ? "Hook: primera línea spoken (máx 15 palabras, impacto inmediato). Copy: guión de narración en 3-4 frases que fluyen del hook. CTA: texto spoken o overlay (máx 5 palabras)."
+    : isStory
+    ? "Hook: texto overlay inicial (máx 5 palabras, detiene el scroll). Copy: 2-3 frases breves para la story. CTA: texto de swipe-up o botón (máx 4 palabras)."
+    : isStatic
+    ? "Hook: headline de máx 7 palabras. Copy: cuerpo corto (máx 125 caracteres). CTA: texto de botón (máx 4 palabras)."
+    : "Hook: línea de apertura de alto impacto. Copy: 3-4 frases que desarrollan el ángulo. CTA: llamada a la acción clara y directa."
+
+  const systemPrompt = `Eres un copywriter de performance marketing experto en Meta Ads, TikTok Ads y Google Ads. Escribes copy que convierte basándote en el ángulo estratégico y el perfil psicológico del buyer persona.
+
+Responde ÚNICAMENTE con un JSON válido con estos tres campos: hook, copy, cta. Sin markdown, sin texto adicional.`
+
+  const userPrompt = `Escribe el copy para este asset publicitario.
+
+Ángulo estratégico: ${c.angle_type ?? "—"} (${c.organizing_principle ?? "—"})
+Persona objetivo: ${c.target_persona}
+Dolor / Deseo: ${c.pain_or_desire}
+${c.emotional_insight ? `Insight emocional: ${c.emotional_insight}` : ""}
+${c.central_tension ? `Tensión central: ${c.central_tension}` : ""}
+${c.mechanism ? `Mecanismo psicológico: ${c.mechanism}` : ""}
+${c.proposed_hook ? `Hook de referencia del concepto: "${c.proposed_hook}"` : ""}
+Awareness stage: ${c.awareness_stage ?? "—"}/5
+Plataforma: ${platform ?? "No especificada"}
+Formato: ${format ?? "No especificado"}
+Objetivo de campaña: ${ctx?.main_objective ?? "No especificado"}
+${ctx?.account_notes ? `Briefing adicional: ${ctx.account_notes}` : ""}
+
+Guía de formato para este asset: ${formatGuide}
+
+El copy debe sentirse auténtico y específico para la persona descrita — no genérico. Respeta el ángulo y la tensión del concepto.`
+
+  const Anthropic = (await import("@anthropic-ai/sdk")).default
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+  const message = await client.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 1024,
+    messages: [{ role: "user", content: userPrompt }],
+    system: systemPrompt,
+  })
+
+  const text = message.content[0].type === "text" ? message.content[0].text : ""
+
+  try {
+    const parsed = JSON.parse(text)
+    return { hook: parsed.hook ?? "", copy: parsed.copy ?? "", cta: parsed.cta ?? "" }
+  } catch {
+    const match = text.match(/\{[\s\S]*\}/)
+    if (match) {
+      const parsed = JSON.parse(match[0])
+      return { hook: parsed.hook ?? "", copy: parsed.copy ?? "", cta: parsed.cta ?? "" }
+    }
+    throw new Error("AI returned invalid JSON")
+  }
+}
+
 // Bulk insert confirmed AI draft concepts
 export async function confirmAIDrafts(
   projectId: string,
