@@ -19,12 +19,13 @@ interface AssetModalProps {
   cycleId: string | null
   asset?: CreativeAsset | null
   concepts: CreativeConcept[]
+  defaultConceptId?: string | null
   isAdminOrSubadmin: boolean
   open: boolean
   onClose: () => void
 }
 
-export function AssetModal({ projectId, cycleId, asset, concepts, isAdminOrSubadmin, open, onClose }: AssetModalProps) {
+export function AssetModal({ projectId, cycleId, asset, concepts, defaultConceptId, isAdminOrSubadmin, open, onClose }: AssetModalProps) {
   const isEdit = !!asset
   const [isPending, startTransition] = useTransition()
 
@@ -67,7 +68,7 @@ export function AssetModal({ projectId, cycleId, asset, concepts, isAdminOrSubad
           <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1">
               <label className={labelCls}>Concepto padre</label>
-              <select name="concept_id" defaultValue={asset?.concept_id ?? ""} className={fieldCls}>
+              <select name="concept_id" defaultValue={asset?.concept_id ?? defaultConceptId ?? ""} className={fieldCls}>
                 <option value="">Sin concepto</option>
                 {concepts.map((c) => (
                   <option key={c.id} value={c.id}>

@@ -5,15 +5,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ConceptModal } from "./concept-modal"
+import { AssetModal } from "./asset-modal"
 import { generateCreativeConcepts, confirmAIDrafts } from "@/lib/actions/creatives"
 import { CONCEPT_STATUS_COLORS, AWARENESS_LABELS } from "@/lib/constants/creatives"
-import type { CreativeConcept } from "@/lib/types"
+import type { CreativeConcept, CreativeAsset } from "@/lib/types"
 import type { AIDraftConcept } from "@/lib/actions/creatives"
 import { Plus, Sparkles, Check, X, Loader2, Star, ArrowUpRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface ConceptsTableProps {
   concepts: CreativeConcept[]
+  assets: CreativeAsset[]
   projectId: string
   cycleId: string | null
   isAdminOrSubadmin: boolean
@@ -57,8 +59,6 @@ function DraftPreviewModal({
         </DialogHeader>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
-
-          {/* LEFT: Strategy */}
           <div className="space-y-4">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Estrategia</p>
             <div className="grid grid-cols-2 gap-3">
@@ -70,7 +70,6 @@ function DraftPreviewModal({
             <Field label="Hook propuesto" value={draft.proposed_hook} />
           </div>
 
-          {/* RIGHT: Psychology */}
           <div className="space-y-4">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Psicología</p>
             <Field
@@ -84,25 +83,12 @@ function DraftPreviewModal({
         </div>
 
         <DialogFooter className="flex items-center justify-between pt-4 mt-2 border-t gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-destructive hover:text-destructive"
-            onClick={onDiscard}
-            disabled={isPending}
-          >
+          <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={onDiscard} disabled={isPending}>
             <X className="w-3.5 h-3.5 mr-1" />
             Descartar
           </Button>
-          <Button
-            size="sm"
-            className="bg-purple-600 hover:bg-purple-700"
-            onClick={onConfirm}
-            disabled={isPending}
-          >
-            {isPending
-              ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
-              : <Check className="w-3.5 h-3.5 mr-1" />}
+          <Button size="sm" className="bg-purple-600 hover:bg-purple-700" onClick={onConfirm} disabled={isPending}>
+            {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Check className="w-3.5 h-3.5 mr-1" />}
             Confirmar
           </Button>
         </DialogFooter>
@@ -176,18 +162,10 @@ function AIDraftRows({
           </td>
           <td className="px-4 py-3">
             <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-              <Button
-                variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive"
-                onClick={() => onDiscard(idx)} disabled={isConfirming}
-                title="Descartar"
-              >
+              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => onDiscard(idx)} disabled={isConfirming} title="Descartar">
                 <X className="w-3.5 h-3.5" />
               </Button>
-              <Button
-                variant="ghost" size="icon" className="h-7 w-7 text-emerald-600 hover:text-emerald-700"
-                onClick={() => onConfirm(idx)} disabled={isConfirming}
-                title="Confirmar"
-              >
+              <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600 hover:text-emerald-700" onClick={() => onConfirm(idx)} disabled={isConfirming} title="Confirmar">
                 <Check className="w-3.5 h-3.5" />
               </Button>
             </div>
@@ -200,11 +178,13 @@ function AIDraftRows({
 
 // ── Main table ───────────────────────────────────────────────────────────────
 
-export function ConceptsTable({ concepts, projectId, cycleId, isAdminOrSubadmin }: ConceptsTableProps) {
+export function ConceptsTable({ concepts, assets, projectId, cycleId, isAdminOrSubadmin }: ConceptsTableProps) {
   const [selectedConcept, setSelectedConcept] = useState<CreativeConcept | null>(null)
   const [showCreate, setShowCreate] = useState(false)
   const [aiDrafts, setAiDrafts] = useState<AIDraftConcept[]>([])
   const [previewIdx, setPreviewIdx] = useState<number | null>(null)
+  // Asset creation pre-linked to a concept (from concept modal "Nuevo asset")
+  const [newAssetForConceptId, setNewAssetForConceptId] = useState<string | null>(null)
   const [isGenerating, startGenerate] = useTransition()
   const [isConfirming, startConfirm] = useTransition()
 
@@ -241,6 +221,13 @@ export function ConceptsTable({ concepts, projectId, cycleId, isAdminOrSubadmin 
       await confirmAIDrafts(projectId, cycleId, aiDrafts)
       setAiDrafts([])
     })
+  }
+
+  function handleNewAssetFromConcept() {
+    if (!selectedConcept) return
+    const conceptId = selectedConcept.id
+    setSelectedConcept(null)           // close concept modal
+    setNewAssetForConceptId(conceptId) // open asset modal pre-filled
   }
 
   const colHeader = "text-left px-4 py-2.5 text-xs font-medium text-muted-foreground"
@@ -280,11 +267,10 @@ export function ConceptsTable({ concepts, projectId, cycleId, isAdminOrSubadmin 
               <th className={cn(colHeader, "hidden md:table-cell w-36")}>Ángulo</th>
               <th className={cn(colHeader, "hidden lg:table-cell w-40")}>Awareness</th>
               <th className={cn(colHeader, "hidden xl:table-cell")}>Hook</th>
-              <th className="px-4 py-2.5 w-20" />
+              <th className="px-4 py-2.5 w-24" />
             </tr>
           </thead>
           <tbody>
-            {/* AI drafts at top */}
             <AIDraftRows
               drafts={aiDrafts}
               onPreview={setPreviewIdx}
@@ -295,7 +281,6 @@ export function ConceptsTable({ concepts, projectId, cycleId, isAdminOrSubadmin 
               isConfirming={isConfirming}
             />
 
-            {/* Evergreen separator */}
             {evergreen.length > 0 && (
               <tr>
                 <td colSpan={6} className="px-4 py-1.5 bg-amber-50/60 border-t">
@@ -306,9 +291,15 @@ export function ConceptsTable({ concepts, projectId, cycleId, isAdminOrSubadmin 
                 </td>
               </tr>
             )}
-            {evergreen.map((c) => <ConceptRow key={c.id} concept={c} onClick={() => setSelectedConcept(c)} />)}
+            {evergreen.map((c) => (
+              <ConceptRow
+                key={c.id}
+                concept={c}
+                conceptAssets={assets.filter((a) => a.concept_id === c.id)}
+                onClick={() => setSelectedConcept(c)}
+              />
+            ))}
 
-            {/* Cycle concepts */}
             {cycleOnly.length > 0 && evergreen.length > 0 && (
               <tr>
                 <td colSpan={6} className="px-4 py-1.5 border-t bg-muted/20">
@@ -316,7 +307,14 @@ export function ConceptsTable({ concepts, projectId, cycleId, isAdminOrSubadmin 
                 </td>
               </tr>
             )}
-            {cycleOnly.map((c) => <ConceptRow key={c.id} concept={c} onClick={() => setSelectedConcept(c)} />)}
+            {cycleOnly.map((c) => (
+              <ConceptRow
+                key={c.id}
+                concept={c}
+                conceptAssets={assets.filter((a) => a.concept_id === c.id)}
+                onClick={() => setSelectedConcept(c)}
+              />
+            ))}
 
             {concepts.length === 0 && aiDrafts.length === 0 && (
               <tr>
@@ -342,7 +340,7 @@ export function ConceptsTable({ concepts, projectId, cycleId, isAdminOrSubadmin 
         />
       )}
 
-      {/* Concept modals */}
+      {/* Create concept modal */}
       {showCreate && (
         <ConceptModal
           projectId={projectId}
@@ -352,23 +350,50 @@ export function ConceptsTable({ concepts, projectId, cycleId, isAdminOrSubadmin 
           onClose={() => setShowCreate(false)}
         />
       )}
+
+      {/* Edit concept modal — includes linked assets + "Nuevo asset" shortcut */}
       {selectedConcept && (
         <ConceptModal
           projectId={projectId}
           cycleId={cycleId}
           concept={selectedConcept}
+          assets={assets.filter((a) => a.concept_id === selectedConcept.id)}
           isAdminOrSubadmin={isAdminOrSubadmin}
           open={!!selectedConcept}
           onClose={() => setSelectedConcept(null)}
+          onNewAsset={isAdminOrSubadmin ? handleNewAssetFromConcept : undefined}
+        />
+      )}
+
+      {/* Asset creation pre-linked to concept */}
+      {newAssetForConceptId && (
+        <AssetModal
+          projectId={projectId}
+          cycleId={cycleId}
+          concepts={concepts}
+          defaultConceptId={newAssetForConceptId}
+          isAdminOrSubadmin={isAdminOrSubadmin}
+          open={!!newAssetForConceptId}
+          onClose={() => setNewAssetForConceptId(null)}
         />
       )}
     </div>
   )
 }
 
-// ── Regular concept row ──────────────────────────────────────────────────────
+// ── Concept row ──────────────────────────────────────────────────────────────
 
-function ConceptRow({ concept, onClick }: { concept: CreativeConcept; onClick: () => void }) {
+function ConceptRow({
+  concept,
+  conceptAssets,
+  onClick,
+}: {
+  concept: CreativeConcept
+  conceptAssets: CreativeAsset[]
+  onClick: () => void
+}) {
+  const publishedCount = conceptAssets.filter((a) => a.production_status === "Published").length
+
   return (
     <tr className="border-t hover:bg-muted/30 transition-colors cursor-pointer" onClick={onClick}>
       <td className="px-4 py-3">
@@ -399,7 +424,16 @@ function ConceptRow({ concept, onClick }: { concept: CreativeConcept; onClick: (
         <span className="line-clamp-3">{concept.proposed_hook ?? "—"}</span>
       </td>
       <td className="px-4 py-3 text-right">
-        <span className="text-xs text-muted-foreground hover:text-foreground">Ver →</span>
+        {conceptAssets.length > 0 ? (
+          <div className="flex flex-col items-end gap-0.5">
+            <span className="text-xs font-medium">{conceptAssets.length} asset{conceptAssets.length !== 1 ? "s" : ""}</span>
+            {publishedCount > 0 && (
+              <span className="text-xs text-emerald-600">{publishedCount} publicado{publishedCount !== 1 ? "s" : ""}</span>
+            )}
+          </div>
+        ) : (
+          <span className="text-xs text-muted-foreground">Ver →</span>
+        )}
       </td>
     </tr>
   )

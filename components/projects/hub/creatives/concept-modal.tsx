@@ -5,9 +5,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { createConcept, updateConcept, promoteConcept, deleteConcept } from "@/lib/actions/creatives"
-import { ANGLE_GUIDE, AWARENESS_LABELS, CONCEPT_STATUS_COLORS } from "@/lib/constants/creatives"
-import type { CreativeConcept } from "@/lib/types"
-import { Sparkles, Star, ChevronDown, ChevronUp, Trash2, ArrowUpRight } from "lucide-react"
+import { ANGLE_GUIDE, AWARENESS_LABELS, CONCEPT_STATUS_COLORS, PRODUCTION_STATUS_COLORS, VERDICT_COLORS } from "@/lib/constants/creatives"
+import type { CreativeConcept, CreativeAsset } from "@/lib/types"
+import { Sparkles, Star, ChevronDown, ChevronUp, Trash2, ArrowUpRight, Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const ORGANIZING_PRINCIPLES = ["Pain-First", "Desire-First"] as const
@@ -17,12 +17,14 @@ interface ConceptModalProps {
   projectId: string
   cycleId: string | null
   concept?: CreativeConcept | null
+  assets?: CreativeAsset[]
   isAdminOrSubadmin: boolean
   open: boolean
   onClose: () => void
+  onNewAsset?: () => void
 }
 
-export function ConceptModal({ projectId, cycleId, concept, isAdminOrSubadmin, open, onClose }: ConceptModalProps) {
+export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSubadmin, open, onClose, onNewAsset }: ConceptModalProps) {
   const isEdit = !!concept
   const [isPending, startTransition] = useTransition()
   const [showAngleGuide, setShowAngleGuide] = useState(false)
@@ -95,11 +97,10 @@ export function ConceptModal({ projectId, cycleId, concept, isAdminOrSubadmin, o
           {/* Two-panel body */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
 
-            {/* ── LEFT PANEL: What (strategic) ── */}
+            {/* ── LEFT PANEL: Strategy ── */}
             <div className="space-y-4">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Estrategia</p>
 
-              {/* Principio + Ángulo */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className={labelCls}>Principio</label>
@@ -143,25 +144,21 @@ export function ConceptModal({ projectId, cycleId, concept, isAdminOrSubadmin, o
                 </div>
               )}
 
-              {/* Persona */}
               <div className="space-y-1">
                 <label className={labelCls}>Persona objetivo *</label>
                 <input name="target_persona" defaultValue={concept?.target_persona ?? ""} required placeholder="Ej. Mujer 28-45, emprendedora, producto premium" className={fieldCls} />
               </div>
 
-              {/* Dolor / Deseo */}
               <div className="space-y-1">
                 <label className={labelCls}>Dolor / Deseo central *</label>
                 <input name="pain_or_desire" defaultValue={concept?.pain_or_desire ?? ""} required placeholder="El problema o deseo que activa el anuncio" className={fieldCls} />
               </div>
 
-              {/* Hook */}
               <div className="space-y-1">
                 <label className={labelCls}>Hook propuesto</label>
                 <textarea name="proposed_hook" defaultValue={concept?.proposed_hook ?? ""} rows={3} placeholder="Primera línea del anuncio" className={fieldCls} />
               </div>
 
-              {/* Status — edit only */}
               {isEdit && (
                 <div className="space-y-1">
                   <label className={labelCls}>Status</label>
@@ -172,11 +169,10 @@ export function ConceptModal({ projectId, cycleId, concept, isAdminOrSubadmin, o
               )}
             </div>
 
-            {/* ── RIGHT PANEL: Why (psychology + admin) ── */}
+            {/* ── RIGHT PANEL: Psychology + Assets ── */}
             <div className="space-y-4">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Psicología</p>
 
-              {/* Awareness */}
               <div className="space-y-1">
                 <label className={labelCls}>Awareness Stage</label>
                 <select name="awareness_stage" defaultValue={concept?.awareness_stage ?? ""} className={fieldCls}>
@@ -187,29 +183,69 @@ export function ConceptModal({ projectId, cycleId, concept, isAdminOrSubadmin, o
                 </select>
               </div>
 
-              {/* Emotional insight */}
               <div className="space-y-1">
                 <label className={labelCls}>Insight emocional</label>
                 <textarea name="emotional_insight" defaultValue={concept?.emotional_insight ?? ""} rows={3} placeholder="Tensión interna del buyer persona" className={fieldCls} />
               </div>
 
-              {/* Central tension */}
               <div className="space-y-1">
                 <label className={labelCls}>Tensión central</label>
                 <textarea name="central_tension" defaultValue={concept?.central_tension ?? ""} rows={3} placeholder="El conflicto que el ad resuelve" className={fieldCls} />
               </div>
 
-              {/* Mechanism */}
               <div className="space-y-1">
                 <label className={labelCls}>Mecanismo psicológico</label>
                 <textarea name="mechanism" defaultValue={concept?.mechanism ?? ""} rows={2} placeholder="Por qué este ángulo funciona para esta persona" className={fieldCls} />
               </div>
 
-              {/* References */}
               <div className="space-y-1">
                 <label className={labelCls}>Referencias / Inspiración</label>
                 <textarea name="ref_links" defaultValue={concept?.ref_links ?? ""} rows={2} placeholder="Links o descripciones de referencia" className={fieldCls} />
               </div>
+
+              {/* Assets linked to this concept */}
+              {isEdit && assets !== undefined && (
+                <div className="space-y-2 border-t pt-3">
+                  <div className="flex items-center justify-between">
+                    <p className={labelCls}>
+                      Assets{assets.length > 0 ? ` (${assets.length})` : ""}
+                    </p>
+                    {onNewAsset && isAdminOrSubadmin && (
+                      <button
+                        type="button"
+                        onClick={onNewAsset}
+                        className="flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        <Plus className="w-3 h-3" />
+                        Nuevo asset
+                      </button>
+                    )}
+                  </div>
+                  {assets.length === 0 ? (
+                    <p className="text-xs text-muted-foreground italic">Sin assets aún</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {assets.map((a) => (
+                        <div key={a.id} className="flex items-center justify-between text-xs py-1.5 px-2 rounded bg-muted/40">
+                          <span className="text-muted-foreground truncate mr-2">
+                            {[a.format, a.platform, [a.variant, a.iteration].filter(Boolean).join("/")].filter(Boolean).join(" · ") || "Sin detalle"}
+                          </span>
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <Badge className={cn("text-xs border-0 h-4 px-1.5", PRODUCTION_STATUS_COLORS[a.production_status] ?? "bg-gray-100 text-gray-600")}>
+                              {a.production_status}
+                            </Badge>
+                            {a.verdict && (
+                              <Badge className={cn("text-xs border-0 h-4 px-1.5", VERDICT_COLORS[a.verdict] ?? "")}>
+                                {a.verdict}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Insight — admin only */}
               {isAdminOrSubadmin && (

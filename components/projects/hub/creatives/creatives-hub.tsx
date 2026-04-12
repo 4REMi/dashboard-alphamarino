@@ -119,6 +119,7 @@ export function CreativesHub({
         <TabsContent value="concepts" className="mt-4">
           <ConceptsTable
             concepts={concepts}
+            assets={assets}
             projectId={projectId}
             cycleId={selectedCycleId}
             isAdminOrSubadmin={canEdit}
