@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ConceptModal } from "./concept-modal"
@@ -18,8 +19,103 @@ interface ConceptsTableProps {
   isAdminOrSubadmin: boolean
 }
 
+// ── Draft preview modal ──────────────────────────────────────────────────────
+
+function DraftPreviewModal({
+  draft,
+  onConfirm,
+  onDiscard,
+  isPending,
+}: {
+  draft: AIDraftConcept
+  onConfirm: () => void
+  onDiscard: () => void
+  isPending: boolean
+}) {
+  const labelCls = "text-xs font-medium text-muted-foreground"
+  const valueCls = "text-sm mt-0.5"
+  const emptyCls = "text-sm mt-0.5 text-muted-foreground italic"
+
+  function Field({ label, value }: { label: string; value: string | number | null | undefined }) {
+    return (
+      <div className="space-y-0.5">
+        <p className={labelCls}>{label}</p>
+        {value ? <p className={valueCls}>{value}</p> : <p className={emptyCls}>—</p>}
+      </div>
+    )
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onDiscard() }}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-purple-500" />
+            Revisar borrador IA
+            <Badge className="text-xs bg-purple-100 text-purple-700 border-0 ml-1">AI Draft</Badge>
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+
+          {/* LEFT: Strategy */}
+          <div className="space-y-4">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Estrategia</p>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Principio" value={draft.organizing_principle} />
+              <Field label="Tipo de ángulo" value={draft.angle_type} />
+            </div>
+            <Field label="Persona objetivo" value={draft.target_persona} />
+            <Field label="Dolor / Deseo central" value={draft.pain_or_desire} />
+            <Field label="Hook propuesto" value={draft.proposed_hook} />
+          </div>
+
+          {/* RIGHT: Psychology */}
+          <div className="space-y-4">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Psicología</p>
+            <Field
+              label="Awareness Stage"
+              value={draft.awareness_stage ? `${draft.awareness_stage} — ${AWARENESS_LABELS[draft.awareness_stage] ?? ""}` : null}
+            />
+            <Field label="Insight emocional" value={draft.emotional_insight} />
+            <Field label="Tensión central" value={draft.central_tension} />
+            <Field label="Mecanismo psicológico" value={draft.mechanism} />
+          </div>
+        </div>
+
+        <DialogFooter className="flex items-center justify-between pt-4 mt-2 border-t gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-destructive hover:text-destructive"
+            onClick={onDiscard}
+            disabled={isPending}
+          >
+            <X className="w-3.5 h-3.5 mr-1" />
+            Descartar
+          </Button>
+          <Button
+            size="sm"
+            className="bg-purple-600 hover:bg-purple-700"
+            onClick={onConfirm}
+            disabled={isPending}
+          >
+            {isPending
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+              : <Check className="w-3.5 h-3.5 mr-1" />}
+            Confirmar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── AI draft rows ────────────────────────────────────────────────────────────
+
 function AIDraftRows({
   drafts,
+  onPreview,
   onConfirm,
   onDiscard,
   onDiscardAll,
@@ -27,6 +123,7 @@ function AIDraftRows({
   isConfirming,
 }: {
   drafts: AIDraftConcept[]
+  onPreview: (idx: number) => void
   onConfirm: (idx: number) => void
   onDiscard: (idx: number) => void
   onDiscardAll: () => void
@@ -41,7 +138,7 @@ function AIDraftRows({
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-purple-700 flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5" />
-              {drafts.length} borrador{drafts.length !== 1 ? "es" : ""} generados por IA — confirma los que quieras guardar
+              {drafts.length} borrador{drafts.length !== 1 ? "es" : ""} generados por IA — revisa y confirma los que quieras guardar
             </span>
             <div className="flex gap-2">
               <Button variant="ghost" size="sm" className="text-xs h-7 text-destructive" onClick={onDiscardAll} disabled={isConfirming}>
@@ -56,33 +153,41 @@ function AIDraftRows({
         </td>
       </tr>
       {drafts.map((draft, idx) => (
-        <tr key={idx} className="border-t bg-purple-50/40 hover:bg-purple-50/60 transition-colors">
+        <tr
+          key={idx}
+          className="border-t bg-purple-50/40 hover:bg-purple-50/70 transition-colors cursor-pointer"
+          onClick={() => onPreview(idx)}
+        >
           <td className="px-4 py-3">
             <Badge className="text-xs bg-purple-100 text-purple-700 border-0">AI Draft</Badge>
           </td>
           <td className="px-4 py-3">
-            <div className="text-sm font-medium truncate max-w-[180px]" title={draft.target_persona}>
-              {draft.target_persona}
-            </div>
-            <div className="text-xs text-muted-foreground truncate max-w-[180px]" title={draft.pain_or_desire}>
-              {draft.pain_or_desire}
-            </div>
+            <div className="text-sm font-medium line-clamp-2">{draft.target_persona}</div>
+            <div className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{draft.pain_or_desire}</div>
           </td>
           <td className="px-4 py-3 text-sm hidden md:table-cell">
-            <span className="inline-block max-w-[140px] truncate" title={draft.angle_type}>{draft.angle_type}</span>
+            <span className="line-clamp-1">{draft.angle_type}</span>
           </td>
-          <td className="px-4 py-3 text-xs text-muted-foreground hidden lg:table-cell">
+          <td className="px-4 py-3 text-xs text-muted-foreground hidden lg:table-cell whitespace-nowrap">
             {draft.awareness_stage} — {AWARENESS_LABELS[draft.awareness_stage] ?? ""}
           </td>
           <td className="px-4 py-3 text-xs text-muted-foreground hidden xl:table-cell">
-            <span className="line-clamp-2" title={draft.proposed_hook}>{draft.proposed_hook}</span>
+            <span className="line-clamp-3">{draft.proposed_hook}</span>
           </td>
           <td className="px-4 py-3">
-            <div className="flex items-center justify-end gap-1">
-              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => onDiscard(idx)} disabled={isConfirming}>
+            <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+              <Button
+                variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive"
+                onClick={() => onDiscard(idx)} disabled={isConfirming}
+                title="Descartar"
+              >
                 <X className="w-3.5 h-3.5" />
               </Button>
-              <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600 hover:text-emerald-700" onClick={() => onConfirm(idx)} disabled={isConfirming}>
+              <Button
+                variant="ghost" size="icon" className="h-7 w-7 text-emerald-600 hover:text-emerald-700"
+                onClick={() => onConfirm(idx)} disabled={isConfirming}
+                title="Confirmar"
+              >
                 <Check className="w-3.5 h-3.5" />
               </Button>
             </div>
@@ -93,10 +198,13 @@ function AIDraftRows({
   )
 }
 
+// ── Main table ───────────────────────────────────────────────────────────────
+
 export function ConceptsTable({ concepts, projectId, cycleId, isAdminOrSubadmin }: ConceptsTableProps) {
   const [selectedConcept, setSelectedConcept] = useState<CreativeConcept | null>(null)
   const [showCreate, setShowCreate] = useState(false)
   const [aiDrafts, setAiDrafts] = useState<AIDraftConcept[]>([])
+  const [previewIdx, setPreviewIdx] = useState<number | null>(null)
   const [isGenerating, startGenerate] = useTransition()
   const [isConfirming, startConfirm] = useTransition()
 
@@ -113,11 +221,13 @@ export function ConceptsTable({ concepts, projectId, cycleId, isAdminOrSubadmin 
 
   function discardDraft(idx: number) {
     setAiDrafts((prev) => prev.filter((_, i) => i !== idx))
+    if (previewIdx === idx) setPreviewIdx(null)
   }
 
   function confirmSingle(idx: number) {
     const draft = aiDrafts[idx]
     if (!draft || !cycleId) return
+    setPreviewIdx(null)
     startConfirm(async () => {
       await confirmAIDrafts(projectId, cycleId, [draft])
       setAiDrafts((prev) => prev.filter((_, i) => i !== idx))
@@ -126,6 +236,7 @@ export function ConceptsTable({ concepts, projectId, cycleId, isAdminOrSubadmin 
 
   function confirmAll() {
     if (!cycleId || !aiDrafts.length) return
+    setPreviewIdx(null)
     startConfirm(async () => {
       await confirmAIDrafts(projectId, cycleId, aiDrafts)
       setAiDrafts([])
@@ -161,21 +272,22 @@ export function ConceptsTable({ concepts, projectId, cycleId, isAdminOrSubadmin 
       </div>
 
       <div className="border rounded-lg overflow-hidden bg-card overflow-x-auto">
-        <table className="w-full text-sm min-w-[560px]">
+        <table className="w-full text-sm">
           <thead className="bg-muted/50 border-b">
             <tr>
-              <th className={colHeader}>Status</th>
+              <th className={cn(colHeader, "w-28")}>Status</th>
               <th className={colHeader}>Persona / Dolor</th>
-              <th className={cn(colHeader, "hidden md:table-cell")}>Ángulo</th>
-              <th className={cn(colHeader, "hidden lg:table-cell")}>Awareness</th>
+              <th className={cn(colHeader, "hidden md:table-cell w-36")}>Ángulo</th>
+              <th className={cn(colHeader, "hidden lg:table-cell w-40")}>Awareness</th>
               <th className={cn(colHeader, "hidden xl:table-cell")}>Hook</th>
-              <th className="px-4 py-2.5" />
+              <th className="px-4 py-2.5 w-20" />
             </tr>
           </thead>
           <tbody>
             {/* AI drafts at top */}
             <AIDraftRows
               drafts={aiDrafts}
+              onPreview={setPreviewIdx}
               onConfirm={confirmSingle}
               onDiscard={discardDraft}
               onDiscardAll={() => setAiDrafts([])}
@@ -183,7 +295,7 @@ export function ConceptsTable({ concepts, projectId, cycleId, isAdminOrSubadmin 
               isConfirming={isConfirming}
             />
 
-            {/* Evergreen row separator */}
+            {/* Evergreen separator */}
             {evergreen.length > 0 && (
               <tr>
                 <td colSpan={6} className="px-4 py-1.5 bg-amber-50/60 border-t">
@@ -220,7 +332,17 @@ export function ConceptsTable({ concepts, projectId, cycleId, isAdminOrSubadmin 
         </table>
       </div>
 
-      {/* Modals */}
+      {/* Draft preview modal */}
+      {previewIdx !== null && aiDrafts[previewIdx] && (
+        <DraftPreviewModal
+          draft={aiDrafts[previewIdx]}
+          onConfirm={() => confirmSingle(previewIdx)}
+          onDiscard={() => { discardDraft(previewIdx); setPreviewIdx(null) }}
+          isPending={isConfirming}
+        />
+      )}
+
+      {/* Concept modals */}
       {showCreate && (
         <ConceptModal
           projectId={projectId}
@@ -244,6 +366,8 @@ export function ConceptsTable({ concepts, projectId, cycleId, isAdminOrSubadmin 
   )
 }
 
+// ── Regular concept row ──────────────────────────────────────────────────────
+
 function ConceptRow({ concept, onClick }: { concept: CreativeConcept; onClick: () => void }) {
   return (
     <tr className="border-t hover:bg-muted/30 transition-colors cursor-pointer" onClick={onClick}>
@@ -260,25 +384,19 @@ function ConceptRow({ concept, onClick }: { concept: CreativeConcept; onClick: (
         </div>
       </td>
       <td className="px-4 py-3">
-        <div className="text-sm font-medium truncate max-w-[180px]" title={concept.target_persona}>
-          {concept.target_persona || "—"}
-        </div>
-        <div className="text-xs text-muted-foreground truncate max-w-[180px]" title={concept.pain_or_desire}>
-          {concept.pain_or_desire || "—"}
-        </div>
+        <div className="text-sm font-medium line-clamp-2">{concept.target_persona || "—"}</div>
+        <div className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{concept.pain_or_desire || "—"}</div>
       </td>
       <td className="px-4 py-3 text-sm hidden md:table-cell">
-        <span className="truncate max-w-[140px] inline-block" title={concept.angle_type ?? ""}>
-          {concept.angle_type ?? "—"}
-        </span>
+        <span className="line-clamp-1">{concept.angle_type ?? "—"}</span>
       </td>
-      <td className="px-4 py-3 text-xs text-muted-foreground hidden lg:table-cell">
+      <td className="px-4 py-3 text-xs text-muted-foreground hidden lg:table-cell whitespace-nowrap">
         {concept.awareness_stage
           ? `${concept.awareness_stage} — ${AWARENESS_LABELS[concept.awareness_stage]}`
           : "—"}
       </td>
-      <td className="px-4 py-3 text-xs text-muted-foreground hidden xl:table-cell max-w-[200px]">
-        <span className="line-clamp-2" title={concept.proposed_hook ?? ""}>{concept.proposed_hook ?? "—"}</span>
+      <td className="px-4 py-3 text-xs text-muted-foreground hidden xl:table-cell">
+        <span className="line-clamp-3">{concept.proposed_hook ?? "—"}</span>
       </td>
       <td className="px-4 py-3 text-right">
         <span className="text-xs text-muted-foreground hover:text-foreground">Ver →</span>
