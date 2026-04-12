@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react"
 import type { ProjectLogEntry } from "@/lib/types"
 import { addLogEntry, deleteLogEntry } from "@/lib/actions/projects"
+import { AutoTextarea } from "@/components/ui/auto-textarea"
 
 interface Props {
   projectId: string
@@ -55,7 +56,7 @@ export function ProjectLog({ projectId, initialEntries, currentUserId, isAdmin, 
 
       {/* Input */}
       <form onSubmit={handleAdd} className="px-4 py-3 border-b border-border flex gap-2 flex-shrink-0">
-        <textarea
+        <AutoTextarea
           value={body}
           onChange={(e) => setBody(e.target.value)}
           onKeyDown={(e) => {

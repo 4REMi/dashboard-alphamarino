@@ -10,6 +10,7 @@ import { X, FileText, Image, Link2, Pencil, Trash2, Plus, Paperclip, ExternalLin
 import { cn } from "@/lib/utils"
 import { formatDate } from "@/lib/utils"
 import type { Task, Deliverable, DeliverableType } from "@/lib/types"
+import { AutoTextarea } from "@/components/ui/auto-textarea"
 
 const TYPE_OPTIONS: { value: DeliverableType; label: string; icon: React.ReactNode; hint: string }[] = [
   {
@@ -265,7 +266,7 @@ export function DeliverableDrawer({
               {type === "text" ? (
                 <div className="space-y-2">
                   <Label htmlFor="del-content">Contenido *</Label>
-                  <textarea
+                  <AutoTextarea
                     id="del-content"
                     name="content"
                     rows={6}

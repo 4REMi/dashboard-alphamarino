@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Plus, Flag, Paperclip } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { Task, Profile } from "@/lib/types"
+import { AutoTextarea } from "@/components/ui/auto-textarea"
 
 interface TaskFormProps {
   projectId: string
@@ -69,7 +70,7 @@ export function TaskForm({ projectId, task, employees, trigger }: TaskFormProps)
           </div>
           <div className="space-y-2">
             <Label htmlFor="description">Descripción</Label>
-            <textarea
+            <AutoTextarea
               id="description"
               name="description"
               rows={2}

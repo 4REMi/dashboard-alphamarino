@@ -4,6 +4,7 @@ import { useState, useTransition } from "react"
 import type { PaidMediaContext, MainObjective } from "@/lib/types"
 import { PAID_MEDIA_PLATFORMS, MAIN_OBJECTIVES } from "@/lib/types"
 import { upsertPaidMediaContext } from "@/lib/actions/projects"
+import { AutoTextarea } from "@/components/ui/auto-textarea"
 
 interface Props {
   projectId: string
@@ -151,7 +152,7 @@ export function PaidMediaContextCard({ projectId, context, canEdit }: Props) {
         <label className="text-xs font-medium text-muted-foreground mb-1 block">
           Notas de cuenta <span className="text-muted-foreground/60">(briefing, buyer persona, restricciones, decisiones)</span>
         </label>
-        <textarea
+        <AutoTextarea
           name="account_notes"
           rows={4}
           defaultValue={context?.account_notes ?? ""}

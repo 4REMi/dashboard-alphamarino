@@ -6,6 +6,7 @@ import { BookOpen, ExternalLink, Plus, Pencil, Trash2, X, Search, Video, FileTex
 import type { Sop, Profile, ProjectType } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { formatDate } from "@/lib/utils"
+import { AutoTextarea } from "@/components/ui/auto-textarea"
 
 // ── SOP form (shared by create + edit) ───────────────────────────────────────
 
@@ -37,7 +38,7 @@ function SopForm({
         </div>
         <div className="col-span-2 space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground block">Descripción</label>
-          <textarea
+          <AutoTextarea
             name="description"
             rows={2}
             defaultValue={initial?.description ?? ""}

@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react"
 import type { WebProjectContext } from "@/lib/types"
 import { upsertWebContext, incrementRevision } from "@/lib/actions/projects"
+import { AutoTextarea } from "@/components/ui/auto-textarea"
 
 interface Props {
   projectId: string
@@ -142,7 +143,7 @@ export function WebContextCard({ projectId, context, canEdit }: Props) {
 
       <div>
         <label className="text-xs font-medium text-muted-foreground mb-1 block">Notas técnicas</label>
-        <textarea name="technical_notes" rows={3} defaultValue={context?.technical_notes ?? ""}
+        <AutoTextarea name="technical_notes" rows={3} defaultValue={context?.technical_notes ?? ""}
           placeholder="Credenciales, decisiones técnicas, restricciones…"
           className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none" />
       </div>

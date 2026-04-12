@@ -9,6 +9,7 @@ import { ANGLE_GUIDE, AWARENESS_LABELS, CONCEPT_STATUS_COLORS, PRODUCTION_STATUS
 import type { CreativeConcept, CreativeAsset } from "@/lib/types"
 import { Sparkles, Star, ChevronDown, ChevronUp, Trash2, ArrowUpRight, Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { AutoTextarea } from "@/components/ui/auto-textarea"
 
 const ORGANIZING_PRINCIPLES = ["Pain-First", "Desire-First"] as const
 const STATUSES = ["Active", "Archived", "Transmuted", "Evergreen"] as const
@@ -156,7 +157,7 @@ export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSub
 
               <div className="space-y-1">
                 <label className={labelCls}>Hook propuesto</label>
-                <textarea name="proposed_hook" defaultValue={concept?.proposed_hook ?? ""} rows={3} placeholder="Primera línea del anuncio" className={fieldCls} />
+                <AutoTextarea name="proposed_hook" defaultValue={concept?.proposed_hook ?? ""} rows={3} placeholder="Primera línea del anuncio" className={fieldCls} />
               </div>
 
               {isEdit && (
@@ -185,22 +186,22 @@ export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSub
 
               <div className="space-y-1">
                 <label className={labelCls}>Insight emocional</label>
-                <textarea name="emotional_insight" defaultValue={concept?.emotional_insight ?? ""} rows={3} placeholder="Tensión interna del buyer persona" className={fieldCls} />
+                <AutoTextarea name="emotional_insight" defaultValue={concept?.emotional_insight ?? ""} rows={3} placeholder="Tensión interna del buyer persona" className={fieldCls} />
               </div>
 
               <div className="space-y-1">
                 <label className={labelCls}>Tensión central</label>
-                <textarea name="central_tension" defaultValue={concept?.central_tension ?? ""} rows={3} placeholder="El conflicto que el ad resuelve" className={fieldCls} />
+                <AutoTextarea name="central_tension" defaultValue={concept?.central_tension ?? ""} rows={3} placeholder="El conflicto que el ad resuelve" className={fieldCls} />
               </div>
 
               <div className="space-y-1">
                 <label className={labelCls}>Mecanismo psicológico</label>
-                <textarea name="mechanism" defaultValue={concept?.mechanism ?? ""} rows={2} placeholder="Por qué este ángulo funciona para esta persona" className={fieldCls} />
+                <AutoTextarea name="mechanism" defaultValue={concept?.mechanism ?? ""} rows={2} placeholder="Por qué este ángulo funciona para esta persona" className={fieldCls} />
               </div>
 
               <div className="space-y-1">
                 <label className={labelCls}>Referencias / Inspiración</label>
-                <textarea name="ref_links" defaultValue={concept?.ref_links ?? ""} rows={2} placeholder="Links o descripciones de referencia" className={fieldCls} />
+                <AutoTextarea name="ref_links" defaultValue={concept?.ref_links ?? ""} rows={2} placeholder="Links o descripciones de referencia" className={fieldCls} />
               </div>
 
               {/* Assets linked to this concept */}
@@ -254,7 +255,7 @@ export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSub
                     <Star className="w-3 h-3 text-amber-500" />
                     Insight estratégico (solo admin/subadmin)
                   </label>
-                  <textarea name="insight" defaultValue={concept?.insight ?? ""} rows={3} placeholder="Qué funcionó, qué no, aprendizajes del ciclo" className={fieldCls} />
+                  <AutoTextarea name="insight" defaultValue={concept?.insight ?? ""} rows={3} placeholder="Qué funcionó, qué no, aprendizajes del ciclo" className={fieldCls} />
                 </div>
               )}
             </div>

@@ -19,6 +19,7 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
+import { AutoTextarea } from "@/components/ui/auto-textarea"
 // TaskPriority intentionally removed — tasks now use is_urgent boolean
 import {
   createProjectType, updateProjectType, deleteProjectType,
@@ -278,7 +279,7 @@ function ImportModal({
                 </button>
                 <input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={handleFile} />
               </div>
-              <textarea
+              <AutoTextarea
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 rows={12}
@@ -434,7 +435,7 @@ function EditTaskModal({
           </div>
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Descripción</label>
-            <textarea
+            <AutoTextarea
               name="description"
               rows={3}
               defaultValue={task.description ?? ""}

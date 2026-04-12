@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils"
 import type { Task, Profile, TaskStatus, Deliverable, Sop } from "@/lib/types"
 import { phaseColor } from "@/lib/phase-colors"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { AutoTextarea } from "@/components/ui/auto-textarea"
 
 const STATUS_GROUPS: { value: TaskStatus; defaultOpen: boolean }[] = [
   { value: "In Progress", defaultOpen: false },
@@ -543,7 +544,7 @@ function TaskDetailModal({
           {/* Description */}
           <div className="space-y-1.5">
             <Label htmlFor="modal-desc">{tT("description")}</Label>
-            <textarea
+            <AutoTextarea
               id="modal-desc"
               name="description"
               rows={4}

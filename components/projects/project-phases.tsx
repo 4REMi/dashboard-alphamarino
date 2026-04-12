@@ -5,6 +5,7 @@ import { useTranslations, useFormatter } from "next-intl"
 import type { ProjectPhase, PhaseStatus } from "@/lib/types"
 import { updateProjectPhaseStatus, updateProjectPhaseNotes } from "@/lib/actions/projects"
 import { phaseColor } from "@/lib/phase-colors"
+import { AutoTextarea } from "@/components/ui/auto-textarea"
 
 interface TaskCount { done: number; total: number }
 
@@ -163,7 +164,7 @@ export function ProjectPhases({ projectId, initialPhases, canEdit, taskCountByPh
                   {/* Notes */}
                   {editingNotesId === phase.id ? (
                     <div className="space-y-2">
-                      <textarea
+                      <AutoTextarea
                         value={notesValue}
                         onChange={(e) => setNotesValue(e.target.value)}
                         rows={3}

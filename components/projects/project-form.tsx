@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { Plus } from "lucide-react"
 import type { Project, Customer, ProjectType, PhaseSetPhase } from "@/lib/types"
+import { AutoTextarea } from "@/components/ui/auto-textarea"
 
 interface ProjectFormProps {
   project?: Project
@@ -139,7 +140,7 @@ export function ProjectForm({ project, customers, projectTypes, trigger, canView
 
           <div className="space-y-2">
             <Label htmlFor="description">Descripción</Label>
-            <textarea
+            <AutoTextarea
               id="description"
               name="description"
               rows={2}

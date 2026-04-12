@@ -12,6 +12,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Upload, CheckCircle2, AlertCircle, FileUp } from "lucide-react"
+import { AutoTextarea } from "@/components/ui/auto-textarea"
 
 type ParsedRow = {
   name: string
@@ -240,7 +241,7 @@ export function CustomerImportModal() {
               </Button>
             </div>
 
-            <textarea
+            <AutoTextarea
               className="w-full h-36 text-sm border rounded-lg p-3 font-mono resize-none focus:outline-none focus:ring-2 focus:ring-ring"
               placeholder={"Juan Pérez,Empresa SA,juan@empresa.com,555-1234,Active\nMaría López,,maria@gmail.com,,Prospect"}
               value={csvText}

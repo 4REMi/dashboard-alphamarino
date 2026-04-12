@@ -8,6 +8,7 @@ import { PRODUCTION_STATUS_COLORS, VERDICT_COLORS } from "@/lib/constants/creati
 import type { CreativeAsset, CreativeConcept } from "@/lib/types"
 import { ExternalLink, Trash2, Sparkles, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { AutoTextarea } from "@/components/ui/auto-textarea"
 
 const FORMATS   = ["Static", "Carousel", "Video B-roll+VO", "Video UGC", "Story", "Reel"]
 const PLATFORMS = ["Meta Ads", "Google Ads", "TikTok Ads", "LinkedIn Ads", "Pinterest Ads"]
@@ -186,7 +187,7 @@ export function AssetModal({ projectId, cycleId, asset, concepts, defaultConcept
             {/* Hook */}
             <div className="space-y-1">
               <label className={labelCls}>Hook</label>
-              <textarea
+              <AutoTextarea
                 name="hook"
                 value={hook}
                 onChange={(e) => setHook(e.target.value)}
@@ -200,7 +201,7 @@ export function AssetModal({ projectId, cycleId, asset, concepts, defaultConcept
             {/* Copy */}
             <div className="space-y-1">
               <label className={labelCls}>Copy</label>
-              <textarea
+              <AutoTextarea
                 name="copy"
                 value={copy}
                 onChange={(e) => setCopy(e.target.value)}
@@ -281,7 +282,7 @@ export function AssetModal({ projectId, cycleId, asset, concepts, defaultConcept
                 </div>
                 <div className="space-y-1">
                   <label className={labelCls}>Notas de veredicto</label>
-                  <textarea name="verdict_notes" defaultValue={asset?.verdict_notes ?? ""} rows={2} placeholder="Qué funcionó, qué cambiar" className={fieldCls} />
+                  <AutoTextarea name="verdict_notes" defaultValue={asset?.verdict_notes ?? ""} rows={2} placeholder="Qué funcionó, qué cambiar" className={fieldCls} />
                 </div>
               </div>
             </div>
