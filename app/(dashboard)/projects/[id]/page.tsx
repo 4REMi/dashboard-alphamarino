@@ -285,29 +285,14 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               )}
 
               {isPaidMedia && (
-                <section className="space-y-6">
-                  {/* Paid Media metrics hub */}
-                  <div className="space-y-4">
-                    <h2 className="text-sm font-semibold">Hub Paid Media</h2>
-                    {webContext !== null && (
-                      <WebContextCard projectId={project.id} context={webContext} canEdit={isAdminOrSubadmin} />
-                    )}
-                    <PaidMediaContextCard projectId={project.id} context={paidMediaContext} canEdit={isAdminOrSubadmin} />
-                    <PaidMediaCycleCard   projectId={project.id} activeCycle={activeCycle} context={paidMediaContext} canEdit={isAdminOrSubadmin} />
-                    {historyCycles.length > 0 && <PaidMediaCycleHistory cycles={historyCycles} />}
-                  </div>
-
-                  {/* Creative Tracker */}
-                  <div className="space-y-3">
-                    <h2 className="text-sm font-semibold">Creative Tracker</h2>
-                    <CreativesHub
-                      projectId={project.id}
-                      cycles={cycles as PaidMediaCycle[]}
-                      initialConcepts={initialConcepts as CreativeConcept[]}
-                      initialAssets={initialAssets as CreativeAsset[]}
-                      isAdminOrSubadmin={isAdminOrSubadmin}
-                    />
-                  </div>
+                <section className="space-y-4">
+                  <h2 className="text-sm font-semibold">Hub Paid Media</h2>
+                  {webContext !== null && (
+                    <WebContextCard projectId={project.id} context={webContext} canEdit={isAdminOrSubadmin} />
+                  )}
+                  <PaidMediaContextCard projectId={project.id} context={paidMediaContext} canEdit={isAdminOrSubadmin} />
+                  <PaidMediaCycleCard   projectId={project.id} activeCycle={activeCycle} context={paidMediaContext} canEdit={isAdminOrSubadmin} />
+                  {historyCycles.length > 0 && <PaidMediaCycleHistory cycles={historyCycles} />}
                 </section>
               )}
 
@@ -413,6 +398,22 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               )}
             </div>
           </div>
+        )}
+
+        {/* ── Creative Tracker — full width, own section ──────────────── */}
+        {isPaidMedia && (
+          <section>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold">Creative Tracker</h2>
+            </div>
+            <CreativesHub
+              projectId={project.id}
+              cycles={cycles as PaidMediaCycle[]}
+              initialConcepts={initialConcepts as CreativeConcept[]}
+              initialAssets={initialAssets as CreativeAsset[]}
+              isAdminOrSubadmin={isAdminOrSubadmin}
+            />
+          </section>
         )}
       </div>
     </div>
