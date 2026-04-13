@@ -471,16 +471,16 @@ export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSub
                 Cancelar
               </Button>
               {step > 0 && (
-                <Button type="button" variant="outline" size="sm" onClick={goPrev} disabled={isPending}>
+                <Button key="prev" type="button" variant="outline" size="sm" onClick={goPrev} disabled={isPending}>
                   ← Anterior
                 </Button>
               )}
               {step < STEPS.length - 1 ? (
-                <Button type="button" size="sm" onClick={goNext} disabled={isPending}>
+                <Button key="next" type="button" size="sm" onClick={goNext} disabled={isPending}>
                   Siguiente →
                 </Button>
               ) : (
-                <Button type="submit" size="sm" disabled={isPending || !isAdminOrSubadmin}>
+                <Button key="submit" type="submit" size="sm" disabled={isPending || !isAdminOrSubadmin}>
                   {isPending ? "Guardando..." : isEdit ? "Guardar" : "Crear concepto"}
                 </Button>
               )}
