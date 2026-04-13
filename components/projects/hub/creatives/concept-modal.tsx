@@ -1,18 +1,24 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useState, useTransition, Fragment } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { AutoTextarea } from "@/components/ui/auto-textarea"
 import { createConcept, updateConcept, promoteConcept, deleteConcept } from "@/lib/actions/creatives"
 import { ANGLE_GUIDE, AWARENESS_LABELS, CONCEPT_STATUS_COLORS, PRODUCTION_STATUS_COLORS, VERDICT_COLORS } from "@/lib/constants/creatives"
 import type { CreativeConcept, CreativeAsset } from "@/lib/types"
-import { Sparkles, Star, ChevronDown, ChevronUp, Trash2, ArrowUpRight, Plus } from "lucide-react"
+import { Sparkles, Star, ChevronDown, ChevronUp, Trash2, ArrowUpRight, Plus, Info, Check } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { AutoTextarea } from "@/components/ui/auto-textarea"
 
 const ORGANIZING_PRINCIPLES = ["Pain-First", "Desire-First"] as const
 const STATUSES = ["Active", "Archived", "Transmuted", "Evergreen"] as const
+
+const STEPS = [
+  { label: "Audiencia" },
+  { label: "Psicología" },
+  { label: "Ejecución" },
+] as const
 
 interface ConceptModalProps {
   projectId: string
@@ -25,17 +31,72 @@ interface ConceptModalProps {
   onNewAsset?: () => void
 }
 
+// ── Tooltip label ────────────────────────────────────────────────────────────
+
+function FieldLabel({ label, tooltip, required }: { label: string; tooltip?: string; required?: boolean }) {
+  return (
+    <div className="flex items-center gap-1">
+      <span className="text-xs font-medium text-muted-foreground">
+        {label}{required && " *"}
+      </span>
+      {tooltip && (
+        <span title={tooltip} className="cursor-help inline-flex text-muted-foreground/40 hover:text-muted-foreground transition-colors">
+          <Info className="w-3 h-3" />
+        </span>
+      )}
+    </div>
+  )
+}
+
+// ── Main modal ───────────────────────────────────────────────────────────────
+
 export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSubadmin, open, onClose, onNewAsset }: ConceptModalProps) {
   const isEdit = !!concept
   const [isPending, startTransition] = useTransition()
+  const [step, setStep] = useState(0)
   const [showAngleGuide, setShowAngleGuide] = useState(false)
-  const [selectedAngle, setSelectedAngle] = useState(concept?.angle_type ?? "")
+  const [stepError, setStepError] = useState<string | null>(null)
 
-  const guideEntry = ANGLE_GUIDE.find((a) => a.name === selectedAngle)
+  // All fields as controlled state — needed for multi-step lazy rendering
+  const [form, setForm] = useState({
+    organizing_principle: concept?.organizing_principle ?? "",
+    angle_type:           concept?.angle_type ?? "",
+    target_persona:       concept?.target_persona ?? "",
+    pain_or_desire:       concept?.pain_or_desire ?? "",
+    awareness_stage:      String(concept?.awareness_stage ?? ""),
+    emotional_insight:    concept?.emotional_insight ?? "",
+    central_tension:      concept?.central_tension ?? "",
+    mechanism:            concept?.mechanism ?? "",
+    ref_links:            concept?.ref_links ?? "",
+    proposed_hook:        concept?.proposed_hook ?? "",
+    status:               concept?.status ?? "Active",
+    insight:              concept?.insight ?? "",
+  })
+
+  function set(key: keyof typeof form, value: string) {
+    setForm((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const guideEntry = ANGLE_GUIDE.find((a) => a.name === form.angle_type)
+
+  function goNext() {
+    if (step === 0) {
+      if (!form.target_persona.trim()) { setStepError("La persona objetivo es obligatoria."); return }
+      if (!form.pain_or_desire.trim())  { setStepError("El dolor / deseo central es obligatorio."); return }
+    }
+    setStepError(null)
+    setStep((s) => Math.min(s + 1, STEPS.length - 1))
+  }
+
+  function goPrev() {
+    setStepError(null)
+    setStep((s) => Math.max(s - 1, 0))
+  }
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
-    const fd = new FormData(e.currentTarget)
+    const fd = new FormData()
+    Object.entries(form).forEach(([k, v]) => fd.set(k, v))
     if (cycleId) fd.set("cycle_id", cycleId)
     startTransition(async () => {
       if (isEdit) {
@@ -64,12 +125,11 @@ export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSub
     })
   }
 
-  const fieldCls = "w-full text-sm border rounded px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-ring resize-none"
-  const labelCls = "text-xs font-medium text-muted-foreground"
+  const fieldCls = "w-full text-sm border rounded px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-ring"
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-purple-500" />
@@ -89,34 +149,70 @@ export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSub
             <span>
               Evolución de: <span className="font-medium">{concept.parent.angle_type ?? "concepto anterior"}</span>
               {" "}·{" "}<span className={CONCEPT_STATUS_COLORS[concept.parent.status]}>{concept.parent.status}</span>
-              {concept.parent.insight && <span className="ml-2 italic">"{concept.parent.insight}"</span>}
             </span>
           </div>
         )}
 
-        <form onSubmit={handleSubmit}>
-          {/* Two-panel body */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+        {/* ── Stepper indicator ── */}
+        <div className="flex items-center gap-0">
+          {STEPS.map((s, i) => (
+            <Fragment key={i}>
+              <button
+                type="button"
+                onClick={() => { if (i < step) { setStepError(null); setStep(i) } }}
+                className={cn(
+                  "flex items-center gap-1.5 text-xs font-medium transition-colors",
+                  i === step ? "text-primary" :
+                  i < step  ? "text-muted-foreground hover:text-foreground cursor-pointer" :
+                              "text-muted-foreground/40 cursor-default"
+                )}
+              >
+                <span className={cn(
+                  "w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold border-2 flex-shrink-0 transition-all",
+                  i === step ? "bg-primary text-primary-foreground border-primary" :
+                  i < step  ? "bg-muted border-muted-foreground/30 text-muted-foreground" :
+                              "border-muted-foreground/20 text-muted-foreground/40"
+                )}>
+                  {i < step ? <Check className="w-2.5 h-2.5" /> : i + 1}
+                </span>
+                {s.label}
+              </button>
+              {i < STEPS.length - 1 && (
+                <div className={cn(
+                  "flex-1 h-px mx-3 transition-colors",
+                  i < step ? "bg-muted-foreground/30" : "bg-border"
+                )} />
+              )}
+            </Fragment>
+          ))}
+        </div>
 
-            {/* ── LEFT PANEL: Strategy ── */}
+        <form onSubmit={handleSubmit}>
+
+          {/* ── Step 1: Audiencia ── */}
+          {step === 0 && (
             <div className="space-y-4">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Estrategia</p>
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className={labelCls}>Principio</label>
-                  <select name="organizing_principle" defaultValue={concept?.organizing_principle ?? ""} className={fieldCls}>
+                  <FieldLabel
+                    label="Principio"
+                    tooltip="Pain-First parte del dolor del buyer persona. Desire-First parte de su aspiración. Define el tono emocional del ángulo."
+                  />
+                  <select value={form.organizing_principle} onChange={(e) => set("organizing_principle", e.target.value)} className={fieldCls}>
                     <option value="">— seleccionar —</option>
                     {ORGANIZING_PRINCIPLES.map((p) => <option key={p} value={p}>{p}</option>)}
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className={labelCls}>Tipo de ángulo</label>
+                  <FieldLabel
+                    label="Tipo de ángulo"
+                    tooltip="El mecanismo narrativo del ad. Determina cómo se estructura el mensaje para generar respuesta emocional y acción."
+                  />
                   <select
-                    name="angle_type"
-                    defaultValue={concept?.angle_type ?? ""}
+                    value={form.angle_type}
+                    onChange={(e) => { set("angle_type", e.target.value); setShowAngleGuide(false) }}
                     className={fieldCls}
-                    onChange={(e) => { setSelectedAngle(e.target.value); setShowAngleGuide(false) }}
                   >
                     <option value="">— seleccionar —</option>
                     {ANGLE_GUIDE.map((a) => <option key={a.name} value={a.name}>{a.name}</option>)}
@@ -125,14 +221,14 @@ export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSub
               </div>
 
               {/* Angle guide */}
-              {selectedAngle && guideEntry && (
+              {form.angle_type && guideEntry && (
                 <div className="border rounded-lg overflow-hidden">
                   <button
                     type="button"
                     className="w-full flex items-center justify-between px-3 py-2 bg-purple-50/60 text-xs font-medium text-purple-700 hover:bg-purple-50"
                     onClick={() => setShowAngleGuide((v) => !v)}
                   >
-                    <span>Guía: {selectedAngle}</span>
+                    <span>Guía: {form.angle_type}</span>
                     {showAngleGuide ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                   </button>
                   {showAngleGuide && (
@@ -146,69 +242,145 @@ export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSub
               )}
 
               <div className="space-y-1">
-                <label className={labelCls}>Persona objetivo *</label>
-                <input name="target_persona" defaultValue={concept?.target_persona ?? ""} required placeholder="Ej. Mujer 28-45, emprendedora, producto premium" className={fieldCls} />
+                <FieldLabel
+                  label="Persona objetivo"
+                  required
+                  tooltip="Descripción específica de quién ve este anuncio: demografía, situación, industria o contexto de vida. Cuanto más específico, mejor."
+                />
+                <input
+                  value={form.target_persona}
+                  onChange={(e) => set("target_persona", e.target.value)}
+                  placeholder="Ej. Dueño de cafetería en México, 35-50 años, quiere fidelizar clientes"
+                  className={fieldCls}
+                />
               </div>
 
               <div className="space-y-1">
-                <label className={labelCls}>Dolor / Deseo central *</label>
-                <input name="pain_or_desire" defaultValue={concept?.pain_or_desire ?? ""} required placeholder="El problema o deseo que activa el anuncio" className={fieldCls} />
+                <FieldLabel
+                  label="Dolor / Deseo central"
+                  required
+                  tooltip="El problema concreto o aspiración que activa la atención. Debe ser algo que la persona siente hoy aunque no lo haya verbalizado."
+                />
+                <input
+                  value={form.pain_or_desire}
+                  onChange={(e) => set("pain_or_desire", e.target.value)}
+                  placeholder="Ej. Sus clientes lo visitan una vez y no vuelven"
+                  className={fieldCls}
+                />
               </div>
 
               <div className="space-y-1">
-                <label className={labelCls}>Hook propuesto</label>
-                <AutoTextarea name="proposed_hook" defaultValue={concept?.proposed_hook ?? ""} rows={3} placeholder="Primera línea del anuncio" className={fieldCls} />
-              </div>
-
-              {isEdit && (
-                <div className="space-y-1">
-                  <label className={labelCls}>Status</label>
-                  <select name="status" defaultValue={concept?.status ?? "Active"} className={fieldCls}>
-                    {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-              )}
-            </div>
-
-            {/* ── RIGHT PANEL: Psychology + Assets ── */}
-            <div className="space-y-4">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Psicología</p>
-
-              <div className="space-y-1">
-                <label className={labelCls}>Awareness Stage</label>
-                <select name="awareness_stage" defaultValue={concept?.awareness_stage ?? ""} className={fieldCls}>
+                <FieldLabel
+                  label="Awareness Stage"
+                  tooltip="Qué tan consciente está la persona del problema y de la solución. 1 = No sabe que tiene el problema · 5 = Lista para comprar."
+                />
+                <select value={form.awareness_stage} onChange={(e) => set("awareness_stage", e.target.value)} className={fieldCls}>
                   <option value="">—</option>
                   {[1,2,3,4,5].map((n) => (
                     <option key={n} value={n}>{n} — {AWARENESS_LABELS[n]}</option>
                   ))}
                 </select>
               </div>
+            </div>
+          )}
+
+          {/* ── Step 2: Psicología ── */}
+          {step === 1 && (
+            <div className="space-y-4">
 
               <div className="space-y-1">
-                <label className={labelCls}>Insight emocional</label>
-                <AutoTextarea name="emotional_insight" defaultValue={concept?.emotional_insight ?? ""} rows={3} placeholder="Tensión interna del buyer persona" className={fieldCls} />
+                <FieldLabel
+                  label="Insight emocional"
+                  tooltip="La tensión interna que vive el buyer persona aunque no la articule. El estado emocional oculto detrás del dolor o deseo."
+                />
+                <AutoTextarea
+                  value={form.emotional_insight}
+                  onChange={(e) => set("emotional_insight", e.target.value)}
+                  rows={3}
+                  placeholder="Ej. Siente que hace bien su trabajo pero no entiende por qué la gente no vuelve. Eso lo frustra y lo hace dudar de su negocio."
+                  className={fieldCls}
+                />
               </div>
 
               <div className="space-y-1">
-                <label className={labelCls}>Tensión central</label>
-                <AutoTextarea name="central_tension" defaultValue={concept?.central_tension ?? ""} rows={3} placeholder="El conflicto que el ad resuelve" className={fieldCls} />
+                <FieldLabel
+                  label="Tensión central"
+                  tooltip="El conflicto específico que este anuncio resuelve. La razón por la que el buyer necesita actuar ahora y no después."
+                />
+                <AutoTextarea
+                  value={form.central_tension}
+                  onChange={(e) => set("central_tension", e.target.value)}
+                  rows={3}
+                  placeholder="Ej. Trabaja duro para dar una buena experiencia, pero sin un sistema de regreso cada cliente nuevo es como empezar de cero."
+                  className={fieldCls}
+                />
               </div>
 
               <div className="space-y-1">
-                <label className={labelCls}>Mecanismo psicológico</label>
-                <AutoTextarea name="mechanism" defaultValue={concept?.mechanism ?? ""} rows={2} placeholder="Por qué este ángulo funciona para esta persona" className={fieldCls} />
+                <FieldLabel
+                  label="Mecanismo psicológico"
+                  tooltip="Por qué este ángulo funciona para esta persona en este contexto. El fundamento de por qué el mensaje convierte."
+                />
+                <AutoTextarea
+                  value={form.mechanism}
+                  onChange={(e) => set("mechanism", e.target.value)}
+                  rows={3}
+                  placeholder="Ej. El ángulo de agitación funciona porque el dolor del olvido es real pero silencioso — nombrarlo genera reconocimiento inmediato."
+                  className={fieldCls}
+                />
               </div>
 
               <div className="space-y-1">
-                <label className={labelCls}>Referencias / Inspiración</label>
-                <AutoTextarea name="ref_links" defaultValue={concept?.ref_links ?? ""} rows={2} placeholder="Links o descripciones de referencia" className={fieldCls} />
+                <FieldLabel
+                  label="Referencias / Inspiración"
+                  tooltip="Links o descripciones de ads que inspiran este concepto. Útil para briefear al diseñador o editor con ejemplos concretos."
+                />
+                <AutoTextarea
+                  value={form.ref_links}
+                  onChange={(e) => set("ref_links", e.target.value)}
+                  rows={2}
+                  placeholder="Links o descripciones de referencia"
+                  className={fieldCls}
+                />
               </div>
+            </div>
+          )}
+
+          {/* ── Step 3: Ejecución ── */}
+          {step === 2 && (
+            <div className="space-y-4">
+
+              <div className="space-y-1">
+                <FieldLabel
+                  label="Hook propuesto"
+                  tooltip="La primera línea o frame del anuncio. Debe detener el scroll y generar identificación o curiosidad en los primeros 3 segundos."
+                />
+                <AutoTextarea
+                  value={form.proposed_hook}
+                  onChange={(e) => set("proposed_hook", e.target.value)}
+                  rows={3}
+                  placeholder="Ej. 7 de cada 10 clientes que entraron hoy a tu negocio... no van a regresar."
+                  className={fieldCls}
+                />
+              </div>
+
+              {isEdit && (
+                <div className="space-y-1">
+                  <FieldLabel
+                    label="Status"
+                    tooltip="Estado del concepto en el ciclo. Transmuted = evolucionó en otro concepto. Evergreen = ángulo validado permanente."
+                  />
+                  <select value={form.status} onChange={(e) => set("status", e.target.value)} className={fieldCls}>
+                    {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+              )}
 
               {/* Assets linked to this concept */}
               {isEdit && assets !== undefined && (
-                <div className="space-y-2 border-t pt-3">
+                <div className="space-y-2 border rounded-lg p-3 bg-muted/20">
                   <div className="flex items-center justify-between">
-                    <p className={labelCls}>
+                    <p className="text-xs font-medium text-muted-foreground">
                       Assets{assets.length > 0 ? ` (${assets.length})` : ""}
                     </p>
                     {onNewAsset && isAdminOrSubadmin && (
@@ -227,7 +399,7 @@ export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSub
                   ) : (
                     <div className="space-y-1">
                       {assets.map((a) => (
-                        <div key={a.id} className="flex items-center justify-between text-xs py-1.5 px-2 rounded bg-muted/40">
+                        <div key={a.id} className="flex items-center justify-between text-xs py-1.5 px-2 rounded bg-background">
                           <span className="text-muted-foreground truncate mr-2">
                             {[a.format, a.platform, [a.variant, a.iteration].filter(Boolean).join("/")].filter(Boolean).join(" · ") || "Sin detalle"}
                           </span>
@@ -251,17 +423,34 @@ export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSub
               {/* Insight — admin only */}
               {isAdminOrSubadmin && (
                 <div className="space-y-1 border-t pt-3">
-                  <label className={cn(labelCls, "flex items-center gap-1")}>
+                  <FieldLabel
+                    label="Insight estratégico"
+                    tooltip="Post-ciclo: qué funcionó, qué no, qué probar diferente. Solo visible para admin y subadmin. Alimenta la IA en ciclos futuros."
+                  />
+                  <div className="flex items-center gap-1 mb-1">
                     <Star className="w-3 h-3 text-amber-500" />
-                    Insight estratégico (solo admin/subadmin)
-                  </label>
-                  <AutoTextarea name="insight" defaultValue={concept?.insight ?? ""} rows={3} placeholder="Qué funcionó, qué no, aprendizajes del ciclo" className={fieldCls} />
+                    <span className="text-xs text-muted-foreground">Solo admin / subadmin</span>
+                  </div>
+                  <AutoTextarea
+                    value={form.insight}
+                    onChange={(e) => set("insight", e.target.value)}
+                    rows={3}
+                    placeholder="Qué funcionó, qué no, aprendizajes del ciclo"
+                    className={fieldCls}
+                  />
                 </div>
               )}
             </div>
-          </div>
+          )}
 
-          <DialogFooter className="flex items-center justify-between pt-4 mt-2 border-t gap-2">
+          {/* Step error */}
+          {stepError && (
+            <p className="text-xs text-destructive mt-1">{stepError}</p>
+          )}
+
+          {/* ── Footer ── */}
+          <DialogFooter className="flex items-center justify-between pt-4 mt-4 border-t gap-2">
+            {/* Left: destructive actions */}
             <div className="flex gap-2">
               {isEdit && concept?.status !== "Evergreen" && isAdminOrSubadmin && (
                 <Button type="button" variant="outline" size="sm" onClick={handlePromote} disabled={isPending}>
@@ -275,11 +464,26 @@ export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSub
                 </Button>
               )}
             </div>
+
+            {/* Right: navigation */}
             <div className="flex gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={isPending}>Cancelar</Button>
-              <Button type="submit" size="sm" disabled={isPending || !isAdminOrSubadmin}>
-                {isPending ? "Guardando..." : isEdit ? "Guardar" : "Crear concepto"}
+              <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={isPending}>
+                Cancelar
               </Button>
+              {step > 0 && (
+                <Button type="button" variant="outline" size="sm" onClick={goPrev} disabled={isPending}>
+                  ← Anterior
+                </Button>
+              )}
+              {step < STEPS.length - 1 ? (
+                <Button type="button" size="sm" onClick={goNext} disabled={isPending}>
+                  Siguiente →
+                </Button>
+              ) : (
+                <Button type="submit" size="sm" disabled={isPending || !isAdminOrSubadmin}>
+                  {isPending ? "Guardando..." : isEdit ? "Guardar" : "Crear concepto"}
+                </Button>
+              )}
             </div>
           </DialogFooter>
         </form>
