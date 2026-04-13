@@ -233,6 +233,7 @@ export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSub
                   </button>
                   {showAngleGuide && (
                     <div className="px-3 py-2.5 space-y-1.5 text-xs text-muted-foreground bg-purple-50/20">
+                      <p><span className="font-medium text-foreground">Pregunta guía:</span> {guideEntry.guiding_question}</p>
                       <p><span className="font-medium text-foreground">Mecanismo:</span> {guideEntry.mechanism}</p>
                       <p><span className="font-medium text-foreground">Cuándo usar:</span> {guideEntry.when_to_use}</p>
                       <p><span className="font-medium text-foreground">Ejemplo de hook:</span> <em>"{guideEntry.hook_example}"</em></p>
