@@ -23,7 +23,7 @@ async function copyTaskSetsToProject(
 
     const { data: taskSets } = await supabase
       .from("task_sets")
-      .select("id, default_assignee_id, tasks:task_set_tasks(*)")
+      .select("id, default_assignee_id, tasks:task_set_tasks(*, checklist_items:task_set_checklist_items(id, text, is_blocking, item_order))")
       .in("id", taskSetIds)
 
     if (!taskSets || taskSets.length === 0) return
@@ -32,6 +32,7 @@ async function copyTaskSetsToProject(
       ((ts.tasks ?? []) as Array<{
         id: string; title: string; description: string | null; priority: string
         task_order: number; is_urgent: boolean; requires_deliverable: boolean
+        checklist_items: Array<{ id: string; text: string; is_blocking: boolean; item_order: number }> | null
       }>)
         .sort((a, b) => a.task_order - b.task_order)
         .map((t, j) => ({
@@ -45,14 +46,39 @@ async function copyTaskSetsToProject(
           task_order: j,
           phase_id: phaseIdByTaskSetId[ts.id] ?? null,
           assignee_id: ts.default_assignee_id ?? null,
-          task_set_task_id: t.id,        // Option C: link back to template
-          sop_id: null,                  // Option C: null = inherit from template
+          task_set_task_id: t.id,
+          sop_id: null,
+          _checklist_items: t.checklist_items ?? [],
         }))
     )
 
     if (tasksToInsert.length > 0) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await supabase.from("tasks").insert(tasksToInsert as any[])
+      const { data: insertedTasks } = await supabase
+        .from("tasks")
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .insert(tasksToInsert.map(({ _checklist_items: _c, ...rest }) => rest) as any[])
+        .select("id, task_set_task_id")
+
+      // Copy checklist items from template to the newly created tasks
+      if (insertedTasks && insertedTasks.length > 0) {
+        const templateMap = new Map(
+          tasksToInsert.map((t) => [t.task_set_task_id, t._checklist_items])
+        )
+        const checklistToInsert = insertedTasks.flatMap((task) => {
+          const items = templateMap.get(task.task_set_task_id) ?? []
+          return items.map((item) => ({
+            task_id: task.id,
+            text: item.text,
+            is_blocking: item.is_blocking,
+            is_checked: false,
+            item_order: item.item_order,
+          }))
+        })
+        if (checklistToInsert.length > 0) {
+          await supabase.from("task_checklist_items").insert(checklistToInsert)
+        }
+      }
     }
   } catch { /* task_sets table may not exist in older deployments */ }
 }
@@ -164,7 +190,7 @@ export async function getProject(id: string) {
       *,
       customer:customers(id, name, company, email, phone),
       project_type:project_types(id, name, description, default_phase_set_id, color, icon),
-      tasks(*, assignee:profiles(id, full_name, avatar_url, position), phase:project_phases(id, name, phase_order), sop:sops(id, title, doc_url, video_url), task_set_task:task_set_tasks(sop_id, sop:sops(id, title, doc_url, video_url))),
+      tasks(*, assignee:profiles(id, full_name, avatar_url, position), phase:project_phases(id, name, phase_order), sop:sops(id, title, doc_url, video_url), task_set_task:task_set_tasks(sop_id, sop:sops(id, title, doc_url, video_url)), checklist_items:task_checklist_items(id, text, is_blocking, is_checked, item_order)),
       members:project_members(profile:profiles(id, full_name, avatar_url, position, role)),
       phases:project_phases(*)
     `)

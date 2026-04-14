@@ -3,20 +3,37 @@
 import { useState, useTransition, useRef, useEffect } from "react"
 import { createPortal } from "react-dom"
 import { useTranslations } from "next-intl"
-import { deleteTask, updateTask, updateTaskStatus, updateTaskAssignee, updateTaskUrgent } from "@/lib/actions/tasks"
+import { deleteTask, updateTask, updateTaskStatus, updateTaskAssignee, updateTaskUrgent, createChecklistItem, toggleChecklistItem, updateChecklistItem, deleteChecklistItem, reorderChecklistItems } from "@/lib/actions/tasks"
 import { assignSopToTask } from "@/lib/actions/sops"
 import { DeliverableDrawer } from "@/components/projects/deliverable-drawer"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Trash2, CalendarDays, ChevronDown, ChevronRight, UserX, Flag, Paperclip, X, BookOpen, Search, ExternalLink } from "lucide-react"
+import { Trash2, CalendarDays, ChevronDown, ChevronRight, UserX, Flag, Paperclip, X, BookOpen, Search, ExternalLink, GripVertical, Lock, ListChecks, Plus } from "lucide-react"
 import { formatDate } from "@/lib/utils"
 import { cn } from "@/lib/utils"
-import type { Task, Profile, TaskStatus, Deliverable, Sop } from "@/lib/types"
+import type { Task, Profile, TaskStatus, Deliverable, Sop, TaskChecklistItem } from "@/lib/types"
 import { phaseColor } from "@/lib/phase-colors"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core"
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 
 const STATUS_GROUPS: { value: TaskStatus; defaultOpen: boolean }[] = [
   { value: "In Progress", defaultOpen: false },
@@ -32,14 +49,26 @@ const TASK_STATUS_KEY: Record<TaskStatus, "todo" | "inProgress" | "done"> = {
 
 // ─── Status Picker ────────────────────────────────────────────────────────────
 
-function StatusPicker({ task, projectId }: { task: Task; projectId: string }) {
+function StatusPicker({
+  task,
+  projectId,
+  checklistItems,
+}: {
+  task: Task
+  projectId: string
+  checklistItems?: TaskChecklistItem[]
+}) {
   const tTaskStatus = useTranslations("taskStatus")
   const [open, setOpen] = useState(false)
   const [dropPos, setDropPos] = useState({ top: 0, left: 0 })
   const [optimisticStatus, setOptimisticStatus] = useState<TaskStatus>(task.status)
+  const [blockError, setBlockError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
   const buttonRef = useRef<HTMLButtonElement>(null)
   const dropRef = useRef<HTMLDivElement>(null)
+
+  const items = checklistItems ?? task.checklist_items ?? []
+  const blockingPending = items.filter((i) => i.is_blocking && !i.is_checked).length
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -54,6 +83,7 @@ function StatusPicker({ task, projectId }: { task: Task; projectId: string }) {
 
   function handleOpen(e: React.MouseEvent) {
     e.stopPropagation()
+    setBlockError(null)
     if (buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect()
       setDropPos({ top: rect.bottom + 4, left: rect.left })
@@ -64,6 +94,11 @@ function StatusPicker({ task, projectId }: { task: Task; projectId: string }) {
   function handleSelect(next: TaskStatus) {
     setOpen(false)
     if (next === optimisticStatus) return
+    if (next === "Done" && blockingPending > 0) {
+      setBlockError(`${blockingPending} item${blockingPending > 1 ? "s" : ""} obligatorio${blockingPending > 1 ? "s" : ""} pendiente${blockingPending > 1 ? "s" : ""}`)
+      return
+    }
+    setBlockError(null)
     setOptimisticStatus(next)
     startTransition(async () => {
       try { await updateTaskStatus(task.id, next, projectId) }
@@ -72,7 +107,7 @@ function StatusPicker({ task, projectId }: { task: Task; projectId: string }) {
   }
 
   return (
-    <>
+    <div className="flex flex-col items-start gap-0.5">
       <button
         ref={buttonRef}
         onClick={handleOpen}
@@ -88,6 +123,12 @@ function StatusPicker({ task, projectId }: { task: Task; projectId: string }) {
         {tTaskStatus(TASK_STATUS_KEY[optimisticStatus])}
         <ChevronDown className="w-3 h-3 opacity-60" />
       </button>
+      {blockError && (
+        <p className="text-[10px] text-destructive leading-tight flex items-center gap-0.5">
+          <Lock className="w-2.5 h-2.5 flex-shrink-0" />
+          {blockError}
+        </p>
+      )}
       {open && createPortal(
         <div
           ref={dropRef}
@@ -100,7 +141,8 @@ function StatusPicker({ task, projectId }: { task: Task; projectId: string }) {
               onClick={(e) => { e.stopPropagation(); handleSelect(opt.value) }}
               className={cn(
                 "w-full text-left px-3 py-1.5 text-xs hover:bg-muted transition-colors flex items-center gap-2",
-                opt.value === optimisticStatus && "font-semibold"
+                opt.value === optimisticStatus && "font-semibold",
+                opt.value === "Done" && blockingPending > 0 && "opacity-40 cursor-not-allowed"
               )}
             >
               <span className={cn(
@@ -110,12 +152,15 @@ function StatusPicker({ task, projectId }: { task: Task; projectId: string }) {
                 opt.value === "Done"        && "bg-success",
               )} />
               {tTaskStatus(TASK_STATUS_KEY[opt.value])}
+              {opt.value === "Done" && blockingPending > 0 && (
+                <Lock className="w-3 h-3 ml-auto text-muted-foreground" />
+              )}
             </button>
           ))}
         </div>,
         document.body
       )}
-    </>
+    </div>
   )
 }
 
@@ -453,6 +498,236 @@ function SopBlock({
   )
 }
 
+// ─── Checklist Editor ────────────────────────────────────────────────────────
+
+function SortableChecklistItem({
+  item,
+  onToggle,
+  onDelete,
+  onBlockingToggle,
+}: {
+  item: TaskChecklistItem
+  onToggle: (id: string, checked: boolean) => void
+  onDelete: (id: string) => void
+  onBlockingToggle: (id: string, blocking: boolean) => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id })
+  const style = { transform: CSS.Transform.toString(transform), transition }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn("flex items-center gap-2 group py-1", isDragging && "opacity-50 bg-muted rounded")}
+    >
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        className="text-muted-foreground/40 hover:text-muted-foreground cursor-grab active:cursor-grabbing flex-shrink-0"
+      >
+        <GripVertical className="w-3.5 h-3.5" />
+      </button>
+      <input
+        type="checkbox"
+        checked={item.is_checked}
+        onChange={(e) => onToggle(item.id, e.target.checked)}
+        className="rounded flex-shrink-0"
+      />
+      <span className={cn("flex-1 text-sm min-w-0", item.is_checked && "line-through text-muted-foreground")}>
+        {item.text}
+      </span>
+      <button
+        type="button"
+        onClick={() => onBlockingToggle(item.id, !item.is_blocking)}
+        title={item.is_blocking ? "Obligatorio — click para hacer opcional" : "Opcional — click para hacer obligatorio"}
+        className={cn(
+          "flex-shrink-0 transition-opacity",
+          item.is_blocking
+            ? "text-destructive opacity-100"
+            : "text-muted-foreground/30 opacity-0 group-hover:opacity-100"
+        )}
+      >
+        <Lock className="w-3 h-3" />
+      </button>
+      <button
+        type="button"
+        onClick={() => onDelete(item.id)}
+        className="flex-shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
+      >
+        <X className="w-3 h-3" />
+      </button>
+    </div>
+  )
+}
+
+function ChecklistEditor({
+  taskId,
+  projectId,
+  initialItems,
+  onItemsChange,
+}: {
+  taskId: string
+  projectId: string
+  initialItems: TaskChecklistItem[]
+  onItemsChange: (items: TaskChecklistItem[]) => void
+}) {
+  const [items, setItems] = useState<TaskChecklistItem[]>(
+    [...initialItems].sort((a, b) => a.item_order - b.item_order)
+  )
+  const [addingText, setAddingText] = useState("")
+  const [addingBlocking, setAddingBlocking] = useState(false)
+  const [isAdding, setIsAdding] = useState(false)
+  const [isPending, startTransition] = useTransition()
+  const addInputRef = useRef<HTMLInputElement>(null)
+
+  const checked = items.filter((i) => i.is_checked).length
+  const blockingPending = items.filter((i) => i.is_blocking && !i.is_checked).length
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  )
+
+  function sync(next: TaskChecklistItem[]) {
+    setItems(next)
+    onItemsChange(next)
+  }
+
+  function handleToggle(id: string, checked: boolean) {
+    const next = items.map((i) => i.id === id ? { ...i, is_checked: checked } : i)
+    sync(next)
+    startTransition(async () => {
+      try { await toggleChecklistItem(id, checked, projectId) }
+      catch { sync(items) }
+    })
+  }
+
+  function handleBlockingToggle(id: string, blocking: boolean) {
+    const next = items.map((i) => i.id === id ? { ...i, is_blocking: blocking } : i)
+    sync(next)
+    startTransition(async () => {
+      try { await updateChecklistItem(id, { is_blocking: blocking }, projectId) }
+      catch { sync(items) }
+    })
+  }
+
+  function handleDelete(id: string) {
+    const next = items.filter((i) => i.id !== id)
+    sync(next)
+    startTransition(async () => {
+      try { await deleteChecklistItem(id, projectId) }
+      catch { sync(items) }
+    })
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIndex = items.findIndex((i) => i.id === active.id)
+    const newIndex = items.findIndex((i) => i.id === over.id)
+    const next = arrayMove(items, oldIndex, newIndex)
+    sync(next)
+    startTransition(async () => {
+      await reorderChecklistItems(next.map((i) => i.id), projectId)
+    })
+  }
+
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault()
+    const text = addingText.trim()
+    if (!text) return
+    setAddingText("")
+    setAddingBlocking(false)
+    startTransition(async () => {
+      try {
+        const created = await createChecklistItem(taskId, text, addingBlocking, projectId)
+        const next = [...items, created]
+        sync(next)
+      } catch { /* ignore */ }
+    })
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <Label className="flex items-center gap-1.5">
+          <ListChecks className="w-3.5 h-3.5" />
+          Checklist
+          {items.length > 0 && (
+            <span className="text-xs font-normal text-muted-foreground ml-1">
+              {checked}/{items.length}
+            </span>
+          )}
+        </Label>
+        {blockingPending > 0 && (
+          <span className="text-[11px] text-destructive flex items-center gap-1">
+            <Lock className="w-3 h-3" />
+            {blockingPending} obligatorio{blockingPending > 1 ? "s" : ""} pendiente{blockingPending > 1 ? "s" : ""}
+          </span>
+        )}
+      </div>
+
+      {items.length > 0 && (
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
+            <div className={cn("px-1", isPending && "opacity-70")}>
+              {items.map((item) => (
+                <SortableChecklistItem
+                  key={item.id}
+                  item={item}
+                  onToggle={handleToggle}
+                  onDelete={handleDelete}
+                  onBlockingToggle={handleBlockingToggle}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
+      )}
+
+      {isAdding ? (
+        <form onSubmit={handleAdd} className="flex items-center gap-2 pl-5">
+          <input
+            ref={addInputRef}
+            autoFocus
+            type="text"
+            value={addingText}
+            onChange={(e) => setAddingText(e.target.value)}
+            placeholder="Descripción del item…"
+            className="flex-1 text-sm border rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+            onKeyDown={(e) => { if (e.key === "Escape") { setIsAdding(false); setAddingText("") } }}
+          />
+          <label className="flex items-center gap-1 text-xs text-muted-foreground cursor-pointer select-none flex-shrink-0" title="Marcar como obligatorio (bloquea cierre de tarea)">
+            <input
+              type="checkbox"
+              checked={addingBlocking}
+              onChange={(e) => setAddingBlocking(e.target.checked)}
+              className="rounded"
+            />
+            <Lock className={cn("w-3 h-3", addingBlocking ? "text-destructive" : "text-muted-foreground/50")} />
+          </label>
+          <button type="submit" disabled={!addingText.trim()} className="text-xs text-primary hover:underline disabled:opacity-40 flex-shrink-0">
+            Agregar
+          </button>
+          <button type="button" onClick={() => { setIsAdding(false); setAddingText("") }} className="text-xs text-muted-foreground hover:text-foreground flex-shrink-0">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </form>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setIsAdding(true)}
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground pl-5 transition-colors"
+        >
+          <Plus className="w-3 h-3" />
+          Agregar item
+        </button>
+      )}
+    </div>
+  )
+}
+
 // ─── Task Detail Modal ────────────────────────────────────────────────────────
 
 function TaskDetailModal({
@@ -477,6 +752,9 @@ function TaskDetailModal({
   const tT = useTranslations("tasks")
   const tC = useTranslations("common")
   const [isPending, startTransition] = useTransition()
+  const [liveChecklistItems, setLiveChecklistItems] = useState<TaskChecklistItem[]>(
+    [...(task.checklist_items ?? [])].sort((a, b) => a.item_order - b.item_order)
+  )
   const phase = (task.phase as { id: string; name: string; phase_order: number } | null | undefined) ?? null
 
   // Close on Escape
@@ -520,7 +798,7 @@ function TaskDetailModal({
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div className="flex items-center gap-2 flex-wrap">
             {phase && <PhaseBadge phase={phase} />}
-            <StatusPicker task={task} projectId={projectId} />
+            <StatusPicker task={task} projectId={projectId} checklistItems={liveChecklistItems} />
           </div>
           <button onClick={onClose} className="p-1 rounded text-muted-foreground hover:text-foreground flex-shrink-0">
             <X className="w-4 h-4" />
@@ -607,6 +885,16 @@ function TaskDetailModal({
             </button>
           )}
 
+          {/* Checklist */}
+          <div className="border-t pt-4">
+            <ChecklistEditor
+              taskId={task.id}
+              projectId={projectId}
+              initialItems={task.checklist_items ?? []}
+              onItemsChange={setLiveChecklistItems}
+            />
+          </div>
+
           {/* SOP block */}
           <SopBlock task={task} projectId={projectId} sops={sops} isAdmin={isAdmin} />
 
@@ -661,6 +949,21 @@ function TaskCard({ task, projectId, deliverable, onDeliverableClick, onCardClic
         <p className={cn("text-sm font-medium flex-1 min-w-0", task.status === "Done" && "line-through text-muted-foreground")}>
           {task.title}
         </p>
+        {(() => {
+          const cl = task.checklist_items ?? []
+          if (cl.length === 0) return null
+          const done = cl.filter((i) => i.is_checked).length
+          const hasBlocking = cl.some((i) => i.is_blocking && !i.is_checked)
+          return (
+            <span className={cn(
+              "flex items-center gap-0.5 text-[10px] font-medium flex-shrink-0 px-1.5 py-0.5 rounded-full mt-0.5",
+              hasBlocking ? "bg-destructive/10 text-destructive" : done === cl.length ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"
+            )}>
+              {hasBlocking && <Lock className="w-2.5 h-2.5" />}
+              {done}/{cl.length}
+            </span>
+          )
+        })()}
         {task.requires_deliverable && (
           <button
             onClick={(e) => { e.stopPropagation(); onDeliverableClick(task) }}
@@ -759,6 +1062,25 @@ function TaskRow({ task, projectId, employees, isAdmin, deliverable, onDeliverab
                 <Paperclip className={cn("w-3.5 h-3.5", hasDeliverable && "fill-current opacity-80")} />
               </button>
             )}
+            {(() => {
+              const cl = task.checklist_items ?? []
+              if (cl.length === 0) return null
+              const done = cl.filter((i) => i.is_checked).length
+              const hasBlocking = cl.some((i) => i.is_blocking && !i.is_checked)
+              return (
+                <span className={cn(
+                  "flex items-center gap-0.5 text-[10px] font-medium flex-shrink-0 px-1.5 py-0.5 rounded-full",
+                  hasBlocking
+                    ? "bg-destructive/10 text-destructive"
+                    : done === cl.length
+                    ? "bg-success/10 text-success"
+                    : "bg-muted text-muted-foreground"
+                )}>
+                  {hasBlocking && <Lock className="w-2.5 h-2.5" />}
+                  {done}/{cl.length}
+                </span>
+              )
+            })()}
           </div>
           {/* Due date + description excerpt on the same subdued line */}
           <div className="flex items-center gap-2 mt-0.5">

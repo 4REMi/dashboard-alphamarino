@@ -217,7 +217,7 @@ export async function getTaskSets() {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("task_sets")
-    .select("*, tasks:task_set_tasks(*, sop:sops(id, title)), default_assignee:profiles(id, full_name, avatar_url)")
+    .select("*, tasks:task_set_tasks(*, sop:sops(id, title), checklist_items:task_set_checklist_items(id, text, is_blocking, item_order)), default_assignee:profiles(id, full_name, avatar_url)")
     .order("name")
   if (error) return []
   return (data ?? []).map((ts) => ({
@@ -333,6 +333,74 @@ export async function linkTaskSetToPhase(phaseId: string, taskSetId: string | nu
     .update({ default_task_set_id: taskSetId })
     .eq("id", phaseId)
   if (error) throw error
+  revalidatePath("/settings")
+  revalidatePath("/operations")
+}
+
+// ============================================================
+// TASK SET CHECKLIST ITEMS (templates)
+// ============================================================
+
+export async function addChecklistItemToSetTask(
+  taskSetTaskId: string,
+  text: string,
+  isBlocking: boolean
+) {
+  const supabase = await createClient()
+  const { data: existing } = await supabase
+    .from("task_set_checklist_items")
+    .select("item_order")
+    .eq("task_set_task_id", taskSetTaskId)
+    .order("item_order", { ascending: false })
+    .limit(1)
+  const nextOrder = (existing?.[0]?.item_order ?? -1) + 1
+
+  const { data, error } = await supabase
+    .from("task_set_checklist_items")
+    .insert({ task_set_task_id: taskSetTaskId, text, is_blocking: isBlocking, item_order: nextOrder })
+    .select()
+    .single()
+  if (error) throw error
+  revalidatePath("/settings")
+  revalidatePath("/operations")
+  return data
+}
+
+export async function updateSetTaskChecklistItem(
+  itemId: string,
+  fields: { text?: string; is_blocking?: boolean }
+) {
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from("task_set_checklist_items")
+    .update(fields)
+    .eq("id", itemId)
+  if (error) throw error
+  revalidatePath("/settings")
+  revalidatePath("/operations")
+}
+
+export async function deleteSetTaskChecklistItem(itemId: string) {
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from("task_set_checklist_items")
+    .delete()
+    .eq("id", itemId)
+  if (error) throw error
+  revalidatePath("/settings")
+  revalidatePath("/operations")
+}
+
+export async function reorderSetTaskChecklistItems(
+  taskSetTaskId: string,
+  orderedIds: string[]
+) {
+  const supabase = await createClient()
+  await Promise.all(
+    orderedIds.map((id, index) =>
+      supabase.from("task_set_checklist_items").update({ item_order: index }).eq("id", id)
+    )
+  )
   revalidatePath("/settings")
   revalidatePath("/operations")
 }

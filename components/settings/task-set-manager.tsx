@@ -1,13 +1,136 @@
 "use client"
 
-import { useState, useTransition } from "react"
-import type { TaskSet, TaskSetTask, Profile } from "@/lib/types"
+import { useState, useTransition, useRef } from "react"
+import type { TaskSet, TaskSetTask, TaskSetChecklistItem, Profile } from "@/lib/types"
 import {
   createTaskSet,
   deleteTaskSet,
   addTaskToSet,
   deleteTaskFromSet,
+  addChecklistItemToSetTask,
+  deleteSetTaskChecklistItem,
+  updateSetTaskChecklistItem,
 } from "@/lib/actions/config"
+import { Lock, Plus, X, ListChecks } from "lucide-react"
+import { cn } from "@/lib/utils"
+
+// ─── Template checklist editor (no is_checked — these are just templates) ──────
+
+function TemplateChecklistEditor({
+  taskSetTaskId,
+  initialItems,
+}: {
+  taskSetTaskId: string
+  initialItems: TaskSetChecklistItem[]
+}) {
+  const [items, setItems] = useState<TaskSetChecklistItem[]>(
+    [...initialItems].sort((a, b) => a.item_order - b.item_order)
+  )
+  const [addingText, setAddingText] = useState("")
+  const [addingBlocking, setAddingBlocking] = useState(false)
+  const [isAdding, setIsAdding] = useState(false)
+  const [isPending, startTransition] = useTransition()
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  function handleAdd(e: React.FormEvent) {
+    e.preventDefault()
+    const text = addingText.trim()
+    if (!text) return
+    setAddingText("")
+    setAddingBlocking(false)
+    startTransition(async () => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const created = await addChecklistItemToSetTask(taskSetTaskId, text, addingBlocking) as any
+        setItems((prev) => [...prev, created])
+      } catch { /* ignore */ }
+    })
+  }
+
+  function handleDelete(id: string) {
+    setItems((prev) => prev.filter((i) => i.id !== id))
+    startTransition(async () => {
+      try { await deleteSetTaskChecklistItem(id) }
+      catch { /* rollback not needed for template */ }
+    })
+  }
+
+  function handleBlockingToggle(id: string, blocking: boolean) {
+    setItems((prev) => prev.map((i) => i.id === id ? { ...i, is_blocking: blocking } : i))
+    startTransition(async () => {
+      try { await updateSetTaskChecklistItem(id, { is_blocking: blocking }) }
+      catch { /* ignore */ }
+    })
+  }
+
+  return (
+    <div className="mt-2 pl-6 space-y-1.5 border-t border-border/50 pt-2">
+      <p className="text-[11px] font-medium text-muted-foreground flex items-center gap-1 mb-1">
+        <ListChecks className="w-3 h-3" />
+        Checklist plantilla
+      </p>
+      {items.map((item) => (
+        <div key={item.id} className="flex items-center gap-2 group text-sm">
+          <span className={cn("flex-1 min-w-0 truncate", item.is_blocking && "font-medium")}>{item.text}</span>
+          <button
+            type="button"
+            onClick={() => handleBlockingToggle(item.id, !item.is_blocking)}
+            title={item.is_blocking ? "Obligatorio — click para hacer opcional" : "Opcional — click para hacer obligatorio"}
+            className={cn(
+              "flex-shrink-0 transition-opacity",
+              item.is_blocking ? "text-destructive opacity-100" : "text-muted-foreground/30 opacity-0 group-hover:opacity-100"
+            )}
+          >
+            <Lock className="w-3 h-3" />
+          </button>
+          <button
+            type="button"
+            onClick={() => handleDelete(item.id)}
+            disabled={isPending}
+            className="flex-shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
+          >
+            <X className="w-3 h-3" />
+          </button>
+        </div>
+      ))}
+      {isAdding ? (
+        <form onSubmit={handleAdd} className="flex items-center gap-2">
+          <input
+            ref={inputRef}
+            autoFocus
+            type="text"
+            value={addingText}
+            onChange={(e) => setAddingText(e.target.value)}
+            placeholder="Item de checklist…"
+            className="flex-1 text-xs border rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+            onKeyDown={(e) => { if (e.key === "Escape") { setIsAdding(false); setAddingText("") } }}
+          />
+          <label className="flex items-center gap-1 text-xs text-muted-foreground cursor-pointer flex-shrink-0" title="Marcar como obligatorio">
+            <input type="checkbox" checked={addingBlocking} onChange={(e) => setAddingBlocking(e.target.checked)} className="rounded" />
+            <Lock className={cn("w-3 h-3", addingBlocking ? "text-destructive" : "text-muted-foreground/40")} />
+          </label>
+          <button type="submit" disabled={!addingText.trim() || isPending} className="text-xs text-primary hover:underline disabled:opacity-40 flex-shrink-0">
+            Agregar
+          </button>
+          <button type="button" onClick={() => { setIsAdding(false); setAddingText("") }} className="flex-shrink-0 text-muted-foreground hover:text-foreground">
+            <X className="w-3 h-3" />
+          </button>
+        </form>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setIsAdding(true)}
+          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <Plus className="w-3 h-3" />
+          Agregar item
+        </button>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 const PRIORITY_LABELS = { Low: "Baja", Medium: "Media", High: "Alta" }
 const PRIORITY_COLORS = {
@@ -182,23 +305,29 @@ export function TaskSetManager({ initialSets, employees }: Props) {
               {isExpanded && (
                 <div className="border-t border-border">
                   {tasks.map((task, i) => (
-                    <div key={task.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-border/50 last:border-0">
-                      <span className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground flex-shrink-0">
-                        {i + 1}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-foreground">{task.title}</p>
-                        {task.description && <p className="text-xs text-muted-foreground truncate">{task.description}</p>}
+                    <div key={task.id} className="border-b border-border/50 last:border-0 px-4 py-2.5">
+                      <div className="flex items-center gap-3">
+                        <span className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground flex-shrink-0">
+                          {i + 1}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-foreground">{task.title}</p>
+                          {task.description && <p className="text-xs text-muted-foreground truncate">{task.description}</p>}
+                        </div>
+                        <span className={`text-xs font-medium ${PRIORITY_COLORS[task.priority]}`}>
+                          {PRIORITY_LABELS[task.priority]}
+                        </span>
+                        <button
+                          onClick={() => handleDeleteTask(set.id, task.id)}
+                          className="text-xs text-muted-foreground hover:text-destructive transition-colors flex-shrink-0"
+                        >
+                          ✕
+                        </button>
                       </div>
-                      <span className={`text-xs font-medium ${PRIORITY_COLORS[task.priority]}`}>
-                        {PRIORITY_LABELS[task.priority]}
-                      </span>
-                      <button
-                        onClick={() => handleDeleteTask(set.id, task.id)}
-                        className="text-xs text-muted-foreground hover:text-destructive transition-colors flex-shrink-0"
-                      >
-                        ✕
-                      </button>
+                      <TemplateChecklistEditor
+                        taskSetTaskId={task.id}
+                        initialItems={task.checklist_items ?? []}
+                      />
                     </div>
                   ))}
 

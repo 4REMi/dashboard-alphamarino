@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { can } from "@/lib/permissions"
-import type { TaskStatus } from "@/lib/types"
+import type { TaskStatus, TaskChecklistItem } from "@/lib/types"
 
 async function requireTaskPermission(projectId: string) {
   const supabase = await createClient()
@@ -34,7 +34,7 @@ export async function getTasks(projectId?: string) {
   const supabase = await createClient()
   let query = supabase
     .from("tasks")
-    .select("*, project:projects(id, name), assignee:profiles(id, full_name, avatar_url), phase:project_phases(id, name, phase_order)")
+    .select("*, project:projects(id, name), assignee:profiles(id, full_name, avatar_url), phase:project_phases(id, name, phase_order), checklist_items:task_checklist_items(id, text, is_blocking, is_checked, item_order)")
     .order("created_at", { ascending: false })
 
   if (projectId) {
@@ -121,6 +121,19 @@ export async function updateTaskAssignee(id: string, assigneeId: string | null, 
 export async function updateTaskStatus(id: string, status: TaskStatus, projectId: string) {
   await requireTaskPermission(projectId)
 
+  if (status === "Done") {
+    const admin = createAdminClient()
+    const { count } = await admin
+      .from("task_checklist_items")
+      .select("*", { count: "exact", head: true })
+      .eq("task_id", id)
+      .eq("is_blocking", true)
+      .eq("is_checked", false)
+    if (count && count > 0) {
+      throw new Error(`Hay ${count} item${count > 1 ? "s" : ""} obligatorio${count > 1 ? "s" : ""} sin completar`)
+    }
+  }
+
   const admin = createAdminClient()
   const { error } = await admin
     .from("tasks")
@@ -138,6 +151,95 @@ export async function deleteTask(id: string, projectId: string) {
   const admin = createAdminClient()
   const { error } = await admin.from("tasks").delete().eq("id", id)
   if (error) throw error
+  revalidatePath(`/projects/${projectId}`)
+  revalidatePath("/tasks")
+}
+
+// ─── Checklist actions ────────────────────────────────────────────────────────
+
+export async function createChecklistItem(
+  taskId: string,
+  text: string,
+  isBlocking: boolean,
+  projectId: string
+): Promise<TaskChecklistItem> {
+  await requireTaskPermission(projectId)
+  const admin = createAdminClient()
+
+  const { data: existing } = await admin
+    .from("task_checklist_items")
+    .select("item_order")
+    .eq("task_id", taskId)
+    .order("item_order", { ascending: false })
+    .limit(1)
+  const nextOrder = (existing?.[0]?.item_order ?? -1) + 1
+
+  const { data, error } = await admin
+    .from("task_checklist_items")
+    .insert({ task_id: taskId, text, is_blocking: isBlocking, item_order: nextOrder })
+    .select()
+    .single()
+  if (error) throw error
+  revalidatePath(`/projects/${projectId}`)
+  revalidatePath("/tasks")
+  return data as TaskChecklistItem
+}
+
+export async function toggleChecklistItem(
+  itemId: string,
+  isChecked: boolean,
+  projectId: string
+) {
+  await requireTaskPermission(projectId)
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from("task_checklist_items")
+    .update({ is_checked: isChecked })
+    .eq("id", itemId)
+  if (error) throw error
+  revalidatePath(`/projects/${projectId}`)
+  revalidatePath("/tasks")
+}
+
+export async function updateChecklistItem(
+  itemId: string,
+  fields: { text?: string; is_blocking?: boolean },
+  projectId: string
+) {
+  await requireTaskPermission(projectId)
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from("task_checklist_items")
+    .update(fields)
+    .eq("id", itemId)
+  if (error) throw error
+  revalidatePath(`/projects/${projectId}`)
+  revalidatePath("/tasks")
+}
+
+export async function deleteChecklistItem(itemId: string, projectId: string) {
+  await requireTaskPermission(projectId)
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from("task_checklist_items")
+    .delete()
+    .eq("id", itemId)
+  if (error) throw error
+  revalidatePath(`/projects/${projectId}`)
+  revalidatePath("/tasks")
+}
+
+export async function reorderChecklistItems(
+  orderedIds: string[],
+  projectId: string
+) {
+  await requireTaskPermission(projectId)
+  const admin = createAdminClient()
+  await Promise.all(
+    orderedIds.map((id, index) =>
+      admin.from("task_checklist_items").update({ item_order: index }).eq("id", id)
+    )
+  )
   revalidatePath(`/projects/${projectId}`)
   revalidatePath("/tasks")
 }

@@ -104,6 +104,26 @@ export interface TaskSetTask {
   sop_id: string | null
   created_at: string
   sop?: Sop | null
+  checklist_items?: TaskSetChecklistItem[]
+}
+
+export interface TaskSetChecklistItem {
+  id: string
+  task_set_task_id: string
+  text: string
+  is_blocking: boolean
+  item_order: number
+  created_at: string
+}
+
+export interface TaskChecklistItem {
+  id: string
+  task_id: string
+  text: string
+  is_blocking: boolean
+  is_checked: boolean
+  item_order: number
+  created_at: string
 }
 
 // ============================================================
@@ -198,6 +218,7 @@ export interface Task {
   phase?: { id: string; name: string; phase_order: number } | null
   sop?: Sop | null
   task_set_task?: { sop_id: string | null; sop?: Sop | null } | null
+  checklist_items?: TaskChecklistItem[]
 }
 
 // ============================================================
