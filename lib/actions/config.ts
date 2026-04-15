@@ -409,7 +409,8 @@ export async function reorderSetTaskChecklistItems(
 // IMPORT / EXPORT
 // ============================================================
 
-type ImportTask = { title: string; description?: string | null; is_urgent?: boolean; requires_deliverable?: boolean }
+type ImportChecklistItem = { text: string; is_blocking?: boolean }
+type ImportTask = { title: string; description?: string | null; is_urgent?: boolean; requires_deliverable?: boolean; checklist?: ImportChecklistItem[] }
 type ImportTaskSet = { name: string; tasks?: ImportTask[] }
 type ImportPhase = { name: string; description?: string | null; taskSet?: ImportTaskSet | null }
 type ImportTemplate = {
@@ -460,14 +461,32 @@ export async function importOperationsTemplate(jsonStr: string) {
     const tasks = ts.tasks ?? []
     for (let j = 0; j < tasks.length; j++) {
       const task = tasks[j]
-      await supabase.from("task_set_tasks").insert({
-        task_set_id: tsRow.id,
-        title: task.title,
-        description: task.description ?? null,
-        is_urgent: task.is_urgent ?? false,
-        requires_deliverable: task.requires_deliverable ?? false,
-        task_order: j,
-      })
+      const { data: taskRow, error: taskErr } = await supabase
+        .from("task_set_tasks")
+        .insert({
+          task_set_id: tsRow.id,
+          title: task.title,
+          description: task.description ?? null,
+          is_urgent: task.is_urgent ?? false,
+          requires_deliverable: task.requires_deliverable ?? false,
+          task_order: j,
+        })
+        .select("id")
+        .single()
+      if (taskErr) throw new Error(`Error creando tarea "${task.title}": ${taskErr.message}`)
+
+      // Insert checklist items if present
+      const checklistItems = task.checklist ?? []
+      if (checklistItems.length > 0 && taskRow) {
+        await supabase.from("task_set_checklist_items").insert(
+          checklistItems.map((item, k) => ({
+            task_set_task_id: taskRow.id,
+            text: item.text,
+            is_blocking: item.is_blocking ?? false,
+            item_order: k,
+          }))
+        )
+      }
     }
 
     tsIdByPhase[i] = tsRow.id

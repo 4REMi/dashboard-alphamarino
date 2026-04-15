@@ -247,7 +247,15 @@ function ImportModal({
           taskSet: {
             name: "Tareas Discovery",
             tasks: [
-              { title: "Reunión con cliente", is_urgent: true, requires_deliverable: false },
+              {
+                title: "Reunión con cliente",
+                is_urgent: true,
+                requires_deliverable: false,
+                checklist: [
+                  { text: "Confirmar asistencia del cliente", is_blocking: false },
+                  { text: "Compartir agenda previa", is_blocking: true },
+                ],
+              },
               { title: "Brief del cliente", is_urgent: false, requires_deliverable: true },
             ],
           },
@@ -959,6 +967,12 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
                 title: t.title,
                 description: t.description ?? null,
                 is_urgent: t.is_urgent ?? false,
+                requires_deliverable: t.requires_deliverable ?? false,
+                ...(((t.checklist_items ?? []) as TaskSetChecklistItem[]).length > 0 && {
+                  checklist: ((t.checklist_items ?? []) as TaskSetChecklistItem[])
+                    .sort((a, b) => a.item_order - b.item_order)
+                    .map((ci) => ({ text: ci.text, is_blocking: ci.is_blocking })),
+                }),
               })),
             } : null,
           }
