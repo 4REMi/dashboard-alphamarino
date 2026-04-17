@@ -1,6 +1,7 @@
 export const ANGLE_GUIDE = [
   {
     name: "Desired Outcome",
+    emoji: "❤️",
     guiding_question: "¿Con qué sueñan al despertar?",
     mechanism: "Activa el sistema de recompensa. La persona visualiza la versión mejorada de su vida. El producto se convierte en el vehículo de esa transformación.",
     when_to_use: "Awareness stage 3–5. El buyer ya quiere el resultado pero no ha imaginado concretamente su vida con él.",
@@ -8,6 +9,7 @@ export const ANGLE_GUIDE = [
   },
   {
     name: "Objection",
+    emoji: "🛑",
     guiding_question: "¿Qué les impide comprar ahora mismo?",
     mechanism: "Elimina la fricción cognitiva. Nombrar la objeción en voz alta la desactiva — el prospecto siente que lo entiendes mejor que nadie.",
     when_to_use: "Awareness stage 4–5. El buyer está casi listo para comprar pero tiene una duda específica que lo frena.",
@@ -15,6 +17,7 @@ export const ANGLE_GUIDE = [
   },
   {
     name: "Feature / Benefit",
+    emoji: "✅",
     guiding_question: "¿Qué del producto les importa realmente?",
     mechanism: "Conecta una característica técnica con un beneficio emocional real. La característica sola no vende — el beneficio que produce, sí.",
     when_to_use: "Awareness stage 3–5. El buyer compara opciones y necesita entender qué lo hace diferente en términos que le importan.",
@@ -22,6 +25,7 @@ export const ANGLE_GUIDE = [
   },
   {
     name: "Use Case",
+    emoji: "🔥",
     guiding_question: "¿Cómo viven el dolor día a día?",
     mechanism: "Coloca al espectador en una escena específica donde reconoce su propia experiencia. La especificidad crea identificación instantánea.",
     when_to_use: "Awareness stage 2–4. El buyer vive el dolor diariamente pero no lo ha conectado con una solución.",
@@ -29,6 +33,7 @@ export const ANGLE_GUIDE = [
   },
   {
     name: "Consequence",
+    emoji: "⚠️",
     guiding_question: "¿Qué empeora si no lo resuelven?",
     mechanism: "Activa la aversión a la pérdida. El cerebro reacciona más fuertemente a lo que puede perder que a lo que puede ganar.",
     when_to_use: "Awareness stage 2–3. El buyer sabe que tiene un problema pero no ha calculado el costo real de no resolverlo.",
@@ -36,6 +41,7 @@ export const ANGLE_GUIDE = [
   },
   {
     name: "Misconception",
+    emoji: "💭",
     guiding_question: "¿Qué creen que es verdad y no lo es?",
     mechanism: "El reencuadre cognitivo crea curiosidad obligatoria. La mente necesita resolver la contradicción — esto genera atención máxima.",
     when_to_use: "Awareness stage 1–3. El buyer tiene una creencia errónea que le impide buscar la solución correcta.",
@@ -43,6 +49,7 @@ export const ANGLE_GUIDE = [
   },
   {
     name: "Education",
+    emoji: "💡",
     guiding_question: "¿Qué no saben sobre su propio problema?",
     mechanism: "Posiciona tu marca como autoridad. La educación crea deuda de reciprocidad: 'me enseñaron algo valioso, les confío mi decisión'.",
     when_to_use: "Awareness stage 1–3. Audiencias frías que no conocen el problema a fondo ni han buscado solución.",
@@ -50,6 +57,7 @@ export const ANGLE_GUIDE = [
   },
   {
     name: "Acceptance",
+    emoji: "😌",
     guiding_question: "¿Qué han normalizado sin darse cuenta?",
     mechanism: "Crea disonancia cognitiva suave. Hace que el espectador se dé cuenta de que ha tolerado algo inaceptable — y que no tiene por qué seguir haciéndolo.",
     when_to_use: "Awareness stage 2–3. El buyer ha normalizado una situación problemática y necesita un espejo que se la señale.",
@@ -57,6 +65,7 @@ export const ANGLE_GUIDE = [
   },
   {
     name: "Failed Solutions",
+    emoji: "❌",
     guiding_question: "¿Qué han intentado que no funcionó?",
     mechanism: "Valida la frustración acumulada del prospecto. 'Tenías razón en estar frustrado' baja las defensas y abre la mente a una solución nueva.",
     when_to_use: "Awareness stage 3–4. El buyer ha intentado resolver el problema antes y fracasó. Tiene escepticismo acumulado.",
@@ -64,6 +73,7 @@ export const ANGLE_GUIDE = [
   },
   {
     name: "Identity",
+    emoji: "🪪",
     guiding_question: "¿Quién aspiran a ser?",
     mechanism: "Vende pertenencia, no producto. La decisión de compra se convierte en un acto de autoexpresión e identidad tribal.",
     when_to_use: "Awareness stage 3–5. Mercados donde la compra define quién eres, no solo lo que tienes.",

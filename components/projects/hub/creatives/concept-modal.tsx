@@ -259,7 +259,7 @@ export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSub
                   className={fieldCls}
                 >
                   <option value="">— seleccionar —</option>
-                  {ANGLE_GUIDE.map((a) => <option key={a.name} value={a.name}>{a.name}</option>)}
+                  {ANGLE_GUIDE.map((a) => <option key={a.name} value={a.name}>{a.emoji} {a.name}</option>)}
                 </select>
               </div>
 
@@ -271,7 +271,7 @@ export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSub
                     className="w-full flex items-center justify-between px-3 py-2 bg-purple-50/60 text-xs font-medium text-purple-700 hover:bg-purple-50"
                     onClick={() => setShowAngleGuide((v) => !v)}
                   >
-                    <span>Guía: {form.angle_type}</span>
+                    <span>{guideEntry.emoji} Guía: {form.angle_type}</span>
                     {showAngleGuide ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                   </button>
                   {showAngleGuide && (

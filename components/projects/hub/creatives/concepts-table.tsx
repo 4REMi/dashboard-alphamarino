@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { ConceptModal } from "./concept-modal"
 import { AssetModal } from "./asset-modal"
 import { generateCreativeConcepts, confirmAIDrafts } from "@/lib/actions/creatives"
-import { CONCEPT_STATUS_COLORS, AWARENESS_LABELS } from "@/lib/constants/creatives"
+import { CONCEPT_STATUS_COLORS, AWARENESS_LABELS, ANGLE_GUIDE } from "@/lib/constants/creatives"
 import type { CreativeConcept, CreativeAsset } from "@/lib/types"
 import type { AIDraftConcept } from "@/lib/actions/creatives"
 import { Plus, Sparkles, Check, X, Loader2, Star, ArrowUpRight } from "lucide-react"
@@ -168,7 +168,11 @@ function AIDraftRows({
             <span className="text-xs">{draft.organizing_principle || "—"}</span>
           </td>
           <td className="px-3 py-3">
-            <span className="text-xs">{draft.angle_type || "—"}</span>
+            <span className="text-xs">
+              {draft.angle_type
+                ? `${ANGLE_GUIDE.find((a) => a.name === draft.angle_type)?.emoji ?? ""} ${draft.angle_type}`
+                : "—"}
+            </span>
           </td>
           <td className="px-3 py-3 whitespace-nowrap">
             <span className="text-xs text-muted-foreground">{draft.awareness_stage ?? "—"}</span>
@@ -454,7 +458,11 @@ function ConceptRow({
       </td>
       {/* Teoría del Ángulo */}
       <td className="px-3 py-3">
-        <span className="text-xs font-medium">{concept.angle_type ?? "—"}</span>
+        <span className="text-xs font-medium">
+          {concept.angle_type
+            ? `${ANGLE_GUIDE.find((a) => a.name === concept.angle_type)?.emoji ?? ""} ${concept.angle_type}`
+            : "—"}
+        </span>
       </td>
       {/* Awareness Stage */}
       <td className="px-3 py-3 whitespace-nowrap">
