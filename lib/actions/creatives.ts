@@ -66,16 +66,18 @@ export async function createConcept(projectId: string, formData: FormData): Prom
     project_id:           projectId,
     cycle_id:             cycleId || null,
     parent_concept_id:    (formData.get("parent_concept_id") as string) || null,
+    name:                 (formData.get("name") as string) || null,
     organizing_principle: (formData.get("organizing_principle") as string) || null,
+    product_service:      (formData.get("product_service") as string) || null,
     angle_type:           (formData.get("angle_type") as string) || null,
     target_persona:       (formData.get("target_persona") as string) ?? "",
-    pain_or_desire:       (formData.get("pain_or_desire") as string) ?? "",
-    emotional_insight:    (formData.get("emotional_insight") as string) || null,
-    central_tension:      (formData.get("central_tension") as string) || null,
+    why_it_works:         (formData.get("why_it_works") as string) || null,
+    pain_point:           (formData.get("pain_point") as string) || null,
+    objection:            (formData.get("objection") as string) || null,
+    transformation:       (formData.get("transformation") as string) || null,
     awareness_stage:      formData.get("awareness_stage") ? Number(formData.get("awareness_stage")) : null,
-    mechanism:            (formData.get("mechanism") as string) || null,
+    funnel_stage:         (formData.get("funnel_stage") as string) || null,
     ref_links:            (formData.get("ref_links") as string) || null,
-    proposed_hook:        (formData.get("proposed_hook") as string) || null,
     insight:              (formData.get("insight") as string) || null,
     status:               "Active",
     created_by:           userId,
@@ -94,16 +96,18 @@ export async function updateConcept(
   if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
 
   const { error } = await supabase.from("creative_concepts").update({
+    name:                 (formData.get("name") as string) || null,
     organizing_principle: (formData.get("organizing_principle") as string) || null,
+    product_service:      (formData.get("product_service") as string) || null,
     angle_type:           (formData.get("angle_type") as string) || null,
     target_persona:       (formData.get("target_persona") as string) ?? "",
-    pain_or_desire:       (formData.get("pain_or_desire") as string) ?? "",
-    emotional_insight:    (formData.get("emotional_insight") as string) || null,
-    central_tension:      (formData.get("central_tension") as string) || null,
+    why_it_works:         (formData.get("why_it_works") as string) || null,
+    pain_point:           (formData.get("pain_point") as string) || null,
+    objection:            (formData.get("objection") as string) || null,
+    transformation:       (formData.get("transformation") as string) || null,
     awareness_stage:      formData.get("awareness_stage") ? Number(formData.get("awareness_stage")) : null,
-    mechanism:            (formData.get("mechanism") as string) || null,
+    funnel_stage:         (formData.get("funnel_stage") as string) || null,
     ref_links:            (formData.get("ref_links") as string) || null,
-    proposed_hook:        (formData.get("proposed_hook") as string) || null,
     insight:              (formData.get("insight") as string) || null,
     status:               (formData.get("status") as ConceptStatus) ?? "Active",
   }).eq("id", id)
@@ -254,13 +258,15 @@ export async function deleteAsset(id: string, projectId: string): Promise<void> 
 export interface AIDraftConcept {
   organizing_principle: string
   angle_type: string
+  name: string
   target_persona: string
-  pain_or_desire: string
-  emotional_insight: string
-  central_tension: string
+  product_service: string
+  pain_point: string
+  why_it_works: string
+  objection: string
+  transformation: string
   awareness_stage: number
-  mechanism: string
-  proposed_hook: string
+  funnel_stage: string
 }
 
 export async function generateCreativeConcepts(
@@ -275,7 +281,7 @@ export async function generateCreativeConcepts(
   const [contextRes, conceptsRes, cycleRes] = await Promise.all([
     supabase.from("paid_media_context").select("*").eq("project_id", projectId).single(),
     supabase.from("creative_concepts")
-      .select("angle_type, target_persona, pain_or_desire, status, insight, proposed_hook, awareness_stage")
+      .select("angle_type, target_persona, pain_point, status, insight, awareness_stage")
       .eq("project_id", projectId)
       .order("created_at", { ascending: false })
       .limit(20),
@@ -293,15 +299,17 @@ Debes devolver ÚNICAMENTE un array JSON válido con exactamente 5 objetos. Sin 
 Cada objeto debe tener exactamente estos campos:
 - organizing_principle: "Pain-First" o "Desire-First"
 - angle_type: uno de los 10 ángulos disponibles
+- name: nombre corto del concepto (3-6 palabras, en español)
 - target_persona: descripción concisa del buyer persona objetivo
-- pain_or_desire: el dolor o deseo central que activa el ad
-- emotional_insight: la tensión interna del buyer persona
-- central_tension: el conflicto que el ad resuelve
+- product_service: el producto o servicio que se promueve en este concepto
+- pain_point: el dolor o problema concreto que activa este anuncio
+- why_it_works: por qué este ángulo resuena emocionalmente con esta persona
+- objection: la objeción principal que el ad debe superar
+- transformation: el cambio o resultado que el ad promete
 - awareness_stage: número del 1 al 5
-- mechanism: por qué este ángulo funciona psicológicamente para esta persona
-- proposed_hook: hook inicial de alto impacto (primera línea del ad)
+- funnel_stage: "TOF", "MOF" o "BOF"
 
-Ángulos disponibles: Problem Agitation, Mechanism Reveal, Enemy Framing, Before/After Transformation, Social Proof, Contrarian, Direct Desire, Fear of Missing Out, Authority, Curiosity Gap`
+Ángulos disponibles: Desired Outcome, Objection, Feature/Benefit, Use Case, Consequence, Misconception, Education, Acceptance, Failed Solutions, Identity`
 
   const userPrompt = `Contexto de la cuenta:
 - Plataformas: ${ctx?.platforms?.join(", ") ?? "No especificadas"}
@@ -317,7 +325,7 @@ Ciclo actual: ${cycle?.cycle_month ? new Date(cycle.cycle_month).toLocaleDateStr
 
 Historial de conceptos previos (${prevConcepts.length} conceptos):
 ${prevConcepts.length === 0 ? "Sin historial — cliente nuevo." : prevConcepts.map((c, i) =>
-  `${i + 1}. Ángulo: ${c.angle_type ?? "—"} | Persona: ${c.target_persona} | Dolor/Deseo: ${c.pain_or_desire} | Status: ${c.status}${c.insight ? ` | Insight: ${c.insight}` : ""}`
+  `${i + 1}. Ángulo: ${c.angle_type ?? "—"} | Persona: ${c.target_persona} | Pain Point: ${c.pain_point} | Status: ${c.status}${c.insight ? ` | Insight: ${c.insight}` : ""}`
 ).join("\n")}
 
 Genera 5 conceptos creativos nuevos. Evita repetir combinaciones de ángulo+persona+dolor que ya existen en el historial. Si hay conceptos con status "Archived" y un insight negativo, aprende de ellos para no repetir el mismo error. Si hay conceptos "Winner" o "Evergreen", úsalos como referencia de qué tipo de mensaje resuena con este cliente.`
@@ -359,7 +367,7 @@ export async function generateAssetCopy(
 
   const [conceptRes, ctxRes] = await Promise.all([
     supabase.from("creative_concepts")
-      .select("angle_type, organizing_principle, target_persona, pain_or_desire, emotional_insight, central_tension, mechanism, proposed_hook, awareness_stage")
+      .select("angle_type, organizing_principle, target_persona, pain_point, why_it_works, objection, transformation, awareness_stage, product_service")
       .eq("id", conceptId)
       .single(),
     supabase.from("paid_media_context")
@@ -392,11 +400,11 @@ Responde ÚNICAMENTE con un JSON válido con estos tres campos: hook, copy, cta.
 
 Ángulo estratégico: ${c.angle_type ?? "—"} (${c.organizing_principle ?? "—"})
 Persona objetivo: ${c.target_persona}
-Dolor / Deseo: ${c.pain_or_desire}
-${c.emotional_insight ? `Insight emocional: ${c.emotional_insight}` : ""}
-${c.central_tension ? `Tensión central: ${c.central_tension}` : ""}
-${c.mechanism ? `Mecanismo psicológico: ${c.mechanism}` : ""}
-${c.proposed_hook ? `Hook de referencia del concepto: "${c.proposed_hook}"` : ""}
+${c.product_service ? `Producto / Servicio: ${c.product_service}` : ""}
+Pain Point: ${c.pain_point ?? "—"}
+${c.why_it_works ? `Por qué funciona: ${c.why_it_works}` : ""}
+${c.objection ? `Objeción a superar: ${c.objection}` : ""}
+${c.transformation ? `Transformación prometida: ${c.transformation}` : ""}
 Awareness stage: ${c.awareness_stage ?? "—"}/5
 Plataforma: ${platform ?? "No especificada"}
 Formato: ${format ?? "No especificado"}
@@ -447,13 +455,15 @@ export async function confirmAIDrafts(
     cycle_id:             cycleId,
     organizing_principle: d.organizing_principle,
     angle_type:           d.angle_type,
+    name:                 d.name || null,
     target_persona:       d.target_persona,
-    pain_or_desire:       d.pain_or_desire,
-    emotional_insight:    d.emotional_insight,
-    central_tension:      d.central_tension,
+    product_service:      d.product_service || null,
+    pain_point:           d.pain_point,
+    why_it_works:         d.why_it_works || null,
+    objection:            d.objection || null,
+    transformation:       d.transformation || null,
     awareness_stage:      d.awareness_stage,
-    mechanism:            d.mechanism,
-    proposed_hook:        d.proposed_hook,
+    funnel_stage:         d.funnel_stage || null,
     status:               "Active",
     created_by:           userId,
   }))

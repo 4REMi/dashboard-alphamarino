@@ -402,19 +402,24 @@ export interface Domain {
 // CREATIVE TRACKER
 // ============================================================
 
+export type FunnelStage = "TOF" | "MOF" | "BOF"
+
 export interface CreativeConcept {
   id: string
   project_id: string
   cycle_id: string | null
   parent_concept_id: string | null
+  name: string | null
   organizing_principle: OrganizingPrinciple | null
+  product_service: string | null
   angle_type: string | null
   target_persona: string
-  pain_or_desire: string
-  emotional_insight: string | null
-  central_tension: string | null
+  why_it_works: string | null
+  pain_point: string | null
+  objection: string | null
+  transformation: string | null
   awareness_stage: number | null
-  mechanism: string | null
+  funnel_stage: FunnelStage | null
   ref_links: string | null
   proposed_hook: string | null
   status: ConceptStatus
