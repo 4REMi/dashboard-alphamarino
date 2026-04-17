@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ConceptModal } from "./concept-modal"
 import { AssetModal } from "./asset-modal"
-import { generateCreativeConcepts, confirmAIDrafts, promoteConcept, deleteConcept } from "@/lib/actions/creatives"
+import { generateCreativeConcepts, confirmAIDrafts, promoteConcept, demoteConcept, deleteConcept } from "@/lib/actions/creatives"
 import { CONCEPT_STATUS_COLORS, AWARENESS_LABELS, ANGLE_GUIDE, PRODUCTION_STATUS_COLORS, VERDICT_COLORS } from "@/lib/constants/creatives"
 import type { CreativeConcept, CreativeAsset } from "@/lib/types"
 import type { AIDraftConcept } from "@/lib/actions/creatives"
@@ -50,10 +50,19 @@ function ConceptDetailModal({
   const [isPending, startTransition] = useTransition()
   const router = useRouter()
   const angleEntry = ANGLE_GUIDE.find((a) => a.name === concept.angle_type)
+  const isEvergreen = concept.status === "Evergreen"
 
   function handlePromote() {
     startTransition(async () => {
       await promoteConcept(concept.id, projectId)
+      router.refresh()
+      onClose()
+    })
+  }
+
+  function handleDemote() {
+    startTransition(async () => {
+      await demoteConcept(concept.id, projectId)
       router.refresh()
       onClose()
     })
@@ -68,35 +77,54 @@ function ConceptDetailModal({
     })
   }
 
-  const sectionLabel = "text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 mb-2"
-  const fieldLabel   = "text-[11px] font-medium text-muted-foreground"
-  const fieldValue   = "text-sm mt-0.5 leading-snug"
-  const fieldEmpty   = "text-sm mt-0.5 text-muted-foreground/40 italic"
+  const grpLabel = "text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 mb-3"
+  const fLabel   = "text-[11px] font-medium text-muted-foreground/80 mb-0.5"
+  const fValue   = "text-sm leading-snug"
+  const fEmpty   = "text-sm text-muted-foreground/30 italic"
 
-  function Field({ label, value }: { label: string; value: string | number | null | undefined }) {
+  function F({ label, value }: { label: string; value?: string | number | null }) {
     return (
       <div>
-        <p className={fieldLabel}>{label}</p>
-        {value ? <p className={fieldValue}>{value}</p> : <p className={fieldEmpty}>—</p>}
+        <p className={fLabel}>{label}</p>
+        {value ? <p className={fValue}>{value}</p> : <p className={fEmpty}>—</p>}
       </div>
     )
   }
 
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 flex-wrap">
-            <span>{concept.name || "Concepto"}</span>
-            <Badge className={cn("text-xs border-0", CONCEPT_STATUS_COLORS[concept.status])}>
-              {concept.status}
-            </Badge>
-            {concept.parent_concept_id && (
-              <span title="Evolución de concepto anterior" className="text-muted-foreground">
-                <ArrowUpRight className="w-3.5 h-3.5" />
-              </span>
-            )}
-          </DialogTitle>
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+
+        {/* ── Header ── */}
+        <DialogHeader className="pb-0">
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-1 min-w-0">
+              <DialogTitle className="text-xl leading-tight">
+                {concept.name || "Concepto"}
+              </DialogTitle>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge className={cn("text-xs border-0", CONCEPT_STATUS_COLORS[concept.status])}>
+                  {concept.status}
+                </Badge>
+                {angleEntry && (
+                  <span className="text-sm text-muted-foreground flex items-center gap-1">
+                    <span className="text-base">{angleEntry.emoji}</span>
+                    {concept.angle_type}
+                  </span>
+                )}
+                {concept.funnel_stage && (
+                  <Badge className={cn("text-xs border-0", FUNNEL_COLORS[concept.funnel_stage] ?? "bg-gray-100 text-gray-600")}>
+                    {concept.funnel_stage}
+                  </Badge>
+                )}
+                {concept.awareness_stage && (
+                  <span className="text-xs text-muted-foreground">
+                    Stage {concept.awareness_stage} · {AWARENESS_LABELS[concept.awareness_stage]}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
         </DialogHeader>
 
         {concept.parent && (
@@ -107,57 +135,91 @@ function ConceptDetailModal({
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* ── 3-column body ── */}
+        <div className="grid grid-cols-3 gap-0 border rounded-xl overflow-hidden">
 
-          {/* Left column */}
-          <div className="space-y-5">
-
-            {/* IDENTIFICACIÓN */}
+          {/* Col 1 — Identificación */}
+          <div className="px-5 py-4 space-y-4 border-r">
+            <p className={grpLabel}>Identificación</p>
+            <F label="Principio organizador" value={concept.organizing_principle} />
+            <F label="Producto / Servicio" value={concept.product_service} />
             <div>
-              <p className={sectionLabel}>Identificación</p>
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Principio organizador" value={concept.organizing_principle} />
-                  <Field label="Producto / Servicio" value={concept.product_service} />
-                </div>
-                <Field label="Persona objetivo" value={concept.target_persona} />
-              </div>
+              <p className={fLabel}>Persona objetivo</p>
+              {concept.target_persona
+                ? <p className="text-sm leading-snug font-medium">{concept.target_persona}</p>
+                : <p className={fEmpty}>—</p>}
             </div>
+          </div>
 
-            {/* TEORÍA DEL ÁNGULO */}
-            <div>
-              <p className={sectionLabel}>Teoría del Ángulo</p>
-              <div className="space-y-3">
+          {/* Col 2 — Ángulo */}
+          <div className="px-5 py-4 space-y-4 border-r bg-muted/20">
+            <p className={grpLabel}>Teoría del Ángulo</p>
+            {angleEntry ? (
+              <>
+                <div className="space-y-0.5">
+                  <span className="text-3xl leading-none">{angleEntry.emoji}</span>
+                  <p className="text-sm font-semibold mt-1">{concept.angle_type}</p>
+                  <p className="text-xs text-muted-foreground italic leading-snug">{angleEntry.guiding_question}</p>
+                </div>
+                <div className="h-px bg-border" />
+                <F label="Awareness Stage" value={concept.awareness_stage ? `${concept.awareness_stage} — ${AWARENESS_LABELS[concept.awareness_stage]}` : null} />
                 <div>
-                  <p className={fieldLabel}>Ángulo</p>
-                  <p className={fieldValue}>
-                    {angleEntry ? `${angleEntry.emoji} ${concept.angle_type}` : concept.angle_type ?? "—"}
-                  </p>
+                  <p className={fLabel}>Funnel Stage</p>
+                  {concept.funnel_stage
+                    ? <Badge className={cn("text-xs border-0 mt-0.5", FUNNEL_COLORS[concept.funnel_stage] ?? "bg-gray-100 text-gray-600")}>{concept.funnel_stage}</Badge>
+                    : <p className={fEmpty}>—</p>}
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <p className={fieldLabel}>Awareness Stage</p>
-                    <p className={concept.awareness_stage ? fieldValue : fieldEmpty}>
-                      {concept.awareness_stage
-                        ? `${concept.awareness_stage} — ${AWARENESS_LABELS[concept.awareness_stage]}`
-                        : "—"}
-                    </p>
-                  </div>
-                  <div>
-                    <p className={fieldLabel}>Funnel Stage</p>
-                    {concept.funnel_stage
-                      ? <Badge className={cn("text-xs border-0 mt-0.5", FUNNEL_COLORS[concept.funnel_stage] ?? "bg-gray-100 text-gray-600")}>{concept.funnel_stage}</Badge>
-                      : <p className={fieldEmpty}>—</p>
-                    }
-                  </div>
-                </div>
-              </div>
-            </div>
+              </>
+            ) : (
+              <p className={fEmpty}>Sin ángulo asignado</p>
+            )}
+          </div>
 
-            {/* ASSETS */}
-            {conceptAssets.length > 0 && (
-              <div>
-                <p className={sectionLabel}>Assets ({conceptAssets.length})</p>
+          {/* Col 3 — Mecanismo */}
+          <div className="px-5 py-4 space-y-0">
+            <p className={grpLabel}>Mecanismo</p>
+            <div className="space-y-0 divide-y divide-border">
+              {[
+                { label: "¿Por qué va a funcionar?", value: concept.why_it_works },
+                { label: "Pain Point específico",    value: concept.pain_point },
+                { label: "Objeción que derrumba",    value: concept.objection },
+                { label: "Transformación prometida", value: concept.transformation },
+              ].map(({ label, value }) => (
+                <div key={label} className="py-3 first:pt-0 last:pb-0">
+                  <p className={fLabel}>{label}</p>
+                  {value ? <p className={fValue}>{value}</p> : <p className={fEmpty}>—</p>}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Bottom strip: refs + insight + assets ── */}
+        {(concept.ref_links || (isAdminOrSubadmin && concept.insight) || conceptAssets.length > 0 || isAdminOrSubadmin) && (
+          <div className="grid grid-cols-2 gap-4 border rounded-xl px-5 py-4">
+            <div className="space-y-4">
+              {concept.ref_links && <F label="Referencias / Inspiración" value={concept.ref_links} />}
+              {isAdminOrSubadmin && concept.insight && (
+                <div>
+                  <div className="flex items-center gap-1 mb-0.5">
+                    <Star className="w-3 h-3 text-amber-500" />
+                    <p className={fLabel}>Insight estratégico</p>
+                  </div>
+                  <p className={fValue}>{concept.insight}</p>
+                </div>
+              )}
+            </div>
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className={grpLabel + " mb-0"}>Assets {conceptAssets.length > 0 && `(${conceptAssets.length})`}</p>
+                {isAdminOrSubadmin && (
+                  <button type="button" onClick={onNewAsset} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                    <Plus className="w-3 h-3" />
+                    Nuevo
+                  </button>
+                )}
+              </div>
+              {conceptAssets.length > 0 ? (
                 <div className="space-y-1">
                   {conceptAssets.map((a) => (
                     <div key={a.id} className="flex items-center justify-between text-xs py-1.5 px-2 rounded bg-muted/40">
@@ -177,64 +239,23 @@ function ConceptDetailModal({
                     </div>
                   ))}
                 </div>
-                {isAdminOrSubadmin && (
-                  <button
-                    type="button"
-                    onClick={onNewAsset}
-                    className="mt-1.5 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    <Plus className="w-3 h-3" />
-                    Nuevo asset
-                  </button>
-                )}
-              </div>
-            )}
-            {conceptAssets.length === 0 && isAdminOrSubadmin && (
-              <div>
-                <p className={sectionLabel}>Assets</p>
-                <button
-                  type="button"
-                  onClick={onNewAsset}
-                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  <Plus className="w-3 h-3" />
-                  Nuevo asset
-                </button>
-              </div>
-            )}
-
-          </div>
-
-          {/* Right column — Mecanismo */}
-          <div className="space-y-5">
-            <div>
-              <p className={sectionLabel}>Mecanismo</p>
-              <div className="space-y-4">
-                <Field label="¿Por qué va a funcionar este ángulo?" value={concept.why_it_works} />
-                <Field label="Pain Point específico" value={concept.pain_point} />
-                <Field label="Objeción que derrumba" value={concept.objection} />
-                <Field label="Transformación prometida" value={concept.transformation} />
-                {concept.ref_links && <Field label="Referencias" value={concept.ref_links} />}
-              </div>
+              ) : (
+                <p className={fEmpty}>Sin assets aún</p>
+              )}
             </div>
-
-            {/* Insight — admin only */}
-            {isAdminOrSubadmin && concept.insight && (
-              <div className="border-t pt-4">
-                <div className="flex items-center gap-1 mb-2">
-                  <Star className="w-3 h-3 text-amber-500" />
-                  <p className={sectionLabel + " mb-0"}>Insight estratégico</p>
-                </div>
-                <p className={fieldValue}>{concept.insight}</p>
-              </div>
-            )}
           </div>
+        )}
 
-        </div>
-
-        <DialogFooter className="flex items-center justify-between pt-4 mt-2 border-t gap-2">
+        {/* ── Footer ── */}
+        <DialogFooter className="flex items-center justify-between pt-2 gap-2">
           <div className="flex gap-2">
-            {concept.status !== "Evergreen" && isAdminOrSubadmin && (
+            {isAdminOrSubadmin && isEvergreen && (
+              <Button type="button" variant="outline" size="sm" onClick={handleDemote} disabled={isPending} className="text-amber-600 border-amber-200 hover:bg-amber-50">
+                <Star className="w-3.5 h-3.5 mr-1" />
+                Degradar a Activo
+              </Button>
+            )}
+            {isAdminOrSubadmin && !isEvergreen && (
               <Button type="button" variant="outline" size="sm" onClick={handlePromote} disabled={isPending}>
                 <Star className="w-3.5 h-3.5 mr-1 text-amber-500" />
                 Evergreen
@@ -247,9 +268,7 @@ function ConceptDetailModal({
             )}
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={onClose}>
-              Cerrar
-            </Button>
+            <Button variant="outline" size="sm" onClick={onClose}>Cerrar</Button>
             {isAdminOrSubadmin && (
               <Button size="sm" onClick={onEdit} disabled={isPending}>
                 <Pencil className="w-3.5 h-3.5 mr-1" />
