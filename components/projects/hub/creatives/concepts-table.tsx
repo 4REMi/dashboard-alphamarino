@@ -421,7 +421,7 @@ function AIDraftRows({
               <Badge className="text-xs bg-purple-100 text-purple-700 border-0">AI</Badge>
             </td>
             <td className="px-3 py-3">
-              <div className="text-sm font-medium line-clamp-1">{draft.name || "—"}</div>
+              <div className="text-sm font-medium">{draft.name || "—"}</div>
               <div className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{draft.product_service || "—"}</div>
             </td>
             <td className="px-3 py-3">
@@ -487,25 +487,25 @@ function MecanismoCell({
   return (
     <div className="space-y-1 min-w-[200px]">
       {why_it_works && (
-        <p className="text-xs leading-snug line-clamp-1">
+        <p className="text-xs leading-snug line-clamp-1" title={why_it_works}>
           <span className="text-muted-foreground/50 font-medium select-none">¿Por qué? </span>
           {why_it_works}
         </p>
       )}
       {pain_point && (
-        <p className="text-xs leading-snug line-clamp-1">
+        <p className="text-xs leading-snug line-clamp-1" title={pain_point}>
           <span className="text-muted-foreground/50 font-medium select-none">Pain: </span>
           {pain_point}
         </p>
       )}
       {objection && (
-        <p className="text-xs leading-snug line-clamp-1">
+        <p className="text-xs leading-snug line-clamp-1" title={objection}>
           <span className="text-muted-foreground/50 font-medium select-none">Objeción: </span>
           {objection}
         </p>
       )}
       {transformation && (
-        <p className="text-xs leading-snug line-clamp-1">
+        <p className="text-xs leading-snug line-clamp-1" title={transformation}>
           <span className="text-muted-foreground/50 font-medium select-none">Transf.: </span>
           {transformation}
         </p>
@@ -780,7 +780,7 @@ function ConceptRow({
         </div>
       </td>
       <td className="px-3 py-3">
-        <div className="text-sm font-medium line-clamp-1">{concept.name || "—"}</div>
+        <div className="text-sm font-medium">{concept.name || "—"}</div>
         <div className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{concept.product_service || "—"}</div>
       </td>
       <td className="px-3 py-3">
