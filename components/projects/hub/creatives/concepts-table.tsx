@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import { useRouter } from "next/navigation"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -47,11 +48,13 @@ function ConceptDetailModal({
   onNewAsset: () => void
 }) {
   const [isPending, startTransition] = useTransition()
+  const router = useRouter()
   const angleEntry = ANGLE_GUIDE.find((a) => a.name === concept.angle_type)
 
   function handlePromote() {
     startTransition(async () => {
       await promoteConcept(concept.id, projectId)
+      router.refresh()
       onClose()
     })
   }
@@ -60,6 +63,7 @@ function ConceptDetailModal({
     if (!confirm("¿Eliminar este concepto?")) return
     startTransition(async () => {
       await deleteConcept(concept.id, projectId)
+      router.refresh()
       onClose()
     })
   }
@@ -529,6 +533,7 @@ export function ConceptsTable({ concepts, assets, projectId, cycleId, isAdminOrS
   const [newAssetForConceptId, setNewAssetForConceptId] = useState<string | null>(null)
   const [isGenerating, startGenerate] = useTransition()
   const [isConfirming, startConfirm]  = useTransition()
+  const router = useRouter()
 
   const evergreen = concepts.filter((c) => c.status === "Evergreen")
   const cycleOnly = concepts.filter((c) => c.status !== "Evergreen")
@@ -553,6 +558,7 @@ export function ConceptsTable({ concepts, assets, projectId, cycleId, isAdminOrS
     startConfirm(async () => {
       await confirmAIDrafts(projectId, cycleId, [draft])
       setAiDrafts((prev) => prev.filter((_, i) => i !== idx))
+      router.refresh()
     })
   }
 
@@ -562,6 +568,7 @@ export function ConceptsTable({ concepts, assets, projectId, cycleId, isAdminOrS
     startConfirm(async () => {
       await confirmAIDrafts(projectId, cycleId, aiDrafts)
       setAiDrafts([])
+      router.refresh()
     })
   }
 

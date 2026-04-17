@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useTransition, Fragment } from "react"
+import { useRouter } from "next/navigation"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -53,6 +54,7 @@ export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSub
   const [step, setStep] = useState(0)
   const [showAngleGuide, setShowAngleGuide] = useState(false)
   const [stepError, setStepError] = useState<string | null>(null)
+  const router = useRouter()
 
   const [form, setForm] = useState({
     name:                 concept?.name ?? "",
@@ -101,6 +103,7 @@ export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSub
       } else {
         await createConcept(projectId, fd)
       }
+      router.refresh()
       onClose()
     })
   }
@@ -109,6 +112,7 @@ export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSub
     if (!concept) return
     startTransition(async () => {
       await promoteConcept(concept.id, projectId)
+      router.refresh()
       onClose()
     })
   }
@@ -118,6 +122,7 @@ export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSub
     if (!confirm("¿Eliminar este concepto?")) return
     startTransition(async () => {
       await deleteConcept(concept.id, projectId)
+      router.refresh()
       onClose()
     })
   }
