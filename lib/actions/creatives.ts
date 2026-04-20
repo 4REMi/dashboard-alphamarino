@@ -163,7 +163,7 @@ export async function getCreativeAssets(
     .from("creative_assets")
     .select(`
       *,
-      concept:creative_concepts!concept_id(id, angle_type, target_persona)
+      concept:creative_concepts!concept_id(id, name, angle_type, target_persona)
     `)
     .eq("project_id", projectId)
     .order("created_at", { ascending: false })
@@ -192,6 +192,7 @@ export async function createAsset(projectId: string, formData: FormData): Promis
   const { role } = await getRole()
   if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
 
+  const fmStr = formData.get("format_meta") as string | null
   const { error } = await supabase.from("creative_assets").insert({
     project_id:        projectId,
     cycle_id:          (formData.get("cycle_id") as string) || null,
@@ -203,6 +204,7 @@ export async function createAsset(projectId: string, formData: FormData): Promis
     hook:              (formData.get("hook") as string) || null,
     copy:              (formData.get("copy") as string) || null,
     cta:               (formData.get("cta") as string) || null,
+    format_meta:       fmStr ? JSON.parse(fmStr) : null,
     asset_url:         (formData.get("asset_url") as string) || null,
     production_status: (formData.get("production_status") as ProductionStatus) ?? "Pending",
     ctr:          formData.get("ctr")   ? Number(formData.get("ctr"))   : null,
@@ -229,6 +231,7 @@ export async function updateAsset(
   const { role } = await getRole()
   if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
 
+  const fmStrU = formData.get("format_meta") as string | null
   const { error } = await supabase.from("creative_assets").update({
     concept_id:        (formData.get("concept_id") as string) || null,
     format:            (formData.get("format") as string) || null,
@@ -238,6 +241,7 @@ export async function updateAsset(
     hook:              (formData.get("hook") as string) || null,
     copy:              (formData.get("copy") as string) || null,
     cta:               (formData.get("cta") as string) || null,
+    format_meta:       fmStrU ? JSON.parse(fmStrU) : null,
     asset_url:         (formData.get("asset_url") as string) || null,
     production_status: (formData.get("production_status") as ProductionStatus) ?? "Pending",
     ctr:          formData.get("ctr")   ? Number(formData.get("ctr"))   : null,
@@ -366,13 +370,13 @@ Genera 5 conceptos creativos nuevos. Evita repetir combinaciones de ángulo+pers
   }
 }
 
-// Generate hook / copy / CTA for a single asset from its parent concept
+// Generate hook / copy / CTA + format_meta for a single asset from its parent concept
 export async function generateAssetCopy(
   projectId: string,
   conceptId: string,
-  format: string | null,
+  format: string | null,  // sub-type: "VO + B-roll" | "UGC" | "Static" | "Carousel" | "Other"
   platform: string | null
-): Promise<{ hook: string; copy: string; cta: string }> {
+): Promise<{ hook: string; copy: string; cta: string; format_meta: Record<string, unknown> }> {
   const supabase = await createClient()
   const { role } = await getRole()
   if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
@@ -392,23 +396,51 @@ export async function generateAssetCopy(
   const ctx = ctxRes.data
   if (!c) throw new Error("Concept not found")
 
-  const isVideo   = format?.toLowerCase().includes("video") || format === "Reel"
-  const isStory   = format === "Story"
-  const isStatic  = format === "Static" || format === "Carousel"
+  // Per sub-type instructions for hook/copy/cta + format_meta fields
+  const subTypeGuides: Record<string, string> = {
+    "VO + B-roll": `Genera estos campos:
+- hook: primera línea spoken (máx 15 palabras, impacto inmediato — lo que se dice al inicio del video)
+- copy: guión de narración en 3-4 frases que fluyen del hook
+- cta: texto spoken o overlay (máx 5 palabras)
+- format_meta.vo_script: guión completo de voz en off listo para grabar (150-250 palabras, tono conversacional y persuasivo)
+- format_meta.broll_notes: lista de 6-8 escenas de B-roll concretas y visualizables (ej: "Manos tecleando en laptop mientras aparecen notificaciones de venta")
+- format_meta.duration: "30s"`,
 
-  const formatGuide = isVideo
-    ? "Hook: primera línea spoken (máx 15 palabras, impacto inmediato). Copy: guión de narración en 3-4 frases que fluyen del hook. CTA: texto spoken o overlay (máx 5 palabras)."
-    : isStory
-    ? "Hook: texto overlay inicial (máx 5 palabras, detiene el scroll). Copy: 2-3 frases breves para la story. CTA: texto de swipe-up o botón (máx 4 palabras)."
-    : isStatic
-    ? "Hook: headline de máx 7 palabras. Copy: cuerpo corto (máx 125 caracteres). CTA: texto de botón (máx 4 palabras)."
-    : "Hook: línea de apertura de alto impacto. Copy: 3-4 frases que desarrollan el ángulo. CTA: llamada a la acción clara y directa."
+    "UGC": `Genera estos campos:
+- hook: línea de apertura que el creator dice a cámara (máx 15 palabras, patrón de pattern interrupt)
+- copy: cuerpo del ad copy escrito para el creator
+- cta: llamada a la acción al final del video (máx 6 palabras)
+- format_meta.talent_brief: briefing completo y listo para enviar al creator (incluye: tono de voz, 3 key points obligatorios que debe mencionar, 2 cosas a evitar, estilo de edición sugerido)
+- format_meta.duration: "60s"`,
+
+    "Static": `Genera estos campos:
+- hook: headline de máx 7 palabras (lo más llamativo de la imagen)
+- copy: body copy (máx 125 caracteres, complementa el visual sin repetirlo)
+- cta: texto del botón (máx 4 palabras)
+- format_meta.visual_description: descripción de arte concreta (qué muestra la imagen, jerarquía visual, colores sugeridos, elementos clave, estilo fotográfico o ilustración)
+- format_meta.size_ratio: "1:1"`,
+
+    "Carousel": `Genera estos campos:
+- hook: titular del primer slide que detiene el scroll (máx 8 palabras)
+- copy: copy general del carousel (introducción o descripción del set)
+- cta: texto del último slide y botón (máx 4 palabras)
+- format_meta.slide_count: 5
+- format_meta.slides_brief: estructura slide por slide en formato "Slide N: [título] — [descripción visual + texto]" (slide 1 = problema/hook, slides 2-4 = desarrollo/prueba/beneficios, slide 5 = CTA)`,
+
+    "Other": `Genera estos campos:
+- hook: línea de apertura de alto impacto
+- copy: cuerpo del ad copy (3-4 frases)
+- cta: llamada a la acción clara y directa
+- format_meta.production_notes: notas de dirección creativa y producción para el equipo`,
+  }
+
+  const guideForSubType = subTypeGuides[format ?? ""] ?? subTypeGuides["Other"]
 
   const systemPrompt = `Eres un copywriter de performance marketing experto en Meta Ads, TikTok Ads y Google Ads. Escribes copy que convierte basándote en el ángulo estratégico y el perfil psicológico del buyer persona.
 
-Responde ÚNICAMENTE con un JSON válido con estos tres campos: hook, copy, cta. Sin markdown, sin texto adicional.`
+Responde ÚNICAMENTE con un JSON válido con estos campos: hook, copy, cta, format_meta (objeto). Sin markdown, sin texto adicional.`
 
-  const userPrompt = `Escribe el copy para este asset publicitario.
+  const userPrompt = `Escribe el copy y brief de producción para este asset publicitario.
 
 Ángulo estratégico: ${c.angle_type ?? "—"} (${c.organizing_principle ?? "—"})
 Persona objetivo: ${c.target_persona}
@@ -419,11 +451,12 @@ ${c.objection ? `Objeción a superar: ${c.objection}` : ""}
 ${c.transformation ? `Transformación prometida: ${c.transformation}` : ""}
 Awareness stage: ${c.awareness_stage ?? "—"}/5
 Plataforma: ${platform ?? "No especificada"}
-Formato: ${format ?? "No especificado"}
+Sub-tipo de asset: ${format ?? "No especificado"}
 Objetivo de campaña: ${ctx?.main_objective ?? "No especificado"}
 ${ctx?.account_notes ? `Briefing adicional: ${ctx.account_notes}` : ""}
 
-Guía de formato para este asset: ${formatGuide}
+Instrucciones por sub-tipo:
+${guideForSubType}
 
 El copy debe sentirse auténtico y específico para la persona descrita — no genérico. Respeta el ángulo y la tensión del concepto.`
 
@@ -432,7 +465,7 @@ El copy debe sentirse auténtico y específico para la persona descrita — no g
 
   const message = await client.messages.create({
     model: "claude-sonnet-4-6",
-    max_tokens: 1024,
+    max_tokens: 2048,
     messages: [{ role: "user", content: userPrompt }],
     system: systemPrompt,
   })
@@ -441,12 +474,22 @@ El copy debe sentirse auténtico y específico para la persona descrita — no g
 
   try {
     const parsed = JSON.parse(text)
-    return { hook: parsed.hook ?? "", copy: parsed.copy ?? "", cta: parsed.cta ?? "" }
+    return {
+      hook: parsed.hook ?? "",
+      copy: parsed.copy ?? "",
+      cta: parsed.cta ?? "",
+      format_meta: parsed.format_meta ?? {},
+    }
   } catch {
     const match = text.match(/\{[\s\S]*\}/)
     if (match) {
       const parsed = JSON.parse(match[0])
-      return { hook: parsed.hook ?? "", copy: parsed.copy ?? "", cta: parsed.cta ?? "" }
+      return {
+        hook: parsed.hook ?? "",
+        copy: parsed.copy ?? "",
+        cta: parsed.cta ?? "",
+        format_meta: parsed.format_meta ?? {},
+      }
     }
     throw new Error("AI returned invalid JSON")
   }

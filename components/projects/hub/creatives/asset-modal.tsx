@@ -10,10 +10,33 @@ import { ExternalLink, Trash2, Sparkles, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
 
-const FORMATS   = ["Static", "Carousel", "Video B-roll+VO", "Video UGC", "Story", "Reel"]
 const PLATFORMS = ["Meta Ads", "Google Ads", "TikTok Ads", "LinkedIn Ads", "Pinterest Ads"]
 const STATUSES  = ["Pending", "In Production", "In Review", "Approved", "Published"] as const
 const VERDICTS  = ["Winner", "Scale", "Iterate", "Archive"] as const
+
+type MediaType = "Video" | "Imagen" | ""
+const VIDEO_SUBTYPES = ["VO + B-roll", "UGC", "Other"] as const
+const IMAGEN_SUBTYPES = ["Static", "Carousel"] as const
+const DURATION_OPTIONS = ["15s", "30s", "60s", "90s"]
+const SIZE_RATIO_OPTIONS = ["1:1", "4:5", "9:16", "16:9"]
+
+function deriveMediaType(format: string | null): MediaType {
+  if (!format) return ""
+  if (["VO + B-roll", "UGC", "Other"].includes(format)) return "Video"
+  if (["Static", "Carousel"].includes(format)) return "Imagen"
+  // Legacy mapping
+  if (format.toLowerCase().includes("video") || format === "Reel" || format === "Story") return "Video"
+  if (format === "Static" || format === "Carousel") return "Imagen"
+  return ""
+}
+
+function normalizeSubType(format: string | null): string {
+  if (!format) return ""
+  if (format === "Video B-roll+VO") return "VO + B-roll"
+  if (format === "Video UGC") return "UGC"
+  if (format === "Story" || format === "Reel") return "Other"
+  return format
+}
 
 interface AssetModalProps {
   projectId: string
@@ -31,28 +54,69 @@ export function AssetModal({ projectId, cycleId, asset, concepts, defaultConcept
   const [isPending, startTransition] = useTransition()
   const [isGenerating, startGenerate] = useTransition()
 
-  // Controlled fields for AI generation
+  // Concept + platform
   const [selectedConceptId, setSelectedConceptId] = useState(
     asset?.concept_id ?? defaultConceptId ?? ""
   )
-  const [selectedFormat, setSelectedFormat]     = useState(asset?.format ?? "")
   const [selectedPlatform, setSelectedPlatform] = useState(asset?.platform ?? "")
+
+  // Format selection
+  const [mediaType, setMediaType] = useState<MediaType>(deriveMediaType(asset?.format ?? null))
+  const [subType, setSubType]     = useState(normalizeSubType(asset?.format ?? null))
+
+  // Universal copy fields
   const [hook, setHook] = useState(asset?.hook ?? "")
   const [copy, setCopy] = useState(asset?.copy ?? "")
   const [cta,  setCta]  = useState(asset?.cta  ?? "")
 
+  // format_meta fields — VO + B-roll
+  const [voDuration,  setVoDuration]  = useState((asset?.format_meta?.duration  as string) ?? "30s")
+  const [voScript,    setVoScript]    = useState((asset?.format_meta?.vo_script  as string) ?? "")
+  const [brollNotes,  setBrollNotes]  = useState((asset?.format_meta?.broll_notes as string) ?? "")
+  // format_meta fields — UGC
+  const [talentBrief, setTalentBrief] = useState((asset?.format_meta?.talent_brief as string) ?? "")
+  // format_meta fields — Static
+  const [sizeRatio,   setSizeRatio]   = useState((asset?.format_meta?.size_ratio as string) ?? "1:1")
+  const [visualDesc,  setVisualDesc]  = useState((asset?.format_meta?.visual_description as string) ?? "")
+  // format_meta fields — Carousel
+  const [slideCount,  setSlideCount]  = useState(String(asset?.format_meta?.slide_count ?? "5"))
+  const [slidesBrief, setSlidesBrief] = useState((asset?.format_meta?.slides_brief as string) ?? "")
+  // format_meta fields — Other
+  const [prodNotes,   setProdNotes]   = useState((asset?.format_meta?.production_notes as string) ?? "")
+
+  function handleMediaTypeChange(mt: MediaType) {
+    setMediaType(mt)
+    setSubType("")
+  }
+
+  function buildFormatMeta(): Record<string, unknown> {
+    switch (subType) {
+      case "VO + B-roll": return { duration: voDuration, vo_script: voScript, broll_notes: brollNotes }
+      case "UGC":         return { duration: voDuration, talent_brief: talentBrief }
+      case "Static":      return { size_ratio: sizeRatio, visual_description: visualDesc }
+      case "Carousel":    return { slide_count: slideCount ? Number(slideCount) : null, slides_brief: slidesBrief }
+      case "Other":       return { production_notes: prodNotes }
+      default:            return {}
+    }
+  }
+
   function handleGenerate() {
-    if (!selectedConceptId) return
+    if (!selectedConceptId || !subType) return
     startGenerate(async () => {
-      const result = await generateAssetCopy(
-        projectId,
-        selectedConceptId,
-        selectedFormat || null,
-        selectedPlatform || null,
-      )
+      const result = await generateAssetCopy(projectId, selectedConceptId, subType, selectedPlatform || null)
       setHook(result.hook)
       setCopy(result.copy)
       setCta(result.cta)
+      const meta = result.format_meta
+      if (meta.vo_script)          setVoScript(meta.vo_script as string)
+      if (meta.broll_notes)        setBrollNotes(meta.broll_notes as string)
+      if (meta.duration)           setVoDuration(meta.duration as string)
+      if (meta.talent_brief)       setTalentBrief(meta.talent_brief as string)
+      if (meta.visual_description) setVisualDesc(meta.visual_description as string)
+      if (meta.size_ratio)         setSizeRatio(meta.size_ratio as string)
+      if (meta.slide_count)        setSlideCount(String(meta.slide_count))
+      if (meta.slides_brief)       setSlidesBrief(meta.slides_brief as string)
+      if (meta.production_notes)   setProdNotes(meta.production_notes as string)
     })
   }
 
@@ -60,10 +124,11 @@ export function AssetModal({ projectId, cycleId, asset, concepts, defaultConcept
     e.preventDefault()
     const fd = new FormData(e.currentTarget)
     if (cycleId) fd.set("cycle_id", cycleId)
-    // Override with controlled field values
     fd.set("hook", hook)
     fd.set("copy", copy)
     fd.set("cta",  cta)
+    fd.set("format", subType)
+    fd.set("format_meta", JSON.stringify(buildFormatMeta()))
     startTransition(async () => {
       if (isEdit) {
         await updateAsset(asset.id, projectId, fd)
@@ -85,7 +150,9 @@ export function AssetModal({ projectId, cycleId, asset, concepts, defaultConcept
 
   const fieldCls = "w-full text-sm border rounded px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-ring resize-none"
   const labelCls = "text-xs font-medium text-muted-foreground"
-  const canGenerate = !!selectedConceptId && isAdminOrSubadmin
+  const canGenerate = !!selectedConceptId && !!subType && isAdminOrSubadmin
+
+  const subTypes = mediaType === "Video" ? VIDEO_SUBTYPES : mediaType === "Imagen" ? IMAGEN_SUBTYPES : []
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -96,48 +163,236 @@ export function AssetModal({ projectId, cycleId, asset, concepts, defaultConcept
 
         <form onSubmit={handleSubmit} className="space-y-4">
 
-          {/* Concept + Format + Platform */}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="space-y-1">
-              <label className={labelCls}>Concepto padre</label>
-              <select
-                name="concept_id"
-                value={selectedConceptId}
-                onChange={(e) => setSelectedConceptId(e.target.value)}
-                className={fieldCls}
-              >
-                <option value="">Sin concepto</option>
-                {concepts.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.angle_type ?? "Sin ángulo"} · {c.target_persona.slice(0, 30)}
-                  </option>
+          {/* Concepto padre */}
+          <div className="space-y-1">
+            <label className={labelCls}>Concepto padre</label>
+            <select
+              name="concept_id"
+              value={selectedConceptId}
+              onChange={(e) => setSelectedConceptId(e.target.value)}
+              className={fieldCls}
+            >
+              <option value="">Sin concepto</option>
+              {concepts.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name ?? c.angle_type ?? "Sin nombre"} · {c.angle_type ?? "—"}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Plataforma */}
+          <div className="space-y-1">
+            <label className={labelCls}>Plataforma</label>
+            <select
+              name="platform"
+              value={selectedPlatform}
+              onChange={(e) => setSelectedPlatform(e.target.value)}
+              className={fieldCls}
+            >
+              <option value="">—</option>
+              {PLATFORMS.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </div>
+
+          {/* ── Formato ── */}
+          <div className="border rounded-lg p-3 space-y-3 bg-muted/20">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Formato</p>
+
+            {/* Media type toggle */}
+            <div className="flex gap-2">
+              {(["Video", "Imagen"] as MediaType[]).map((mt) => (
+                <button
+                  key={mt}
+                  type="button"
+                  onClick={() => handleMediaTypeChange(mt)}
+                  className={cn(
+                    "flex-1 py-2 rounded-md text-sm font-medium border transition-colors",
+                    mediaType === mt
+                      ? "bg-foreground text-background border-foreground"
+                      : "bg-background text-muted-foreground border-border hover:border-foreground/50"
+                  )}
+                >
+                  {mt === "Video" ? "🎬 Video" : "🖼️ Imagen"}
+                </button>
+              ))}
+            </div>
+
+            {/* Sub-type pills */}
+            {mediaType && (
+              <div className="flex flex-wrap gap-2">
+                {subTypes.map((st) => (
+                  <button
+                    key={st}
+                    type="button"
+                    onClick={() => setSubType(st)}
+                    className={cn(
+                      "px-3 py-1.5 rounded-full text-xs font-medium border transition-colors",
+                      subType === st
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-background text-muted-foreground border-border hover:border-primary/50"
+                    )}
+                  >
+                    {st}
+                  </button>
                 ))}
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className={labelCls}>Formato</label>
-              <select
-                name="format"
-                value={selectedFormat}
-                onChange={(e) => setSelectedFormat(e.target.value)}
-                className={fieldCls}
-              >
-                <option value="">—</option>
-                {FORMATS.map((f) => <option key={f} value={f}>{f}</option>)}
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className={labelCls}>Plataforma</label>
-              <select
-                name="platform"
-                value={selectedPlatform}
-                onChange={(e) => setSelectedPlatform(e.target.value)}
-                className={fieldCls}
-              >
-                <option value="">—</option>
-                {PLATFORMS.map((p) => <option key={p} value={p}>{p}</option>)}
-              </select>
-            </div>
+              </div>
+            )}
+
+            {/* Format-specific fields */}
+            {subType === "VO + B-roll" && (
+              <div className="space-y-3 pt-1">
+                <div className="space-y-1">
+                  <label className={labelCls}>Duración objetivo</label>
+                  <div className="flex gap-2">
+                    {DURATION_OPTIONS.map((d) => (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => setVoDuration(d)}
+                        className={cn(
+                          "px-3 py-1 rounded text-xs border transition-colors",
+                          voDuration === d ? "bg-foreground text-background border-foreground" : "bg-background text-muted-foreground border-border hover:border-foreground/40"
+                        )}
+                      >
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className={labelCls}>Guión de voz en off (VO Script)</label>
+                  <AutoTextarea
+                    value={voScript}
+                    onChange={(e) => setVoScript(e.target.value)}
+                    rows={4}
+                    placeholder="Guión completo listo para grabar…"
+                    className={cn(fieldCls, isGenerating && "opacity-50")}
+                    disabled={isGenerating}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className={labelCls}>Notas de B-roll (escenas)</label>
+                  <AutoTextarea
+                    value={brollNotes}
+                    onChange={(e) => setBrollNotes(e.target.value)}
+                    rows={3}
+                    placeholder="1. Manos tecleando en laptop…&#10;2. …"
+                    className={cn(fieldCls, isGenerating && "opacity-50")}
+                    disabled={isGenerating}
+                  />
+                </div>
+              </div>
+            )}
+
+            {subType === "UGC" && (
+              <div className="space-y-3 pt-1">
+                <div className="space-y-1">
+                  <label className={labelCls}>Duración objetivo</label>
+                  <div className="flex gap-2">
+                    {DURATION_OPTIONS.map((d) => (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => setVoDuration(d)}
+                        className={cn(
+                          "px-3 py-1 rounded text-xs border transition-colors",
+                          voDuration === d ? "bg-foreground text-background border-foreground" : "bg-background text-muted-foreground border-border hover:border-foreground/40"
+                        )}
+                      >
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className={labelCls}>Briefing para el creator</label>
+                  <AutoTextarea
+                    value={talentBrief}
+                    onChange={(e) => setTalentBrief(e.target.value)}
+                    rows={5}
+                    placeholder="Tono de voz, key points obligatorios, dos &amp; don'ts…"
+                    className={cn(fieldCls, isGenerating && "opacity-50")}
+                    disabled={isGenerating}
+                  />
+                </div>
+              </div>
+            )}
+
+            {subType === "Static" && (
+              <div className="space-y-3 pt-1">
+                <div className="space-y-1">
+                  <label className={labelCls}>Ratio</label>
+                  <div className="flex gap-2 flex-wrap">
+                    {SIZE_RATIO_OPTIONS.map((r) => (
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => setSizeRatio(r)}
+                        className={cn(
+                          "px-3 py-1 rounded text-xs border transition-colors",
+                          sizeRatio === r ? "bg-foreground text-background border-foreground" : "bg-background text-muted-foreground border-border hover:border-foreground/40"
+                        )}
+                      >
+                        {r}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className={labelCls}>Descripción visual (art direction)</label>
+                  <AutoTextarea
+                    value={visualDesc}
+                    onChange={(e) => setVisualDesc(e.target.value)}
+                    rows={3}
+                    placeholder="Qué muestra la imagen, jerarquía visual, estilo…"
+                    className={cn(fieldCls, isGenerating && "opacity-50")}
+                    disabled={isGenerating}
+                  />
+                </div>
+              </div>
+            )}
+
+            {subType === "Carousel" && (
+              <div className="space-y-3 pt-1">
+                <div className="space-y-1">
+                  <label className={labelCls}>Número de slides</label>
+                  <input
+                    type="number"
+                    min={2}
+                    max={20}
+                    value={slideCount}
+                    onChange={(e) => setSlideCount(e.target.value)}
+                    className={cn(fieldCls, "w-24")}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className={labelCls}>Estructura de slides</label>
+                  <AutoTextarea
+                    value={slidesBrief}
+                    onChange={(e) => setSlidesBrief(e.target.value)}
+                    rows={5}
+                    placeholder="Slide 1: Problema — …&#10;Slide 2: …"
+                    className={cn(fieldCls, isGenerating && "opacity-50")}
+                    disabled={isGenerating}
+                  />
+                </div>
+              </div>
+            )}
+
+            {subType === "Other" && (
+              <div className="space-y-1 pt-1">
+                <label className={labelCls}>Notas de producción</label>
+                <AutoTextarea
+                  value={prodNotes}
+                  onChange={(e) => setProdNotes(e.target.value)}
+                  rows={3}
+                  placeholder="Instrucciones de producción, dirección creativa…"
+                  className={cn(fieldCls, isGenerating && "opacity-50")}
+                  disabled={isGenerating}
+                />
+              </div>
+            )}
           </div>
 
           {/* Variant + Iteration + Status */}
@@ -160,11 +415,10 @@ export function AssetModal({ projectId, cycleId, asset, concepts, defaultConcept
             </div>
           </div>
 
-          {/* ── Copy section ── */}
+          {/* ── Copy section (universal) ── */}
           <div className="border rounded-lg p-3 space-y-3 bg-muted/20">
-            {/* Section header with AI button */}
             <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Copy</p>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Copy del ad</p>
               {canGenerate && (
                 <button
                   type="button"
@@ -179,12 +433,11 @@ export function AssetModal({ projectId, cycleId, asset, concepts, defaultConcept
                   {isGenerating ? "Generando…" : "Generar con IA"}
                 </button>
               )}
-              {!canGenerate && !selectedConceptId && (
-                <span className="text-xs text-muted-foreground">Selecciona un concepto para generar con IA</span>
+              {!canGenerate && !subType && isAdminOrSubadmin && (
+                <span className="text-xs text-muted-foreground">Selecciona formato y concepto para generar</span>
               )}
             </div>
 
-            {/* Hook */}
             <div className="space-y-1">
               <label className={labelCls}>Hook</label>
               <AutoTextarea
@@ -197,8 +450,6 @@ export function AssetModal({ projectId, cycleId, asset, concepts, defaultConcept
                 disabled={isGenerating}
               />
             </div>
-
-            {/* Copy */}
             <div className="space-y-1">
               <label className={labelCls}>Copy</label>
               <AutoTextarea
@@ -211,8 +462,6 @@ export function AssetModal({ projectId, cycleId, asset, concepts, defaultConcept
                 disabled={isGenerating}
               />
             </div>
-
-            {/* CTA */}
             <div className="space-y-1">
               <label className={labelCls}>CTA</label>
               <input
@@ -268,8 +517,6 @@ export function AssetModal({ projectId, cycleId, asset, concepts, defaultConcept
                   <input name="results_type" defaultValue={asset?.results_type ?? ""} placeholder="ventas, leads, clics…" className={fieldCls} />
                 </div>
               </div>
-
-              {/* Verdict */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className={labelCls}>Veredicto</label>

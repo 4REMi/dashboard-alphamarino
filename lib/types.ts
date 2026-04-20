@@ -443,6 +443,7 @@ export interface CreativeAsset {
   hook: string | null
   copy: string | null
   cta: string | null
+  format_meta: Record<string, unknown> | null
   asset_url: string | null
   production_status: ProductionStatus
   // admin/subadmin only
@@ -458,7 +459,7 @@ export interface CreativeAsset {
   verdict_notes: string | null
   created_at: string
   // relations
-  concept?: Pick<CreativeConcept, "id" | "angle_type" | "target_persona"> | null
+  concept?: Pick<CreativeConcept, "id" | "name" | "angle_type" | "target_persona"> | null
 }
 
 // ============================================================

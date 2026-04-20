@@ -97,11 +97,11 @@ export function AssetsTable({ assets, concepts, projectId, cycleId, isAdminOrSub
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 min-w-0">
                         <span className="text-xs font-semibold text-foreground truncate">
-                          {concept.angle_type ?? "Sin ángulo"}
+                          {concept.name ?? concept.angle_type ?? "Sin nombre"}
                         </span>
                         <span className="text-muted-foreground hidden sm:inline">·</span>
                         <span className="text-xs text-muted-foreground truncate hidden sm:inline">
-                          {concept.target_persona}
+                          {concept.angle_type ?? "—"}
                         </span>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
