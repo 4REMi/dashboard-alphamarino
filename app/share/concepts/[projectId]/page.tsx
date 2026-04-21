@@ -7,16 +7,15 @@ interface Props {
   params: Promise<{ projectId: string }>
 }
 
-const FUNNEL_LABELS: Record<string, string> = {
-  TOF: "TOF — Audiencia fría",
-  MOF: "MOF — Audiencia tibia",
-  BOF: "BOF — Audiencia caliente",
-}
-
 const FUNNEL_COLORS: Record<string, string> = {
   TOF: "bg-sky-100 text-sky-700",
   MOF: "bg-violet-100 text-violet-700",
   BOF: "bg-emerald-100 text-emerald-700",
+}
+const FUNNEL_LABELS: Record<string, string> = {
+  TOF: "Audiencia fría",
+  MOF: "Audiencia tibia",
+  BOF: "Audiencia caliente",
 }
 
 export default async function ShareConceptsPage({ params }: Props) {
@@ -31,9 +30,8 @@ export default async function ShareConceptsPage({ params }: Props) {
       .single(),
     supabase
       .from("creative_concepts")
-      .select(`id, name, angle_type, organizing_principle,
-        target_persona, product_service, pain_point, why_it_works,
-        transformation, funnel_stage, status`)
+      .select(`id, name, angle_type, target_persona, product_service,
+               pain_point, why_it_works, transformation, funnel_stage, status`)
       .eq("project_id", projectId)
       .in("status", ["Active", "Evergreen"])
       .order("status", { ascending: false })
@@ -41,9 +39,9 @@ export default async function ShareConceptsPage({ params }: Props) {
     supabase
       .from("creative_assets")
       .select(`id, format, platform, variant, iteration,
-        hook, copy, cta, asset_url, format_meta,
-        client_status, client_feedback,
-        concept:creative_concepts!concept_id(name, angle_type)`)
+               hook, copy, cta, asset_url, format_meta,
+               client_status, client_feedback,
+               concept:creative_concepts!concept_id(name, angle_type)`)
       .eq("project_id", projectId)
       .eq("client_visible", true)
       .order("created_at", { ascending: false }),
@@ -63,36 +61,82 @@ export default async function ShareConceptsPage({ params }: Props) {
   const clientName  = customer?.company || customer?.name || null
   const projectName = project.name
 
-  return (
-    <div className="min-h-screen bg-[#f8f9fc] flex flex-col">
+  const pendingCount  = assets.filter((a) => !a.client_status || a.client_status === "pending_review").length
+  const allReviewed   = assets.length > 0 && pendingCount === 0
+  const hasAssets     = assets.length > 0
+  const hasConcepts   = concepts.length > 0
 
-      {/* Top bar */}
-      <header className="bg-white border-b px-6 py-3 flex items-center justify-between">
-        <span className="text-sm font-semibold tracking-tight">Alpha Marino</span>
-        <span className="text-xs text-muted-foreground">Portal de cliente</span>
+  return (
+    <div className="min-h-screen bg-[#f5f6fa] flex flex-col">
+
+      {/* ── Sticky header ── */}
+      <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b px-4 sm:px-6 py-3 flex items-center justify-between gap-2">
+        <span className="text-sm font-semibold tracking-tight flex-shrink-0">Alpha Marino</span>
+        {clientName && (
+          <span className="text-xs text-muted-foreground truncate">
+            {clientName} — Portal
+          </span>
+        )}
       </header>
 
-      <main className="flex-1 px-4 py-10">
-        <div className="max-w-4xl mx-auto space-y-12">
+      <main className="flex-1">
 
-          {/* Project context */}
-          <div className="space-y-1">
+        {/* ── Hero ── */}
+        <div className="bg-white border-b">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 py-10 sm:py-14 space-y-4">
             {clientName && (
-              <p className="text-xs uppercase tracking-widest font-semibold text-muted-foreground">{clientName}</p>
+              <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                Alpha Marino × {clientName}
+              </p>
             )}
-            <h1 className="text-2xl font-bold">{projectName}</h1>
-          </div>
+            <h1 className="text-2xl sm:text-3xl font-bold leading-tight">{projectName}</h1>
 
-          {/* ── Assets para aprobación ── */}
-          {assets.length > 0 && (
+            {/* Status pills */}
+            <div className="flex flex-wrap gap-2 pt-1">
+              {hasAssets && (
+                <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full ${
+                  allReviewed
+                    ? "bg-emerald-100 text-emerald-700"
+                    : "bg-amber-100 text-amber-700"
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${allReviewed ? "bg-emerald-500" : "bg-amber-500"}`} />
+                  {allReviewed
+                    ? "Todo revisado"
+                    : `${pendingCount} pieza${pendingCount !== 1 ? "s" : ""} esperan tu revisión`}
+                </span>
+              )}
+              {hasConcepts && (
+                <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-slate-100 text-slate-600">
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                  {concepts.length} concepto{concepts.length !== 1 ? "s" : ""} activos
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-14">
+
+          {/* ── Assets para revisión ── */}
+          {hasAssets && (
             <section className="space-y-5">
-              <div className="space-y-1">
-                <h2 className="text-lg font-semibold">Assets para tu aprobación</h2>
-                <p className="text-sm text-muted-foreground">
-                  Revisa cada pieza y apruébala o solicita cambios directamente.
-                </p>
+              {/* Section header */}
+              <div className={`flex items-center gap-3 pb-3 border-b-2 ${allReviewed ? "border-emerald-300" : "border-amber-300"}`}>
+                <div className={`w-1 h-6 rounded-full flex-shrink-0 ${allReviewed ? "bg-emerald-400" : "bg-amber-400"}`} />
+                <div>
+                  <h2 className="text-base font-semibold">
+                    {allReviewed ? "Tu revisión — completada" : "Para tu revisión"}
+                  </h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {allReviewed
+                      ? "Todas las piezas han sido revisadas. Gracias."
+                      : "Aprueba cada pieza o solicita los cambios que necesites."}
+                  </p>
+                </div>
               </div>
-              <div className="grid gap-5 sm:grid-cols-2">
+
+              {/* Asset grid */}
+              <div className="grid gap-4 sm:grid-cols-2">
                 {assets.map((a) => {
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const concept = a.concept as any
@@ -123,36 +167,40 @@ export default async function ShareConceptsPage({ params }: Props) {
             </section>
           )}
 
-          {/* ── Conceptos creativos ── */}
-          {concepts.length > 0 && (
+          {/* ── Estrategia creativa ── */}
+          {hasConcepts && (
             <section className="space-y-8">
-              <div className="space-y-1">
-                <h2 className="text-lg font-semibold">Conceptos creativos</h2>
-                <p className="text-sm text-muted-foreground">
-                  {concepts.length} concepto{concepts.length !== 1 ? "s" : ""} activos
-                  {evergreen.length > 0 && ` · ${evergreen.length} evergreen`}
-                </p>
+              {/* Section header */}
+              <div className="flex items-center gap-3 pb-3 border-b-2 border-slate-200">
+                <div className="w-1 h-6 rounded-full flex-shrink-0 bg-slate-300" />
+                <div>
+                  <h2 className="text-base font-semibold">Estrategia creativa</h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Los ángulos y mensajes que guían tu comunicación.
+                  </p>
+                </div>
               </div>
 
+              {/* Evergreen */}
               {evergreen.length > 0 && (
                 <div className="space-y-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-base">⭐</span>
-                    <h3 className="text-sm font-semibold text-amber-700 uppercase tracking-wider">
-                      Ángulos Evergreen — validados
-                    </h3>
-                  </div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-amber-700 flex items-center gap-1.5">
+                    <span>⭐</span> Ángulos validados contigo
+                  </p>
                   <div className="grid gap-4 sm:grid-cols-2">
                     {evergreen.map((c) => <ConceptCard key={c.id} concept={c} />)}
                   </div>
                 </div>
               )}
 
+              {/* Active */}
               {active.length > 0 && (
                 <div className="space-y-4">
-                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-                    En desarrollo
-                  </h3>
+                  {evergreen.length > 0 && (
+                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                      Propuestas en desarrollo
+                    </p>
+                  )}
                   <div className="grid gap-4 sm:grid-cols-2">
                     {active.map((c) => <ConceptCard key={c.id} concept={c} />)}
                   </div>
@@ -161,17 +209,27 @@ export default async function ShareConceptsPage({ params }: Props) {
             </section>
           )}
 
-          {concepts.length === 0 && assets.length === 0 && (
-            <div className="text-center py-20 text-muted-foreground text-sm">
-              Sin contenido disponible en este momento.
+          {!hasAssets && !hasConcepts && (
+            <div className="text-center py-24 text-muted-foreground text-sm">
+              Sin contenido disponible por el momento.
             </div>
           )}
-
-          <p className="text-center text-xs text-muted-foreground pt-4 pb-8">
-            Generado por el equipo de Alpha Marino
-          </p>
         </div>
       </main>
+
+      {/* ── Footer ── */}
+      <footer className="border-t bg-white mt-8">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-muted-foreground">
+          <span>
+            ¿Tienes dudas?{" "}
+            <a href="mailto:remioi622@gmail.com" className="underline hover:text-foreground transition-colors">
+              remioi622@gmail.com
+            </a>
+          </span>
+          <span>© {new Date().getFullYear()} Alpha Marino</span>
+        </div>
+      </footer>
+
     </div>
   )
 }
@@ -191,7 +249,7 @@ function ConceptCard({ concept }: {
 
   return (
     <div className={`bg-white rounded-2xl border shadow-sm overflow-hidden flex flex-col ${isEvergreen ? "border-amber-200" : ""}`}>
-      <div className={`px-5 pt-5 pb-4 border-b ${isEvergreen ? "bg-amber-50/40" : "bg-gradient-to-br from-white to-muted/10"}`}>
+      <div className={`px-5 pt-5 pb-4 border-b ${isEvergreen ? "bg-amber-50/40" : ""}`}>
         <p className="text-base font-semibold leading-snug mb-2">{concept.name || "Concepto"}</p>
         <div className="flex flex-wrap items-center gap-1.5">
           {angleEntry && (
