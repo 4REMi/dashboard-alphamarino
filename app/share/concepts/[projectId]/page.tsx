@@ -83,7 +83,7 @@ export default async function ShareConceptsPage({ params }: Props) {
 
         {/* ── Hero ── */}
         <div className="bg-white border-b">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 py-10 sm:py-14 space-y-4">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10 sm:py-14 space-y-4">
             {clientName && (
               <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
                 Alpha Marino × {clientName}
@@ -115,7 +115,7 @@ export default async function ShareConceptsPage({ params }: Props) {
           </div>
         </div>
 
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-14">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-14">
 
           {/* ── Assets para revisión ── */}
           {hasAssets && (
@@ -136,7 +136,7 @@ export default async function ShareConceptsPage({ params }: Props) {
               </div>
 
               {/* Asset grid */}
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-4 xl:grid-cols-2">
                 {assets.map((a) => {
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const concept = a.concept as any
@@ -187,7 +187,7 @@ export default async function ShareConceptsPage({ params }: Props) {
                   <p className="text-xs font-semibold uppercase tracking-wider text-amber-700 flex items-center gap-1.5">
                     <span>⭐</span> Ángulos validados contigo
                   </p>
-                  <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     {evergreen.map((c) => <ConceptCard key={c.id} concept={c} />)}
                   </div>
                 </div>
@@ -201,7 +201,7 @@ export default async function ShareConceptsPage({ params }: Props) {
                       Propuestas en desarrollo
                     </p>
                   )}
-                  <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     {active.map((c) => <ConceptCard key={c.id} concept={c} />)}
                   </div>
                 </div>
