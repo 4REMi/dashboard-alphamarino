@@ -17,6 +17,7 @@ export type SopVisibility = "public" | "restricted"
 export type SopRequestStatus = "pending" | "fulfilled" | "dismissed"
 export type MainObjective = "conversions" | "leads" | "traffic" | "awareness"
 export type ConceptStatus = "Active" | "Archived" | "Transmuted" | "Evergreen"
+export type ClientReviewStatus = "pending_review" | "approved" | "changes_requested"
 export type ProductionStatus = "Pending" | "In Production" | "In Review" | "Approved" | "Published"
 export type AssetVerdict = "Winner" | "Scale" | "Iterate" | "Archive"
 export type OrganizingPrinciple = "Pain-First" | "Desire-First"
@@ -446,6 +447,9 @@ export interface CreativeAsset {
   format_meta: Record<string, unknown> | null
   asset_url: string | null
   production_status: ProductionStatus
+  client_visible: boolean
+  client_status: ClientReviewStatus | null
+  client_feedback: string | null
   // admin/subadmin only
   ctr: number | null
   cpc: number | null

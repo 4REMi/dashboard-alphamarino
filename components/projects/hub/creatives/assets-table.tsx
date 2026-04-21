@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { AssetModal } from "./asset-modal"
 import { PRODUCTION_STATUS_COLORS, VERDICT_COLORS } from "@/lib/constants/creatives"
 import type { CreativeAsset, CreativeConcept } from "@/lib/types"
-import { Plus, ExternalLink } from "lucide-react"
+import { Plus, ExternalLink, Eye } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface AssetsTableProps {
@@ -241,7 +241,24 @@ function AssetRow({
         </>
       )}
       <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-end gap-1">
+        <div className="flex items-center justify-end gap-1.5">
+          {asset.client_visible && (
+            <span title={
+              asset.client_status === "approved"          ? "Aprobado por el cliente" :
+              asset.client_status === "changes_requested" ? "Cliente pidió cambios" :
+              "Enviado al cliente — pendiente"
+            } className={cn(
+              "inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full",
+              asset.client_status === "approved"          && "bg-emerald-100 text-emerald-700",
+              asset.client_status === "changes_requested" && "bg-amber-100 text-amber-700",
+              (!asset.client_status || asset.client_status === "pending_review") && "bg-blue-100 text-blue-600",
+            )}>
+              <Eye className="w-2.5 h-2.5" />
+              {asset.client_status === "approved"          ? "OK" :
+               asset.client_status === "changes_requested" ? "Cambios" :
+               "Pendiente"}
+            </span>
+          )}
           {asset.asset_url && (
             <a
               href={asset.asset_url}

@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { createAsset, updateAsset, deleteAsset, generateAssetCopy } from "@/lib/actions/creatives"
+import { createAsset, updateAsset, deleteAsset, generateAssetCopy, toggleClientVisible } from "@/lib/actions/creatives"
 import { PRODUCTION_STATUS_COLORS, VERDICT_COLORS } from "@/lib/constants/creatives"
 import type { CreativeAsset, CreativeConcept } from "@/lib/types"
 import { ExternalLink, Trash2, Sparkles, Loader2 } from "lucide-react"
@@ -53,6 +53,7 @@ export function AssetModal({ projectId, cycleId, asset, concepts, defaultConcept
   const isEdit = !!asset
   const [isPending, startTransition] = useTransition()
   const [isGenerating, startGenerate] = useTransition()
+  const [isToggling, startToggle] = useTransition()
 
   // Concept + platform
   const [selectedConceptId, setSelectedConceptId] = useState(
@@ -145,6 +146,20 @@ export function AssetModal({ projectId, cycleId, asset, concepts, defaultConcept
     startTransition(async () => {
       await deleteAsset(asset.id, projectId)
       onClose()
+    })
+  }
+
+  // Client visibility state (edit only)
+  const [clientVisible, setClientVisible] = useState(asset?.client_visible ?? false)
+  const clientStatus   = asset?.client_status ?? null
+  const clientFeedback = asset?.client_feedback ?? null
+
+  function handleToggleClientVisible() {
+    if (!asset) return
+    const next = !clientVisible
+    setClientVisible(next)
+    startToggle(async () => {
+      await toggleClientVisible(asset.id, projectId, next)
     })
   }
 
@@ -532,6 +547,59 @@ export function AssetModal({ projectId, cycleId, asset, concepts, defaultConcept
                   <AutoTextarea name="verdict_notes" defaultValue={asset?.verdict_notes ?? ""} rows={2} placeholder="Qué funcionó, qué cambiar" className={fieldCls} />
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* ── Aprobación del cliente (edit + admin only) ── */}
+          {isEdit && isAdminOrSubadmin && (
+            <div className={cn(
+              "border rounded-lg p-3 space-y-2",
+              clientVisible ? "border-blue-200 bg-blue-50/40" : "bg-muted/20"
+            )}>
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Aprobación del cliente</p>
+                  <p className="text-xs text-muted-foreground">
+                    {clientVisible ? "Visible en la página del cliente" : "No visible para el cliente aún"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={clientVisible}
+                  disabled={isToggling}
+                  onClick={handleToggleClientVisible}
+                  className={cn(
+                    "relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors disabled:opacity-50",
+                    clientVisible ? "bg-blue-500" : "bg-muted-foreground/30"
+                  )}
+                >
+                  <span className={cn(
+                    "inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform",
+                    clientVisible ? "translate-x-[18px]" : "translate-x-[2px]"
+                  )} />
+                </button>
+              </div>
+
+              {clientVisible && (
+                <div className={cn(
+                  "text-xs rounded-md px-3 py-2 font-medium",
+                  clientStatus === "approved"           && "bg-emerald-100 text-emerald-700",
+                  clientStatus === "changes_requested"  && "bg-amber-100 text-amber-700",
+                  clientStatus === "pending_review"     && "bg-blue-100 text-blue-600",
+                  !clientStatus                         && "bg-blue-100 text-blue-600",
+                )}>
+                  {clientStatus === "approved"          && "✅ Aprobado por el cliente"}
+                  {clientStatus === "changes_requested" && "💬 El cliente pidió cambios"}
+                  {(clientStatus === "pending_review" || !clientStatus) && "⏳ Esperando respuesta del cliente…"}
+                </div>
+              )}
+
+              {clientStatus === "changes_requested" && clientFeedback && (
+                <div className="text-xs bg-white border border-amber-200 rounded-md px-3 py-2 text-foreground leading-relaxed">
+                  <span className="font-medium text-muted-foreground">Feedback: </span>{clientFeedback}
+                </div>
+              )}
             </div>
           )}
 

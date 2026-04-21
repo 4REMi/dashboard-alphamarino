@@ -269,6 +269,24 @@ export async function deleteAsset(id: string, projectId: string): Promise<void> 
   revalidatePath(`/projects/${projectId}`)
 }
 
+export async function toggleClientVisible(
+  assetId: string,
+  projectId: string,
+  visible: boolean
+): Promise<void> {
+  const supabase = await createClient()
+  const { role } = await getRole()
+  if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
+
+  const { error } = await supabase.from("creative_assets").update({
+    client_visible: visible,
+    client_status:  visible ? "pending_review" : null,
+    client_feedback: null,
+  }).eq("id", assetId)
+  if (error) throw error
+  revalidatePath(`/projects/${projectId}`)
+}
+
 // ── AI GENERATION ────────────────────────────────────────────
 
 export interface AIDraftConcept {
