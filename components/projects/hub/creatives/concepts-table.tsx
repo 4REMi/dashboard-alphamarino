@@ -48,17 +48,9 @@ function ConceptDetailModal({
   onNewAsset: () => void
 }) {
   const [isPending, startTransition] = useTransition()
-  const [copied, setCopied] = useState(false)
   const router = useRouter()
   const angleEntry = ANGLE_GUIDE.find((a) => a.name === concept.angle_type)
   const isEvergreen = concept.status === "Evergreen"
-
-  function handleShare() {
-    const url = `${window.location.origin}/share/concept/${concept.id}`
-    navigator.clipboard.writeText(url)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
 
   function handlePromote() {
     startTransition(async () => {
@@ -276,16 +268,6 @@ function ConceptDetailModal({
             )}
           </div>
           <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleShare}
-              className={copied ? "text-emerald-600 border-emerald-300" : ""}
-            >
-              <Link2 className="w-3.5 h-3.5 mr-1" />
-              {copied ? "¡Copiado!" : "Compartir"}
-            </Button>
             <Button variant="outline" size="sm" onClick={onClose}>Cerrar</Button>
             {isAdminOrSubadmin && (
               <Button size="sm" onClick={onEdit} disabled={isPending}>
@@ -568,9 +550,17 @@ export function ConceptsTable({ concepts, assets, projectId, cycleId, isAdminOrS
   const [aiDrafts,      setAiDrafts]        = useState<AIDraftConcept[]>([])
   const [previewIdx,    setPreviewIdx]      = useState<number | null>(null)
   const [newAssetForConceptId, setNewAssetForConceptId] = useState<string | null>(null)
+  const [copied,        setCopied]          = useState(false)
   const [isGenerating, startGenerate] = useTransition()
   const [isConfirming, startConfirm]  = useTransition()
   const router = useRouter()
+
+  function handleShareProject() {
+    const url = `${window.location.origin}/share/concepts/${projectId}`
+    navigator.clipboard.writeText(url)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2500)
+  }
 
   const evergreen = concepts.filter((c) => c.status === "Evergreen")
   const cycleOnly = concepts.filter((c) => c.status !== "Evergreen")
@@ -634,22 +624,33 @@ export function ConceptsTable({ concepts, assets, projectId, cycleId, isAdminOrS
           {cycleOnly.length} concepto{cycleOnly.length !== 1 ? "s" : ""} en este ciclo
           {evergreen.length > 0 && ` · ${evergreen.length} evergreen`}
         </p>
-        {isAdminOrSubadmin && (
-          <div className="flex gap-2">
-            {cycleId && (
-              <Button variant="outline" size="sm" className="text-xs" onClick={handleGenerate} disabled={isGenerating}>
-                {isGenerating
-                  ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />Generando…</>
-                  : <><Sparkles className="w-3.5 h-3.5 mr-1 text-purple-500" />Generar con IA</>
-                }
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className={cn("text-xs", copied && "text-emerald-600 border-emerald-300")}
+            onClick={handleShareProject}
+          >
+            <Link2 className="w-3.5 h-3.5 mr-1" />
+            {copied ? "¡Copiado!" : "Link de cliente"}
+          </Button>
+          {isAdminOrSubadmin && (
+            <>
+              {cycleId && (
+                <Button variant="outline" size="sm" className="text-xs" onClick={handleGenerate} disabled={isGenerating}>
+                  {isGenerating
+                    ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />Generando…</>
+                    : <><Sparkles className="w-3.5 h-3.5 mr-1 text-purple-500" />Generar con IA</>
+                  }
+                </Button>
+              )}
+              <Button size="sm" className="text-xs" onClick={() => setShowCreate(true)}>
+                <Plus className="w-3.5 h-3.5 mr-1" />
+                Nuevo concepto
               </Button>
-            )}
-            <Button size="sm" className="text-xs" onClick={() => setShowCreate(true)}>
-              <Plus className="w-3.5 h-3.5 mr-1" />
-              Nuevo concepto
-            </Button>
-          </div>
-        )}
+            </>
+          )}
+        </div>
       </div>
 
       <div className="border rounded-lg overflow-hidden bg-card overflow-x-auto">

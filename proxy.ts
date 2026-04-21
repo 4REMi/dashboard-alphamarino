@@ -32,7 +32,12 @@ export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname
 
   // Public paths — always accessible
-  if (pathname.startsWith("/login") || pathname.startsWith("/_next") || pathname.startsWith("/api")) {
+  if (
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/share") ||
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/api")
+  ) {
     return supabaseResponse
   }
 
