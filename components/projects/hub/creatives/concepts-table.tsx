@@ -11,7 +11,7 @@ import { generateCreativeConcepts, confirmAIDrafts, promoteConcept, demoteConcep
 import { CONCEPT_STATUS_COLORS, AWARENESS_LABELS, ANGLE_GUIDE, PRODUCTION_STATUS_COLORS, VERDICT_COLORS } from "@/lib/constants/creatives"
 import type { CreativeConcept, CreativeAsset } from "@/lib/types"
 import type { AIDraftConcept } from "@/lib/actions/creatives"
-import { Plus, Sparkles, Check, X, Loader2, Star, ArrowUpRight, Pencil, Trash2 } from "lucide-react"
+import { Plus, Sparkles, Check, X, Loader2, Star, ArrowUpRight, Pencil, Trash2, Link2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const FUNNEL_COLORS: Record<string, string> = {
@@ -48,9 +48,17 @@ function ConceptDetailModal({
   onNewAsset: () => void
 }) {
   const [isPending, startTransition] = useTransition()
+  const [copied, setCopied] = useState(false)
   const router = useRouter()
   const angleEntry = ANGLE_GUIDE.find((a) => a.name === concept.angle_type)
   const isEvergreen = concept.status === "Evergreen"
+
+  function handleShare() {
+    const url = `${window.location.origin}/share/concept/${concept.id}`
+    navigator.clipboard.writeText(url)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
 
   function handlePromote() {
     startTransition(async () => {
@@ -268,6 +276,16 @@ function ConceptDetailModal({
             )}
           </div>
           <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleShare}
+              className={copied ? "text-emerald-600 border-emerald-300" : ""}
+            >
+              <Link2 className="w-3.5 h-3.5 mr-1" />
+              {copied ? "¡Copiado!" : "Compartir"}
+            </Button>
             <Button variant="outline" size="sm" onClick={onClose}>Cerrar</Button>
             {isAdminOrSubadmin && (
               <Button size="sm" onClick={onEdit} disabled={isPending}>
