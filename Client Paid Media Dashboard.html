@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<title>Alpha Marino — Client Paid Media Dashboard</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Unbounded:wght@500;600;700&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --font-sans: 'Poppins', system-ui, -apple-system, sans-serif;
+    --font-heading: 'Unbounded', system-ui, -apple-system, sans-serif;
+    --accent: #2563eb;
+    --accent-fg: #ffffff;
+    --card-bg: #ffffff;
+  }
+  html, body { margin: 0; padding: 0; font-family: var(--font-sans); }
+  body { background: #f0eee9; }
+  *, *::before, *::after { box-sizing: border-box; }
+  button { font-family: inherit; }
+  h1,h2,h3,h4,h5,h6 { font-family: var(--font-heading); margin: 0; }
+  /* hide scrollbars inside artboards */
+  .ab-scroll::-webkit-scrollbar { width: 0; height: 0; }
+  .ab-scroll { scrollbar-width: none; }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="client-dashboard.jsx"></script>
+<script type="text/babel">
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "theme": "light",
+  "accent": "blue",
+  "density": "cozy",
+  "lang": "es"
+}/*EDITMODE-END*/;
+
+const ACCENT_MAP = {
+  blue:   { color:'#2563eb', fg:'#ffffff' },
+  teal:   { color:'#0d9488', fg:'#ffffff' },
+  amber:  { color:'#d97706', fg:'#ffffff' },
+  violet: { color:'#7c3aed', fg:'#ffffff' },
+  slate:  { color:'#0f172a', fg:'#ffffff' },
+};
+
+function App() {
+  const [tweaks, setTweaks] = React.useState(TWEAK_DEFAULTS);
+  const [tweaksOn, setTweaksOn] = React.useState(false);
+  const { theme, accent, density, lang } = tweaks;
+
+  // apply accent to CSS vars
+  React.useEffect(() => {
+    const a = ACCENT_MAP[accent] || ACCENT_MAP.blue;
+    document.documentElement.style.setProperty('--accent', a.color);
+    document.documentElement.style.setProperty('--accent-fg', a.fg);
+    document.documentElement.style.setProperty('--card-bg', theme==='dark' ? '#111729' : '#ffffff');
+    document.body.style.color = theme==='dark' ? '#e6ecf5' : '#0f172a';
+  }, [accent, theme]);
+
+  // Tweaks protocol
+  React.useEffect(() => {
+    const onMsg = (e) => {
+      const d = e.data || {};
+      if (d.type === '__activate_edit_mode') setTweaksOn(true);
+      if (d.type === '__deactivate_edit_mode') setTweaksOn(false);
+    };
+    window.addEventListener('message', onMsg);
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
+  const setPartial = (patch) => {
+    setTweaks(p => {
+      const next = { ...p, ...patch };
+      window.parent.postMessage({ type: '__edit_mode_set_keys', edits: patch }, '*');
+      return next;
+    });
+  };
+
+  const [selectedConceptId, setSelectedConceptId] = React.useState(null);
+  const [allView, setAllView] = React.useState(true);
+
+  const conceptAssets = (cid) => ASSETS.filter(a => a.concept === cid);
+  const activeConcept = CONCEPTS.find(c => c.id === selectedConceptId);
+  const pendingCount = ASSETS.filter(a => a.status === 'pending_review').length;
+
+  const jumpFirstPending = () => {
+    const firstPending = ASSETS.find(a => a.status === 'pending_review');
+    if (firstPending) {
+      setAllView(false);
+      setSelectedConceptId(firstPending.concept);
+    }
+  };
+
+  return (
+    <div data-screen-label="Desktop — Client Dashboard">
+      <DesignCanvas>
+        <DCSection id="desktop" title="Client Paid Media Dashboard" subtitle="Cliente DTC · Ciclo abril 2026 · vista de revisión">
+          <DCArtboard id="desktop-overview" label="Desktop · Resumen del ciclo" width={1440} height={980}>
+            <DesktopShell
+              theme={theme} lang={lang}
+              selectedConceptId={selectedConceptId}
+              allView={allView}
+              onSelect={(id)=>{ setSelectedConceptId(id); setAllView(false); }}
+              onAll={()=>{ setAllView(true); setSelectedConceptId(null); }}
+              onJump={jumpFirstPending}
+              pendingCount={pendingCount}
+              activeConcept={activeConcept}
+              conceptAssets={conceptAssets}
+            />
+          </DCArtboard>
+          <DCArtboard id="desktop-concept" label="Desktop · Concepto abierto" width={1440} height={980}>
+            <DesktopShell
+              theme={theme} lang={lang}
+              selectedConceptId="c1"
+              allView={false}
+              onSelect={()=>{}} onAll={()=>{}} onJump={()=>{}}
+              pendingCount={pendingCount}
+              activeConcept={CONCEPTS[0]}
+              conceptAssets={conceptAssets}
+            />
+          </DCArtboard>
+          <DCArtboard id="desktop-dark" label="Desktop · Dark · Concepto + revisión" width={1440} height={980}>
+            <DesktopShell
+              theme="dark" lang={lang}
+              selectedConceptId="c2"
+              allView={false}
+              onSelect={()=>{}} onAll={()=>{}} onJump={()=>{}}
+              pendingCount={pendingCount}
+              activeConcept={CONCEPTS[1]}
+              conceptAssets={conceptAssets}
+            />
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="mobile" title="Mobile — mismo portal" subtitle="Resumen + ficha de concepto con review inline">
+          <DCArtboard id="mobile-overview" label="Mobile · Inbox de revisión" width={390} height={844}>
+            <MobileShell theme={theme} lang={lang} view="overview"/>
+          </DCArtboard>
+          <DCArtboard id="mobile-concept" label="Mobile · Concepto + asset" width={390} height={844}>
+            <MobileShell theme={theme} lang={lang} view="concept" conceptIdx={0}/>
+          </DCArtboard>
+        </DCSection>
+      </DesignCanvas>
+
+      <TweaksPanel visible={tweaksOn} theme={theme} lang={lang} accent={accent} density={density} onSet={setPartial}/>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Desktop shell — full app in one artboard
+// ─────────────────────────────────────────────────────────────
+function DesktopShell({ theme, lang, selectedConceptId, allView, onSelect, onAll, onJump, pendingCount, activeConcept, conceptAssets }) {
+  return (
+    <div style={{
+      width:'100%', height:'100%',
+      background: t(theme,'bg'),
+      color: t(theme,'fg'),
+      display:'flex', flexDirection:'column',
+      fontFamily:'var(--font-sans)',
+      overflow: 'hidden',
+    }}>
+      <TopBar theme={theme} lang={lang}/>
+      <div style={{display:'flex', flex:1, minHeight: 0}}>
+        <Sidebar theme={theme} lang={lang} concepts={CONCEPTS}
+          activeId={selectedConceptId} onSelect={onSelect}
+          allView={allView} onAllView={onAll}/>
+        <div className="ab-scroll" style={{flex:1, overflowY:'auto', minWidth: 0}}>
+          <CycleHeader theme={theme} lang={lang} cycle={CYCLE}
+            clientName="Meridian & Co." projectName="Q2 · Acquisition Sprint"/>
+          <div style={{padding: '24px 32px 40px', maxWidth: 1100, margin: '0 auto'}}>
+            <div style={{marginBottom: 24}}>
+              <ReviewBanner theme={theme} lang={lang} pending={pendingCount} total={ASSETS.length} onJump={onJump}/>
+            </div>
+            {allView || !activeConcept ? (
+              <CycleOverview theme={theme} lang={lang} concepts={CONCEPTS} assets={ASSETS}
+                onOpenConcept={onSelect}/>
+            ) : (
+              <ConceptPanel theme={theme} lang={lang} concept={activeConcept} assets={conceptAssets(activeConcept.id)}/>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TopBar({ theme, lang }) {
+  return (
+    <div style={{
+      height: 52, flexShrink: 0,
+      background: t(theme,'sidebar'),
+      borderBottom: `1px solid ${t(theme,'border')}`,
+      display:'flex', alignItems:'center',
+      padding: '0 24px', gap: 16,
+    }}>
+      <div style={{display:'flex', alignItems:'center', gap: 10}}>
+        <div style={{
+          width: 28, height: 28, borderRadius: 7,
+          background: 'var(--accent)', color: 'var(--accent-fg)',
+          display:'flex', alignItems:'center', justifyContent:'center',
+          fontSize: 12, fontWeight: 700, fontFamily:'var(--font-heading)',
+          letterSpacing: '-.01em',
+        }}>AM</div>
+        <div style={{display:'flex', flexDirection:'column', lineHeight: 1.1}}>
+          <span style={{fontSize: 13, fontWeight: 600, color: t(theme,'fg')}}>Alpha Marino</span>
+          <span style={{fontSize: 10, fontWeight: 500, color: t(theme,'muts'), letterSpacing: '.04em'}}>{L(lang,'Portal de cliente','Client portal')}</span>
+        </div>
+      </div>
+      <div style={{flex:1}}/>
+      <div style={{display:'flex', alignItems:'center', gap: 10}}>
+        <div style={{
+          padding: '5px 10px', borderRadius: 7,
+          background: t(theme,'chip'), color: t(theme,'mut'),
+          fontSize: 12, fontWeight: 500,
+          display:'flex', alignItems:'center', gap: 6,
+        }}>
+          <Ic.users s={12}/>
+          Meridian & Co.
+        </div>
+        <div style={{
+          width: 28, height: 28, borderRadius: 999,
+          background: 'linear-gradient(135deg,#fbbf24,#f97316)',
+          color:'#fff', fontSize: 11, fontWeight: 700,
+          display:'flex', alignItems:'center', justifyContent:'center',
+        }}>SM</div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Mobile shell
+// ─────────────────────────────────────────────────────────────
+function MobileShell({ theme, lang, view, conceptIdx = 0 }) {
+  const concept = CONCEPTS[conceptIdx];
+  const pending = ASSETS.filter(a => a.status === 'pending_review').length;
+
+  return (
+    <div className="ab-scroll" style={{
+      width:'100%', height:'100%', overflowY:'auto',
+      background: t(theme,'bg'), color: t(theme,'fg'),
+      fontFamily:'var(--font-sans)',
+    }}>
+      {/* Status bar */}
+      <div style={{
+        height: 44, padding: '0 22px',
+        display:'flex', alignItems:'center', justifyContent:'space-between',
+        fontSize: 14, fontWeight: 600, color: t(theme,'fg'),
+      }}>
+        <span>9:41</span>
+        <div style={{display:'flex', gap: 4, alignItems:'center'}}>
+          <span style={{fontSize: 11}}>●●●●</span>
+          <span style={{fontSize: 11}}>5G</span>
+          <svg width="22" height="11" viewBox="0 0 22 11" fill="none" stroke="currentColor" strokeWidth="1"><rect x=".5" y=".5" width="18" height="10" rx="2.5"/><rect x="2" y="2" width="14" height="7" rx="1" fill="currentColor"/><rect x="19.5" y="3.5" width="1.5" height="4" rx=".5" fill="currentColor"/></svg>
+        </div>
+      </div>
+
+      {/* Header */}
+      <div style={{
+        padding: '8px 20px 18px',
+        background: t(theme,'card'),
+        borderBottom: `1px solid ${t(theme,'border')}`,
+      }}>
+        <div style={{display:'flex', alignItems:'center', gap: 10, marginBottom: 14}}>
+          <div style={{
+            width: 32, height: 32, borderRadius: 8,
+            background: 'var(--accent)', color:'var(--accent-fg)',
+            display:'flex', alignItems:'center', justifyContent:'center',
+            fontSize: 13, fontWeight: 700, fontFamily:'var(--font-heading)',
+          }}>AM</div>
+          <div style={{flex:1}}>
+            <div style={{fontSize: 12, fontWeight: 600, color: t(theme,'fg')}}>Meridian & Co.</div>
+            <div style={{fontSize: 10, color: t(theme,'muts'), letterSpacing:'.04em'}}>{L(lang,'Portal de cliente','Client portal')}</div>
+          </div>
+          <div style={{width:28, height:28, borderRadius: 999, background:'linear-gradient(135deg,#fbbf24,#f97316)', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 10, fontWeight: 700}}>SM</div>
+        </div>
+
+        {view === 'concept' && (
+          <button style={{background:'transparent', border:'none', color: t(theme,'mut'), fontSize: 12, padding: 0, marginBottom: 10, display:'flex', alignItems:'center', gap: 4, cursor:'pointer'}}>
+            <Ic.chev s={12} r={180}/> {L(lang,'Volver','Back')}
+          </button>
+        )}
+
+        <h1 style={{fontSize: 20, fontWeight: 600, color: t(theme,'fg'), letterSpacing:'-.015em', lineHeight: 1.15}}>
+          Q2 · Acquisition Sprint
+        </h1>
+        <div style={{display:'flex', gap: 6, marginTop: 8, flexWrap:'wrap'}}>
+          <Pill theme={theme} tone="accent" dot>{L(lang, CYCLE.month_es, CYCLE.month_en)}</Pill>
+          <Pill theme={theme} tone="sky" dot>{L(lang, CYCLE.status_es, CYCLE.status_en)}</Pill>
+        </div>
+      </div>
+
+      {/* Body */}
+      <div style={{padding: '16px 16px 32px'}}>
+        {view === 'overview' && (
+          <>
+            {/* Mini KPI row */}
+            <div style={{display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap: 8, marginBottom: 16}}>
+              <MiniKpi theme={theme} label="ROAS" value={`${CYCLE.roas.toFixed(1)}x`} delta="+13%" good/>
+              <MiniKpi theme={theme} label="CPA" value={`$${CYCLE.cpa}`} delta="-24%" good/>
+              <MiniKpi theme={theme} label="Leads" value={CYCLE.leads} delta="+15%" good/>
+            </div>
+
+            {/* Review banner */}
+            <div style={{marginBottom: 16}}>
+              <ReviewBanner theme={theme} lang={lang} pending={pending} total={ASSETS.length} onJump={()=>{}}/>
+            </div>
+
+            {/* Concept list */}
+            <div style={{
+              fontSize: 10, fontWeight: 700, letterSpacing:'.12em', textTransform:'uppercase',
+              color: t(theme,'muts'), margin: '8px 4px 10px',
+            }}>{L(lang,'Conceptos del ciclo','Cycle concepts')}</div>
+            <div style={{display:'flex', flexDirection:'column', gap: 8}}>
+              {CONCEPTS.map(c => (
+                <Card key={c.id} theme={theme} style={{padding: '14px 14px'}}>
+                  <div style={{display:'flex', alignItems:'center', gap:6, marginBottom: 6}}>
+                    <span>{ANGLES[c.angle]}</span>
+                    <Pill theme={theme} tone="neutral" style={{fontSize: 10}}>{c.angle}</Pill>
+                    <Pill theme={theme} tone={FUNNEL[c.funnel].color} dot style={{fontSize: 10}}>{c.funnel}</Pill>
+                  </div>
+                  <div style={{fontFamily:'var(--font-heading)', fontSize: 14, fontWeight: 600, lineHeight: 1.25, marginBottom: 6}}>{c.name}</div>
+                  <div style={{fontSize: 12, color: t(theme,'muts')}}>
+                    <strong style={{color: t(theme,'fg'), fontWeight: 600}}>{c.assets}</strong> {L(lang,'piezas','assets')} · <strong style={{color: t(theme,'success'), fontWeight: 600}}>{c.winning}</strong> winner{c.winning!==1?'s':''}
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </>
+        )}
+
+        {view === 'concept' && (
+          <>
+            <Card theme={theme} style={{padding: '16px 16px', marginBottom: 14}}>
+              <div style={{display:'flex', alignItems:'center', gap: 6, marginBottom: 10, flexWrap:'wrap'}}>
+                <span style={{fontSize: 18}}>{ANGLES[concept.angle]}</span>
+                <Pill theme={theme} tone="neutral" style={{fontSize: 10}}>{concept.angle}</Pill>
+                <Pill theme={theme} tone={FUNNEL[concept.funnel].color} dot style={{fontSize: 10}}>{concept.funnel}</Pill>
+                {concept.status==='Evergreen' && <Pill theme={theme} tone="amber" dot style={{fontSize: 10}}>★</Pill>}
+              </div>
+              <h2 style={{fontFamily:'var(--font-heading)', fontSize: 20, fontWeight: 600, letterSpacing:'-.015em', lineHeight: 1.15, marginBottom: 12, color: t(theme,'fg')}}>
+                {concept.name}
+              </h2>
+              <div style={{display:'flex', flexDirection:'column', gap: 12, paddingTop: 12, borderTop: `1px solid ${t(theme,'borderSoft')}`}}>
+                <MiniField theme={theme} label={L(lang,'A quién le hablamos','Who')}>{concept.persona}</MiniField>
+                <MiniField theme={theme} label={L(lang,'Problema','Pain')} accent="danger">{concept.pain}</MiniField>
+                <MiniField theme={theme} label={L(lang,'Transformación','Transformation')} accent="success">{concept.transformation}</MiniField>
+              </div>
+            </Card>
+
+            <div style={{fontSize: 10, fontWeight: 700, letterSpacing:'.12em', textTransform:'uppercase', color: t(theme,'muts'), margin: '4px 4px 10px'}}>
+              {L(lang,'Piezas para revisar','Assets to review')}
+            </div>
+
+            {/* mobile asset — pending one */}
+            <Card theme={theme} style={{padding: 0, overflow:'hidden'}}>
+              <div style={{padding: 14}}>
+                <div style={{display:'flex', gap: 12, marginBottom: 12}}>
+                  <AssetThumb hue={220} format="Reel 9:16" theme={theme} small/>
+                  <div style={{flex:1, minWidth: 0}}>
+                    <div style={{fontSize: 10, fontWeight: 600, color: t(theme,'mut'), fontFamily:'ui-monospace,Menlo,monospace', marginBottom: 4}}>
+                      Reel 9:16 · Meta · V3
+                    </div>
+                    <Pill theme={theme} tone="warning" dot style={{fontSize: 10}}>{L(lang,'Pendiente','Pending')}</Pill>
+                  </div>
+                </div>
+                <div style={{fontSize: 10, fontWeight: 700, letterSpacing:'.12em', textTransform:'uppercase', color: t(theme,'muts'), marginBottom: 3}}>Hook</div>
+                <div style={{fontSize: 14, fontWeight: 600, fontFamily:'var(--font-heading)', lineHeight: 1.3, marginBottom: 10}}>
+                  "It's 9:47pm. You're still in the spreadsheet."
+                </div>
+                <div style={{fontSize: 12, color: t(theme,'mut'), lineHeight: 1.5, marginBottom: 10}}>
+                  The monthly close isn't supposed to feel like this. See how 34 founders stopped doing manual reconciliation.
+                </div>
+                <div style={{display:'inline-flex', alignItems:'center', gap: 4, padding: '4px 8px', borderRadius: 6, border: `1px dashed ${t(theme,'border')}`, fontSize: 11, fontWeight: 600}}>
+                  CTA → Watch the 90-sec demo
+                </div>
+              </div>
+              <div style={{borderTop:`1px solid ${t(theme,'borderSoft')}`, background: t(theme,'subtle'), padding: '10px 14px', display:'flex', gap: 8}}>
+                <button style={{
+                  flex:1, padding: '9px', borderRadius: 7,
+                  background: t(theme,'success'), color:'#fff',
+                  border:'none', cursor:'pointer',
+                  fontSize: 12, fontWeight: 600, fontFamily:'inherit',
+                  display:'flex', alignItems:'center', justifyContent:'center', gap: 5,
+                }}><Ic.check s={12}/>{L(lang,'Aprobar','Approve')}</button>
+                <button style={{
+                  padding: '9px 12px', borderRadius: 7,
+                  background:'transparent', color: t(theme,'fg'),
+                  border:`1px solid ${t(theme,'border')}`, cursor:'pointer',
+                  fontSize: 12, fontWeight: 500, fontFamily:'inherit',
+                  display:'flex', alignItems:'center', gap: 5,
+                }}><Ic.msg s={12}/>{L(lang,'Cambios','Changes')}</button>
+              </div>
+            </Card>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MiniKpi({ theme, label, value, delta, good }) {
+  return (
+    <div style={{
+      background: t(theme,'card'),
+      border: `1px solid ${t(theme,'border')}`,
+      borderRadius: 10, padding: '10px 12px',
+    }}>
+      <div style={{fontSize: 9, fontWeight: 700, letterSpacing:'.1em', textTransform:'uppercase', color: t(theme,'muts'), marginBottom: 4}}>{label}</div>
+      <div style={{display:'flex', alignItems:'baseline', gap: 4}}>
+        <div style={{fontSize: 16, fontWeight: 700, fontFamily:'var(--font-heading)', letterSpacing:'-.015em', color: t(theme,'fg')}}>{value}</div>
+        <div style={{fontSize: 10, fontWeight: 700, color: good ? t(theme,'success') : t(theme,'danger')}}>{delta}</div>
+      </div>
+    </div>
+  );
+}
+
+function MiniField({ theme, label, children, accent }) {
+  const dot = accent === 'danger' ? t(theme,'danger') : accent === 'success' ? t(theme,'success') : t(theme,'border');
+  return (
+    <div style={{display:'flex', gap: 10}}>
+      <div style={{width: 2, background: dot, borderRadius: 2, flexShrink: 0, alignSelf:'stretch'}}/>
+      <div>
+        <div style={{fontSize: 9, fontWeight: 700, letterSpacing:'.12em', textTransform:'uppercase', color: t(theme,'muts'), marginBottom: 3}}>{label}</div>
+        <div style={{fontSize: 12, lineHeight: 1.45, color: t(theme,'fg')}}>{children}</div>
+      </div>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App/>);
+</script>
+</body>
+</html>
