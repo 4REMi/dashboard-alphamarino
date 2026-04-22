@@ -17,8 +17,9 @@ const VERDICTS  = ["Winner", "Scale", "Iterate", "Archive"] as const
 type MediaType = "Video" | "Imagen" | ""
 const VIDEO_SUBTYPES = ["VO + B-roll", "UGC", "Other"] as const
 const IMAGEN_SUBTYPES = ["Static", "Carousel"] as const
-const DURATION_OPTIONS = ["15s", "30s", "60s", "90s"]
+const COPY_LENGTH_OPTIONS = ["~100 palabras", "~150 palabras", "~200 palabras", "~300 palabras"]
 const SIZE_RATIO_OPTIONS = ["1:1", "4:5", "9:16", "16:9"]
+const LANGUAGES = [{ value: "es", label: "ES" }, { value: "en", label: "EN" }]
 
 function deriveMediaType(format: string | null): MediaType {
   if (!format) return ""
@@ -71,11 +72,18 @@ export function AssetModal({ projectId, cycleId, asset, concepts, defaultConcept
   const [cta,  setCta]  = useState(asset?.cta  ?? "")
 
   // format_meta fields — VO + B-roll
-  const [voDuration,  setVoDuration]  = useState((asset?.format_meta?.duration  as string) ?? "30s")
-  const [voScript,    setVoScript]    = useState((asset?.format_meta?.vo_script  as string) ?? "")
-  const [brollNotes,  setBrollNotes]  = useState((asset?.format_meta?.broll_notes as string) ?? "")
+  const [copyLength,  setCopyLength]  = useState((asset?.format_meta?.copy_length as string) ?? "~150 palabras")
+  const [voScript,    setVoScript]    = useState((asset?.format_meta?.vo_script   as string) ?? "")
+  const [brollNotes,  setBrollNotes]  = useState(() => {
+    const raw = asset?.format_meta?.broll_notes
+    if (!raw) return ""
+    if (Array.isArray(raw)) return (raw as string[]).join("\n")
+    return raw as string
+  })
   // format_meta fields — UGC
   const [talentBrief, setTalentBrief] = useState((asset?.format_meta?.talent_brief as string) ?? "")
+  // AI generation options
+  const [language,    setLanguage]    = useState((asset?.format_meta?.language as string) ?? "es")
   // format_meta fields — Static
   const [sizeRatio,   setSizeRatio]   = useState((asset?.format_meta?.size_ratio as string) ?? "1:1")
   const [visualDesc,  setVisualDesc]  = useState((asset?.format_meta?.visual_description as string) ?? "")
@@ -91,12 +99,13 @@ export function AssetModal({ projectId, cycleId, asset, concepts, defaultConcept
   }
 
   function buildFormatMeta(): Record<string, unknown> {
+    const brollArr = brollNotes.split("\n").map((s) => s.trim()).filter(Boolean)
     switch (subType) {
-      case "VO + B-roll": return { duration: voDuration, vo_script: voScript, broll_notes: brollNotes }
-      case "UGC":         return { duration: voDuration, talent_brief: talentBrief }
-      case "Static":      return { size_ratio: sizeRatio, visual_description: visualDesc }
-      case "Carousel":    return { slide_count: slideCount ? Number(slideCount) : null, slides_brief: slidesBrief }
-      case "Other":       return { production_notes: prodNotes }
+      case "VO + B-roll": return { copy_length: copyLength, language, vo_script: voScript, broll_notes: brollArr }
+      case "UGC":         return { copy_length: copyLength, language, talent_brief: talentBrief }
+      case "Static":      return { language, size_ratio: sizeRatio, visual_description: visualDesc }
+      case "Carousel":    return { language, slide_count: slideCount ? Number(slideCount) : null, slides_brief: slidesBrief }
+      case "Other":       return { language, production_notes: prodNotes }
       default:            return {}
     }
   }
@@ -104,14 +113,16 @@ export function AssetModal({ projectId, cycleId, asset, concepts, defaultConcept
   function handleGenerate() {
     if (!selectedConceptId || !subType) return
     startGenerate(async () => {
-      const result = await generateAssetCopy(projectId, selectedConceptId, subType, selectedPlatform || null)
+      const result = await generateAssetCopy(projectId, selectedConceptId, subType, selectedPlatform || null, language, copyLength)
       setHook(result.hook)
       setCopy(result.copy)
       setCta(result.cta)
       const meta = result.format_meta
       if (meta.vo_script)          setVoScript(meta.vo_script as string)
-      if (meta.broll_notes)        setBrollNotes(meta.broll_notes as string)
-      if (meta.duration)           setVoDuration(meta.duration as string)
+      if (meta.broll_notes) {
+        const raw = meta.broll_notes
+        setBrollNotes(Array.isArray(raw) ? (raw as string[]).join("\n") : raw as string)
+      }
       if (meta.talent_brief)       setTalentBrief(meta.talent_brief as string)
       if (meta.visual_description) setVisualDesc(meta.visual_description as string)
       if (meta.size_ratio)         setSizeRatio(meta.size_ratio as string)
@@ -258,19 +269,19 @@ export function AssetModal({ projectId, cycleId, asset, concepts, defaultConcept
             {subType === "VO + B-roll" && (
               <div className="space-y-3 pt-1">
                 <div className="space-y-1">
-                  <label className={labelCls}>Duración objetivo</label>
-                  <div className="flex gap-2">
-                    {DURATION_OPTIONS.map((d) => (
+                  <label className={labelCls}>Extensión del guión</label>
+                  <div className="flex gap-2 flex-wrap">
+                    {COPY_LENGTH_OPTIONS.map((l) => (
                       <button
-                        key={d}
+                        key={l}
                         type="button"
-                        onClick={() => setVoDuration(d)}
+                        onClick={() => setCopyLength(l)}
                         className={cn(
                           "px-3 py-1 rounded text-xs border transition-colors",
-                          voDuration === d ? "bg-foreground text-background border-foreground" : "bg-background text-muted-foreground border-border hover:border-foreground/40"
+                          copyLength === l ? "bg-foreground text-background border-foreground" : "bg-background text-muted-foreground border-border hover:border-foreground/40"
                         )}
                       >
-                        {d}
+                        {l}
                       </button>
                     ))}
                   </div>
@@ -287,12 +298,12 @@ export function AssetModal({ projectId, cycleId, asset, concepts, defaultConcept
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className={labelCls}>Notas de B-roll (escenas)</label>
+                  <label className={labelCls}>Escenas de B-roll <span className="text-muted-foreground/60 font-normal">(una por línea)</span></label>
                   <AutoTextarea
                     value={brollNotes}
                     onChange={(e) => setBrollNotes(e.target.value)}
-                    rows={3}
-                    placeholder="1. Manos tecleando en laptop…&#10;2. …"
+                    rows={4}
+                    placeholder={"Plano cenital de cancha de pádel vacía al amanecer\nClose-up de raqueta golpeando la pelota en cámara lenta\n…"}
                     className={cn(fieldCls, isGenerating && "opacity-50")}
                     disabled={isGenerating}
                   />
@@ -303,19 +314,19 @@ export function AssetModal({ projectId, cycleId, asset, concepts, defaultConcept
             {subType === "UGC" && (
               <div className="space-y-3 pt-1">
                 <div className="space-y-1">
-                  <label className={labelCls}>Duración objetivo</label>
-                  <div className="flex gap-2">
-                    {DURATION_OPTIONS.map((d) => (
+                  <label className={labelCls}>Extensión del copy</label>
+                  <div className="flex gap-2 flex-wrap">
+                    {COPY_LENGTH_OPTIONS.map((l) => (
                       <button
-                        key={d}
+                        key={l}
                         type="button"
-                        onClick={() => setVoDuration(d)}
+                        onClick={() => setCopyLength(l)}
                         className={cn(
                           "px-3 py-1 rounded text-xs border transition-colors",
-                          voDuration === d ? "bg-foreground text-background border-foreground" : "bg-background text-muted-foreground border-border hover:border-foreground/40"
+                          copyLength === l ? "bg-foreground text-background border-foreground" : "bg-background text-muted-foreground border-border hover:border-foreground/40"
                         )}
                       >
-                        {d}
+                        {l}
                       </button>
                     ))}
                   </div>
@@ -432,25 +443,45 @@ export function AssetModal({ projectId, cycleId, asset, concepts, defaultConcept
 
           {/* ── Copy section (universal) ── */}
           <div className="border rounded-lg p-3 space-y-3 bg-muted/20">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Copy del ad</p>
-              {canGenerate && (
-                <button
-                  type="button"
-                  onClick={handleGenerate}
-                  disabled={isGenerating}
-                  className="flex items-center gap-1.5 text-xs text-purple-600 hover:text-purple-700 disabled:opacity-50 transition-colors"
-                >
-                  {isGenerating
-                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    : <Sparkles className="w-3.5 h-3.5" />
-                  }
-                  {isGenerating ? "Generando…" : "Generar con IA"}
-                </button>
-              )}
-              {!canGenerate && !subType && isAdminOrSubadmin && (
-                <span className="text-xs text-muted-foreground">Selecciona formato y concepto para generar</span>
-              )}
+              <div className="flex items-center gap-2 ml-auto">
+                {/* Language toggle */}
+                <div className="flex rounded border overflow-hidden">
+                  {LANGUAGES.map((l) => (
+                    <button
+                      key={l.value}
+                      type="button"
+                      onClick={() => setLanguage(l.value)}
+                      className={cn(
+                        "px-2.5 py-1 text-xs font-semibold transition-colors",
+                        language === l.value
+                          ? "bg-foreground text-background"
+                          : "bg-background text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {l.label}
+                    </button>
+                  ))}
+                </div>
+                {canGenerate && (
+                  <button
+                    type="button"
+                    onClick={handleGenerate}
+                    disabled={isGenerating}
+                    className="flex items-center gap-1.5 text-xs text-purple-600 hover:text-purple-700 disabled:opacity-50 transition-colors"
+                  >
+                    {isGenerating
+                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      : <Sparkles className="w-3.5 h-3.5" />
+                    }
+                    {isGenerating ? "Generando…" : "Generar con IA"}
+                  </button>
+                )}
+                {!canGenerate && !subType && isAdminOrSubadmin && (
+                  <span className="text-xs text-muted-foreground">Selecciona formato y concepto para generar</span>
+                )}
+              </div>
             </div>
 
             <div className="space-y-1">

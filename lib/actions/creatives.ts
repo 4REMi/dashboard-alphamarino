@@ -393,7 +393,9 @@ export async function generateAssetCopy(
   projectId: string,
   conceptId: string,
   format: string | null,  // sub-type: "VO + B-roll" | "UGC" | "Static" | "Carousel" | "Other"
-  platform: string | null
+  platform: string | null,
+  language = "es",
+  copyLength = "~150 palabras"
 ): Promise<{ hook: string; copy: string; cta: string; format_meta: Record<string, unknown> }> {
   const supabase = await createClient()
   const { role } = await getRole()
@@ -420,16 +422,14 @@ export async function generateAssetCopy(
 - hook: primera línea spoken (máx 15 palabras, impacto inmediato — lo que se dice al inicio del video)
 - copy: guión de narración en 3-4 frases que fluyen del hook
 - cta: texto spoken o overlay (máx 5 palabras)
-- format_meta.vo_script: guión completo de voz en off listo para grabar (150-250 palabras, tono conversacional y persuasivo)
-- format_meta.broll_notes: lista de 6-8 escenas de B-roll concretas y visualizables (ej: "Manos tecleando en laptop mientras aparecen notificaciones de venta")
-- format_meta.duration: "30s"`,
+- format_meta.vo_script: guión completo de voz en off listo para grabar (${copyLength}, tono conversacional y persuasivo)
+- format_meta.broll_notes: array JSON de 6-8 strings, cada uno es una escena de B-roll concreta y visualizable (ej: "Manos tecleando en laptop mientras aparecen notificaciones de venta"). Devuelve SOLO el array, sin numeración ni viñetas dentro de cada string.`,
 
     "UGC": `Genera estos campos:
 - hook: línea de apertura que el creator dice a cámara (máx 15 palabras, patrón de pattern interrupt)
-- copy: cuerpo del ad copy escrito para el creator
+- copy: cuerpo del ad copy escrito para el creator (${copyLength})
 - cta: llamada a la acción al final del video (máx 6 palabras)
-- format_meta.talent_brief: briefing completo y listo para enviar al creator (incluye: tono de voz, 3 key points obligatorios que debe mencionar, 2 cosas a evitar, estilo de edición sugerido)
-- format_meta.duration: "60s"`,
+- format_meta.talent_brief: briefing completo y listo para enviar al creator (incluye: tono de voz, 3 key points obligatorios que debe mencionar, 2 cosas a evitar, estilo de edición sugerido)`,
 
     "Static": `Genera estos campos:
 - hook: headline de máx 7 palabras (lo más llamativo de la imagen)
@@ -454,11 +454,15 @@ export async function generateAssetCopy(
 
   const guideForSubType = subTypeGuides[format ?? ""] ?? subTypeGuides["Other"]
 
+  const langLabel = language === "es" ? "Español" : language === "en" ? "English" : language
+
   const systemPrompt = `Eres un copywriter de performance marketing experto en Meta Ads, TikTok Ads y Google Ads. Escribes copy que convierte basándote en el ángulo estratégico y el perfil psicológico del buyer persona.
 
 Responde ÚNICAMENTE con un JSON válido con estos campos: hook, copy, cta, format_meta (objeto). Sin markdown, sin texto adicional.`
 
   const userPrompt = `Escribe el copy y brief de producción para este asset publicitario.
+
+IDIOMA DEL ANUNCIO: ${langLabel} — todo el copy (hook, copy, cta, vo_script, talent_brief, slides_brief, etc.) debe estar escrito en ${langLabel}. Los nombres de los campos del JSON permanecen en inglés; solo el contenido va en ${langLabel}.
 
 Ángulo estratégico: ${c.angle_type ?? "—"} (${c.organizing_principle ?? "—"})
 Persona objetivo: ${c.target_persona}

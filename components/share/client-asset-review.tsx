@@ -50,17 +50,26 @@ export function ClientAssetReview({ asset }: { asset: ClientAsset }) {
   const formatLabel  = [asset.format, asset.platform].filter(Boolean).join(" · ")
   const variantLabel = [asset.variant, asset.iteration].filter(Boolean).join(" / ")
 
+  // Parse broll_notes into individual scenes regardless of storage format
+  const brollScenes: string[] = (() => {
+    const raw = meta.broll_notes
+    if (!raw) return []
+    if (Array.isArray(raw)) return (raw as string[]).filter(Boolean)
+    if (typeof raw === "string") return raw.split("\n").map((s) => s.trim()).filter(Boolean)
+    return []
+  })()
+
   // Collect production brief fields that exist
   const briefFields: { label: string; value: string }[] = []
   if (typeof meta.vo_script          === "string") briefFields.push({ label: "Guión (VO)",          value: meta.vo_script })
-  if (typeof meta.broll_notes        === "string") briefFields.push({ label: "Escenas B-roll",       value: meta.broll_notes })
+  // broll_notes rendered separately as a scene list below
   if (typeof meta.talent_brief       === "string") briefFields.push({ label: "Brief del creator",    value: meta.talent_brief })
   if (typeof meta.visual_description === "string") briefFields.push({ label: "Dirección visual",     value: meta.visual_description })
   if (typeof meta.slides_brief       === "string") briefFields.push({ label: "Estructura de slides", value: meta.slides_brief })
   if (typeof meta.production_notes   === "string") briefFields.push({ label: "Notas de producción",  value: meta.production_notes })
 
   const hasCopy   = asset.hook || asset.copy || asset.cta
-  const hasBrief  = briefFields.length > 0
+  const hasBrief  = briefFields.length > 0 || brollScenes.length > 0
   const twoCol    = hasCopy && hasBrief
 
   return (
@@ -120,6 +129,21 @@ export function ClientAssetReview({ asset }: { asset: ClientAsset }) {
             {briefFields.map(({ label, value }) => (
               <CopyBlock key={label} label={label} value={value} />
             ))}
+            {brollScenes.length > 0 && (
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Escenas B-roll</p>
+                <ol className="space-y-1.5">
+                  {brollScenes.map((scene, i) => (
+                    <li key={i} className="flex gap-2.5 text-sm leading-relaxed text-foreground/90">
+                      <span className="flex-shrink-0 w-4 h-4 mt-0.5 rounded-full bg-slate-200 text-slate-600 text-[10px] font-bold flex items-center justify-center tabular-nums">
+                        {i + 1}
+                      </span>
+                      <span>{scene}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
           </div>
         )}
       </div>
