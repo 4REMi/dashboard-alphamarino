@@ -21,6 +21,17 @@ interface ClientAsset {
   concept_angle: string | null
 }
 
+function detectAssetType(url: string): "image" | "video" | "external" {
+  try {
+    const path = new URL(url).pathname.toLowerCase().split("?")[0]
+    if (/\.(jpg|jpeg|png|webp|gif|avif|svg)$/.test(path)) return "image"
+    if (/\.(mp4|mov|webm|m4v|ogg)$/.test(path))           return "video"
+  } catch {
+    // fall through
+  }
+  return "external"
+}
+
 export function ClientAssetReview({ asset }: { asset: ClientAsset }) {
   const [status, setStatus]             = useState<ClientReviewStatus | null>(asset.client_status)
   const [showFeedback, setShowFeedback] = useState(false)
@@ -50,6 +61,8 @@ export function ClientAssetReview({ asset }: { asset: ClientAsset }) {
   const formatLabel  = [asset.format, asset.platform].filter(Boolean).join(" · ")
   const variantLabel = [asset.variant, asset.iteration].filter(Boolean).join(" / ")
 
+  const assetType = asset.asset_url ? detectAssetType(asset.asset_url) : null
+
   // Parse broll_notes into individual scenes regardless of storage format
   const brollScenes: string[] = (() => {
     const raw = meta.broll_notes
@@ -62,15 +75,14 @@ export function ClientAssetReview({ asset }: { asset: ClientAsset }) {
   // Collect production brief fields that exist
   const briefFields: { label: string; value: string }[] = []
   if (typeof meta.vo_script          === "string") briefFields.push({ label: "Guión (VO)",          value: meta.vo_script })
-  // broll_notes rendered separately as a scene list below
   if (typeof meta.talent_brief       === "string") briefFields.push({ label: "Brief del creator",    value: meta.talent_brief })
   if (typeof meta.visual_description === "string") briefFields.push({ label: "Dirección visual",     value: meta.visual_description })
   if (typeof meta.slides_brief       === "string") briefFields.push({ label: "Estructura de slides", value: meta.slides_brief })
   if (typeof meta.production_notes   === "string") briefFields.push({ label: "Notas de producción",  value: meta.production_notes })
 
-  const hasCopy   = asset.hook || asset.copy || asset.cta
-  const hasBrief  = briefFields.length > 0 || brollScenes.length > 0
-  const twoCol    = hasCopy && hasBrief
+  const hasCopy  = asset.hook || asset.copy || asset.cta
+  const hasBrief = briefFields.length > 0 || brollScenes.length > 0
+  const twoCol   = hasCopy && hasBrief
 
   return (
     <div className="bg-white rounded-2xl border shadow-sm overflow-hidden flex flex-col">
@@ -93,10 +105,41 @@ export function ClientAssetReview({ asset }: { asset: ClientAsset }) {
             rel="noopener noreferrer"
             className="flex-shrink-0 text-xs text-blue-600 hover:text-blue-700 font-medium border border-blue-200 rounded-full px-3 py-1.5 bg-blue-50 hover:bg-blue-100 transition-colors"
           >
-            Ver asset →
+            {assetType === "image" ? "Tamaño completo ↗" : assetType === "video" ? "Ver original ↗" : "Ver asset →"}
           </a>
         )}
       </div>
+
+      {/* ── Media preview ── */}
+      {asset.asset_url && assetType === "image" && (
+        <a
+          href={asset.asset_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block bg-slate-50 border-b overflow-hidden"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={asset.asset_url}
+            alt={formatLabel || "Asset preview"}
+            className="w-full max-h-[420px] object-contain"
+          />
+        </a>
+      )}
+
+      {asset.asset_url && assetType === "video" && (
+        <div className="bg-black border-b">
+          <video
+            controls
+            preload="metadata"
+            className="w-full max-h-[420px]"
+            style={{ display: "block" }}
+          >
+            <source src={asset.asset_url} />
+            Tu navegador no soporta reproducción de video.
+          </video>
+        </div>
+      )}
 
       {/* ── Card body: 2-col on md+ if both copy and brief exist ── */}
       <div className={`flex-1 ${twoCol ? "grid md:grid-cols-2 divide-y md:divide-y-0 md:divide-x" : ""}`}>
@@ -159,6 +202,9 @@ export function ClientAssetReview({ asset }: { asset: ClientAsset }) {
             {status === "approved"
               ? "✅ Aprobado — gracias por tu confirmación"
               : "💬 Cambios enviados — te contactamos pronto"}
+            {status === "changes_requested" && asset.client_feedback && (
+              <p className="text-xs mt-1.5 opacity-75 font-normal">"{asset.client_feedback}"</p>
+            )}
           </div>
         ) : showFeedback ? (
           <div className="space-y-2">
