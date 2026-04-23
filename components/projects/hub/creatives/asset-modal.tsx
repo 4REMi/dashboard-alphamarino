@@ -4,7 +4,7 @@ import { useState, useTransition } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { createAsset, updateAsset, deleteAsset, generateAssetCopy, toggleClientVisible } from "@/lib/actions/creatives"
-import { PRODUCTION_STATUS_COLORS, VERDICT_COLORS } from "@/lib/constants/creatives"
+import { PRODUCTION_STATUS_COLORS, VERDICT_COLORS, CREATIVE_MECHANICS, MECHANIC_PAIRINGS } from "@/lib/constants/creatives"
 import type { CreativeAsset, CreativeConcept } from "@/lib/types"
 import { ExternalLink, Trash2, Sparkles, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -85,6 +85,9 @@ export function AssetModal({ projectId, cycleId, asset, concepts, defaultConcept
   const [talentBrief, setTalentBrief] = useState((asset?.format_meta?.talent_brief as string) ?? "")
   // AI generation options
   const [language,    setLanguage]    = useState((asset?.format_meta?.language as string) ?? "es")
+  // Creative mechanic
+  const [mechanicPrimary,   setMechanicPrimary]   = useState(asset?.mechanic_primary   ?? "")
+  const [mechanicSecondary, setMechanicSecondary] = useState(asset?.mechanic_secondary ?? "")
   // format_meta fields — Static
   const [sizeRatio,   setSizeRatio]   = useState((asset?.format_meta?.size_ratio as string) ?? "1:1")
   const [visualDesc,  setVisualDesc]  = useState((asset?.format_meta?.visual_description as string) ?? "")
@@ -114,7 +117,7 @@ export function AssetModal({ projectId, cycleId, asset, concepts, defaultConcept
   function handleGenerate() {
     if (!selectedConceptId || !subType) return
     startGenerate(async () => {
-      const result = await generateAssetCopy(projectId, selectedConceptId, subType, selectedPlatform || null, language, copyLength)
+      const result = await generateAssetCopy(projectId, selectedConceptId, subType, selectedPlatform || null, language, copyLength, mechanicPrimary || null, mechanicSecondary || null)
       setHook(result.hook)
       setCopy(result.copy)
       setCta(result.cta)
@@ -142,6 +145,8 @@ export function AssetModal({ projectId, cycleId, asset, concepts, defaultConcept
     fd.set("cta",  cta)
     fd.set("format", subType)
     fd.set("format_meta", JSON.stringify(buildFormatMeta()))
+    fd.set("mechanic_primary",   mechanicPrimary)
+    fd.set("mechanic_secondary", mechanicSecondary)
     startTransition(async () => {
       if (isEdit) {
         await updateAsset(asset.id, projectId, fd)
@@ -223,6 +228,53 @@ export function AssetModal({ projectId, cycleId, asset, concepts, defaultConcept
               <option value="">—</option>
               {PLATFORMS.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
+          </div>
+
+          {/* ── Mecánica creativa ── */}
+          <div className="border rounded-lg p-3 space-y-3 bg-blue-50/30">
+            <p className="text-xs font-semibold text-blue-700/70 uppercase tracking-wide">Mecánica creativa</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className={labelCls}>Primaria</label>
+                <select
+                  value={mechanicPrimary}
+                  onChange={(e) => { setMechanicPrimary(e.target.value); setMechanicSecondary("") }}
+                  className={fieldCls}
+                >
+                  <option value="">— sin mecánica —</option>
+                  {CREATIVE_MECHANICS.map((m) => (
+                    <option key={m.name} value={m.name}>{m.emoji} {m.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className={labelCls}>Secundaria</label>
+                <select
+                  value={mechanicSecondary}
+                  onChange={(e) => setMechanicSecondary(e.target.value)}
+                  className={fieldCls}
+                  disabled={!mechanicPrimary}
+                >
+                  <option value="">— ninguna —</option>
+                  {CREATIVE_MECHANICS
+                    .filter((m) => m.name !== mechanicPrimary)
+                    .map((m) => {
+                      const suggested = MECHANIC_PAIRINGS.some(([p, s]) => p === mechanicPrimary && s === m.name)
+                      return (
+                        <option key={m.name} value={m.name}>
+                          {m.emoji} {m.name}{suggested ? " ★" : ""}
+                        </option>
+                      )
+                    })}
+                </select>
+              </div>
+            </div>
+            {mechanicPrimary && (() => {
+              const m = CREATIVE_MECHANICS.find((x) => x.name === mechanicPrimary)
+              return m ? (
+                <p className="text-[11px] text-blue-700/70 leading-snug">{m.architecture}</p>
+              ) : null
+            })()}
           </div>
 
           {/* ── Formato ── */}

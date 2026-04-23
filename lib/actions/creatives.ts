@@ -70,8 +70,6 @@ export async function createConcept(projectId: string, formData: FormData): Prom
     organizing_principle: (formData.get("organizing_principle") as string) || null,
     product_service:      (formData.get("product_service") as string) || null,
     angle_type:           (formData.get("angle_type") as string) || null,
-    mechanic_primary:     (formData.get("mechanic_primary") as string) || null,
-    mechanic_secondary:   (formData.get("mechanic_secondary") as string) || null,
     target_persona:       (formData.get("target_persona") as string) ?? "",
     why_it_works:         (formData.get("why_it_works") as string) || null,
     pain_point:           (formData.get("pain_point") as string) || null,
@@ -102,8 +100,6 @@ export async function updateConcept(
     organizing_principle: (formData.get("organizing_principle") as string) || null,
     product_service:      (formData.get("product_service") as string) || null,
     angle_type:           (formData.get("angle_type") as string) || null,
-    mechanic_primary:     (formData.get("mechanic_primary") as string) || null,
-    mechanic_secondary:   (formData.get("mechanic_secondary") as string) || null,
     target_persona:       (formData.get("target_persona") as string) ?? "",
     why_it_works:         (formData.get("why_it_works") as string) || null,
     pain_point:           (formData.get("pain_point") as string) || null,
@@ -208,6 +204,8 @@ export async function createAsset(projectId: string, formData: FormData): Promis
     hook:              (formData.get("hook") as string) || null,
     copy:              (formData.get("copy") as string) || null,
     cta:               (formData.get("cta") as string) || null,
+    mechanic_primary:  (formData.get("mechanic_primary") as string) || null,
+    mechanic_secondary:(formData.get("mechanic_secondary") as string) || null,
     format_meta:       fmStr ? JSON.parse(fmStr) : null,
     asset_url:         (formData.get("asset_url") as string) || null,
     production_status: (formData.get("production_status") as ProductionStatus) ?? "Pending",
@@ -245,6 +243,8 @@ export async function updateAsset(
     hook:              (formData.get("hook") as string) || null,
     copy:              (formData.get("copy") as string) || null,
     cta:               (formData.get("cta") as string) || null,
+    mechanic_primary:  (formData.get("mechanic_primary") as string) || null,
+    mechanic_secondary:(formData.get("mechanic_secondary") as string) || null,
     format_meta:       fmStrU ? JSON.parse(fmStrU) : null,
     asset_url:         (formData.get("asset_url") as string) || null,
     production_status: (formData.get("production_status") as ProductionStatus) ?? "Pending",
@@ -399,7 +399,9 @@ export async function generateAssetCopy(
   format: string | null,  // sub-type: "VO + B-roll" | "UGC" | "Static" | "Carousel" | "Other"
   platform: string | null,
   language = "es",
-  copyLength = "~150 palabras"
+  copyLength = "~150 palabras",
+  mechanicPrimary: string | null = null,
+  mechanicSecondary: string | null = null,
 ): Promise<{ hook: string; copy: string; cta: string; format_meta: Record<string, unknown> }> {
   const supabase = await createClient()
   const { role } = await getRole()
@@ -407,7 +409,7 @@ export async function generateAssetCopy(
 
   const [conceptRes, ctxRes] = await Promise.all([
     supabase.from("creative_concepts")
-      .select("angle_type, organizing_principle, target_persona, pain_point, why_it_works, objection, transformation, awareness_stage, product_service, mechanic_primary, mechanic_secondary")
+      .select("angle_type, organizing_principle, target_persona, pain_point, why_it_works, objection, transformation, awareness_stage, product_service")
       .eq("id", conceptId)
       .single(),
     supabase.from("paid_media_context")
@@ -464,13 +466,13 @@ export async function generateAssetCopy(
 
 Responde ÚNICAMENTE con un JSON válido con estos campos: hook, copy, cta, format_meta (objeto). Sin markdown, sin texto adicional.`
 
-  // Build mechanic instruction block
-  const mechanicBlock = c.mechanic_primary ? `
+  // Build mechanic instruction block from params passed by the modal UI
+  const mechanicBlock = mechanicPrimary ? `
 MECÁNICA CREATIVA — esta es la arquitectura estructural del ad. No es el hook ni el formato visual; es el movimiento cognitivo/emocional que hace que el viewer sienta o concluya algo.
 
-Mecánica primaria: ${c.mechanic_primary}
+Mecánica primaria: ${mechanicPrimary}
 La ejecución del copy, el guión y el b-roll deben reflejar esta mecánica como principio arquitectónico. No la menciones explícitamente — aplícala.
-${c.mechanic_secondary ? `\nMecánica secundaria: ${c.mechanic_secondary}\nÚsala como capa adicional de profundidad emocional o credibilidad, sin eclipsar la primaria.` : ""}` : ""
+${mechanicSecondary ? `\nMecánica secundaria: ${mechanicSecondary}\nÚsala como capa adicional de profundidad emocional o credibilidad, sin eclipsar la primaria.` : ""}` : ""
 
   const userPrompt = `Escribe el copy y brief de producción para este asset publicitario.
 

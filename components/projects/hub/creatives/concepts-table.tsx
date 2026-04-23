@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { ConceptModal } from "./concept-modal"
 import { AssetModal } from "./asset-modal"
 import { generateCreativeConcepts, confirmAIDrafts, promoteConcept, demoteConcept, deleteConcept } from "@/lib/actions/creatives"
-import { CONCEPT_STATUS_COLORS, AWARENESS_LABELS, ANGLE_GUIDE, PRODUCTION_STATUS_COLORS, VERDICT_COLORS, CREATIVE_MECHANICS } from "@/lib/constants/creatives"
+import { CONCEPT_STATUS_COLORS, AWARENESS_LABELS, ANGLE_GUIDE, PRODUCTION_STATUS_COLORS, VERDICT_COLORS } from "@/lib/constants/creatives"
 import type { CreativeConcept, CreativeAsset } from "@/lib/types"
 import type { AIDraftConcept } from "@/lib/actions/creatives"
 import { Plus, Sparkles, Check, X, Loader2, Star, ArrowUpRight, Pencil, Trash2, Link2 } from "lucide-react"
@@ -50,10 +50,8 @@ function ConceptDetailModal({
   onRefresh: () => void
 }) {
   const [isPending, startTransition] = useTransition()
-  const angleEntry    = ANGLE_GUIDE.find((a) => a.name === concept.angle_type)
-  const mechanicEntry = CREATIVE_MECHANICS.find((m) => m.name === concept.mechanic_primary)
-  const mechSecEntry  = CREATIVE_MECHANICS.find((m) => m.name === concept.mechanic_secondary)
-  const isEvergreen   = concept.status === "Evergreen"
+  const angleEntry  = ANGLE_GUIDE.find((a) => a.name === concept.angle_type)
+  const isEvergreen = concept.status === "Evergreen"
 
   function handlePromote() {
     startTransition(async () => {
@@ -125,14 +123,6 @@ function ConceptDetailModal({
                     Stage {concept.awareness_stage} · {AWARENESS_LABELS[concept.awareness_stage]}
                   </span>
                 )}
-                {mechanicEntry && (
-                  <span className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-medium">
-                    {mechanicEntry.emoji} {concept.mechanic_primary}
-                    {mechSecEntry && (
-                      <span className="text-blue-400">+ {mechSecEntry.emoji} {concept.mechanic_secondary}</span>
-                    )}
-                  </span>
-                )}
               </div>
             </div>
           </div>
@@ -180,31 +170,6 @@ function ConceptDetailModal({
                     ? <Badge className={cn("text-xs border-0 mt-0.5", FUNNEL_COLORS[concept.funnel_stage] ?? "bg-gray-100 text-gray-600")}>{concept.funnel_stage}</Badge>
                     : <p className={fEmpty}>—</p>}
                 </div>
-                {mechanicEntry && (
-                  <>
-                    <div className="h-px bg-border" />
-                    <div className="space-y-2">
-                      <p className={fLabel}>Mecánica creativa</p>
-                      <div className="space-y-1.5">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-base leading-none">{mechanicEntry.emoji}</span>
-                          <span className="text-xs font-semibold text-blue-700">{concept.mechanic_primary}</span>
-                          <span className="text-[10px] text-muted-foreground bg-blue-50 px-1.5 py-0.5 rounded">primaria</span>
-                        </div>
-                        <p className="text-[11px] text-muted-foreground leading-snug">{mechanicEntry.architecture}</p>
-                      </div>
-                      {mechSecEntry && (
-                        <div className="space-y-1 mt-2">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-base leading-none">{mechSecEntry.emoji}</span>
-                            <span className="text-xs font-medium text-muted-foreground">{concept.mechanic_secondary}</span>
-                            <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">secundaria</span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </>
-                )}
               </>
             ) : (
               <p className={fEmpty}>Sin ángulo asignado</p>
@@ -855,8 +820,7 @@ function ConceptRow({
   onClick: () => void
 }) {
   const publishedCount = conceptAssets.filter((a) => a.production_status === "Published").length
-  const angleEntry    = ANGLE_GUIDE.find((a) => a.name === concept.angle_type)
-  const mechanicEntry = CREATIVE_MECHANICS.find((m) => m.name === concept.mechanic_primary)
+  const angleEntry = ANGLE_GUIDE.find((a) => a.name === concept.angle_type)
 
   return (
     <tr className="border-t hover:bg-muted/30 transition-colors cursor-pointer" onClick={onClick}>
@@ -883,16 +847,9 @@ function ConceptRow({
         <span className="text-xs">{concept.organizing_principle ?? "—"}</span>
       </td>
       <td className="px-3 py-3">
-        <div className="space-y-1">
-          <span className="text-xs font-medium">
-            {angleEntry ? `${angleEntry.emoji} ${concept.angle_type}` : concept.angle_type ?? "—"}
-          </span>
-          {mechanicEntry && (
-            <div className="text-[10px] text-blue-600 font-medium">
-              {mechanicEntry.emoji} {concept.mechanic_primary}
-            </div>
-          )}
-        </div>
+        <span className="text-xs font-medium">
+          {angleEntry ? `${angleEntry.emoji} ${concept.angle_type}` : concept.angle_type ?? "—"}
+        </span>
       </td>
       <td className="px-3 py-3 whitespace-nowrap">
         <span className="text-xs text-muted-foreground">
