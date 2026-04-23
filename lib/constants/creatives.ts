@@ -92,18 +92,47 @@ export const AWARENESS_LABELS: Record<number, string> = {
 }
 
 export const PRODUCTION_STATUS_COLORS: Record<string, string> = {
-  Pending:       "bg-gray-100 text-gray-600",
-  "In Production": "bg-blue-100 text-blue-700",
-  "In Review":   "bg-yellow-100 text-yellow-700",
-  Approved:      "bg-emerald-100 text-emerald-700",
-  Published:     "bg-purple-100 text-purple-700",
+  Pending:           "bg-amber-50 text-amber-700",
+  "In Production":   "bg-blue-50 text-blue-700",
+  "In Review":       "bg-violet-50 text-violet-700",
+  Approved:          "bg-emerald-50 text-emerald-700",
+  Published:         "bg-slate-900 text-white",
 }
 
 export const VERDICT_COLORS: Record<string, string> = {
-  Winner:  "bg-emerald-100 text-emerald-700",
-  Scale:   "bg-blue-100 text-blue-700",
-  Iterate: "bg-yellow-100 text-yellow-700",
-  Archive: "bg-gray-100 text-gray-500",
+  Winner:  "bg-amber-50 text-amber-700",
+  Scale:   "bg-emerald-50 text-emerald-700",
+  Iterate: "bg-blue-50 text-blue-700",
+  Archive: "bg-gray-100 text-gray-400",
+}
+
+export const VERDICT_EMOJIS: Record<string, string> = {
+  Winner:  "🏆",
+  Scale:   "📈",
+  Iterate: "🔄",
+  Archive: "📦",
+}
+
+export const FORMAT_EMOJIS: Record<string, string> = {
+  "VO + B-roll": "🎬",
+  "UGC":         "🎥",
+  "Static":      "🖼️",
+  "Carousel":    "📊",
+  "Other":       "✦",
+}
+
+export const PLATFORM_COLORS: Record<string, string> = {
+  "Meta Ads":     "bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-200/60",
+  "TikTok Ads":   "bg-slate-900 text-white",
+  "Google Ads":   "bg-red-50 text-red-700 ring-1 ring-inset ring-red-200/60",
+  "LinkedIn Ads": "bg-sky-50 text-sky-800 ring-1 ring-inset ring-sky-200/60",
+  "Pinterest Ads":"bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-200/60",
+}
+
+export const FUNNEL_COLORS: Record<string, string> = {
+  TOF: "bg-sky-100 text-sky-700",
+  MOF: "bg-violet-100 text-violet-700",
+  BOF: "bg-emerald-100 text-emerald-700",
 }
 
 export const CONCEPT_STATUS_COLORS: Record<string, string> = {

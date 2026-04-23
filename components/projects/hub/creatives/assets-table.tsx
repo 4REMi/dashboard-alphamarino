@@ -4,7 +4,12 @@ import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { AssetModal } from "./asset-modal"
-import { PRODUCTION_STATUS_COLORS, VERDICT_COLORS } from "@/lib/constants/creatives"
+import {
+  PRODUCTION_STATUS_COLORS,
+  VERDICT_COLORS, VERDICT_EMOJIS,
+  FORMAT_EMOJIS, PLATFORM_COLORS,
+  FUNNEL_COLORS, ANGLE_GUIDE,
+} from "@/lib/constants/creatives"
 import type { CreativeAsset, CreativeConcept } from "@/lib/types"
 import { Plus, ExternalLink, Eye } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -36,12 +41,12 @@ export function AssetsTable({ assets, concepts, projectId, cycleId, isAdminOrSub
     byConceptId.set(key, group)
   }
 
-  // Concept groups in the order concepts appear (preserves concept table order)
+  // Concept groups in the order concepts appear
   const conceptGroups = concepts
     .filter((c) => byConceptId.has(c.id))
     .map((c) => ({ concept: c, groupAssets: byConceptId.get(c.id)! }))
 
-  // Assets not linked to any concept (or concept not in this cycle)
+  // Assets not linked to any concept
   const unlinked = byConceptId.get(null) ?? []
 
   const totalCols = isAdminOrSubadmin ? 7 : 5
@@ -89,52 +94,70 @@ export function AssetsTable({ assets, concepts, projectId, cycleId, isAdminOrSub
             )}
 
             {/* Groups by concept */}
-            {conceptGroups.map(({ concept, groupAssets }) => (
-              <>
-                {/* Concept group header */}
-                <tr key={`header-${concept.id}`} className="border-t bg-muted/20">
-                  <td colSpan={totalCols} className="px-4 py-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-xs font-semibold text-foreground truncate">
-                          {concept.name ?? concept.angle_type ?? "Sin nombre"}
-                        </span>
-                        <span className="text-muted-foreground hidden sm:inline">·</span>
-                        <span className="text-xs text-muted-foreground truncate hidden sm:inline">
-                          {concept.angle_type ?? "—"}
-                        </span>
+            {conceptGroups.map(({ concept, groupAssets }) => {
+              const angleEntry = ANGLE_GUIDE.find((a) => a.name === concept.angle_type)
+              return (
+                <>
+                  {/* Concept group header */}
+                  <tr key={`header-${concept.id}`} className="border-t bg-muted/20">
+                    <td colSpan={totalCols} className="px-4 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                          {/* Angle emoji */}
+                          {angleEntry && (
+                            <span className="text-base leading-none">{angleEntry.emoji}</span>
+                          )}
+                          <span className="text-xs font-semibold text-foreground truncate">
+                            {concept.name ?? concept.angle_type ?? "Sin nombre"}
+                          </span>
+                          {/* Angle type chip */}
+                          {concept.angle_type && (
+                            <span className="hidden sm:inline-flex text-[10px] font-medium bg-foreground/8 text-muted-foreground px-1.5 py-0.5 rounded">
+                              {concept.angle_type}
+                            </span>
+                          )}
+                          {/* Funnel badge */}
+                          {concept.funnel_stage && (
+                            <span className={cn(
+                              "text-[10px] font-semibold px-1.5 py-0.5 rounded",
+                              FUNNEL_COLORS[concept.funnel_stage] ?? "bg-gray-100 text-gray-600"
+                            )}>
+                              {concept.funnel_stage}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <span className="text-xs text-muted-foreground">
+                            {groupAssets.length} asset{groupAssets.length !== 1 ? "s" : ""}
+                          </span>
+                          {isAdminOrSubadmin && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 text-xs px-2"
+                              onClick={() => openCreate(concept.id)}
+                            >
+                              <Plus className="w-3 h-3 mr-0.5" />
+                              Nuevo
+                            </Button>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <span className="text-xs text-muted-foreground">
-                          {groupAssets.length} asset{groupAssets.length !== 1 ? "s" : ""}
-                        </span>
-                        {isAdminOrSubadmin && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 text-xs px-2"
-                            onClick={() => openCreate(concept.id)}
-                          >
-                            <Plus className="w-3 h-3 mr-0.5" />
-                            Nuevo
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                </tr>
+                    </td>
+                  </tr>
 
-                {/* Assets in this group */}
-                {groupAssets.map((asset) => (
-                  <AssetRow
-                    key={asset.id}
-                    asset={asset}
-                    isAdminOrSubadmin={isAdminOrSubadmin}
-                    onClick={() => setSelectedAsset(asset)}
-                  />
-                ))}
-              </>
-            ))}
+                  {/* Assets in this group */}
+                  {groupAssets.map((asset) => (
+                    <AssetRow
+                      key={asset.id}
+                      asset={asset}
+                      isAdminOrSubadmin={isAdminOrSubadmin}
+                      onClick={() => setSelectedAsset(asset)}
+                    />
+                  ))}
+                </>
+              )
+            })}
 
             {/* Unlinked assets */}
             {unlinked.length > 0 && (
@@ -199,60 +222,109 @@ function AssetRow({
   isAdminOrSubadmin: boolean
   onClick: () => void
 }) {
+  const formatEmoji = asset.format ? (FORMAT_EMOJIS[asset.format] ?? "✦") : null
+
   return (
     <tr className="border-t hover:bg-muted/30 transition-colors cursor-pointer" onClick={onClick}>
+
+      {/* Format + Platform */}
       <td className="px-4 py-3 pl-6">
-        <div className="text-xs">
-          {asset.format && <span className="font-medium">{asset.format}</span>}
-          {asset.format && asset.platform && <span className="text-muted-foreground"> · </span>}
-          {asset.platform && <span className="text-muted-foreground">{asset.platform}</span>}
-          {!asset.format && !asset.platform && <span className="text-muted-foreground">—</span>}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {formatEmoji && (
+            <span className="text-sm leading-none">{formatEmoji}</span>
+          )}
+          {asset.format && (
+            <span className="text-xs font-medium text-foreground">{asset.format}</span>
+          )}
+          {asset.platform && (
+            <span className={cn(
+              "text-[10px] font-semibold px-1.5 py-0.5 rounded-md",
+              PLATFORM_COLORS[asset.platform] ?? "bg-muted text-muted-foreground"
+            )}>
+              {asset.platform.replace(" Ads", "")}
+            </span>
+          )}
+          {!asset.format && !asset.platform && (
+            <span className="text-muted-foreground text-xs">—</span>
+          )}
         </div>
         {(asset.variant || asset.iteration) && (
-          <div className="text-xs text-muted-foreground mt-0.5">
-            {[asset.variant, asset.iteration].filter(Boolean).join(" / ")}
+          <div className="flex gap-1 mt-1.5 flex-wrap">
+            {asset.variant && (
+              <span className="text-[10px] font-mono bg-muted px-1.5 py-0.5 rounded text-muted-foreground">
+                {asset.variant}
+              </span>
+            )}
+            {asset.iteration && (
+              <span className="text-[10px] font-mono bg-muted px-1.5 py-0.5 rounded text-muted-foreground">
+                {asset.iteration}
+              </span>
+            )}
           </div>
         )}
       </td>
-      <td className="px-4 py-3 hidden md:table-cell">
-        <span className="text-xs text-muted-foreground line-clamp-2">{asset.hook ?? "—"}</span>
+
+      {/* Hook */}
+      <td className="px-4 py-3 hidden md:table-cell max-w-xs">
+        <span className="text-xs text-foreground/70 line-clamp-2 leading-relaxed">
+          {asset.hook ?? <span className="text-muted-foreground/40">—</span>}
+        </span>
       </td>
+
+      {/* Production status */}
       <td className="px-4 py-3">
-        <Badge className={cn("text-xs border-0", PRODUCTION_STATUS_COLORS[asset.production_status] ?? "bg-gray-100 text-gray-600")}>
+        <Badge className={cn("text-xs border-0 font-medium", PRODUCTION_STATUS_COLORS[asset.production_status] ?? "bg-gray-100 text-gray-600")}>
           {asset.production_status}
         </Badge>
       </td>
+
       {isAdminOrSubadmin && (
         <>
-          <td className="px-4 py-3 text-sm hidden lg:table-cell">
+          {/* ROAS */}
+          <td className="px-4 py-3 text-xs hidden lg:table-cell">
             {asset.roas != null ? (
-              <span className={cn("font-medium", asset.roas >= 2 ? "text-emerald-600" : "text-red-500")}>
-                {asset.roas.toFixed(2)}x
+              <span className={cn(
+                "font-semibold tabular-nums",
+                asset.roas >= 2 ? "text-emerald-600" : "text-red-500"
+              )}>
+                {asset.roas >= 2 ? "↑" : "↓"} {asset.roas.toFixed(2)}x
               </span>
-            ) : "—"}
+            ) : (
+              <span className="text-muted-foreground/30">—</span>
+            )}
           </td>
+
+          {/* Verdict */}
           <td className="px-4 py-3 hidden lg:table-cell">
             {asset.verdict ? (
-              <Badge className={cn("text-xs border-0", VERDICT_COLORS[asset.verdict] ?? "")}>
+              <Badge className={cn("text-xs border-0 gap-1", VERDICT_COLORS[asset.verdict] ?? "")}>
+                <span>{VERDICT_EMOJIS[asset.verdict]}</span>
                 {asset.verdict}
               </Badge>
-            ) : "—"}
+            ) : (
+              <span className="text-muted-foreground/30 text-xs">—</span>
+            )}
           </td>
         </>
       )}
+
+      {/* Actions */}
       <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-end gap-1.5">
           {asset.client_visible && (
-            <span title={
-              asset.client_status === "approved"          ? "Aprobado por el cliente" :
-              asset.client_status === "changes_requested" ? "Cliente pidió cambios" :
-              "Enviado al cliente — pendiente"
-            } className={cn(
-              "inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full",
-              asset.client_status === "approved"          && "bg-emerald-100 text-emerald-700",
-              asset.client_status === "changes_requested" && "bg-amber-100 text-amber-700",
-              (!asset.client_status || asset.client_status === "pending_review") && "bg-blue-100 text-blue-600",
-            )}>
+            <span
+              title={
+                asset.client_status === "approved"          ? "Aprobado por el cliente" :
+                asset.client_status === "changes_requested" ? "Cliente pidió cambios" :
+                "Enviado al cliente — pendiente"
+              }
+              className={cn(
+                "inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full",
+                asset.client_status === "approved"          && "bg-emerald-100 text-emerald-700",
+                asset.client_status === "changes_requested" && "bg-amber-100 text-amber-700",
+                (!asset.client_status || asset.client_status === "pending_review") && "bg-blue-100 text-blue-600",
+              )}
+            >
               <Eye className="w-2.5 h-2.5" />
               {asset.client_status === "approved"          ? "OK" :
                asset.client_status === "changes_requested" ? "Cambios" :
