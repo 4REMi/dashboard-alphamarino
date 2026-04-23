@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { useRouter } from "next/navigation"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { createAsset, updateAsset, deleteAsset, generateAssetCopy, toggleClientVisible } from "@/lib/actions/creatives"
@@ -48,12 +47,12 @@ interface AssetModalProps {
   defaultConceptId?: string | null
   isAdminOrSubadmin: boolean
   open: boolean
+  onRefresh?: () => void
   onClose: () => void
 }
 
-export function AssetModal({ projectId, cycleId, asset, concepts, defaultConceptId, isAdminOrSubadmin, open, onClose }: AssetModalProps) {
+export function AssetModal({ projectId, cycleId, asset, concepts, defaultConceptId, isAdminOrSubadmin, open, onRefresh, onClose }: AssetModalProps) {
   const isEdit = !!asset
-  const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [isGenerating, startGenerate] = useTransition()
   const [isToggling, startToggle] = useTransition()
@@ -149,7 +148,7 @@ export function AssetModal({ projectId, cycleId, asset, concepts, defaultConcept
       } else {
         await createAsset(projectId, fd)
       }
-      router.refresh()
+      onRefresh?.()
       onClose()
     })
   }
@@ -159,7 +158,7 @@ export function AssetModal({ projectId, cycleId, asset, concepts, defaultConcept
     if (!confirm("¿Eliminar este asset?")) return
     startTransition(async () => {
       await deleteAsset(asset.id, projectId)
-      router.refresh()
+      onRefresh?.()
       onClose()
     })
   }
@@ -175,7 +174,7 @@ export function AssetModal({ projectId, cycleId, asset, concepts, defaultConcept
     setClientVisible(next)
     startToggle(async () => {
       await toggleClientVisible(asset.id, projectId, next)
-      router.refresh()
+      onRefresh?.()
     })
   }
 

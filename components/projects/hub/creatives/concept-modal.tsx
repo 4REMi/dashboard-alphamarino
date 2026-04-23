@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useTransition, Fragment } from "react"
-import { useRouter } from "next/navigation"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -29,6 +28,7 @@ interface ConceptModalProps {
   assets?: CreativeAsset[]
   isAdminOrSubadmin: boolean
   open: boolean
+  onRefresh?: () => void
   onClose: () => void
   onNewAsset?: () => void
 }
@@ -48,13 +48,12 @@ function FieldLabel({ label, tooltip, required }: { label: string; tooltip?: str
   )
 }
 
-export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSubadmin, open, onClose, onNewAsset }: ConceptModalProps) {
+export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSubadmin, open, onRefresh, onClose, onNewAsset }: ConceptModalProps) {
   const isEdit = !!concept
   const [isPending, startTransition] = useTransition()
   const [step, setStep] = useState(0)
   const [showAngleGuide, setShowAngleGuide] = useState(false)
   const [stepError, setStepError] = useState<string | null>(null)
-  const router = useRouter()
 
   const [form, setForm] = useState({
     name:                 concept?.name ?? "",
@@ -103,7 +102,7 @@ export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSub
       } else {
         await createConcept(projectId, fd)
       }
-      router.refresh()
+      onRefresh?.()
       onClose()
     })
   }
@@ -112,7 +111,7 @@ export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSub
     if (!concept) return
     startTransition(async () => {
       await promoteConcept(concept.id, projectId)
-      router.refresh()
+      onRefresh?.()
       onClose()
     })
   }
@@ -122,7 +121,7 @@ export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSub
     if (!confirm("¿Eliminar este concepto?")) return
     startTransition(async () => {
       await deleteConcept(concept.id, projectId)
-      router.refresh()
+      onRefresh?.()
       onClose()
     })
   }

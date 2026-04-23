@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { useRouter } from "next/navigation"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -26,6 +25,7 @@ interface ConceptsTableProps {
   projectId: string
   cycleId: string | null
   isAdminOrSubadmin: boolean
+  onRefresh: () => void
 }
 
 // ── Concept detail modal (read-only) ─────────────────────────────────────────
@@ -38,6 +38,7 @@ function ConceptDetailModal({
   onEdit,
   onClose,
   onNewAsset,
+  onRefresh,
 }: {
   concept: CreativeConcept
   conceptAssets: CreativeAsset[]
@@ -46,16 +47,16 @@ function ConceptDetailModal({
   onEdit: () => void
   onClose: () => void
   onNewAsset: () => void
+  onRefresh: () => void
 }) {
   const [isPending, startTransition] = useTransition()
-  const router = useRouter()
   const angleEntry = ANGLE_GUIDE.find((a) => a.name === concept.angle_type)
   const isEvergreen = concept.status === "Evergreen"
 
   function handlePromote() {
     startTransition(async () => {
       await promoteConcept(concept.id, projectId)
-      router.refresh()
+      onRefresh()
       onClose()
     })
   }
@@ -63,7 +64,7 @@ function ConceptDetailModal({
   function handleDemote() {
     startTransition(async () => {
       await demoteConcept(concept.id, projectId)
-      router.refresh()
+      onRefresh()
       onClose()
     })
   }
@@ -72,7 +73,7 @@ function ConceptDetailModal({
     if (!confirm("¿Eliminar este concepto?")) return
     startTransition(async () => {
       await deleteConcept(concept.id, projectId)
-      router.refresh()
+      onRefresh()
       onClose()
     })
   }
@@ -543,7 +544,7 @@ function MecanismoCell({
 
 // ── Main table ───────────────────────────────────────────────────────────────
 
-export function ConceptsTable({ concepts, assets, projectId, cycleId, isAdminOrSubadmin }: ConceptsTableProps) {
+export function ConceptsTable({ concepts, assets, projectId, cycleId, isAdminOrSubadmin, onRefresh }: ConceptsTableProps) {
   const [detailConcept, setDetailConcept]   = useState<CreativeConcept | null>(null)
   const [editConcept,   setEditConcept]     = useState<CreativeConcept | null>(null)
   const [showCreate,    setShowCreate]      = useState(false)
@@ -553,7 +554,6 @@ export function ConceptsTable({ concepts, assets, projectId, cycleId, isAdminOrS
   const [copied,        setCopied]          = useState(false)
   const [isGenerating, startGenerate] = useTransition()
   const [isConfirming, startConfirm]  = useTransition()
-  const router = useRouter()
 
   function handleShareProject() {
     const url = `${window.location.origin}/share/concepts/${projectId}`
@@ -585,7 +585,7 @@ export function ConceptsTable({ concepts, assets, projectId, cycleId, isAdminOrS
     startConfirm(async () => {
       await confirmAIDrafts(projectId, cycleId, [draft])
       setAiDrafts((prev) => prev.filter((_, i) => i !== idx))
-      router.refresh()
+      onRefresh()
     })
   }
 
@@ -595,7 +595,7 @@ export function ConceptsTable({ concepts, assets, projectId, cycleId, isAdminOrS
     startConfirm(async () => {
       await confirmAIDrafts(projectId, cycleId, aiDrafts)
       setAiDrafts([])
-      router.refresh()
+      onRefresh()
     })
   }
 
@@ -756,6 +756,7 @@ export function ConceptsTable({ concepts, assets, projectId, cycleId, isAdminOrS
           onEdit={openEditFromDetail}
           onClose={() => setDetailConcept(null)}
           onNewAsset={openDetailAsNewAsset}
+          onRefresh={onRefresh}
         />
       )}
 
@@ -768,6 +769,7 @@ export function ConceptsTable({ concepts, assets, projectId, cycleId, isAdminOrS
           assets={assets.filter((a) => a.concept_id === editConcept.id)}
           isAdminOrSubadmin={isAdminOrSubadmin}
           open={!!editConcept}
+          onRefresh={onRefresh}
           onClose={() => setEditConcept(null)}
           onNewAsset={() => {
             const id = editConcept.id
@@ -784,6 +786,7 @@ export function ConceptsTable({ concepts, assets, projectId, cycleId, isAdminOrS
           cycleId={cycleId}
           isAdminOrSubadmin={isAdminOrSubadmin}
           open={showCreate}
+          onRefresh={onRefresh}
           onClose={() => setShowCreate(false)}
         />
       )}
@@ -797,6 +800,7 @@ export function ConceptsTable({ concepts, assets, projectId, cycleId, isAdminOrS
           defaultConceptId={newAssetForConceptId}
           isAdminOrSubadmin={isAdminOrSubadmin}
           open={!!newAssetForConceptId}
+          onRefresh={onRefresh}
           onClose={() => setNewAssetForConceptId(null)}
         />
       )}

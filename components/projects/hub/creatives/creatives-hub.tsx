@@ -34,8 +34,7 @@ export function CreativesHub({
   const isActiveCycle = selectedCycle?.is_active ?? false
   const canEdit       = isAdminOrSubadmin && isActiveCycle
 
-  // Reload when cycle changes
-  useEffect(() => {
+  function reload() {
     if (!selectedCycleId) return
     startLoad(async () => {
       const [c, a] = await Promise.all([
@@ -45,6 +44,12 @@ export function CreativesHub({
       setConcepts(c)
       setAssets(a)
     })
+  }
+
+  // Reload when cycle changes
+  useEffect(() => {
+    reload()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCycleId, projectId])
 
   function formatCycleLabel(cycle: PaidMediaCycle) {
@@ -123,6 +128,7 @@ export function CreativesHub({
             projectId={projectId}
             cycleId={selectedCycleId}
             isAdminOrSubadmin={canEdit}
+            onRefresh={reload}
           />
         </TabsContent>
 
@@ -133,6 +139,7 @@ export function CreativesHub({
             projectId={projectId}
             cycleId={selectedCycleId}
             isAdminOrSubadmin={canEdit}
+            onRefresh={reload}
           />
         </TabsContent>
       </Tabs>

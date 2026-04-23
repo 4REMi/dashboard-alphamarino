@@ -20,9 +20,10 @@ interface AssetsTableProps {
   projectId: string
   cycleId: string | null
   isAdminOrSubadmin: boolean
+  onRefresh: () => void
 }
 
-export function AssetsTable({ assets, concepts, projectId, cycleId, isAdminOrSubadmin }: AssetsTableProps) {
+export function AssetsTable({ assets, concepts, projectId, cycleId, isAdminOrSubadmin, onRefresh }: AssetsTableProps) {
   const [selectedAsset, setSelectedAsset] = useState<CreativeAsset | null>(null)
   const [defaultConceptId, setDefaultConceptId] = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
@@ -193,6 +194,7 @@ export function AssetsTable({ assets, concepts, projectId, cycleId, isAdminOrSub
           defaultConceptId={defaultConceptId}
           isAdminOrSubadmin={isAdminOrSubadmin}
           open={showCreate}
+          onRefresh={onRefresh}
           onClose={() => { setShowCreate(false); setDefaultConceptId(null) }}
         />
       )}
@@ -204,6 +206,7 @@ export function AssetsTable({ assets, concepts, projectId, cycleId, isAdminOrSub
           concepts={concepts}
           isAdminOrSubadmin={isAdminOrSubadmin}
           open={!!selectedAsset}
+          onRefresh={onRefresh}
           onClose={() => setSelectedAsset(null)}
         />
       )}
