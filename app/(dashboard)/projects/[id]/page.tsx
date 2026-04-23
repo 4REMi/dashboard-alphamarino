@@ -8,6 +8,7 @@ import { getCustomers } from "@/lib/actions/customers"
 import { getProjectDeliverables } from "@/lib/actions/deliverables"
 import { getSops } from "@/lib/actions/sops"
 import { getCreativeConcepts, getCreativeAssets } from "@/lib/actions/creatives"
+import { getMetaCampaigns } from "@/lib/actions/meta"
 import { CreativesHub } from "@/components/projects/hub/creatives/creatives-hub"
 import { ProjectActions } from "@/components/projects/project-actions"
 import { ApplyPhasesButton } from "@/components/projects/apply-phases-button"
@@ -29,7 +30,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { createClient } from "@/lib/supabase/server"
 import { ArrowLeft, CalendarDays, Plus } from "lucide-react"
 import { formatDate, formatCurrency } from "@/lib/utils"
-import type { Customer, Profile, Project, Task, ProjectType, PaidMediaContext, PaidMediaCycle, WebProjectContext, ProjectLogEntry, ProjectPhase, Deliverable, Sop, CreativeConcept, CreativeAsset } from "@/lib/types"
+import type { Customer, Profile, Project, Task, ProjectType, PaidMediaContext, PaidMediaCycle, WebProjectContext, ProjectLogEntry, ProjectPhase, Deliverable, Sop, CreativeConcept, CreativeAsset, MetaCampaign } from "@/lib/types"
 import { can } from "@/lib/permissions"
 import { getProjectTypeIcon } from "@/lib/project-type-icons"
 
@@ -89,13 +90,14 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const activeCycle   = (cycles as PaidMediaCycle[]).find((c) =>  c.is_active) ?? null
   const historyCycles = (cycles as PaidMediaCycle[]).filter((c) => !c.is_active)
 
-  // Fetch initial creatives for active cycle (or empty if no cycle)
-  const [initialConcepts, initialAssets] = isPaidMedia
+  // Fetch initial creatives + meta campaigns for active cycle
+  const [initialConcepts, initialAssets, initialMetaCampaigns] = isPaidMedia
     ? await Promise.all([
         getCreativeConcepts(id, activeCycle?.id ?? null).catch(() => []),
         getCreativeAssets(id, activeCycle?.id ?? null).catch(() => []),
+        activeCycle ? getMetaCampaigns(id, activeCycle.id).catch(() => []) : Promise.resolve([]),
       ])
-    : [[], []]
+    : [[], [], []]
 
   const totalIncome        = income.reduce((s, i) => s + Number(i.amount), 0)
   const totalExpenses      = expenses.reduce((s, e) => s + Number(e.amount), 0)
@@ -291,7 +293,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                     <WebContextCard projectId={project.id} context={webContext} canEdit={isAdminOrSubadmin} />
                   )}
                   <PaidMediaContextCard projectId={project.id} context={paidMediaContext} canEdit={isAdminOrSubadmin} />
-                  <PaidMediaCycleCard   projectId={project.id} activeCycle={activeCycle} context={paidMediaContext} canEdit={isAdminOrSubadmin} />
+                  <PaidMediaCycleCard   projectId={project.id} activeCycle={activeCycle} context={paidMediaContext} canEdit={isAdminOrSubadmin} initialCampaigns={initialMetaCampaigns as MetaCampaign[]} />
                   {historyCycles.length > 0 && <PaidMediaCycleHistory cycles={historyCycles} />}
                 </section>
               )}

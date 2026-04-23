@@ -271,7 +271,29 @@ export interface PaidMediaContext {
   target_cpl: number | null
   target_leads_per_month: number | null
   account_notes: string | null
+  meta_ad_account_id: string | null
+  meta_access_token: string | null
   updated_at: string
+}
+
+export interface MetaCampaign {
+  id: string
+  project_id: string
+  cycle_id: string | null
+  campaign_id: string
+  campaign_name: string | null
+  spend: number | null
+  impressions: number | null
+  clicks: number | null
+  ctr: number | null
+  cpc: number | null
+  cpm: number | null
+  reach: number | null
+  results: number | null
+  results_type: string | null
+  date_start: string | null
+  date_stop: string | null
+  synced_at: string
 }
 
 export interface PaidMediaCycle {

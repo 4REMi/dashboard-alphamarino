@@ -2,15 +2,17 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import type { PaidMediaCycle, PaidMediaContext, CycleDeliverableStatus } from "@/lib/types"
+import type { PaidMediaCycle, PaidMediaContext, CycleDeliverableStatus, MetaCampaign } from "@/lib/types"
 import { CAMPAIGN_STATUS_LABELS, DELIVERABLE_STATUS_LABELS } from "@/lib/types"
 import { openNewCycle, updateCycle, closeCycle } from "@/lib/actions/projects"
+import { MetaCampaignsPanel } from "./meta-campaigns-panel"
 
 interface Props {
   projectId: string
   activeCycle: PaidMediaCycle | null
   context: PaidMediaContext | null
   canEdit: boolean
+  initialCampaigns?: MetaCampaign[]
 }
 
 const MONTHS_ES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
@@ -52,7 +54,7 @@ function KpiEmpty({ label }: { label: string }) {
   )
 }
 
-export function PaidMediaCycleCard({ projectId, activeCycle, context, canEdit }: Props) {
+export function PaidMediaCycleCard({ projectId, activeCycle, context, canEdit, initialCampaigns = [] }: Props) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [showOpenForm, setShowOpenForm] = useState(false)
@@ -270,6 +272,19 @@ export function PaidMediaCycleCard({ projectId, activeCycle, context, canEdit }:
               {activeCycle.report_delivery_date && <span>Entrega reporte: {activeCycle.report_delivery_date}</span>}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Meta campaigns breakdown — shown when cycle is active (not in edit mode) */}
+      {!editing && (
+        <div className="border-t border-border">
+          <MetaCampaignsPanel
+            projectId={projectId}
+            cycleId={activeCycle.id}
+            campaigns={initialCampaigns}
+            hasCredentials={!!(context?.meta_ad_account_id && context?.meta_access_token)}
+            canEdit={canEdit}
+          />
         </div>
       )}
     </div>
