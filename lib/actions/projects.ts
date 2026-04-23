@@ -523,7 +523,6 @@ export async function upsertPaidMediaContext(projectId: string, formData: FormDa
       target_leads_per_month: formData.get("target_leads_per_month") ? Number(formData.get("target_leads_per_month")) : null,
       account_notes: (formData.get("account_notes") as string) || null,
       meta_ad_account_id: (formData.get("meta_ad_account_id") as string) || null,
-      meta_access_token: (formData.get("meta_access_token") as string) || null,
     },
     { onConflict: "project_id" }
   )

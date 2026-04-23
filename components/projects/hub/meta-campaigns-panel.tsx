@@ -71,7 +71,7 @@ export function MetaCampaignsPanel({ projectId, cycleId, campaigns: initialCampa
           <button
             onClick={handleSync}
             disabled={isPending || !hasCredentials}
-            title={!hasCredentials ? "Configura las credenciales de Meta en el contexto de cuenta" : undefined}
+            title={!hasCredentials ? "Configura el Ad Account ID en el contexto de cuenta" : undefined}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {isPending ? (
@@ -94,7 +94,7 @@ export function MetaCampaignsPanel({ projectId, cycleId, campaigns: initialCampa
 
       {!hasCredentials && (
         <div className="px-5 py-4 text-sm text-muted-foreground">
-          Configura el Ad Account ID y el Token en el contexto de cuenta para sincronizar campañas.
+          Configura el Ad Account ID en el contexto de cuenta para sincronizar campañas.
         </div>
       )}
 

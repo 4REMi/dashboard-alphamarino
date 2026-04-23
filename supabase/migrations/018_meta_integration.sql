@@ -1,7 +1,6 @@
--- Add Meta Ads credentials to paid_media_context
+-- Add Meta Ads account ID to paid_media_context (token lives in env, not DB)
 ALTER TABLE paid_media_context
-  ADD COLUMN IF NOT EXISTS meta_ad_account_id TEXT,
-  ADD COLUMN IF NOT EXISTS meta_access_token  TEXT;
+  ADD COLUMN IF NOT EXISTS meta_ad_account_id TEXT;
 
 -- Store synced campaign metrics per cycle
 CREATE TABLE IF NOT EXISTS meta_campaigns (
@@ -27,7 +26,6 @@ CREATE TABLE IF NOT EXISTS meta_campaigns (
 
 ALTER TABLE meta_campaigns ENABLE ROW LEVEL SECURITY;
 
--- Only admins/subadmins can read or write campaign data
 CREATE POLICY "meta_campaigns_select" ON meta_campaigns
   FOR SELECT USING (is_admin_or_subadmin());
 

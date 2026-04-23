@@ -282,7 +282,7 @@ export function PaidMediaCycleCard({ projectId, activeCycle, context, canEdit, i
             projectId={projectId}
             cycleId={activeCycle.id}
             campaigns={initialCampaigns}
-            hasCredentials={!!(context?.meta_ad_account_id && context?.meta_access_token)}
+            hasCredentials={!!context?.meta_ad_account_id}
             canEdit={canEdit}
           />
         </div>

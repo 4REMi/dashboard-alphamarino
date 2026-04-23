@@ -21,7 +21,6 @@ interface MetaInsightRow {
   date_stop: string
 }
 
-// Returns { since, until } for a cycle_month ISO string ("YYYY-MM-01")
 function cycleRange(cycleMonth: string): { since: string; until: string } {
   const d = new Date(cycleMonth + "T00:00:00")
   const year = d.getFullYear()
@@ -36,42 +35,41 @@ function cycleRange(cycleMonth: string): { since: string; until: string } {
 
 function pickResults(actions: MetaInsightRow["actions"]): { results: number | null; results_type: string | null } {
   if (!actions?.length) return { results: null, results_type: null }
-  // Prefer lead, then purchase, then landing_page_view
   const priority = ["lead", "purchase", "offsite_conversion.fb_pixel_purchase", "landing_page_view"]
   for (const t of priority) {
     const hit = actions.find((a) => a.action_type === t)
     if (hit) return { results: Number(hit.value), results_type: t }
   }
-  // Fall back to first action
   return { results: Number(actions[0].value), results_type: actions[0].action_type }
 }
 
 export async function syncMetaCampaigns(projectId: string, cycleId: string): Promise<{ synced: number; error?: string }> {
+  const accessToken = process.env.META_SYSTEM_USER_TOKEN
+  if (!accessToken) return { synced: 0, error: "META_SYSTEM_USER_TOKEN no está configurado en el servidor" }
+
   const supabase = await createClient()
 
-  // Fetch credentials + cycle_month
   const [contextResult, cycleResult] = await Promise.all([
-    supabase.from("paid_media_context").select("meta_ad_account_id, meta_access_token").eq("project_id", projectId).single(),
+    supabase.from("paid_media_context").select("meta_ad_account_id").eq("project_id", projectId).single(),
     supabase.from("paid_media_cycles").select("cycle_month").eq("id", cycleId).single(),
   ])
 
-  if (contextResult.error || !contextResult.data) return { synced: 0, error: "No se encontró contexto de Meta" }
+  if (contextResult.error || !contextResult.data) return { synced: 0, error: "No se encontró contexto de cuenta" }
   if (cycleResult.error || !cycleResult.data) return { synced: 0, error: "No se encontró el ciclo" }
 
-  const { meta_ad_account_id, meta_access_token } = contextResult.data
-  if (!meta_ad_account_id || !meta_access_token) {
-    return { synced: 0, error: "Configura el Ad Account ID y el Access Token en el contexto de cuenta" }
+  const { meta_ad_account_id } = contextResult.data
+  if (!meta_ad_account_id) {
+    return { synced: 0, error: "Configura el Ad Account ID en el contexto de cuenta" }
   }
 
   const { since, until } = cycleRange(cycleResult.data.cycle_month)
   const fields = "campaign_id,campaign_name,spend,impressions,clicks,ctr,cpc,cpm,reach,actions"
-  const timeRange = JSON.stringify({ since, until })
 
   const url = new URL(`${META_BASE}/act_${meta_ad_account_id}/insights`)
   url.searchParams.set("level", "campaign")
   url.searchParams.set("fields", fields)
-  url.searchParams.set("time_range", timeRange)
-  url.searchParams.set("access_token", meta_access_token)
+  url.searchParams.set("time_range", JSON.stringify({ since, until }))
+  url.searchParams.set("access_token", accessToken)
   url.searchParams.set("limit", "100")
 
   let res: Response
@@ -82,10 +80,7 @@ export async function syncMetaCampaigns(projectId: string, cycleId: string): Pro
   }
 
   const json = await res.json()
-
-  if (json.error) {
-    return { synced: 0, error: `Meta API: ${json.error.message}` }
-  }
+  if (json.error) return { synced: 0, error: `Meta API: ${json.error.message}` }
 
   const rows: MetaInsightRow[] = json.data ?? []
   if (!rows.length) return { synced: 0 }

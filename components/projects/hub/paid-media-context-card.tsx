@@ -16,7 +16,6 @@ export function PaidMediaContextCard({ projectId, context, canEdit }: Props) {
   const [editing, setEditing] = useState(!context)
   const [isPending, startTransition] = useTransition()
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(context?.platforms ?? [])
-  const [showToken, setShowToken] = useState(false)
 
   function togglePlatform(p: string) {
     setSelectedPlatforms((prev) =>
@@ -78,11 +77,11 @@ export function PaidMediaContextCard({ projectId, context, canEdit }: Props) {
 
         {/* Meta connection indicator */}
         <div className="border-t border-border pt-3 flex items-center gap-2">
-          <span className={`inline-block w-2 h-2 rounded-full ${context?.meta_ad_account_id && context?.meta_access_token ? "bg-green-500" : "bg-muted-foreground/40"}`} />
+          <span className={`inline-block w-2 h-2 rounded-full ${context?.meta_ad_account_id ? "bg-green-500" : "bg-muted-foreground/40"}`} />
           <span className="text-xs text-muted-foreground">
-            {context?.meta_ad_account_id && context?.meta_access_token
-              ? `Meta conectado · act_${context.meta_ad_account_id}`
-              : "Meta no configurado"}
+            {context?.meta_ad_account_id
+              ? `Meta · act_${context.meta_ad_account_id}`
+              : "Meta no configurado — agrega el Ad Account ID"}
           </span>
         </div>
       </div>
@@ -172,40 +171,19 @@ export function PaidMediaContextCard({ projectId, context, canEdit }: Props) {
         />
       </div>
 
-      {/* Meta Ads credentials */}
-      <div className="border-t border-border pt-4 space-y-3">
+      {/* Meta Ads account ID */}
+      <div className="border-t border-border pt-4 space-y-2">
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Integración Meta Ads</p>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Ad Account ID</label>
-            <input
-              name="meta_ad_account_id"
-              type="text"
-              defaultValue={context?.meta_ad_account_id ?? ""}
-              placeholder="123456789"
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring font-mono"
-            />
-            <p className="text-xs text-muted-foreground/60 mt-0.5">Solo el número, sin "act_"</p>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">System User Token</label>
-            <div className="flex gap-1">
-              <input
-                name="meta_access_token"
-                type={showToken ? "text" : "password"}
-                defaultValue={context?.meta_access_token ?? ""}
-                placeholder="EAAxxxxx…"
-                className="flex-1 min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring font-mono"
-              />
-              <button
-                type="button"
-                onClick={() => setShowToken((s) => !s)}
-                className="px-2 text-xs text-muted-foreground hover:text-foreground border border-input rounded-md transition-colors"
-              >
-                {showToken ? "Ocultar" : "Ver"}
-              </button>
-            </div>
-          </div>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground mb-1 block">Ad Account ID</label>
+          <input
+            name="meta_ad_account_id"
+            type="text"
+            defaultValue={context?.meta_ad_account_id ?? ""}
+            placeholder="123456789"
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring font-mono"
+          />
+          <p className="text-xs text-muted-foreground/60 mt-0.5">Solo el número, sin "act_" — el token de agencia está configurado en el servidor</p>
         </div>
       </div>
 

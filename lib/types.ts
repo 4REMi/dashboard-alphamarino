@@ -272,7 +272,6 @@ export interface PaidMediaContext {
   target_leads_per_month: number | null
   account_notes: string | null
   meta_ad_account_id: string | null
-  meta_access_token: string | null
   updated_at: string
 }
 
