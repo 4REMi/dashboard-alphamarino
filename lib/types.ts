@@ -271,7 +271,16 @@ export interface PaidMediaContext {
   target_cpl: number | null
   target_leads_per_month: number | null
   account_notes: string | null
-  meta_ad_account_id: string | null
+  updated_at: string
+}
+
+export interface ProjectIntegration {
+  id: string
+  project_id: string
+  platform: string
+  account_id: string
+  extra: Record<string, unknown> | null
+  created_at: string
   updated_at: string
 }
 

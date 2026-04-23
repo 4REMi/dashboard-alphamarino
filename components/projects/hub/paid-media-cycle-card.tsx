@@ -13,6 +13,7 @@ interface Props {
   context: PaidMediaContext | null
   canEdit: boolean
   initialCampaigns?: MetaCampaign[]
+  hasMetaConnected?: boolean
 }
 
 const MONTHS_ES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
@@ -54,7 +55,7 @@ function KpiEmpty({ label }: { label: string }) {
   )
 }
 
-export function PaidMediaCycleCard({ projectId, activeCycle, context, canEdit, initialCampaigns = [] }: Props) {
+export function PaidMediaCycleCard({ projectId, activeCycle, context, canEdit, initialCampaigns = [], hasMetaConnected = false }: Props) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [showOpenForm, setShowOpenForm] = useState(false)
@@ -282,7 +283,7 @@ export function PaidMediaCycleCard({ projectId, activeCycle, context, canEdit, i
             projectId={projectId}
             cycleId={activeCycle.id}
             campaigns={initialCampaigns}
-            hasCredentials={!!context?.meta_ad_account_id}
+            hasCredentials={hasMetaConnected}
             canEdit={canEdit}
           />
         </div>

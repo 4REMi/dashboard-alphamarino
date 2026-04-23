@@ -49,17 +49,16 @@ export async function syncMetaCampaigns(projectId: string, cycleId: string): Pro
 
   const supabase = await createClient()
 
-  const [contextResult, cycleResult] = await Promise.all([
-    supabase.from("paid_media_context").select("meta_ad_account_id").eq("project_id", projectId).single(),
+  const [integrationResult, cycleResult] = await Promise.all([
+    supabase.from("project_integrations").select("account_id").eq("project_id", projectId).eq("platform", "meta").maybeSingle(),
     supabase.from("paid_media_cycles").select("cycle_month").eq("id", cycleId).single(),
   ])
 
-  if (contextResult.error || !contextResult.data) return { synced: 0, error: "No se encontró contexto de cuenta" }
   if (cycleResult.error || !cycleResult.data) return { synced: 0, error: "No se encontró el ciclo" }
 
-  const { meta_ad_account_id } = contextResult.data
+  const meta_ad_account_id = integrationResult.data?.account_id
   if (!meta_ad_account_id) {
-    return { synced: 0, error: "Configura el Ad Account ID en el contexto de cuenta" }
+    return { synced: 0, error: "Configura el Ad Account ID de Meta en Conexiones" }
   }
 
   const { since, until } = cycleRange(cycleResult.data.cycle_month)

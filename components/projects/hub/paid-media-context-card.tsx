@@ -74,16 +74,6 @@ export function PaidMediaContextCard({ projectId, context, canEdit }: Props) {
             <p className="text-sm text-foreground whitespace-pre-wrap">{context.account_notes}</p>
           </div>
         )}
-
-        {/* Meta connection indicator */}
-        <div className="border-t border-border pt-3 flex items-center gap-2">
-          <span className={`inline-block w-2 h-2 rounded-full ${context?.meta_ad_account_id ? "bg-green-500" : "bg-muted-foreground/40"}`} />
-          <span className="text-xs text-muted-foreground">
-            {context?.meta_ad_account_id
-              ? `Meta · act_${context.meta_ad_account_id}`
-              : "Meta no configurado — agrega el Ad Account ID"}
-          </span>
-        </div>
       </div>
     )
   }
@@ -169,22 +159,6 @@ export function PaidMediaContextCard({ projectId, context, canEdit }: Props) {
           placeholder="El 'cerebro' de la cuenta…"
           className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
         />
-      </div>
-
-      {/* Meta Ads account ID */}
-      <div className="border-t border-border pt-4 space-y-2">
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Integración Meta Ads</p>
-        <div>
-          <label className="text-xs font-medium text-muted-foreground mb-1 block">Ad Account ID</label>
-          <input
-            name="meta_ad_account_id"
-            type="text"
-            defaultValue={context?.meta_ad_account_id ?? ""}
-            placeholder="123456789"
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring font-mono"
-          />
-          <p className="text-xs text-muted-foreground/60 mt-0.5">Solo el número, sin "act_" — el token de agencia está configurado en el servidor</p>
-        </div>
       </div>
 
       <div className="flex justify-end gap-2">
