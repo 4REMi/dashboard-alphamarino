@@ -1,3 +1,71 @@
+export const CREATIVE_MECHANICS = [
+  {
+    name: "Implied Answer",
+    emoji: "🔍",
+    description: "El hook plantea una pregunta que suena a juicio suave o curiosidad. Los visuales responden en silencio. Nadie declara la respuesta — el viewer la concluye solo.",
+    architecture: "El viewer llega a la verdad por sí mismo. Las auto-conclusiones bypasean el escepticismo al ad.",
+    awareness_fit: "Unaware · Problem-Aware",
+  },
+  {
+    name: "Social Witness",
+    emoji: "👥",
+    description: "Alguien distinto al cliente nota el cambio — un cumplido, un doble vistazo, un '¿qué estás haciendo diferente?'. La validación de terceros es más creíble que los resultados auto-reportados.",
+    architecture: "Úsalo como mecánica secundaria superpuesta a otra. La validación externa hace el trabajo de credibilidad.",
+    awareness_fit: "Problem-Aware · Product-Aware",
+  },
+  {
+    name: "Overheard Conversation",
+    emoji: "🎧",
+    description: "El ad está enmarcado como algo que no debías ver — un hilo de texto, un DM, un chat grupal. Se siente como espionaje, no como publicidad.",
+    architecture: "Elimina completamente el filtro de 'esto es un anuncio'. El viewer entra sin defensas.",
+    awareness_fit: "Unaware · Problem-Aware",
+  },
+  {
+    name: "Reframe",
+    emoji: "🔄",
+    description: "Abre validando una creencia que el viewer ya tiene, luego voltea el frame completamente. El producto no es el héroe — la nueva perspectiva lo es.",
+    architecture: "Manufactura el momento 'nunca lo había pensado así'. No confundir con un hook contrarian — el Reframe es arquitectura, no solo apertura.",
+    awareness_fit: "Problem-Aware · Solution-Aware",
+  },
+  {
+    name: "Borrowed Enemy",
+    emoji: "⚔️",
+    description: "Describe un problema, ingrediente o experiencia causado obviamente por un competidor específico — sin nombrarlo nunca. El viewer hace la conexión solo.",
+    architecture: "Nombrar al competidor activa defensas. No nombrarlo pero hacer la referencia inconfundible permite que el viewer conquiste por sí mismo.",
+    awareness_fit: "Solution-Aware · Product-Aware",
+  },
+  {
+    name: "Trojan Horse",
+    emoji: "🐴",
+    description: "El ad parece contenido educativo, entretenimiento o una historia personal — hasta el último 20%, donde el producto aparece naturalmente como resolución.",
+    architecture: "El ad avoidance es más alto en el momento de reconocimiento. El Trojan Horse retrasa ese reconocimiento hasta que el viewer ya está invertido emocionalmente.",
+    awareness_fit: "Unaware — más poderoso para audiencias frías",
+  },
+  {
+    name: "Contrast Without Comment",
+    emoji: "⚖️",
+    description: "Muestra dos realidades en paralelo — antes/después, con/sin, método viejo/nuevo — pero nunca editorialmente le dice al viewer cuál es mejor.",
+    architecture: "La ausencia de editorialización es en sí una señal de credibilidad. La yuxtaposición visual hace el trabajo; el copy se retira.",
+    awareness_fit: "Problem-Aware · Solution-Aware",
+  },
+  {
+    name: "This and a…",
+    emoji: "✨",
+    description: "Dos cosas mostradas o nombradas juntas — el producto y algo aspiracional o emocionalmente resonante — con la yuxtaposición haciendo todo el trabajo.",
+    architecture: "El significado se crea por asociación. El cerebro del viewer hace el trabajo, lo que aterriza más fuerte que un claim declarado.",
+    awareness_fit: "Unaware · Problem-Aware",
+  },
+] as const
+
+export type CreativeMechanic = typeof CREATIVE_MECHANICS[number]["name"]
+
+export const MECHANIC_PAIRINGS: Array<[CreativeMechanic, CreativeMechanic]> = [
+  ["Implied Answer",           "Social Witness"],
+  ["Trojan Horse",             "Reframe"],
+  ["Overheard Conversation",   "Social Witness"],
+  ["Contrast Without Comment", "Borrowed Enemy"],
+]
+
 export const ANGLE_GUIDE = [
   {
     name: "Desired Outcome",

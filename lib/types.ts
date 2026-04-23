@@ -414,6 +414,8 @@ export interface CreativeConcept {
   organizing_principle: OrganizingPrinciple | null
   product_service: string | null
   angle_type: string | null
+  mechanic_primary: string | null
+  mechanic_secondary: string | null
   target_persona: string
   why_it_works: string | null
   pain_point: string | null

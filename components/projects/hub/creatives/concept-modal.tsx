@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
 import { createConcept, updateConcept, promoteConcept, deleteConcept } from "@/lib/actions/creatives"
-import { ANGLE_GUIDE, AWARENESS_LABELS, CONCEPT_STATUS_COLORS, PRODUCTION_STATUS_COLORS, VERDICT_COLORS } from "@/lib/constants/creatives"
+import { ANGLE_GUIDE, AWARENESS_LABELS, CONCEPT_STATUS_COLORS, PRODUCTION_STATUS_COLORS, VERDICT_COLORS, CREATIVE_MECHANICS, MECHANIC_PAIRINGS } from "@/lib/constants/creatives"
 import type { CreativeConcept, CreativeAsset, FunnelStage } from "@/lib/types"
 import { Sparkles, Star, ChevronDown, ChevronUp, Trash2, ArrowUpRight, Plus, Info, Check } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -53,6 +53,7 @@ export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSub
   const [isPending, startTransition] = useTransition()
   const [step, setStep] = useState(0)
   const [showAngleGuide, setShowAngleGuide] = useState(false)
+  const [showMechanicGuide, setShowMechanicGuide] = useState(false)
   const [stepError, setStepError] = useState<string | null>(null)
 
   const [form, setForm] = useState({
@@ -61,6 +62,8 @@ export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSub
     product_service:      concept?.product_service ?? "",
     target_persona:       concept?.target_persona ?? "",
     angle_type:           concept?.angle_type ?? "",
+    mechanic_primary:     concept?.mechanic_primary ?? "",
+    mechanic_secondary:   concept?.mechanic_secondary ?? "",
     awareness_stage:      String(concept?.awareness_stage ?? ""),
     funnel_stage:         concept?.funnel_stage ?? "",
     why_it_works:         concept?.why_it_works ?? "",
@@ -76,7 +79,11 @@ export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSub
     setForm((prev) => ({ ...prev, [key]: value }))
   }
 
-  const guideEntry = ANGLE_GUIDE.find((a) => a.name === form.angle_type)
+  const guideEntry    = ANGLE_GUIDE.find((a) => a.name === form.angle_type)
+  const mechanicEntry = CREATIVE_MECHANICS.find((m) => m.name === form.mechanic_primary)
+  const suggestedSecondary = MECHANIC_PAIRINGS
+    .filter(([primary]) => primary === form.mechanic_primary)
+    .map(([, secondary]) => secondary)
 
   function goNext() {
     if (step === 0) {
@@ -284,6 +291,71 @@ export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSub
                       <p><span className="font-medium text-foreground">Mecanismo:</span> {guideEntry.mechanism}</p>
                       <p><span className="font-medium text-foreground">Cuándo usar:</span> {guideEntry.when_to_use}</p>
                       <p><span className="font-medium text-foreground">Ejemplo de hook:</span> <em>&ldquo;{guideEntry.hook_example}&rdquo;</em></p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Mechanic selects */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <FieldLabel
+                    label="Mecánica creativa (primaria)"
+                    tooltip="El movimiento cognitivo/emocional que estructura el ad. Define CÓMO el viewer llega a la verdad del ángulo."
+                  />
+                  <select
+                    value={form.mechanic_primary}
+                    onChange={(e) => { set("mechanic_primary", e.target.value); set("mechanic_secondary", ""); setShowMechanicGuide(false) }}
+                    className={fieldCls}
+                  >
+                    <option value="">— sin mecánica —</option>
+                    {CREATIVE_MECHANICS.map((m) => (
+                      <option key={m.name} value={m.name}>{m.emoji} {m.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <FieldLabel
+                    label="Mecánica secundaria"
+                    tooltip="Capa adicional de profundidad o credibilidad. Opcional. No debe eclipsar la primaria."
+                  />
+                  <select
+                    value={form.mechanic_secondary}
+                    onChange={(e) => set("mechanic_secondary", e.target.value)}
+                    className={fieldCls}
+                    disabled={!form.mechanic_primary}
+                  >
+                    <option value="">— ninguna —</option>
+                    {CREATIVE_MECHANICS
+                      .filter((m) => m.name !== form.mechanic_primary)
+                      .map((m) => (
+                        <option key={m.name} value={m.name}>
+                          {m.emoji} {m.name}{suggestedSecondary.includes(m.name) ? " ★" : ""}
+                        </option>
+                      ))}
+                  </select>
+                  {suggestedSecondary.length > 0 && (
+                    <p className="text-[10px] text-muted-foreground/60">★ = pairing recomendado</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Mechanic guide accordion */}
+              {mechanicEntry && (
+                <div className="border rounded-lg overflow-hidden">
+                  <button
+                    type="button"
+                    className="w-full flex items-center justify-between px-3 py-2 bg-blue-50/60 text-xs font-medium text-blue-700 hover:bg-blue-50"
+                    onClick={() => setShowMechanicGuide((v) => !v)}
+                  >
+                    <span>{mechanicEntry.emoji} Arquitectura: {form.mechanic_primary}</span>
+                    {showMechanicGuide ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  </button>
+                  {showMechanicGuide && (
+                    <div className="px-3 py-2.5 space-y-1.5 text-xs text-muted-foreground bg-blue-50/20">
+                      <p><span className="font-medium text-foreground">Descripción:</span> {mechanicEntry.description}</p>
+                      <p><span className="font-medium text-foreground">Cómo aplicarla:</span> {mechanicEntry.architecture}</p>
+                      <p><span className="font-medium text-foreground">Awareness fit:</span> {mechanicEntry.awareness_fit}</p>
                     </div>
                   )}
                 </div>
