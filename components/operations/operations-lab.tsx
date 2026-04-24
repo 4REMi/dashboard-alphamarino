@@ -2,6 +2,7 @@
 
 import { useState, useTransition, useRef } from "react"
 import { ChevronRight, Plus, Trash2, LayoutList, Link2, Pencil, Check, X, Upload, Download, Paperclip, GripVertical, BookOpen, Search, Lock, ListChecks } from "lucide-react"
+import { PanelHeader, EmptyPanel, InlineInput, InlineSelect } from "@/components/lab/shared"
 import type { ProjectType, PhaseSet, PhaseSetPhase, TaskSet, TaskSetTask, TaskSetChecklistItem, Profile, Sop, Position } from "@/lib/types"
 import { PROJECT_TYPE_ICONS, getProjectTypeIcon } from "@/lib/project-type-icons"
 import {
@@ -43,34 +44,6 @@ interface Props {
 }
 
 
-function InlineInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
-  return (
-    <input
-      {...props}
-      className={
-        "w-full rounded border border-input bg-background px-2 py-1.5 text-sm " +
-        "focus:outline-none focus:ring-1 focus:ring-ring " +
-        (props.className ?? "")
-      }
-    />
-  )
-}
-
-function InlineSelect(props: React.SelectHTMLAttributes<HTMLSelectElement> & { children: React.ReactNode }) {
-  const { children, ...rest } = props
-  return (
-    <select
-      {...rest}
-      className={
-        "w-full rounded border border-input bg-background px-2 py-1.5 text-sm " +
-        "focus:outline-none focus:ring-1 focus:ring-ring " +
-        (rest.className ?? "")
-      }
-    >
-      {children}
-    </select>
-  )
-}
 
 const TYPE_COLORS = [
   "#3b82f6", // blue
@@ -162,42 +135,6 @@ function IconPicker({ value, onChange, activeColor }: { value: string; onChange:
       <p className="text-xs text-muted-foreground pt-1">Marcas</p>
       {renderGrid(brands)}
       <input type="hidden" name="icon" value={value} />
-    </div>
-  )
-}
-
-function PanelHeader({
-  title, subtitle, onAdd, onDelete,
-}: {
-  title: string; subtitle?: string; onAdd?: () => void; onDelete?: () => void
-}) {
-  return (
-    <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-start justify-between gap-2 flex-shrink-0">
-      <div className="min-w-0">
-        <p className="text-sm font-semibold truncate">{title}</p>
-        {subtitle && <p className="text-xs text-muted-foreground mt-0.5 truncate">{subtitle}</p>}
-      </div>
-      <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
-        {onDelete && (
-          <button onClick={onDelete} className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors">
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
-        )}
-        {onAdd && (
-          <button onClick={onAdd} className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
-            <Plus className="w-3.5 h-3.5" />
-          </button>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function EmptyPanel({ icon: Icon, text }: { icon: React.ElementType; text: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center h-full text-center px-6 gap-3">
-      <Icon className="w-8 h-8 text-muted-foreground/25" />
-      <p className="text-sm text-muted-foreground">{text}</p>
     </div>
   )
 }

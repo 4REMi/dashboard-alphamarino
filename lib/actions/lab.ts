@@ -105,6 +105,14 @@ export async function submitPhase(id: string): Promise<void> {
   revalidate()
 }
 
+export async function reorderPhaseTasks(orderedIds: string[]): Promise<void> {
+  const { supabase } = await assertAuth()
+  await Promise.all(orderedIds.map((id, i) =>
+    supabase.from("lab_phase_tasks").update({ task_order: i }).eq("id", id)
+  ))
+  revalidate()
+}
+
 export async function retractPhase(id: string): Promise<void> {
   const { supabase } = await assertAuth()
   const { error } = await supabase.from("lab_phases")
