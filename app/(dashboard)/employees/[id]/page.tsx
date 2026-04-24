@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation"
 import Link from "next/link"
 import { getEmployee } from "@/lib/actions/employees"
+import { getPositions } from "@/lib/actions/config"
 import { createClient } from "@/lib/supabase/server"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -12,7 +13,7 @@ import { formatDate } from "@/lib/utils"
 import { cn } from "@/lib/utils"
 import { EmployeeEditActions } from "@/components/employees/employee-edit-actions"
 import { EmployeePermissions } from "@/components/employees/employee-permissions"
-import type { Task, Profile } from "@/lib/types"
+import type { Task, Profile, Position } from "@/lib/types"
 
 const taskStatusConfig = {
   Todo: { label: "Por Hacer", variant: "secondary" as const },
@@ -39,7 +40,10 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
   const { profile, projects, tasks } = data
 
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const [{ data: { user } }, positions] = await Promise.all([
+    supabase.auth.getUser(),
+    getPositions() as Promise<Position[]>,
+  ])
   const { data: currentProfile } = await supabase.from("profiles").select("role").eq("id", user!.id).single()
   const isAdmin = currentProfile?.role === "admin"
 
@@ -79,6 +83,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
               profile={profile as Profile}
               isAdmin={isAdmin}
               isSelf={user!.id === profile.id}
+              positions={positions}
             />
           </div>
           <div className="flex flex-col gap-1 mt-2">

@@ -7,17 +7,18 @@ import { updateEmployee, deleteEmployee, resendPasswordLink, uploadAvatar } from
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Camera } from "lucide-react"
-import type { Profile } from "@/lib/types"
+import type { Profile, Position } from "@/lib/types"
 
 interface Props {
   profile: Profile
   isAdmin: boolean
   isSelf: boolean
+  positions?: Position[]
 }
 
 type LinkState = "idle" | "sending" | "sent" | "error"
 
-export function EmployeeEditActions({ profile, isAdmin, isSelf }: Props) {
+export function EmployeeEditActions({ profile, isAdmin, isSelf, positions = [] }: Props) {
   const router = useRouter()
   const [editOpen, setEditOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -146,6 +147,25 @@ export function EmployeeEditActions({ profile, isAdmin, isSelf }: Props) {
                 className="w-full text-sm border rounded-md px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-ring"
               />
             </div>
+
+            {positions.length > 0 && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Puesto (asignación automática)</label>
+                <select
+                  name="position_id"
+                  defaultValue={profile.position_id ?? "none"}
+                  className="w-full text-sm border rounded-md px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                >
+                  <option value="none">Sin puesto</option>
+                  {positions.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  Usado para asignar tareas automáticamente al crear proyectos.
+                </p>
+              </div>
+            )}
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Teléfono</label>
               <input
