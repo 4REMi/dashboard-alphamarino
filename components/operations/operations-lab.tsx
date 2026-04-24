@@ -26,7 +26,7 @@ import {
   createPhaseSet, deletePhaseSet, addPhaseToSet, deletePhaseFromSet,
   linkPhaseSetToProjectType, linkTaskSetToPhase,
   createTaskSet, updateTaskSet, deleteTaskSet, addTaskToSet, updateTaskInSet, deleteTaskFromSet,
-  reorderTasksInSet,
+  reorderTasksInSet, reorderPhaseInSet,
   importOperationsTemplate,
   addChecklistItemToSetTask, updateSetTaskChecklistItem, deleteSetTaskChecklistItem,
 } from "@/lib/actions/config"
@@ -912,6 +912,22 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
     })
   }
 
+  function handlePhaseDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id || !linkedPS) return
+    const oldPhases = (linkedPS.phases ?? []) as PhaseSetPhase[]
+    const oldIndex = oldPhases.findIndex((p) => p.id === active.id)
+    const newIndex = oldPhases.findIndex((p) => p.id === over.id)
+    if (oldIndex === -1 || newIndex === -1) return
+    const reordered = arrayMove(oldPhases, oldIndex, newIndex)
+    setPhaseSets((prev) => prev.map((ps) =>
+      ps.id === linkedPS.id ? { ...ps, phases: reordered } : ps
+    ))
+    run(async () => {
+      await reorderPhaseInSet(linkedPS.id, reordered.map((p) => p.id))
+    })
+  }
+
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
     if (!over || active.id === over.id || !linkedTS) return
@@ -1130,25 +1146,21 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
                   </InlineSelect>
                 </div>
 
-                {phases.map((phase, i) => {
-                  const isSelPhase = phase.id === selectedPhaseId
-                  const tsName = phase.default_task_set_id ? taskSets.find((ts) => ts.id === phase.default_task_set_id)?.name : null
-                  return (
-                    <div
-                      key={phase.id}
-                      onClick={() => { setSelectedPhaseId(isSelPhase ? null : phase.id); setEditingTS(false) }}
-                      className={`group flex items-center gap-3 px-3 py-3 cursor-pointer border-b border-border/50 transition-colors ${isSelPhase ? "bg-primary/10 border-l-2 border-l-primary" : "hover:bg-muted/40"}`}
-                    >
-                      <span className="w-5 h-5 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground flex-shrink-0">{i + 1}</span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{phase.name}</p>
-                        <p className={`text-xs truncate mt-0.5 ${tsName ? "text-primary/80" : "text-muted-foreground"}`}>{tsName ?? "Sin task set"}</p>
-                      </div>
-                      <button onClick={(e) => { e.stopPropagation(); handleDeletePhase(phase.id) }} className="opacity-0 group-hover:opacity-100 p-1 rounded text-muted-foreground hover:text-destructive transition-all flex-shrink-0"><X className="w-3 h-3" /></button>
-                      {isSelPhase && <ChevronRight className="w-3.5 h-3.5 text-primary flex-shrink-0" />}
-                    </div>
-                  )
-                })}
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handlePhaseDragEnd}>
+                  <SortableContext items={phases.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+                    {phases.map((phase, i) => (
+                      <SortablePhaseRow
+                        key={phase.id}
+                        phase={phase}
+                        index={i}
+                        isSelected={phase.id === selectedPhaseId}
+                        tsName={phase.default_task_set_id ? (taskSets.find((ts) => ts.id === phase.default_task_set_id)?.name ?? null) : null}
+                        onSelect={() => { setSelectedPhaseId(phase.id === selectedPhaseId ? null : phase.id); setEditingTS(false) }}
+                        onDelete={() => handleDeletePhase(phase.id)}
+                      />
+                    ))}
+                  </SortableContext>
+                </DndContext>
 
                 {phases.length === 0 && !showAddPhase && (
                   <p className="text-xs text-muted-foreground text-center py-6">Sin fases. Usa + para agregar.</p>
@@ -1310,5 +1322,54 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
         />
       )}
     </>
+  )
+}
+
+// ── Sortable phase row ────────────────────────────────────────────────────────
+
+interface SortablePhaseRowProps {
+  phase: PhaseSetPhase
+  index: number
+  isSelected: boolean
+  tsName: string | null
+  onSelect: () => void
+  onDelete: () => void
+}
+
+function SortablePhaseRow({ phase, index, isSelected, tsName, onSelect, onDelete }: SortablePhaseRowProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: phase.id })
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      onClick={onSelect}
+      className={`group flex items-center gap-2 px-3 py-3 cursor-pointer border-b border-border/50 transition-colors
+        ${isSelected ? "bg-primary/10 border-l-2 border-l-primary" : "hover:bg-muted/40"}
+        ${isDragging ? "opacity-70 shadow-md z-10 relative bg-card" : ""}`}
+    >
+      <button
+        type="button"
+        onClick={(e) => e.stopPropagation()}
+        className="text-muted-foreground/30 hover:text-muted-foreground cursor-grab active:cursor-grabbing flex-shrink-0 touch-none"
+        {...attributes}
+        {...listeners}
+        tabIndex={-1}
+      >
+        <GripVertical className="w-3.5 h-3.5" />
+      </button>
+      <span className="w-5 h-5 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground flex-shrink-0">{index + 1}</span>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium truncate">{phase.name}</p>
+        <p className={`text-xs truncate mt-0.5 ${tsName ? "text-primary/80" : "text-muted-foreground"}`}>{tsName ?? "Sin task set"}</p>
+      </div>
+      <button
+        onClick={(e) => { e.stopPropagation(); onDelete() }}
+        className="opacity-0 group-hover:opacity-100 p-1 rounded text-muted-foreground hover:text-destructive transition-all flex-shrink-0"
+      >
+        <X className="w-3 h-3" />
+      </button>
+      {isSelected && <ChevronRight className="w-3.5 h-3.5 text-primary flex-shrink-0" />}
+    </div>
   )
 }
