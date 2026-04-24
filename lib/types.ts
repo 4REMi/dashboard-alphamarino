@@ -267,32 +267,21 @@ export interface SopRequest {
   task_set_task?: { title: string } | null
 }
 
-export type LabProposalStatus = "draft" | "submitted" | "approved" | "rejected"
+export type LabPhaseStatus = "draft" | "submitted" | "approved" | "rejected"
 export type LabReviewAction = "comment" | "approve" | "reject"
 
-export interface LabProposalTask {
+export interface LabPhaseTask {
   id: string
-  proposal_id: string
-  phase_id: string | null
+  phase_id: string
   title: string
   description: string | null
   task_order: number
   created_at: string
 }
 
-export interface LabProposalPhase {
+export interface LabPhaseReview {
   id: string
-  proposal_id: string
-  name: string
-  description: string | null
-  phase_order: number
-  created_at: string
-  tasks?: LabProposalTask[]
-}
-
-export interface LabProposalReview {
-  id: string
-  proposal_id: string
+  phase_id: string
   reviewer_id: string
   action: LabReviewAction
   comment: string | null
@@ -300,18 +289,17 @@ export interface LabProposalReview {
   reviewer?: Profile | null
 }
 
-export interface LabProposal {
+export interface LabPhase {
   id: string
   author_id: string
-  title: string
+  name: string
   description: string | null
-  status: LabProposalStatus
+  status: LabPhaseStatus
   created_at: string
   updated_at: string
   author?: Profile | null
-  phases?: LabProposalPhase[]
-  loose_tasks?: LabProposalTask[]
-  reviews?: LabProposalReview[]
+  tasks?: LabPhaseTask[]
+  reviews?: LabPhaseReview[]
 }
 
 // ============================================================

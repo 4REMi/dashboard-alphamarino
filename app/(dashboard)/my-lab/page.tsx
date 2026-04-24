@@ -2,14 +2,14 @@ export const dynamic = "force-dynamic"
 
 import { createClient } from "@/lib/supabase/server"
 import { getMyPendingSopRequests } from "@/lib/actions/sops"
-import { getMyProposals, getAllSubmittedProposals } from "@/lib/actions/lab"
+import { getMyPhases, getAllSubmittedPhases } from "@/lib/actions/lab"
 import { getPhaseSets } from "@/lib/actions/config"
 import { SopRequestInbox } from "@/components/lab/sop-request-inbox"
-import { ProposalEditor } from "@/components/lab/proposal-editor"
-import { ProposalReviewPanel } from "@/components/lab/proposal-review-panel"
+import { PhaseEditor } from "@/components/lab/phase-editor"
+import { PhaseReviewPanel } from "@/components/lab/phase-review-panel"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Lightbulb } from "lucide-react"
-import type { SopRequest, LabProposal, PhaseSet } from "@/lib/types"
+import type { SopRequest, LabPhase, PhaseSet } from "@/lib/types"
 
 export default async function MyLabPage() {
   const supabase = await createClient()
@@ -22,15 +22,15 @@ export default async function MyLabPage() {
 
   const isAdmin = profile?.role === "admin" || profile?.role === "subadmin"
 
-  const [sopRequests, myProposals, submittedProposals, phaseSets] = await Promise.all([
+  const [sopRequests, myPhases, submittedPhases, phaseSets] = await Promise.all([
     getMyPendingSopRequests().catch(() => [] as SopRequest[]),
-    getMyProposals().catch(() => [] as LabProposal[]),
-    isAdmin ? getAllSubmittedProposals().catch(() => [] as LabProposal[]) : Promise.resolve([] as LabProposal[]),
+    getMyPhases().catch(() => [] as LabPhase[]),
+    isAdmin ? getAllSubmittedPhases().catch(() => [] as LabPhase[]) : Promise.resolve([] as LabPhase[]),
     isAdmin ? getPhaseSets().catch(() => [] as PhaseSet[]) : Promise.resolve([] as PhaseSet[]),
   ])
 
-  const pendingSopCount = sopRequests.filter((r) => r.status === "pending").length
-  const pendingReviewCount = submittedProposals.filter((p) => p.status === "submitted").length
+  const pendingSopCount    = sopRequests.filter((r) => r.status === "pending").length
+  const pendingReviewCount = submittedPhases.filter((p) => p.status === "submitted").length
 
   return (
     <div className="p-6 space-y-4">
@@ -41,18 +41,20 @@ export default async function MyLabPage() {
         <div>
           <h1 className="text-2xl font-bold">Mi Lab</h1>
           <p className="text-sm text-muted-foreground">
-            {profile?.full_name ? `Espacio personal de ${profile.full_name}` : "Tu espacio personal de propuestas y SOPs"}
+            {profile?.full_name
+              ? `Espacio personal de ${profile.full_name}`
+              : "Tu espacio personal de propuestas y SOPs"}
           </p>
         </div>
       </div>
 
-      <Tabs defaultValue="proposals" className="mt-2">
+      <Tabs defaultValue="phases" className="mt-2">
         <TabsList>
-          <TabsTrigger value="proposals">
-            Mis propuestas
-            {myProposals.length > 0 && (
+          <TabsTrigger value="phases">
+            Mis fases
+            {myPhases.length > 0 && (
               <span className="ml-1.5 text-[10px] font-semibold bg-primary/15 text-primary rounded-full px-1.5 py-0.5">
-                {myProposals.length}
+                {myPhases.length}
               </span>
             )}
           </TabsTrigger>
@@ -76,8 +78,8 @@ export default async function MyLabPage() {
           )}
         </TabsList>
 
-        <TabsContent value="proposals" className="mt-4">
-          <ProposalEditor initialProposals={myProposals} />
+        <TabsContent value="phases" className="mt-4">
+          <PhaseEditor initialPhases={myPhases} />
         </TabsContent>
 
         <TabsContent value="sop-requests" className="mt-4">
@@ -86,8 +88,8 @@ export default async function MyLabPage() {
 
         {isAdmin && (
           <TabsContent value="review" className="mt-4">
-            <ProposalReviewPanel
-              initialProposals={submittedProposals}
+            <PhaseReviewPanel
+              initialPhases={submittedPhases}
               phaseSets={phaseSets as PhaseSet[]}
             />
           </TabsContent>
