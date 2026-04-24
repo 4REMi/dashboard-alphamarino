@@ -1,6 +1,21 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core"
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 import type { PhaseSet, PhaseSetPhase, ProjectType, TaskSet } from "@/lib/types"
 import {
   createPhaseSet,
@@ -8,6 +23,7 @@ import {
   addPhaseToSet,
   deletePhaseFromSet,
   linkTaskSetToPhase,
+  reorderPhaseInSet,
 } from "@/lib/actions/config"
 
 interface Props {
@@ -23,6 +39,26 @@ export function PhaseSetManager({ initialSets, projectTypes, taskSets = [] }: Pr
   const [addingPhaseFor, setAddingPhaseFor] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+
+  function handleReorder(setId: string, event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    setSets((prev) =>
+      prev.map((s) => {
+        if (s.id !== setId) return s
+        const phases = s.phases ?? []
+        const oldIndex = phases.findIndex((p) => p.id === active.id)
+        const newIndex = phases.findIndex((p) => p.id === over.id)
+        const reordered = arrayMove(phases, oldIndex, newIndex)
+        startTransition(async () => {
+          await reorderPhaseInSet(setId, reordered.map((p) => p.id))
+        })
+        return { ...s, phases: reordered }
+      })
+    )
+  }
 
   function handleLinkTaskSet(setId: string, phaseId: string, taskSetId: string) {
     const resolvedId = taskSetId === "none" ? null : taskSetId
@@ -188,37 +224,22 @@ export function PhaseSetManager({ initialSets, projectTypes, taskSets = [] }: Pr
 
               {isExpanded && (
                 <div className="border-t border-border">
-                  {phases.map((phase, i) => (
-                    <div key={phase.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-border/50 last:border-0">
-                      <span className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground flex-shrink-0">
-                        {i + 1}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-foreground">{phase.name}</p>
-                        {phase.description && <p className="text-xs text-muted-foreground truncate">{phase.description}</p>}
-                      </div>
-                      {taskSets.length > 0 && (
-                        <select
-                          value={phase.default_task_set_id ?? "none"}
-                          onChange={(e) => handleLinkTaskSet(set.id, phase.id, e.target.value)}
-                          disabled={isPending}
-                          className="text-xs rounded border border-input bg-background px-2 py-1 text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                          title="Task set predeterminado"
-                        >
-                          <option value="none">Sin task set</option>
-                          {taskSets.map((ts) => (
-                            <option key={ts.id} value={ts.id}>{ts.name}</option>
-                          ))}
-                        </select>
-                      )}
-                      <button
-                        onClick={() => handleDeletePhase(set.id, phase.id)}
-                        className="text-xs text-muted-foreground hover:text-destructive transition-colors flex-shrink-0"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ))}
+                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => handleReorder(set.id, e)}>
+                    <SortableContext items={phases.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+                      {phases.map((phase, i) => (
+                        <SortablePhaseRow
+                          key={phase.id}
+                          phase={phase}
+                          index={i}
+                          setId={set.id}
+                          taskSets={taskSets}
+                          isPending={isPending}
+                          onLinkTaskSet={handleLinkTaskSet}
+                          onDelete={handleDeletePhase}
+                        />
+                      ))}
+                    </SortableContext>
+                  </DndContext>
 
                   {addingPhaseFor === set.id ? (
                     <form
@@ -268,6 +289,74 @@ export function PhaseSetManager({ initialSets, projectTypes, taskSets = [] }: Pr
           <p className="text-sm text-muted-foreground text-center py-8">Sin phase sets. Crea el primero.</p>
         )}
       </div>
+    </div>
+  )
+}
+
+interface SortablePhaseRowProps {
+  phase: PhaseSetPhase
+  index: number
+  setId: string
+  taskSets: TaskSet[]
+  isPending: boolean
+  onLinkTaskSet: (setId: string, phaseId: string, taskSetId: string) => void
+  onDelete: (setId: string, phaseId: string) => void
+}
+
+function SortablePhaseRow({ phase, index, setId, taskSets, isPending, onLinkTaskSet, onDelete }: SortablePhaseRowProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: phase.id })
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={`flex items-center gap-3 px-4 py-2.5 border-b border-border/50 last:border-0 ${isDragging ? "bg-muted/60 opacity-80 shadow-sm z-10 relative" : ""}`}
+    >
+      {/* Drag handle */}
+      <button
+        type="button"
+        className="text-muted-foreground/40 hover:text-muted-foreground cursor-grab active:cursor-grabbing flex-shrink-0 touch-none"
+        {...attributes}
+        {...listeners}
+        tabIndex={-1}
+      >
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+          <circle cx="4" cy="3.5" r="1.2" /><circle cx="10" cy="3.5" r="1.2" />
+          <circle cx="4" cy="7"   r="1.2" /><circle cx="10" cy="7"   r="1.2" />
+          <circle cx="4" cy="10.5" r="1.2" /><circle cx="10" cy="10.5" r="1.2" />
+        </svg>
+      </button>
+
+      <span className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground flex-shrink-0">
+        {index + 1}
+      </span>
+
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-foreground">{phase.name}</p>
+        {phase.description && <p className="text-xs text-muted-foreground truncate">{phase.description}</p>}
+      </div>
+
+      {taskSets.length > 0 && (
+        <select
+          value={phase.default_task_set_id ?? "none"}
+          onChange={(e) => onLinkTaskSet(setId, phase.id, e.target.value)}
+          disabled={isPending}
+          className="text-xs rounded border border-input bg-background px-2 py-1 text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+          title="Task set predeterminado"
+        >
+          <option value="none">Sin task set</option>
+          {taskSets.map((ts) => (
+            <option key={ts.id} value={ts.id}>{ts.name}</option>
+          ))}
+        </select>
+      )}
+
+      <button
+        onClick={() => onDelete(setId, phase.id)}
+        className="text-xs text-muted-foreground hover:text-destructive transition-colors flex-shrink-0"
+      >
+        ✕
+      </button>
     </div>
   )
 }
