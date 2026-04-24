@@ -220,8 +220,8 @@ export async function getProject(id: string) {
       *,
       customer:customers(id, name, company, email, phone),
       project_type:project_types(id, name, description, default_phase_set_id, color, icon),
-      tasks(*, assignee:profiles(id, full_name, avatar_url, position), position:positions(id, name), phase:project_phases(id, name, phase_order), sop:sops(id, title, doc_url, video_url), task_set_task:task_set_tasks(sop_id, sop:sops(id, title, doc_url, video_url)), checklist_items:task_checklist_items(id, text, is_blocking, is_checked, item_order)),
-      members:project_members(profile:profiles(id, full_name, avatar_url, position, position_id, position_obj:positions(id, name), role)),
+      tasks(*, assignee:profiles(id, full_name, avatar_url, position), phase:project_phases(id, name, phase_order), sop:sops(id, title, doc_url, video_url), task_set_task:task_set_tasks(sop_id, sop:sops(id, title, doc_url, video_url)), checklist_items:task_checklist_items(id, text, is_blocking, is_checked, item_order)),
+      members:project_members(profile:profiles(id, full_name, avatar_url, position, role)),
       phases:project_phases(*)
     `)
     .eq("id", id)
@@ -240,8 +240,8 @@ export async function getProject(id: string) {
       .select(`
         *,
         customer:customers(id, name, company, email, phone),
-        tasks(*, assignee:profiles(id, full_name, avatar_url, position), position:positions(id, name), phase:project_phases(id, name, phase_order)),
-        members:project_members(profile:profiles(id, full_name, avatar_url, position, position_id, position_obj:positions(id, name), role))
+        tasks(*, assignee:profiles(id, full_name, avatar_url, position), phase:project_phases(id, name, phase_order)),
+        members:project_members(profile:profiles(id, full_name, avatar_url, position, role))
       `)
       .eq("id", id)
       .single()

@@ -22,7 +22,12 @@ export async function getEmployees() {
     .from("profiles")
     .select("*, position_obj:positions(id, name)")
     .order("full_name")
-  if (error) throw error
+  if (error) {
+    // positions table may not exist yet — fall back to base select
+    const { data: fallback, error: e2 } = await supabase.from("profiles").select("*").order("full_name")
+    if (e2) throw e2
+    return fallback
+  }
   return data
 }
 
@@ -30,7 +35,7 @@ export async function getEmployee(id: string) {
   const supabase = await createClient()
 
   const [profileRes, projectsRes, tasksRes] = await Promise.all([
-    supabase.from("profiles").select("*, position_obj:positions(id, name)").eq("id", id).single(),
+    supabase.from("profiles").select("*").eq("id", id).single(),
     supabase
       .from("project_members")
       .select("project:projects(id, name, status, progress, project_type:project_types(name), customer:customers(name))")
