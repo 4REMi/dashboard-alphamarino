@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic"
 
 import { createClient } from "@/lib/supabase/server"
-import { getMyPendingSopRequests } from "@/lib/actions/sops"
+import { getMyPendingSopRequests, getSops } from "@/lib/actions/sops"
 import { getMyPhases, getAllSubmittedPhases } from "@/lib/actions/lab"
 import { getPhaseSets } from "@/lib/actions/config"
 import { SopRequestInbox } from "@/components/lab/sop-request-inbox"
@@ -9,7 +9,7 @@ import { PhaseEditor } from "@/components/lab/phase-editor"
 import { PhaseReviewPanel } from "@/components/lab/phase-review-panel"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Lightbulb } from "lucide-react"
-import type { SopRequest, LabPhase, PhaseSet } from "@/lib/types"
+import type { SopRequest, LabPhase, PhaseSet, Sop } from "@/lib/types"
 
 export default async function MyLabPage() {
   const supabase = await createClient()
@@ -22,9 +22,10 @@ export default async function MyLabPage() {
 
   const isAdmin = profile?.role === "admin" || profile?.role === "subadmin"
 
-  const [sopRequests, myPhases, submittedPhases, phaseSets] = await Promise.all([
+  const [sopRequests, myPhases, allSops, submittedPhases, phaseSets] = await Promise.all([
     getMyPendingSopRequests().catch(() => [] as SopRequest[]),
     getMyPhases().catch(() => [] as LabPhase[]),
+    getSops().catch(() => [] as Sop[]),
     isAdmin ? getAllSubmittedPhases().catch(() => [] as LabPhase[]) : Promise.resolve([] as LabPhase[]),
     isAdmin ? getPhaseSets().catch(() => [] as PhaseSet[]) : Promise.resolve([] as PhaseSet[]),
   ])
@@ -79,7 +80,7 @@ export default async function MyLabPage() {
         </TabsList>
 
         <TabsContent value="phases" className="mt-4">
-          <PhaseEditor initialPhases={myPhases} />
+          <PhaseEditor initialPhases={myPhases} sops={allSops as Sop[]} />
         </TabsContent>
 
         <TabsContent value="sop-requests" className="mt-4">

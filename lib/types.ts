@@ -270,12 +270,25 @@ export interface SopRequest {
 export type LabPhaseStatus = "draft" | "submitted" | "approved" | "rejected"
 export type LabReviewAction = "comment" | "approve" | "reject"
 
+export interface LabPhaseTaskChecklistItem {
+  id: string
+  task_id: string
+  text: string
+  is_blocking: boolean
+  item_order: number
+  created_at: string
+}
+
 export interface LabPhaseTask {
   id: string
   phase_id: string
   title: string
   description: string | null
   task_order: number
+  requires_deliverable: boolean
+  sop_id: string | null
+  sop?: Pick<Sop, "id" | "title"> | null
+  checklist_items?: LabPhaseTaskChecklistItem[]
   created_at: string
 }
 

@@ -1,18 +1,23 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import type { LabPhase, LabPhaseTask } from "@/lib/types"
+import type { LabPhase, LabPhaseTask, LabPhaseTaskChecklistItem, Sop } from "@/lib/types"
 import {
   createPhase, updatePhase, deletePhase, submitPhase, retractPhase,
   addPhaseTask, updatePhaseTask, deletePhaseTask,
+  addTaskChecklistItem, updateTaskChecklistItem, deleteTaskChecklistItem,
 } from "@/lib/actions/lab"
-import { Plus, Trash2, Pencil, CheckCircle2, XCircle, MessageSquare, Send, RotateCcw, X } from "lucide-react"
+import {
+  Plus, Trash2, Pencil, CheckCircle2, XCircle, MessageSquare,
+  Send, RotateCcw, X, ChevronDown, BookOpen, Package,
+} from "lucide-react"
 
 interface Props {
   initialPhases: LabPhase[]
+  sops: Sop[]
 }
 
-export function PhaseEditor({ initialPhases }: Props) {
+export function PhaseEditor({ initialPhases, sops }: Props) {
   const [phases, setPhases] = useState<LabPhase[]>(initialPhases)
   const [selectedId, setSelectedId] = useState<string | null>(phases[0]?.id ?? null)
   const [showNew, setShowNew] = useState(false)
@@ -39,21 +44,16 @@ export function PhaseEditor({ initialPhases }: Props) {
   }
 
   const statusLabel: Record<LabPhase["status"], string> = {
-    draft:     "Borrador",
-    submitted: "En revisión",
-    approved:  "Aprobada",
-    rejected:  "Rechazada",
+    draft: "Borrador", submitted: "En revisión", approved: "Aprobada", rejected: "Rechazada",
   }
   const statusColor: Record<LabPhase["status"], string> = {
-    draft:     "text-muted-foreground",
-    submitted: "text-amber-600",
-    approved:  "text-emerald-600",
-    rejected:  "text-destructive",
+    draft: "text-muted-foreground", submitted: "text-amber-600",
+    approved: "text-emerald-600",  rejected: "text-destructive",
   }
 
   return (
     <div className="flex gap-4 min-h-[500px]">
-      {/* Left: phase list */}
+      {/* Left: list */}
       <div className="w-56 flex-shrink-0 space-y-1">
         <button
           onClick={() => setShowNew(true)}
@@ -99,6 +99,7 @@ export function PhaseEditor({ initialPhases }: Props) {
         ) : (
           <PhaseDetail
             phase={selected}
+            sops={sops}
             isPending={isPending}
             startTransition={startTransition}
             onUpdated={(patch) => onPhaseUpdated(selected.id, patch)}
@@ -170,9 +171,10 @@ function NewPhaseForm({
 // ── Phase detail ──────────────────────────────────────────────────────────────
 
 function PhaseDetail({
-  phase, isPending, startTransition, onUpdated, onDeleted,
+  phase, sops, isPending, startTransition, onUpdated, onDeleted,
 }: {
   phase: LabPhase
+  sops: Sop[]
   isPending: boolean
   startTransition: (fn: () => void) => void
   onUpdated: (patch: Partial<LabPhase>) => void
@@ -231,8 +233,8 @@ function PhaseDetail({
     setTasks((prev) => prev.filter((t) => t.id !== id))
   }
 
-  function onTaskUpdated(id: string, title: string) {
-    setTasks((prev) => prev.map((t) => t.id === id ? { ...t, title } : t))
+  function onTaskUpdated(id: string, patch: Partial<LabPhaseTask>) {
+    setTasks((prev) => prev.map((t) => t.id === id ? { ...t, ...patch } : t))
   }
 
   return (
@@ -256,36 +258,21 @@ function PhaseDetail({
                 className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none"
               />
               <div className="flex gap-2">
-                <button
-                  onClick={handleSaveHeader}
-                  disabled={isPending}
-                  className="text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                >
-                  Guardar
-                </button>
-                <button onClick={() => setEditing(false)} className="text-xs px-2 py-1.5 text-muted-foreground hover:text-foreground">
-                  Cancelar
-                </button>
+                <button onClick={handleSaveHeader} disabled={isPending} className="text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">Guardar</button>
+                <button onClick={() => setEditing(false)} className="text-xs px-2 py-1.5 text-muted-foreground hover:text-foreground">Cancelar</button>
               </div>
             </div>
           ) : (
             <>
               <h2 className="text-lg font-semibold">{phase.name}</h2>
-              {phase.description && (
-                <p className="text-sm text-muted-foreground mt-0.5">{phase.description}</p>
-              )}
+              {phase.description && <p className="text-sm text-muted-foreground mt-0.5">{phase.description}</p>}
             </>
           )}
         </div>
-
         {isEditable && !editing && (
           <div className="flex items-center gap-1 flex-shrink-0">
-            <button onClick={() => setEditing(true)} className="p-1.5 rounded text-muted-foreground hover:text-foreground transition-colors">
-              <Pencil className="w-3.5 h-3.5" />
-            </button>
-            <button onClick={handleDelete} disabled={isPending} className="p-1.5 rounded text-muted-foreground hover:text-destructive transition-colors">
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
+            <button onClick={() => setEditing(true)} className="p-1.5 rounded text-muted-foreground hover:text-foreground"><Pencil className="w-3.5 h-3.5" /></button>
+            <button onClick={handleDelete} disabled={isPending} className="p-1.5 rounded text-muted-foreground hover:text-destructive"><Trash2 className="w-3.5 h-3.5" /></button>
           </div>
         )}
       </div>
@@ -304,23 +291,23 @@ function PhaseDetail({
       {/* Tasks */}
       <div className="space-y-2">
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Tareas</p>
-        {tasks.length === 0 && (
-          <p className="text-sm text-muted-foreground">Sin tareas aún.</p>
-        )}
+        {tasks.length === 0 && <p className="text-sm text-muted-foreground">Sin tareas aún.</p>}
         {tasks.map((t) => (
           <TaskRow
             key={t.id}
             task={t}
+            sops={sops}
             editable={isEditable}
             isPending={isPending}
             startTransition={startTransition}
             onDeleted={() => onTaskDeleted(t.id)}
-            onUpdated={(title) => onTaskUpdated(t.id, title)}
+            onUpdated={(patch) => onTaskUpdated(t.id, patch)}
           />
         ))}
         {isEditable && (
           <AddTaskForm
             phaseId={phase.id}
+            sops={sops}
             isPending={isPending}
             startTransition={startTransition}
             onAdded={onTaskAdded}
@@ -339,9 +326,7 @@ function PhaseDetail({
             <Send className="w-3.5 h-3.5" />
             {phase.status === "rejected" ? "Reenviar a revisión" : "Enviar a revisión"}
           </button>
-          {tasks.length === 0 && (
-            <p className="text-xs text-muted-foreground mt-1">Agrega al menos una tarea para enviar.</p>
-          )}
+          {tasks.length === 0 && <p className="text-xs text-muted-foreground mt-1">Agrega al menos una tarea para enviar.</p>}
         </div>
       )}
 
@@ -358,7 +343,7 @@ function PhaseDetail({
         </div>
       )}
 
-      {/* Review comments timeline */}
+      {/* Review history */}
       {reviews.length > 0 && (
         <div className="space-y-2">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Historial</p>
@@ -368,9 +353,7 @@ function PhaseDetail({
                r.action === "reject"  ? <XCircle className="w-4 h-4 flex-shrink-0 mt-0.5" /> :
                <MessageSquare className="w-4 h-4 flex-shrink-0 mt-0.5 text-muted-foreground" />}
               <div>
-                <span className="font-medium">
-                  {(r.reviewer as { full_name?: string } | null)?.full_name ?? "Admin"}
-                </span>
+                <span className="font-medium">{(r.reviewer as { full_name?: string } | null)?.full_name ?? "Admin"}</span>
                 {r.comment && <span className="text-muted-foreground"> — {r.comment}</span>}
                 <span className="text-xs text-muted-foreground ml-1">
                   {new Date(r.created_at).toLocaleDateString("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
@@ -387,26 +370,35 @@ function PhaseDetail({
 // ── Task row ──────────────────────────────────────────────────────────────────
 
 function TaskRow({
-  task, editable, isPending, startTransition, onDeleted, onUpdated,
+  task, sops, editable, isPending, startTransition, onDeleted, onUpdated,
 }: {
   task: LabPhaseTask
+  sops: Sop[]
   editable: boolean
   isPending: boolean
   startTransition: (fn: () => void) => void
   onDeleted: () => void
-  onUpdated: (title: string) => void
+  onUpdated: (patch: Partial<LabPhaseTask>) => void
 }) {
   const [editing, setEditing] = useState(false)
+  const [expanded, setExpanded] = useState(false)
   const [title, setTitle] = useState(task.title)
+  const [desc, setDesc] = useState(task.description ?? "")
+  const [reqDel, setReqDel] = useState(task.requires_deliverable)
+  const [sopId, setSopId] = useState(task.sop_id ?? "")
+  const checklist = task.checklist_items ?? []
 
   function handleSave() {
     if (!title.trim()) return
     const fd = new FormData()
     fd.set("title", title.trim())
-    fd.set("description", task.description ?? "")
+    fd.set("description", desc.trim())
+    fd.set("requires_deliverable", String(reqDel))
+    fd.set("sop_id", sopId)
     startTransition(async () => {
       await updatePhaseTask(task.id, fd)
-      onUpdated(title.trim())
+      const sopObj = sops.find((s) => s.id === sopId) ?? null
+      onUpdated({ title: title.trim(), description: desc.trim() || null, requires_deliverable: reqDel, sop_id: sopId || null, sop: sopObj ? { id: sopObj.id, title: sopObj.title } : null })
       setEditing(false)
     })
   }
@@ -418,73 +410,230 @@ function TaskRow({
     })
   }
 
+  function onChecklistAdded(item: LabPhaseTaskChecklistItem) {
+    onUpdated({ checklist_items: [...checklist, item] })
+  }
+
+  function onChecklistDeleted(id: string) {
+    onUpdated({ checklist_items: checklist.filter((i) => i.id !== id) })
+  }
+
+  function onChecklistUpdated(id: string, text: string, isBlocking: boolean) {
+    onUpdated({ checklist_items: checklist.map((i) => i.id === id ? { ...i, text, is_blocking: isBlocking } : i) })
+  }
+
+  const sopName = task.sop?.title ?? sops.find((s) => s.id === task.sop_id)?.title ?? null
+
   if (editing) {
     return (
-      <div className="flex items-center gap-2">
+      <div className="rounded-lg border border-border p-3 space-y-2">
         <input
           autoFocus
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") setEditing(false) }}
-          className="flex-1 rounded border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          placeholder="Título"
+          className="w-full rounded border border-input bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
         />
-        <button onClick={handleSave} disabled={isPending} className="text-xs text-primary hover:underline">Guardar</button>
-        <button onClick={() => setEditing(false)} className="p-1 text-muted-foreground hover:text-foreground"><X className="w-3 h-3" /></button>
+        <textarea
+          value={desc}
+          onChange={(e) => setDesc(e.target.value)}
+          placeholder="Descripción (opcional)"
+          rows={2}
+          className="w-full rounded border border-input bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+        />
+        <div className="flex flex-wrap items-center gap-4">
+          <label className="flex items-center gap-1.5 cursor-pointer text-sm">
+            <input
+              type="checkbox"
+              checked={reqDel}
+              onChange={(e) => setReqDel(e.target.checked)}
+              className="rounded"
+            />
+            <Package className="w-3.5 h-3.5 text-muted-foreground" />
+            Requiere entregable
+          </label>
+          {sops.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <BookOpen className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+              <select
+                value={sopId}
+                onChange={(e) => setSopId(e.target.value)}
+                className="rounded border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="">Sin SOP</option>
+                {sops.map((s) => <option key={s.id} value={s.id}>{s.title}</option>)}
+              </select>
+            </div>
+          )}
+        </div>
+        <div className="flex gap-2 pt-1">
+          <button onClick={handleSave} disabled={isPending || !title.trim()} className="text-xs px-3 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">Guardar</button>
+          <button onClick={() => setEditing(false)} className="text-xs px-2 py-1 text-muted-foreground hover:text-foreground">Cancelar</button>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="flex items-center gap-2 group">
-      <span className="text-muted-foreground text-sm flex-shrink-0">·</span>
-      <span className="text-sm flex-1">{task.title}</span>
-      {editable && (
-        <div className="opacity-0 group-hover:opacity-100 flex gap-0.5 transition-opacity">
-          <button onClick={() => setEditing(true)} className="p-1 rounded text-muted-foreground hover:text-foreground">
-            <Pencil className="w-3 h-3" />
+    <div className="rounded-lg border border-border">
+      <div className="flex items-center gap-2 px-3 py-2 group">
+        {(editable || checklist.length > 0) && (
+          <button onClick={() => setExpanded(!expanded)} className="flex-shrink-0 text-muted-foreground hover:text-foreground">
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${expanded ? "" : "-rotate-90"}`} />
           </button>
-          <button onClick={handleDelete} disabled={isPending} className="p-1 rounded text-muted-foreground hover:text-destructive">
-            <Trash2 className="w-3 h-3" />
-          </button>
+        )}
+        <span className="text-sm flex-1 truncate">{task.title}</span>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {task.requires_deliverable && (
+            <span title="Requiere entregable" className="text-primary/70">
+              <Package className="w-3.5 h-3.5" />
+            </span>
+          )}
+          {sopName && (
+            <span title={`SOP: ${sopName}`} className="text-blue-500">
+              <BookOpen className="w-3.5 h-3.5" />
+            </span>
+          )}
+        </div>
+        {editable && (
+          <div className="opacity-0 group-hover:opacity-100 flex gap-0.5 transition-opacity">
+            <button onClick={() => setEditing(true)} className="p-1 rounded text-muted-foreground hover:text-foreground"><Pencil className="w-3 h-3" /></button>
+            <button onClick={handleDelete} disabled={isPending} className="p-1 rounded text-muted-foreground hover:text-destructive"><Trash2 className="w-3 h-3" /></button>
+          </div>
+        )}
+      </div>
+
+      {expanded && (
+        <div className="border-t border-border/50 px-3 py-2 space-y-1.5">
+          {task.description && (
+            <p className="text-xs text-muted-foreground mb-2">{task.description}</p>
+          )}
+          {sopName && (
+            <p className="text-xs text-blue-600 flex items-center gap-1 mb-2">
+              <BookOpen className="w-3 h-3" /> SOP vinculado: <span className="font-medium">{sopName}</span>
+            </p>
+          )}
+          {checklist.map((item) => (
+            <ChecklistItemRow
+              key={item.id}
+              item={item}
+              editable={editable}
+              isPending={isPending}
+              startTransition={startTransition}
+              onDeleted={() => onChecklistDeleted(item.id)}
+              onUpdated={(text, isBlocking) => onChecklistUpdated(item.id, text, isBlocking)}
+            />
+          ))}
+          {editable && (
+            <AddChecklistItemForm
+              taskId={task.id}
+              isPending={isPending}
+              startTransition={startTransition}
+              onAdded={onChecklistAdded}
+            />
+          )}
         </div>
       )}
     </div>
   )
 }
 
-// ── Add task form ─────────────────────────────────────────────────────────────
+// ── Checklist item row ────────────────────────────────────────────────────────
 
-function AddTaskForm({
-  phaseId, isPending, startTransition, onAdded,
+function ChecklistItemRow({
+  item, editable, isPending, startTransition, onDeleted, onUpdated,
 }: {
-  phaseId: string
+  item: LabPhaseTaskChecklistItem
+  editable: boolean
   isPending: boolean
   startTransition: (fn: () => void) => void
-  onAdded: (task: LabPhaseTask) => void
+  onDeleted: () => void
+  onUpdated: (text: string, isBlocking: boolean) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [text, setText] = useState(item.text)
+  const [isBlocking, setIsBlocking] = useState(item.is_blocking)
+
+  function handleSave() {
+    if (!text.trim()) return
+    startTransition(async () => {
+      await updateTaskChecklistItem(item.id, text.trim(), isBlocking)
+      onUpdated(text.trim(), isBlocking)
+      setEditing(false)
+    })
+  }
+
+  function handleDelete() {
+    startTransition(async () => {
+      await deleteTaskChecklistItem(item.id)
+      onDeleted()
+    })
+  }
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-2">
+        <input
+          autoFocus
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") setEditing(false) }}
+          className="flex-1 rounded border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+        />
+        <label className="flex items-center gap-1 text-xs text-muted-foreground cursor-pointer whitespace-nowrap">
+          <input type="checkbox" checked={isBlocking} onChange={(e) => setIsBlocking(e.target.checked)} className="rounded" />
+          Bloqueante
+        </label>
+        <button onClick={handleSave} disabled={isPending} className="text-xs text-primary hover:underline">OK</button>
+        <button onClick={() => setEditing(false)} className="p-0.5 text-muted-foreground"><X className="w-3 h-3" /></button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-2 group">
+      <span className="w-3 h-3 rounded-sm border border-muted-foreground/40 flex-shrink-0" />
+      <span className={`text-xs flex-1 ${item.is_blocking ? "font-medium" : ""}`}>{item.text}</span>
+      {item.is_blocking && <span className="text-[9px] font-semibold text-amber-600 bg-amber-50 px-1 py-0.5 rounded">bloqueante</span>}
+      {editable && (
+        <div className="opacity-0 group-hover:opacity-100 flex gap-0.5">
+          <button onClick={() => setEditing(true)} className="p-0.5 text-muted-foreground hover:text-foreground"><Pencil className="w-2.5 h-2.5" /></button>
+          <button onClick={handleDelete} disabled={isPending} className="p-0.5 text-muted-foreground hover:text-destructive"><Trash2 className="w-2.5 h-2.5" /></button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Add checklist item form ───────────────────────────────────────────────────
+
+function AddChecklistItemForm({
+  taskId, isPending, startTransition, onAdded,
+}: {
+  taskId: string
+  isPending: boolean
+  startTransition: (fn: () => void) => void
+  onAdded: (item: LabPhaseTaskChecklistItem) => void
 }) {
   const [open, setOpen] = useState(false)
-  const [title, setTitle] = useState("")
+  const [text, setText] = useState("")
+  const [isBlocking, setIsBlocking] = useState(false)
 
   function handleAdd() {
-    if (!title.trim()) return
-    const fd = new FormData()
-    fd.set("title", title.trim())
-    fd.set("description", "")
+    if (!text.trim()) return
     startTransition(async () => {
-      const task = await addPhaseTask(phaseId, fd)
-      onAdded(task)
-      setTitle("")
+      const item = await addTaskChecklistItem(taskId, text.trim(), isBlocking)
+      onAdded(item)
+      setText("")
+      setIsBlocking(false)
       setOpen(false)
     })
   }
 
   if (!open) {
     return (
-      <button
-        onClick={() => setOpen(true)}
-        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mt-1"
-      >
-        <Plus className="w-3.5 h-3.5" /> Agregar tarea
+      <button onClick={() => setOpen(true)} className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground mt-0.5">
+        <Plus className="w-3 h-3" /> Agregar paso
       </button>
     )
   }
@@ -493,18 +642,97 @@ function AddTaskForm({
     <div className="flex items-center gap-2 mt-1">
       <input
         autoFocus
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); if (e.key === "Escape") setOpen(false) }}
+        placeholder="Paso del checklist…"
+        className="flex-1 rounded border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+      />
+      <label className="flex items-center gap-1 text-xs cursor-pointer whitespace-nowrap">
+        <input type="checkbox" checked={isBlocking} onChange={(e) => setIsBlocking(e.target.checked)} className="rounded" />
+        Bloqueante
+      </label>
+      <button onClick={handleAdd} disabled={isPending || !text.trim()} className="text-xs px-2 py-1 rounded bg-primary text-primary-foreground disabled:opacity-50">+</button>
+      <button onClick={() => { setOpen(false); setText("") }} className="p-0.5 text-muted-foreground"><X className="w-3 h-3" /></button>
+    </div>
+  )
+}
+
+// ── Add task form ─────────────────────────────────────────────────────────────
+
+function AddTaskForm({
+  phaseId, sops, isPending, startTransition, onAdded,
+}: {
+  phaseId: string
+  sops: Sop[]
+  isPending: boolean
+  startTransition: (fn: () => void) => void
+  onAdded: (task: LabPhaseTask) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [title, setTitle] = useState("")
+  const [reqDel, setReqDel] = useState(false)
+  const [sopId, setSopId] = useState("")
+
+  function handleAdd() {
+    if (!title.trim()) return
+    const fd = new FormData()
+    fd.set("title", title.trim())
+    fd.set("description", "")
+    fd.set("requires_deliverable", String(reqDel))
+    fd.set("sop_id", sopId)
+    startTransition(async () => {
+      const task = await addPhaseTask(phaseId, fd)
+      onAdded(task)
+      setTitle("")
+      setReqDel(false)
+      setSopId("")
+      setOpen(false)
+    })
+  }
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mt-1">
+        <Plus className="w-3.5 h-3.5" /> Agregar tarea
+      </button>
+    )
+  }
+
+  return (
+    <div className="rounded-lg border border-dashed border-border p-3 space-y-2 mt-1">
+      <input
+        autoFocus
         value={title}
         onChange={(e) => setTitle(e.target.value)}
-        onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); if (e.key === "Escape") setOpen(false) }}
+        onKeyDown={(e) => { if (e.key === "Escape") setOpen(false) }}
         placeholder="Título de la tarea…"
-        className="flex-1 rounded border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+        className="w-full rounded border border-input bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
       />
-      <button onClick={handleAdd} disabled={isPending || !title.trim()} className="text-xs px-3 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-        Agregar
-      </button>
-      <button onClick={() => { setOpen(false); setTitle("") }} className="p-1 text-muted-foreground hover:text-foreground">
-        <X className="w-3.5 h-3.5" />
-      </button>
+      <div className="flex flex-wrap items-center gap-4">
+        <label className="flex items-center gap-1.5 cursor-pointer text-xs">
+          <input type="checkbox" checked={reqDel} onChange={(e) => setReqDel(e.target.checked)} className="rounded" />
+          <Package className="w-3 h-3 text-muted-foreground" />
+          Requiere entregable
+        </label>
+        {sops.length > 0 && (
+          <div className="flex items-center gap-1.5">
+            <BookOpen className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+            <select
+              value={sopId}
+              onChange={(e) => setSopId(e.target.value)}
+              className="rounded border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+            >
+              <option value="">Sin SOP</option>
+              {sops.map((s) => <option key={s.id} value={s.id}>{s.title}</option>)}
+            </select>
+          </div>
+        )}
+      </div>
+      <div className="flex gap-2">
+        <button onClick={handleAdd} disabled={isPending || !title.trim()} className="text-xs px-3 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">Agregar</button>
+        <button onClick={() => { setOpen(false); setTitle(""); setReqDel(false); setSopId("") }} className="p-1 text-muted-foreground hover:text-foreground"><X className="w-3.5 h-3.5" /></button>
+      </div>
     </div>
   )
 }

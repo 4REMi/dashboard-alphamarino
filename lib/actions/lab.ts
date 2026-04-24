@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
-import type { LabPhase, LabPhaseTask, LabReviewAction } from "@/lib/types"
+import type { LabPhase, LabPhaseTask, LabPhaseTaskChecklistItem, LabReviewAction } from "@/lib/types"
 
 async function assertAuth() {
   const supabase = await createClient()
@@ -17,14 +17,29 @@ function revalidate() {
 
 // ── Queries ───────────────────────────────────────────────────────────────────
 
+const TASK_SELECT = `
+  *,
+  sop:sops(id, title),
+  checklist_items:lab_phase_task_checklist_items(id, text, is_blocking, item_order, created_at)
+`
+
 const PHASE_SELECT = `
   *,
-  tasks:lab_phase_tasks(*),
+  tasks:lab_phase_tasks(${TASK_SELECT}),
   reviews:lab_phase_reviews(*, reviewer:profiles(id, full_name, avatar_url))
 `
 
+function normalizeTasks(tasks: LabPhaseTask[]): LabPhaseTask[] {
+  return tasks
+    .sort((a, b) => a.task_order - b.task_order)
+    .map((t) => ({
+      ...t,
+      checklist_items: [...(t.checklist_items ?? [])].sort((a, b) => a.item_order - b.item_order),
+    }))
+}
+
 function normalizePhase(p: Record<string, unknown>): LabPhase {
-  const tasks = ((p.tasks ?? []) as LabPhaseTask[]).sort((a, b) => a.task_order - b.task_order)
+  const tasks = normalizeTasks((p.tasks ?? []) as LabPhaseTask[])
   const reviews = p.reviews as LabPhase["reviews"]
   return { ...p, tasks, reviews } as LabPhase
 }
@@ -106,22 +121,28 @@ export async function addPhaseTask(phaseId: string, formData: FormData): Promise
     .from("lab_phase_tasks").select("task_order")
     .eq("phase_id", phaseId).order("task_order", { ascending: false }).limit(1)
   const nextOrder = existing?.[0] ? existing[0].task_order + 1 : 0
+  const sopIdRaw = formData.get("sop_id") as string
   const { data, error } = await supabase.from("lab_phase_tasks").insert({
-    phase_id:    phaseId,
-    title:       formData.get("title") as string,
-    description: (formData.get("description") as string) || null,
-    task_order:  nextOrder,
-  }).select().single()
+    phase_id:             phaseId,
+    title:                formData.get("title") as string,
+    description:          (formData.get("description") as string) || null,
+    task_order:           nextOrder,
+    requires_deliverable: formData.get("requires_deliverable") === "true",
+    sop_id:               sopIdRaw || null,
+  }).select(TASK_SELECT).single()
   if (error) throw error
   revalidate()
-  return data as LabPhaseTask
+  return { ...data, checklist_items: [] } as LabPhaseTask
 }
 
 export async function updatePhaseTask(id: string, formData: FormData): Promise<void> {
   const { supabase } = await assertAuth()
+  const sopIdRaw = formData.get("sop_id") as string
   const { error } = await supabase.from("lab_phase_tasks").update({
-    title:       formData.get("title") as string,
-    description: (formData.get("description") as string) || null,
+    title:                formData.get("title") as string,
+    description:          (formData.get("description") as string) || null,
+    requires_deliverable: formData.get("requires_deliverable") === "true",
+    sop_id:               sopIdRaw || null,
   }).eq("id", id)
   if (error) throw error
   revalidate()
@@ -130,6 +151,48 @@ export async function updatePhaseTask(id: string, formData: FormData): Promise<v
 export async function deletePhaseTask(id: string): Promise<void> {
   const { supabase } = await assertAuth()
   const { error } = await supabase.from("lab_phase_tasks").delete().eq("id", id)
+  if (error) throw error
+  revalidate()
+}
+
+// ── Checklist items ───────────────────────────────────────────────────────────
+
+export async function addTaskChecklistItem(
+  taskId: string,
+  text: string,
+  isBlocking: boolean
+): Promise<LabPhaseTaskChecklistItem> {
+  const { supabase } = await assertAuth()
+  const { data: existing } = await supabase
+    .from("lab_phase_task_checklist_items").select("item_order")
+    .eq("task_id", taskId).order("item_order", { ascending: false }).limit(1)
+  const nextOrder = existing?.[0] ? existing[0].item_order + 1 : 0
+  const { data, error } = await supabase.from("lab_phase_task_checklist_items").insert({
+    task_id:    taskId,
+    text,
+    is_blocking: isBlocking,
+    item_order: nextOrder,
+  }).select().single()
+  if (error) throw error
+  revalidate()
+  return data as LabPhaseTaskChecklistItem
+}
+
+export async function updateTaskChecklistItem(
+  id: string,
+  text: string,
+  isBlocking: boolean
+): Promise<void> {
+  const { supabase } = await assertAuth()
+  const { error } = await supabase.from("lab_phase_task_checklist_items")
+    .update({ text, is_blocking: isBlocking }).eq("id", id)
+  if (error) throw error
+  revalidate()
+}
+
+export async function deleteTaskChecklistItem(id: string): Promise<void> {
+  const { supabase } = await assertAuth()
+  const { error } = await supabase.from("lab_phase_task_checklist_items").delete().eq("id", id)
   if (error) throw error
   revalidate()
 }
@@ -167,23 +230,22 @@ export async function promotePhase(
 ): Promise<void> {
   const { supabase } = await assertAuth()
 
-  // Fetch phase + tasks
+  // Fetch phase + tasks + checklist items
   const { data: phase, error: pErr } = await supabase
     .from("lab_phases")
-    .select("*, tasks:lab_phase_tasks(*)")
+    .select(`*, tasks:lab_phase_tasks(*, checklist_items:lab_phase_task_checklist_items(*))`)
     .eq("id", phaseId)
     .single()
   if (pErr || !phase) throw new Error("Fase no encontrada")
 
   const tasks = ((phase.tasks ?? []) as LabPhaseTask[]).sort((a, b) => a.task_order - b.task_order)
 
-  // Get next phase_order in target phase set
+  // Append at end of target phase set
   const { data: existing } = await supabase
     .from("phase_set_phases").select("phase_order")
     .eq("phase_set_id", targetPhaseSetId).order("phase_order", { ascending: false }).limit(1)
   const nextOrder = existing?.[0] ? existing[0].phase_order + 1 : 0
 
-  // Create the phase in the target phase set
   const { data: newPhase, error: phErr } = await supabase
     .from("phase_set_phases")
     .insert({
@@ -194,7 +256,6 @@ export async function promotePhase(
     }).select().single()
   if (phErr || !newPhase) throw new Error("Error al crear la fase en Operations Lab")
 
-  // If tasks exist, create a Task Set and link it
   if (tasks.length > 0) {
     const { data: newTS } = await supabase
       .from("task_sets")
@@ -202,16 +263,37 @@ export async function promotePhase(
       .select().single()
 
     if (newTS) {
-      await supabase.from("task_set_tasks").insert(
+      const { data: insertedTasks } = await supabase.from("task_set_tasks").insert(
         tasks.map((t, i) => ({
           task_set_id:          newTS.id,
           title:                t.title,
           description:          t.description,
           task_order:           i,
           is_urgent:            false,
-          requires_deliverable: false,
+          requires_deliverable: t.requires_deliverable,
+          sop_id:               t.sop_id ?? null,
         }))
-      )
+      ).select("id, title")
+
+      // Transfer checklist items per task
+      if (insertedTasks) {
+        for (let i = 0; i < tasks.length; i++) {
+          const srcTask = tasks[i]
+          const dstTask = insertedTasks[i]
+          const items = (srcTask.checklist_items ?? []) as LabPhaseTaskChecklistItem[]
+          if (items.length > 0 && dstTask) {
+            await supabase.from("task_set_checklist_items").insert(
+              items.map((item) => ({
+                task_set_task_id: dstTask.id,
+                text:             item.text,
+                is_blocking:      item.is_blocking,
+                item_order:       item.item_order,
+              }))
+            )
+          }
+        }
+      }
+
       await supabase.from("phase_set_phases")
         .update({ default_task_set_id: newTS.id }).eq("id", newPhase.id)
     }

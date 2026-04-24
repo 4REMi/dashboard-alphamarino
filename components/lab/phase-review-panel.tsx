@@ -1,9 +1,9 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import type { LabPhase, LabPhaseTask, PhaseSet } from "@/lib/types"
+import type { LabPhase, LabPhaseTask, PhaseSet, PhaseSetPhase } from "@/lib/types"
 import { reviewPhase, promotePhase } from "@/lib/actions/lab"
-import { CheckCircle2, XCircle, MessageSquare, ArrowUpRight } from "lucide-react"
+import { CheckCircle2, XCircle, MessageSquare, ArrowUpRight, Package, BookOpen, ChevronLeft } from "lucide-react"
 
 interface Props {
   initialPhases: LabPhase[]
@@ -28,8 +28,8 @@ export function PhaseReviewPanel({ initialPhases, phaseSets }: Props) {
     }))
   }
 
-  const pending   = phases.filter((p) => p.status === "submitted")
-  const reviewed  = phases.filter((p) => p.status === "approved" || p.status === "rejected")
+  const pending  = phases.filter((p) => p.status === "submitted")
+  const reviewed = phases.filter((p) => p.status === "approved" || p.status === "rejected")
 
   if (phases.length === 0) {
     return (
@@ -114,7 +114,6 @@ function PhaseDetail({
   const [comment, setComment] = useState("")
   const [isPending, startTransition] = useTransition()
   const [showPromote, setShowPromote] = useState(false)
-  const [targetId, setTargetId] = useState("")
 
   const author = (phase.author as { full_name?: string } | null)?.full_name ?? "Empleado"
   const tasks = [...(phase.tasks ?? [])].sort((a, b) => a.task_order - b.task_order) as LabPhaseTask[]
@@ -134,12 +133,22 @@ function PhaseDetail({
     })
   }
 
-  function handlePromote() {
-    if (!targetId) return
+  function handlePromote(targetId: string) {
     startTransition(async () => {
       await promotePhase(phase.id, targetId)
       setShowPromote(false)
     })
+  }
+
+  if (showPromote) {
+    return (
+      <PhaseSetPicker
+        phaseSets={phaseSets}
+        isPending={isPending}
+        onSelect={handlePromote}
+        onCancel={() => setShowPromote(false)}
+      />
+    )
   }
 
   return (
@@ -151,9 +160,7 @@ function PhaseDetail({
           <p className="text-xs text-muted-foreground mt-0.5">
             Por {author} · {new Date(phase.created_at).toLocaleDateString("es-MX", { day: "numeric", month: "long" })}
           </p>
-          {phase.description && (
-            <p className="text-sm text-muted-foreground mt-1">{phase.description}</p>
-          )}
+          {phase.description && <p className="text-sm text-muted-foreground mt-1">{phase.description}</p>}
         </div>
         {phase.status === "approved" && (
           <button
@@ -165,47 +172,17 @@ function PhaseDetail({
         )}
       </div>
 
-      {/* Promote panel */}
-      {showPromote && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 space-y-3">
-          <p className="text-sm font-medium text-emerald-900">¿A qué Phase Set agregar esta fase?</p>
-          <p className="text-xs text-emerald-700">La fase se añadirá al final del Phase Set seleccionado.</p>
-          <select
-            value={targetId}
-            onChange={(e) => setTargetId(e.target.value)}
-            className="w-full rounded border border-emerald-300 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
-          >
-            <option value="">Selecciona un Phase Set…</option>
-            {phaseSets.map((ps) => (
-              <option key={ps.id} value={ps.id}>{ps.name}</option>
-            ))}
-          </select>
-          <div className="flex gap-2">
-            <button
-              onClick={handlePromote}
-              disabled={isPending || !targetId}
-              className="text-sm px-4 py-1.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors"
-            >
-              {isPending ? "Inyectando…" : "Confirmar"}
-            </button>
-            <button onClick={() => setShowPromote(false)} className="text-sm px-3 py-1.5 text-muted-foreground hover:text-foreground">
-              Cancelar
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Task list */}
-      <div className="space-y-1">
+      <div className="space-y-1.5">
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
           Tareas ({tasks.length})
         </p>
         {tasks.length === 0 ? (
           <p className="text-sm text-muted-foreground">Sin tareas.</p>
         ) : (
-          <div className="rounded-lg border border-border p-3 space-y-0.5">
+          <div className="space-y-1">
             {tasks.map((t) => (
-              <p key={t.id} className="text-sm py-0.5 text-muted-foreground">· {t.title}</p>
+              <TaskPreviewRow key={t.id} task={t} />
             ))}
           </div>
         )}
@@ -221,9 +198,7 @@ function PhaseDetail({
                r.action === "reject"  ? <XCircle className="w-4 h-4 flex-shrink-0 mt-0.5" /> :
                <MessageSquare className="w-4 h-4 flex-shrink-0 mt-0.5 text-muted-foreground" />}
               <div>
-                <span className="font-medium">
-                  {(r.reviewer as { full_name?: string } | null)?.full_name ?? "Admin"}
-                </span>
+                <span className="font-medium">{(r.reviewer as { full_name?: string } | null)?.full_name ?? "Admin"}</span>
                 {r.comment && <span className="text-muted-foreground"> — {r.comment}</span>}
                 <span className="text-xs text-muted-foreground ml-1">
                   {new Date(r.created_at).toLocaleDateString("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
@@ -234,7 +209,7 @@ function PhaseDetail({
         </div>
       )}
 
-      {/* Review form — only if still pending */}
+      {/* Review form */}
       {phase.status === "submitted" && (
         <div className="border-t border-border pt-4 space-y-2">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Agregar revisión</p>
@@ -246,28 +221,132 @@ function PhaseDetail({
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none"
           />
           <div className="flex gap-2">
-            <button
-              onClick={() => handleReview("comment")}
-              disabled={isPending || !comment.trim()}
-              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-border hover:bg-muted disabled:opacity-50 transition-colors"
-            >
+            <button onClick={() => handleReview("comment")} disabled={isPending || !comment.trim()} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-border hover:bg-muted disabled:opacity-50">
               <MessageSquare className="w-3 h-3" /> Comentar
             </button>
-            <button
-              onClick={() => handleReview("approve")}
-              disabled={isPending}
-              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors"
-            >
+            <button onClick={() => handleReview("approve")} disabled={isPending} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50">
               <CheckCircle2 className="w-3 h-3" /> Aprobar
             </button>
-            <button
-              onClick={() => handleReview("reject")}
-              disabled={isPending || !comment.trim()}
-              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50 transition-colors"
-            >
+            <button onClick={() => handleReview("reject")} disabled={isPending || !comment.trim()} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50">
               <XCircle className="w-3 h-3" /> Rechazar
             </button>
           </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Task preview row (read-only, for admin review) ────────────────────────────
+
+function TaskPreviewRow({ task }: { task: LabPhaseTask }) {
+  const [expanded, setExpanded] = useState(false)
+  const checklist = task.checklist_items ?? []
+  const sopName = (task.sop as { title?: string } | null)?.title ?? null
+
+  return (
+    <div className="rounded-lg border border-border">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center gap-2 px-3 py-2 text-left"
+      >
+        <span className="text-sm flex-1">{task.title}</span>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {task.requires_deliverable && <span title="Requiere entregable"><Package className="w-3.5 h-3.5 text-primary/70" /></span>}
+          {sopName && <span title={`SOP: ${sopName}`}><BookOpen className="w-3.5 h-3.5 text-blue-500" /></span>}
+          {checklist.length > 0 && <span className="text-[10px] text-muted-foreground">{checklist.length} pasos</span>}
+        </div>
+      </button>
+      {expanded && (checklist.length > 0 || sopName || task.description) && (
+        <div className="border-t border-border/50 px-3 py-2 space-y-1.5">
+          {task.description && <p className="text-xs text-muted-foreground">{task.description}</p>}
+          {sopName && <p className="text-xs text-blue-600 flex items-center gap-1"><BookOpen className="w-3 h-3" /> {sopName}</p>}
+          {checklist.map((item) => (
+            <div key={item.id} className="flex items-center gap-2">
+              <span className="w-3 h-3 rounded-sm border border-muted-foreground/40 flex-shrink-0" />
+              <span className={`text-xs ${item.is_blocking ? "font-medium" : ""}`}>{item.text}</span>
+              {item.is_blocking && <span className="text-[9px] font-semibold text-amber-600 bg-amber-50 px-1 py-0.5 rounded">bloqueante</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Phase Set card picker ─────────────────────────────────────────────────────
+
+function PhaseSetPicker({
+  phaseSets, isPending, onSelect, onCancel,
+}: {
+  phaseSets: PhaseSet[]
+  isPending: boolean
+  onSelect: (id: string) => void
+  onCancel: () => void
+}) {
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <button onClick={onCancel} className="p-1 rounded text-muted-foreground hover:text-foreground">
+          <ChevronLeft className="w-4 h-4" />
+        </button>
+        <div>
+          <h3 className="text-sm font-semibold">¿A qué Phase Set inyectar esta fase?</h3>
+          <p className="text-xs text-muted-foreground">La fase se agregará al final del Phase Set seleccionado.</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 max-h-[400px] overflow-y-auto pr-1">
+        {phaseSets.map((ps) => {
+          const phases = [...(ps.phases ?? [])].sort((a: PhaseSetPhase, b: PhaseSetPhase) => a.phase_order - b.phase_order)
+          const isSelected = selectedId === ps.id
+          return (
+            <button
+              key={ps.id}
+              onClick={() => setSelectedId(ps.id)}
+              className={`text-left rounded-xl border p-3 transition-all ${isSelected ? "border-emerald-500 bg-emerald-50 ring-1 ring-emerald-400" : "border-border hover:border-primary/40 hover:bg-muted/50"}`}
+            >
+              <p className="text-sm font-semibold truncate">{ps.name}</p>
+              <div className="mt-2 space-y-0.5 min-h-[2rem]">
+                {phases.length === 0 ? (
+                  <p className="text-xs text-muted-foreground italic">Sin fases aún</p>
+                ) : (
+                  phases.slice(0, 5).map((ph: PhaseSetPhase) => (
+                    <p key={ph.id} className="text-xs text-muted-foreground truncate">· {ph.name}</p>
+                  ))
+                )}
+                {phases.length > 5 && (
+                  <p className="text-xs text-muted-foreground">+{phases.length - 5} más</p>
+                )}
+              </div>
+              {isSelected && (
+                <p className="text-xs text-emerald-700 font-medium mt-2">↓ Tu fase se agregará aquí</p>
+              )}
+            </button>
+          )
+        })}
+
+        {phaseSets.length === 0 && (
+          <p className="col-span-2 text-sm text-muted-foreground text-center py-8">
+            No hay Phase Sets en Operations Lab aún.
+          </p>
+        )}
+      </div>
+
+      {selectedId && (
+        <div className="flex gap-2 pt-2 border-t border-border">
+          <button
+            onClick={() => onSelect(selectedId)}
+            disabled={isPending}
+            className="text-sm px-4 py-2 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+          >
+            {isPending ? "Inyectando…" : "Confirmar inyección"}
+          </button>
+          <button onClick={onCancel} className="text-sm px-3 py-2 text-muted-foreground hover:text-foreground">
+            Cancelar
+          </button>
         </div>
       )}
     </div>
