@@ -207,7 +207,7 @@ function ImportModal({
   onImport,
 }: {
   onClose: () => void
-  onImport: (json: string, mode?: "default" | "rename" | "overwrite") => Promise<void>
+  onImport: (json: string, mode?: "default" | "rename" | "overwrite") => Promise<{ conflict?: { suggestedName: string } }>
 }) {
   const [text, setText] = useState("")
   const [error, setError] = useState<string | null>(null)
@@ -228,15 +228,14 @@ function ImportModal({
     setConflict(null)
     setLoading(true)
     try {
-      await onImport(text.trim(), mode)
-      onClose()
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Error al importar"
-      if (msg.startsWith("__CONFLICT__:")) {
-        setConflict({ suggestedName: msg.slice("__CONFLICT__:".length) })
+      const result = await onImport(text.trim(), mode)
+      if (result?.conflict) {
+        setConflict(result.conflict)
       } else {
-        setError(msg)
+        onClose()
       }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al importar")
     } finally {
       setLoading(false)
     }
@@ -1002,13 +1001,12 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
   }
 
   // ── Import ───────────────────────────────────────────────────────────────────
-  async function handleImport(jsonStr: string, mode: "default" | "rename" | "overwrite" = "default") {
-    const result = await importOperationsTemplate(jsonStr, mode) as {
-      replacedName: string | null
-      projectType: ProjectType
-      phaseSet: PhaseSet | null
-      taskSets: Array<{ id: string; name: string; tasks: TaskSetTask[] }>
-    }
+  async function handleImport(jsonStr: string, mode: "default" | "rename" | "overwrite" = "default"): Promise<{ conflict?: { suggestedName: string } }> {
+    const result = await importOperationsTemplate(jsonStr, mode) as
+      | { conflict: true; suggestedName: string }
+      | { conflict?: never; replacedName: string | null; projectType: ProjectType; phaseSet: PhaseSet | null; taskSets: Array<{ id: string; name: string; tasks: TaskSetTask[] }> }
+
+    if (result.conflict) return { conflict: { suggestedName: result.suggestedName } }
 
     // Remove overwritten entries from state
     if (result.replacedName) {
@@ -1023,6 +1021,7 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
     }
     setTypes((prev) => [...prev, result.projectType].sort((a, b) => a.name.localeCompare(b.name)))
     setSelectedTypeId(result.projectType.id)
+    return {}
     setSelectedPhaseId(null)
   }
 
@@ -1416,7 +1415,7 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
       </div>
 
       {showImport && (
-        <ImportModal onClose={() => setShowImport(false)} onImport={(json, mode) => handleImport(json, mode)} />
+        <ImportModal onClose={() => setShowImport(false)} onImport={handleImport} />
       )}
 
       {editingTask && linkedTS && (

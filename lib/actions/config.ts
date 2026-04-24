@@ -452,7 +452,7 @@ export async function importOperationsTemplate(jsonStr: string, mode: "default" 
       }))
       let n = 2
       while (takenNumbers.has(n)) n++
-      throw new Error(`__CONFLICT__:${baseName} (${n})`)
+      return { conflict: true as const, suggestedName: `${baseName} (${n})` }
     }
 
     if (mode === "overwrite") {
