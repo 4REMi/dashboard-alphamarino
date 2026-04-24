@@ -31,6 +31,7 @@ import {
   addChecklistItemToSetTask, updateSetTaskChecklistItem, deleteSetTaskChecklistItem,
 } from "@/lib/actions/config"
 import { cn } from "@/lib/utils"
+import { exportToXlsx } from "@/lib/utils/export-xlsx"
 
 interface Props {
   projectTypes: ProjectType[]
@@ -1026,9 +1027,11 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
   }
 
   // ── Export ───────────────────────────────────────────────────────────────────
-  function handleExport() {
-    if (!selectedType) return
-    const data = {
+  const [showExportMenu, setShowExportMenu] = useState(false)
+
+  function buildExportData() {
+    if (!selectedType) return null
+    return {
       projectType: { name: selectedType.name, description: selectedType.description ?? null },
       phaseSet: linkedPS ? {
         name: linkedPS.name,
@@ -1055,6 +1058,12 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
         }),
       } : null,
     }
+  }
+
+  function handleExportJson() {
+    if (!selectedType) return
+    const data = buildExportData()
+    if (!data) return
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
@@ -1062,6 +1071,19 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
     a.download = `${selectedType.name.replace(/\s+/g, "-").toLowerCase()}-template.json`
     a.click()
     URL.revokeObjectURL(url)
+    setShowExportMenu(false)
+  }
+
+  function handleExportXlsx() {
+    if (!selectedType) return
+    exportToXlsx(
+      selectedType.name,
+      selectedType.description ?? null,
+      linkedPS?.name ?? null,
+      phases,
+      taskSets,
+    )
+    setShowExportMenu(false)
   }
 
   // ── render ───────────────────────────────────────────────────────────────────
@@ -1070,13 +1092,37 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
       {/* Toolbar */}
       <div className="flex items-center justify-end gap-2 mb-3">
         {selectedType && (
-          <button
-            onClick={handleExport}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border border-border hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-          >
-            <Download className="w-3.5 h-3.5" />
-            Exportar tipo seleccionado
-          </button>
+          <div className="relative">
+            <button
+              onClick={() => setShowExportMenu((v) => !v)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border border-border hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Exportar tipo seleccionado
+              <ChevronRight className={`w-3 h-3 transition-transform ${showExportMenu ? "rotate-90" : ""}`} />
+            </button>
+            {showExportMenu && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowExportMenu(false)} />
+                <div className="absolute right-0 top-full mt-1 z-20 w-44 rounded-lg border border-border bg-card shadow-md overflow-hidden">
+                  <button
+                    onClick={handleExportJson}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted transition-colors text-left"
+                  >
+                    <span className="text-muted-foreground">{ }</span>
+                    JSON (.json)
+                  </button>
+                  <button
+                    onClick={handleExportXlsx}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted transition-colors text-left"
+                  >
+                    <span className="text-muted-foreground">{ }</span>
+                    Excel (.xlsx)
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         )}
         <button
           onClick={() => setShowImport(true)}
