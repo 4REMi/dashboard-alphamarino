@@ -23,7 +23,7 @@ import { AutoTextarea } from "@/components/ui/auto-textarea"
 // TaskPriority intentionally removed — tasks now use is_urgent boolean
 import {
   createProjectType, updateProjectType, deleteProjectType,
-  createPhaseSet, deletePhaseSet, addPhaseToSet, deletePhaseFromSet,
+  createPhaseSet, deletePhaseSet, addPhaseToSet, updatePhaseInSet, deletePhaseFromSet,
   linkPhaseSetToProjectType, linkTaskSetToPhase,
   createTaskSet, updateTaskSet, deleteTaskSet, addTaskToSet, updateTaskInSet, deleteTaskFromSet,
   reorderTasksInSet, reorderPhaseInSet,
@@ -803,6 +803,19 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
     })
   }
 
+  function handleUpdatePhase(phaseId: string, name: string, description: string) {
+    if (!linkedPS) return
+    const fd = new FormData()
+    fd.set("name", name)
+    fd.set("description", description)
+    setPhaseSets((prev) => prev.map((ps) =>
+      ps.id === linkedPS.id
+        ? { ...ps, phases: (ps.phases ?? []).map((p) => p.id === phaseId ? { ...p, name, description: description || null } : p) }
+        : ps
+    ))
+    run(async () => { await updatePhaseInSet(phaseId, fd) })
+  }
+
   function handleDeletePhase(phaseId: string) {
     if (!confirm("¿Eliminar esta fase?") || !linkedPS) return
     run(async () => {
@@ -1157,6 +1170,7 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
                         tsName={phase.default_task_set_id ? (taskSets.find((ts) => ts.id === phase.default_task_set_id)?.name ?? null) : null}
                         onSelect={() => { setSelectedPhaseId(phase.id === selectedPhaseId ? null : phase.id); setEditingTS(false) }}
                         onDelete={() => handleDeletePhase(phase.id)}
+                        onUpdate={(name, desc) => handleUpdatePhase(phase.id, name, desc)}
                       />
                     ))}
                   </SortableContext>
@@ -1334,18 +1348,42 @@ interface SortablePhaseRowProps {
   tsName: string | null
   onSelect: () => void
   onDelete: () => void
+  onUpdate: (name: string, description: string) => void
 }
 
-function SortablePhaseRow({ phase, index, isSelected, tsName, onSelect, onDelete }: SortablePhaseRowProps) {
+function SortablePhaseRow({ phase, index, isSelected, tsName, onSelect, onDelete, onUpdate }: SortablePhaseRowProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: phase.id })
+  const [editing, setEditing] = useState(false)
+  const [nameVal, setNameVal] = useState(phase.name)
+  const [descVal, setDescVal] = useState(phase.description ?? "")
+
+  function startEdit(e: React.MouseEvent) {
+    e.stopPropagation()
+    setNameVal(phase.name)
+    setDescVal(phase.description ?? "")
+    setEditing(true)
+  }
+
+  function commit() {
+    const trimmed = nameVal.trim()
+    if (trimmed && trimmed !== phase.name || descVal !== (phase.description ?? "")) {
+      onUpdate(trimmed || phase.name, descVal.trim())
+    }
+    setEditing(false)
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter") { e.preventDefault(); commit() }
+    if (e.key === "Escape") setEditing(false)
+  }
 
   return (
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      onClick={onSelect}
-      className={`group flex items-center gap-2 px-3 py-3 cursor-pointer border-b border-border/50 transition-colors
-        ${isSelected ? "bg-primary/10 border-l-2 border-l-primary" : "hover:bg-muted/40"}
+      onClick={editing ? undefined : onSelect}
+      className={`group flex items-center gap-2 px-3 py-3 border-b border-border/50 transition-colors
+        ${editing ? "bg-muted/30" : isSelected ? "bg-primary/10 border-l-2 border-l-primary cursor-pointer" : "hover:bg-muted/40 cursor-pointer"}
         ${isDragging ? "opacity-70 shadow-md z-10 relative bg-card" : ""}`}
     >
       <button
@@ -1358,18 +1396,52 @@ function SortablePhaseRow({ phase, index, isSelected, tsName, onSelect, onDelete
       >
         <GripVertical className="w-3.5 h-3.5" />
       </button>
+
       <span className="w-5 h-5 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground flex-shrink-0">{index + 1}</span>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{phase.name}</p>
-        <p className={`text-xs truncate mt-0.5 ${tsName ? "text-primary/80" : "text-muted-foreground"}`}>{tsName ?? "Sin task set"}</p>
-      </div>
-      <button
-        onClick={(e) => { e.stopPropagation(); onDelete() }}
-        className="opacity-0 group-hover:opacity-100 p-1 rounded text-muted-foreground hover:text-destructive transition-all flex-shrink-0"
-      >
-        <X className="w-3 h-3" />
-      </button>
-      {isSelected && <ChevronRight className="w-3.5 h-3.5 text-primary flex-shrink-0" />}
+
+      {editing ? (
+        <div className="flex-1 min-w-0 flex flex-col gap-1" onClick={(e) => e.stopPropagation()}>
+          <input
+            autoFocus
+            value={nameVal}
+            onChange={(e) => setNameVal(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onBlur={commit}
+            className="w-full rounded border border-input bg-background px-2 py-0.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+          <input
+            value={descVal}
+            onChange={(e) => setDescVal(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onBlur={commit}
+            placeholder="Descripción (opcional)"
+            className="w-full rounded border border-input bg-background px-2 py-0.5 text-xs text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+        </div>
+      ) : (
+        <div className="flex-1 min-w-0" onDoubleClick={startEdit}>
+          <p className="text-sm font-medium truncate">{phase.name}</p>
+          <p className={`text-xs truncate mt-0.5 ${tsName ? "text-primary/80" : "text-muted-foreground"}`}>{tsName ?? (phase.description ?? "Sin task set")}</p>
+        </div>
+      )}
+
+      {!editing && (
+        <>
+          <button
+            onClick={startEdit}
+            className="opacity-0 group-hover:opacity-100 p-1 rounded text-muted-foreground hover:text-foreground transition-all flex-shrink-0"
+          >
+            <Pencil className="w-3 h-3" />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete() }}
+            className="opacity-0 group-hover:opacity-100 p-1 rounded text-muted-foreground hover:text-destructive transition-all flex-shrink-0"
+          >
+            <X className="w-3 h-3" />
+          </button>
+          {isSelected && <ChevronRight className="w-3.5 h-3.5 text-primary flex-shrink-0" />}
+        </>
+      )}
     </div>
   )
 }
