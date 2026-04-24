@@ -20,7 +20,7 @@ export async function getEmployees() {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("profiles")
-    .select("*")
+    .select("*, position_obj:positions(id, name)")
     .order("full_name")
   if (error) throw error
   return data
@@ -30,7 +30,7 @@ export async function getEmployee(id: string) {
   const supabase = await createClient()
 
   const [profileRes, projectsRes, tasksRes] = await Promise.all([
-    supabase.from("profiles").select("*").eq("id", id).single(),
+    supabase.from("profiles").select("*, position_obj:positions(id, name)").eq("id", id).single(),
     supabase
       .from("project_members")
       .select("project:projects(id, name, status, progress, project_type:project_types(name), customer:customers(name))")
@@ -65,6 +65,7 @@ export async function createEmployee(formData: FormData) {
   const email = formData.get("email") as string
   const fullName = formData.get("full_name") as string
   const position = (formData.get("position") as string) || null
+  const positionIdRaw = formData.get("position_id") as string
   const phone = (formData.get("phone") as string) || null
   const role = (formData.get("role") as Role) ?? "employee"
 
@@ -85,6 +86,7 @@ export async function createEmployee(formData: FormData) {
       email,
       role,
       position,
+      position_id: positionIdRaw && positionIdRaw !== "none" ? positionIdRaw : null,
       phone,
     }, { onConflict: "id" })
 
@@ -97,9 +99,11 @@ export async function createEmployee(formData: FormData) {
 export async function updateEmployee(id: string, formData: FormData) {
   const supabase = await createClient()
   const role = formData.get("role") as string
+  const positionIdRaw = formData.get("position_id") as string
   const updates: Record<string, unknown> = {
     full_name: formData.get("full_name") as string,
     position: (formData.get("position") as string) || null,
+    position_id: positionIdRaw && positionIdRaw !== "none" ? positionIdRaw : null,
     phone: (formData.get("phone") as string) || null,
   }
   if (role) updates.role = role

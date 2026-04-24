@@ -11,12 +11,14 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { UserPlus, Mail } from "lucide-react"
+import type { Position } from "@/lib/types"
 
 interface EmployeeFormProps {
   trigger?: ReactNode
+  positions?: Position[]
 }
 
-export function EmployeeForm({ trigger }: EmployeeFormProps) {
+export function EmployeeForm({ trigger, positions = [] }: EmployeeFormProps) {
   const [open, setOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
@@ -97,6 +99,24 @@ export function EmployeeForm({ trigger }: EmployeeFormProps) {
                 className="w-full text-sm border rounded-md px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-ring"
               />
             </div>
+
+            {positions.length > 0 && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Puesto (asignación automática)</label>
+                <select
+                  name="position_id"
+                  className="w-full text-sm border rounded-md px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                >
+                  <option value="none">Sin puesto</option>
+                  {positions.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  Usado para asignar tareas automáticamente al crear proyectos.
+                </p>
+              </div>
+            )}
 
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Teléfono</label>

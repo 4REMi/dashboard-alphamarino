@@ -1,12 +1,13 @@
 import { createClient } from "@/lib/supabase/server"
 import { getEmployees } from "@/lib/actions/employees"
+import { getPositions } from "@/lib/actions/config"
 import { EmployeeForm } from "@/components/employees/employee-form"
 import Link from "next/link"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Mail, Phone, Briefcase } from "lucide-react"
-import type { Profile } from "@/lib/types"
+import type { Profile, Position } from "@/lib/types"
 import { getTranslations } from "next-intl/server"
 
 export default async function EmployeesPage() {
@@ -17,7 +18,10 @@ export default async function EmployeesPage() {
   const { data: currentProfile } = await supabase.from("profiles").select("role").eq("id", user!.id).single()
   const isAdmin = currentProfile?.role === "admin"
 
-  const employees = (await getEmployees()) as Profile[]
+  const [employees, positions] = await Promise.all([
+    getEmployees() as Promise<Profile[]>,
+    getPositions() as Promise<Position[]>,
+  ])
 
   return (
     <div className="p-6 space-y-6">
@@ -26,7 +30,7 @@ export default async function EmployeesPage() {
           <h1 className="text-2xl font-bold">{t("title")}</h1>
           <p className="text-muted-foreground text-sm mt-1">{employees.length} {t("title").toLowerCase()}</p>
         </div>
-        {isAdmin && <EmployeeForm />}
+        {isAdmin && <EmployeeForm positions={positions} />}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -60,10 +64,10 @@ export default async function EmployeesPage() {
                           {tRoles(employee.role as "admin" | "subadmin" | "employee")}
                         </Badge>
                       </div>
-                      {employee.position && (
+                      {(employee.position_obj?.name ?? employee.position) && (
                         <p className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
                           <Briefcase className="w-3 h-3" />
-                          {employee.position}
+                          {employee.position_obj?.name ?? employee.position}
                         </p>
                       )}
                       {employee.email && (

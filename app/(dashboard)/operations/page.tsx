@@ -2,11 +2,11 @@ export const dynamic = "force-dynamic"
 
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
-import { getProjectTypes, getPhaseSets, getTaskSets } from "@/lib/actions/config"
+import { getProjectTypes, getPhaseSets, getTaskSets, getPositions } from "@/lib/actions/config"
 import { getEmployees } from "@/lib/actions/employees"
 import { getSops } from "@/lib/actions/sops"
 import { OperationsLab } from "@/components/operations/operations-lab"
-import type { ProjectType, PhaseSet, TaskSet, Profile, Sop } from "@/lib/types"
+import type { ProjectType, PhaseSet, TaskSet, Profile, Sop, Position } from "@/lib/types"
 import { getTranslations } from "next-intl/server"
 
 export default async function OperationsPage() {
@@ -17,11 +17,12 @@ export default async function OperationsPage() {
 
   if (profile?.role !== "admin") redirect("/")
 
-  const [projectTypes, phaseSets, taskSets, employees, sops] = await Promise.all([
+  const [projectTypes, phaseSets, taskSets, employees, positions, sops] = await Promise.all([
     getProjectTypes().catch(() => []),
     getPhaseSets().catch(() => []),
     getTaskSets().catch(() => []),
     getEmployees().catch(() => []),
+    getPositions().catch(() => []),
     getSops().catch(() => []),
   ])
 
@@ -37,6 +38,7 @@ export default async function OperationsPage() {
         phaseSets={phaseSets as PhaseSet[]}
         taskSets={taskSets as TaskSet[]}
         employees={employees as Profile[]}
+        positions={positions as Position[]}
         sops={sops as Sop[]}
       />
     </div>

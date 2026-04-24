@@ -210,6 +210,45 @@ export async function linkPhaseSetToProjectType(projectTypeId: string, phaseSetI
 }
 
 // ============================================================
+// POSITIONS
+// ============================================================
+
+export async function getPositions() {
+  const supabase = await createClient()
+  const { data, error } = await supabase.from("positions").select("*").order("name")
+  if (error) return []
+  return data ?? []
+}
+
+export async function createPosition(name: string) {
+  const supabase = await createClient()
+  const { data, error } = await supabase.from("positions").insert({ name }).select().single()
+  if (error) throw error
+  revalidatePath("/settings")
+  revalidatePath("/operations")
+  revalidatePath("/employees")
+  return data
+}
+
+export async function updatePosition(id: string, name: string) {
+  const supabase = await createClient()
+  const { error } = await supabase.from("positions").update({ name }).eq("id", id)
+  if (error) throw error
+  revalidatePath("/settings")
+  revalidatePath("/operations")
+  revalidatePath("/employees")
+}
+
+export async function deletePosition(id: string) {
+  const supabase = await createClient()
+  const { error } = await supabase.from("positions").delete().eq("id", id)
+  if (error) throw error
+  revalidatePath("/settings")
+  revalidatePath("/operations")
+  revalidatePath("/employees")
+}
+
+// ============================================================
 // TASK SETS
 // ============================================================
 
@@ -217,7 +256,7 @@ export async function getTaskSets() {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("task_sets")
-    .select("*, tasks:task_set_tasks(*, sop:sops(id, title), checklist_items:task_set_checklist_items(id, text, is_blocking, item_order)), default_assignee:profiles(id, full_name, avatar_url)")
+    .select("*, tasks:task_set_tasks(*, sop:sops(id, title), default_position:positions(id, name), checklist_items:task_set_checklist_items(id, text, is_blocking, item_order))")
     .order("name")
   if (error) return []
   return (data ?? []).map((ts) => ({
@@ -230,11 +269,9 @@ export async function getTaskSets() {
 
 export async function createTaskSet(formData: FormData) {
   const supabase = await createClient()
-  const assigneeId = formData.get("default_assignee_id") as string
   const { data, error } = await supabase.from("task_sets").insert({
     name: formData.get("name") as string,
     description: (formData.get("description") as string) || null,
-    default_assignee_id: assigneeId && assigneeId !== "none" ? assigneeId : null,
   }).select().single()
   if (error) throw error
   revalidatePath("/settings")
@@ -244,11 +281,9 @@ export async function createTaskSet(formData: FormData) {
 
 export async function updateTaskSet(id: string, formData: FormData) {
   const supabase = await createClient()
-  const assigneeId = formData.get("default_assignee_id") as string
   const { error } = await supabase.from("task_sets").update({
     name: formData.get("name") as string,
     description: (formData.get("description") as string) || null,
-    default_assignee_id: assigneeId && assigneeId !== "none" ? assigneeId : null,
   }).eq("id", id)
   if (error) throw error
   revalidatePath("/settings")
@@ -273,14 +308,16 @@ export async function addTaskToSet(taskSetId: string, formData: FormData) {
     .limit(1)
   const nextOrder = existing?.[0] ? existing[0].task_order + 1 : 0
 
+  const positionIdRaw = formData.get("default_position_id") as string
   const { data, error } = await supabase.from("task_set_tasks").insert({
     task_set_id: taskSetId,
     title: formData.get("title") as string,
     description: (formData.get("description") as string) || null,
     is_urgent: formData.get("is_urgent") === "true",
     requires_deliverable: formData.get("requires_deliverable") === "true",
+    default_position_id: positionIdRaw && positionIdRaw !== "none" ? positionIdRaw : null,
     task_order: nextOrder,
-  }).select().single()
+  }).select("*, default_position:positions(id, name)").single()
   if (error) throw error
   revalidatePath("/settings")
   revalidatePath("/operations")
@@ -290,6 +327,7 @@ export async function addTaskToSet(taskSetId: string, formData: FormData) {
 export async function updateTaskInSet(taskId: string, formData: FormData) {
   const supabase = await createClient()
   const sopIdRaw = formData.get("sop_id") as string
+  const positionIdRaw = formData.get("default_position_id") as string
   const { data, error } = await supabase
     .from("task_set_tasks")
     .update({
@@ -298,9 +336,10 @@ export async function updateTaskInSet(taskId: string, formData: FormData) {
       is_urgent: formData.get("is_urgent") === "true",
       requires_deliverable: formData.get("requires_deliverable") === "true",
       sop_id: sopIdRaw || null,
+      default_position_id: positionIdRaw && positionIdRaw !== "none" ? positionIdRaw : null,
     })
     .eq("id", taskId)
-    .select("*, sop:sops(id, title)")
+    .select("*, sop:sops(id, title), default_position:positions(id, name)")
     .single()
   if (error) throw error
   revalidatePath("/settings")

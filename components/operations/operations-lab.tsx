@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useRef } from "react"
 import { ChevronRight, Plus, Trash2, LayoutList, Link2, Pencil, Check, X, Upload, Download, Paperclip, GripVertical, BookOpen, Search, Lock, ListChecks } from "lucide-react"
-import type { ProjectType, PhaseSet, PhaseSetPhase, TaskSet, TaskSetTask, TaskSetChecklistItem, Profile, Sop } from "@/lib/types"
+import type { ProjectType, PhaseSet, PhaseSetPhase, TaskSet, TaskSetTask, TaskSetChecklistItem, Profile, Sop, Position } from "@/lib/types"
 import { PROJECT_TYPE_ICONS, getProjectTypeIcon } from "@/lib/project-type-icons"
 import {
   DndContext,
@@ -38,6 +38,7 @@ interface Props {
   phaseSets: PhaseSet[]
   taskSets: TaskSet[]
   employees: Profile[]
+  positions: Position[]
   sops: Sop[]
 }
 
@@ -552,6 +553,12 @@ function SortableTaskRow({
         {task.is_urgent && (
           <span className="text-xs px-1.5 py-0.5 rounded font-medium flex-shrink-0 bg-destructive/10 text-destructive">Urgente</span>
         )}
+        {task.default_position_id && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 bg-violet-100 text-violet-700 max-w-[80px] truncate"
+            title={(task.default_position as { name?: string } | null)?.name ?? "Puesto asignado"}>
+            {(task.default_position as { name?: string } | null)?.name ?? "Puesto"}
+          </span>
+        )}
         {task.sop_id && (
           <span
             title={(task.sop as { title?: string } | null)?.title ?? "SOP asignado"}
@@ -590,12 +597,14 @@ function SortableTaskRow({
 function EditTaskModal({
   task,
   sops,
+  positions,
   isPending,
   onClose,
   onSubmit,
 }: {
   task: TaskSetTask
   sops: Sop[]
+  positions: Position[]
   isPending: boolean
   onClose: () => void
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void
@@ -647,6 +656,16 @@ function EditTaskModal({
               Requiere entregable
             </label>
           </div>
+
+          {positions.length > 0 && (
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Puesto responsable</label>
+              <InlineSelect name="default_position_id" defaultValue={task.default_position_id ?? "none"}>
+                <option value="none">Sin puesto asignado</option>
+                {positions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </InlineSelect>
+            </div>
+          )}
 
           {/* SOP picker */}
           <div>
@@ -725,7 +744,7 @@ function EditTaskModal({
 }
 
 // ── main component ────────────────────────────────────────────────────────────
-export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets: initTS, employees, sops }: Props) {
+export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets: initTS, employees, positions, sops }: Props) {
   const [types, setTypes] = useState<ProjectType[]>(init)
   const [phaseSets, setPhaseSets] = useState<PhaseSet[]>(initPS)
   const [taskSets, setTaskSets] = useState<TaskSet[]>(initTS)
@@ -885,9 +904,7 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
     e.preventDefault(); const fd = new FormData(e.currentTarget); const form = e.currentTarget
     run(async () => {
       const created = await createTaskSet(fd) as TaskSet
-      const assigneeId = fd.get("default_assignee_id") as string
-      const assignee = employees.find((emp) => emp.id === assigneeId) ?? null
-      const newTS: TaskSet = { ...created, tasks: [], default_assignee: assignee }
+      const newTS: TaskSet = { ...created, tasks: [] }
       setTaskSets((prev) => [...prev, newTS].sort((a, b) => a.name.localeCompare(b.name)))
       if (selectedPhase && linkedPS) {
         await linkTaskSetToPhase(selectedPhase.id, created.id)
@@ -906,11 +923,9 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
     const fd = new FormData(e.currentTarget)
     run(async () => {
       await updateTaskSet(linkedTS.id, fd)
-      const assigneeId = fd.get("default_assignee_id") as string
-      const assignee = employees.find((emp) => emp.id === assigneeId) ?? null
       setTaskSets((prev) => prev.map((ts) =>
         ts.id === linkedTS.id
-          ? { ...ts, name: fd.get("name") as string, default_assignee: assignee }
+          ? { ...ts, name: fd.get("name") as string }
           : ts
       ))
       setEditingTS(false)
@@ -1017,7 +1032,7 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
       setPhaseSets((prev) => [...prev, result.phaseSet!].sort((a, b) => a.name.localeCompare(b.name)))
     }
     for (const ts of result.taskSets) {
-      setTaskSets((prev) => [...prev, { ...ts, default_assignee: null } as TaskSet].sort((a, b) => a.name.localeCompare(b.name)))
+      setTaskSets((prev) => [...prev, ts as TaskSet].sort((a, b) => a.name.localeCompare(b.name)))
     }
     setTypes((prev) => [...prev, result.projectType].sort((a, b) => a.name.localeCompare(b.name)))
     setSelectedTypeId(result.projectType.id)
@@ -1313,10 +1328,6 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
                 {showNewTS ? (
                   <form onSubmit={handleCreateTS} className="space-y-2">
                     <InlineInput name="name" required autoFocus placeholder="Nombre del task set…" />
-                    <InlineSelect name="default_assignee_id" defaultValue="none">
-                      <option value="none">Sin asignar por defecto</option>
-                      {employees.map((emp) => <option key={emp.id} value={emp.id}>{emp.full_name}</option>)}
-                    </InlineSelect>
                     <div className="flex gap-2 justify-end">
                       <button type="button" onClick={() => setShowNewTS(false)} className="text-xs text-muted-foreground">Cancelar</button>
                       <button type="submit" disabled={isPending} className="text-xs px-2.5 py-1 rounded bg-primary text-primary-foreground disabled:opacity-50">Crear y vincular</button>
@@ -1339,7 +1350,7 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
                   </InlineSelect>
                   <button
                     onClick={() => setEditingTS(!editingTS)}
-                    title="Editar nombre y asignado"
+                    title="Editar nombre del task set"
                     className={`p-1 rounded transition-colors flex-shrink-0 ${editingTS ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
                   >
                     <Pencil className="w-3.5 h-3.5" />
@@ -1352,13 +1363,6 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
                     <div>
                       <label className="text-xs font-medium text-muted-foreground mb-1 block">Nombre</label>
                       <InlineInput name="name" required defaultValue={linkedTS.name} />
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-muted-foreground mb-1 block">Asignado por defecto</label>
-                      <InlineSelect name="default_assignee_id" defaultValue={(linkedTS.default_assignee as Profile | null)?.id ?? "none"}>
-                        <option value="none">Sin asignar</option>
-                        {employees.map((emp) => <option key={emp.id} value={emp.id}>{emp.full_name}</option>)}
-                      </InlineSelect>
                     </div>
                     <div className="flex gap-2 justify-end">
                       <button type="button" onClick={() => setEditingTS(false)} className="text-xs text-muted-foreground hover:text-foreground">Cancelar</button>
@@ -1391,16 +1395,20 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
                     <InlineInput name="title" required autoFocus placeholder="Título de la tarea…" />
                     <div className="grid grid-cols-2 gap-2">
                       <InlineInput name="description" placeholder="Descripción (opcional)" />
-                      <div className="flex gap-2">
-                        <label className="flex items-center gap-2 px-2 py-1.5 rounded border border-input bg-background text-sm cursor-pointer select-none flex-1">
-                          <input type="checkbox" name="is_urgent" value="true" className="accent-destructive" />
-                          Urgente
-                        </label>
-                        <label className="flex items-center gap-2 px-2 py-1.5 rounded border border-input bg-background text-sm cursor-pointer select-none flex-1">
-                          <input type="checkbox" name="requires_deliverable" value="true" className="accent-info" />
-                          Entregable
-                        </label>
-                      </div>
+                      <InlineSelect name="default_position_id" defaultValue="none">
+                        <option value="none">Sin puesto asignado</option>
+                        {positions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </InlineSelect>
+                    </div>
+                    <div className="flex gap-3">
+                      <label className="flex items-center gap-2 px-2 py-1.5 rounded border border-input bg-background text-sm cursor-pointer select-none">
+                        <input type="checkbox" name="is_urgent" value="true" className="accent-destructive" />
+                        Urgente
+                      </label>
+                      <label className="flex items-center gap-2 px-2 py-1.5 rounded border border-input bg-background text-sm cursor-pointer select-none">
+                        <input type="checkbox" name="requires_deliverable" value="true" className="accent-info" />
+                        Entregable
+                      </label>
                     </div>
                     <div className="flex gap-2 justify-end">
                       <button type="button" onClick={() => setShowAddTask(false)} className="text-xs text-muted-foreground">Cancelar</button>
@@ -1422,6 +1430,7 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
         <EditTaskModal
           task={editingTask}
           sops={sops}
+          positions={positions}
           isPending={isPending}
           onClose={() => setEditingTask(null)}
           onSubmit={(e) => handleUpdateTask(editingTask.id, linkedTS.id, e)}

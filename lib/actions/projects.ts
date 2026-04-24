@@ -7,7 +7,7 @@ import type { ProjectStatus, PhaseStatus, CycleDeliverableStatus, CampaignStatus
 import type { SupabaseClient } from "@supabase/supabase-js"
 
 // Helper: copy task set tasks to a project for each phase that has a default_task_set_id.
-// phaseIdByTaskSetId maps task_set.id → project_phase.id so tasks are linked to their phase.
+// Resolves default_position_id → project member with that position (snapshot at creation time).
 async function copyTaskSetsToProject(
   supabase: SupabaseClient,
   templatePhases: Array<{ default_task_set_id: string | null }>,
@@ -21,17 +21,48 @@ async function copyTaskSetsToProject(
 
     if (taskSetIds.length === 0) return
 
-    const { data: taskSets } = await supabase
-      .from("task_sets")
-      .select("id, default_assignee_id, tasks:task_set_tasks(*, checklist_items:task_set_checklist_items(id, text, is_blocking, item_order))")
-      .in("id", taskSetIds)
+    const [taskSetsRes, membersRes] = await Promise.all([
+      supabase
+        .from("task_sets")
+        .select("id, tasks:task_set_tasks(*, checklist_items:task_set_checklist_items(id, text, is_blocking, item_order))")
+        .in("id", taskSetIds),
+      supabase
+        .from("project_members")
+        .select("profile_id, profile:profiles(position_id)")
+        .eq("project_id", projectId),
+    ])
 
-    if (!taskSets || taskSets.length === 0) return
+    if (!taskSetsRes.data || taskSetsRes.data.length === 0) return
 
-    const tasksToInsert = taskSets.flatMap((ts) =>
+    // Build position_id → [profile_ids] map from project members
+    const positionToMembers = new Map<string, string[]>()
+    for (const m of membersRes.data ?? []) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const posId = (m.profile as any)?.position_id as string | null
+      if (posId) {
+        const list = positionToMembers.get(posId) ?? []
+        list.push(m.profile_id)
+        positionToMembers.set(posId, list)
+      }
+    }
+
+    const resolveAssignment = (positionId: string | null): {
+      assignee_id: string | null
+      position_id: string | null
+      assignment_flag: "no_match" | "multi" | null
+    } => {
+      if (!positionId) return { assignee_id: null, position_id: null, assignment_flag: null }
+      const matches = positionToMembers.get(positionId) ?? []
+      if (matches.length === 1) return { assignee_id: matches[0], position_id: positionId, assignment_flag: null }
+      if (matches.length === 0) return { assignee_id: null, position_id: positionId, assignment_flag: "no_match" }
+      return { assignee_id: null, position_id: positionId, assignment_flag: "multi" }
+    }
+
+    const tasksToInsert = taskSetsRes.data.flatMap((ts) =>
       ((ts.tasks ?? []) as Array<{
         id: string; title: string; description: string | null; priority: string
         task_order: number; is_urgent: boolean; requires_deliverable: boolean
+        default_position_id: string | null
         checklist_items: Array<{ id: string; text: string; is_blocking: boolean; item_order: number }> | null
       }>)
         .sort((a, b) => a.task_order - b.task_order)
@@ -45,9 +76,9 @@ async function copyTaskSetsToProject(
           requires_deliverable: t.requires_deliverable ?? false,
           task_order: j,
           phase_id: phaseIdByTaskSetId[ts.id] ?? null,
-          assignee_id: ts.default_assignee_id ?? null,
           task_set_task_id: t.id,
           sop_id: null,
+          ...resolveAssignment(t.default_position_id ?? null),
           _checklist_items: t.checklist_items ?? [],
         }))
     )
@@ -60,7 +91,6 @@ async function copyTaskSetsToProject(
         .insert(tasksToInsert.map(({ _checklist_items: _c, ...rest }) => rest) as any[])
         .select("id, task_set_task_id")
 
-      // Copy checklist items from template to the newly created tasks
       if (insertedTasks && insertedTasks.length > 0) {
         const templateMap = new Map(
           tasksToInsert.map((t) => [t.task_set_task_id, t._checklist_items])
@@ -190,8 +220,8 @@ export async function getProject(id: string) {
       *,
       customer:customers(id, name, company, email, phone),
       project_type:project_types(id, name, description, default_phase_set_id, color, icon),
-      tasks(*, assignee:profiles(id, full_name, avatar_url, position), phase:project_phases(id, name, phase_order), sop:sops(id, title, doc_url, video_url), task_set_task:task_set_tasks(sop_id, sop:sops(id, title, doc_url, video_url)), checklist_items:task_checklist_items(id, text, is_blocking, is_checked, item_order)),
-      members:project_members(profile:profiles(id, full_name, avatar_url, position, role)),
+      tasks(*, assignee:profiles(id, full_name, avatar_url, position), position:positions(id, name), phase:project_phases(id, name, phase_order), sop:sops(id, title, doc_url, video_url), task_set_task:task_set_tasks(sop_id, sop:sops(id, title, doc_url, video_url)), checklist_items:task_checklist_items(id, text, is_blocking, is_checked, item_order)),
+      members:project_members(profile:profiles(id, full_name, avatar_url, position, position_id, position_obj:positions(id, name), role)),
       phases:project_phases(*)
     `)
     .eq("id", id)
@@ -210,8 +240,8 @@ export async function getProject(id: string) {
       .select(`
         *,
         customer:customers(id, name, company, email, phone),
-        tasks(*, assignee:profiles(id, full_name, avatar_url, position), phase:project_phases(id, name, phase_order)),
-        members:project_members(profile:profiles(id, full_name, avatar_url, position, role))
+        tasks(*, assignee:profiles(id, full_name, avatar_url, position), position:positions(id, name), phase:project_phases(id, name, phase_order)),
+        members:project_members(profile:profiles(id, full_name, avatar_url, position, position_id, position_obj:positions(id, name), role))
       `)
       .eq("id", id)
       .single()

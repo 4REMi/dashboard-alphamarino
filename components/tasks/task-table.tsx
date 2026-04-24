@@ -994,6 +994,20 @@ function TaskCard({ task, projectId, deliverable, onDeliverableClick, onCardClic
           <span className="text-xs text-muted-foreground">{assignee.full_name.split(" ")[0]}</span>
         )}
 
+        {/* Unresolved position assignment flag */}
+        {!assignee && task.assignment_flag === "no_match" && task.position_id && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700 flex-shrink-0"
+            title="Ningún miembro del proyecto tiene este puesto">
+            Sin {(task.position as { name?: string } | null)?.name ?? "puesto"}
+          </span>
+        )}
+        {!assignee && task.assignment_flag === "multi" && task.position_id && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700 flex-shrink-0"
+            title="Múltiples miembros tienen este puesto — asigna manualmente">
+            Múltiples {(task.position as { name?: string } | null)?.name ?? "puesto"}
+          </span>
+        )}
+
         {/* Due date */}
         {task.due_date && (
           <span className={cn(

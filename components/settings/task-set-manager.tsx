@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition, useRef } from "react"
-import type { TaskSet, TaskSetTask, TaskSetChecklistItem, Profile } from "@/lib/types"
+import type { TaskSet, TaskSetTask, TaskSetChecklistItem } from "@/lib/types"
 import {
   createTaskSet,
   deleteTaskSet,
@@ -141,10 +141,9 @@ const PRIORITY_COLORS = {
 
 interface Props {
   initialSets: TaskSet[]
-  employees: Profile[]
 }
 
-export function TaskSetManager({ initialSets, employees }: Props) {
+export function TaskSetManager({ initialSets }: Props) {
   const [sets, setSets] = useState<TaskSet[]>(initialSets)
   const [expandedId, setExpandedId] = useState<string | null>(initialSets[0]?.id ?? null)
   const [showNew, setShowNew] = useState(false)
@@ -161,9 +160,7 @@ export function TaskSetManager({ initialSets, employees }: Props) {
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const created = await createTaskSet(fd) as any
-        const assigneeId = fd.get("default_assignee_id") as string
-        const assignee = employees.find((e) => e.id === assigneeId) ?? null
-        const newSet: TaskSet = { ...created, tasks: [], default_assignee: assignee }
+        const newSet: TaskSet = { ...created, tasks: [] }
         setSets((prev) => [...prev, newSet].sort((a, b) => a.name.localeCompare(b.name)))
         setExpandedId(created.id)
         setShowNew(false)
@@ -246,20 +243,10 @@ export function TaskSetManager({ initialSets, employees }: Props) {
 
       {showNew && (
         <form onSubmit={handleCreateSet} className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-4 space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Nombre *</label>
-              <input name="name" required autoFocus placeholder="Ej. Tareas de Discovery"
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Empleado predeterminado</label>
-              <select name="default_assignee_id" defaultValue="none"
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
-                <option value="none">Sin asignar</option>
-                {employees.map((e) => <option key={e.id} value={e.id}>{e.full_name}</option>)}
-              </select>
-            </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Nombre *</label>
+            <input name="name" required autoFocus placeholder="Ej. Tareas de Discovery"
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
           </div>
           <div className="flex justify-end gap-2">
             <button type="button" onClick={() => setShowNew(false)} className="text-sm text-muted-foreground hover:text-foreground transition-colors">Cancelar</button>
@@ -275,7 +262,6 @@ export function TaskSetManager({ initialSets, employees }: Props) {
         {sets.map((set) => {
           const isExpanded = expandedId === set.id
           const tasks = set.tasks ?? []
-          const assigneeName = (set.default_assignee as Profile | null)?.full_name
 
           return (
             <div key={set.id} className="rounded-xl border border-border bg-card">
@@ -285,10 +271,7 @@ export function TaskSetManager({ initialSets, employees }: Props) {
               >
                 <div>
                   <p className="font-medium text-sm text-foreground">{set.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {tasks.length} tareas
-                    {assigneeName && <span> · <span className="text-primary">{assigneeName}</span></span>}
-                  </p>
+                  <p className="text-xs text-muted-foreground">{tasks.length} tareas</p>
                 </div>
                 <div className="flex items-center gap-3">
                   <button

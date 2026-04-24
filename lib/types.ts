@@ -26,12 +26,20 @@ export type OrganizingPrinciple = "Pain-First" | "Desire-First"
 // ENTITIES
 // ============================================================
 
+export interface Position {
+  id: string
+  name: string
+  created_at: string
+}
+
 export interface Profile {
   id: string
   full_name: string
   email: string
   role: Role
   position: string | null
+  position_id: string | null
+  position_obj?: Position | null
   phone: string | null
   avatar_url: string | null
   permissions: Record<string, boolean> | null
@@ -87,10 +95,8 @@ export interface TaskSet {
   id: string
   name: string
   description: string | null
-  default_assignee_id: string | null
   created_at: string
   tasks?: TaskSetTask[]
-  default_assignee?: Profile | null
 }
 
 export interface TaskSetTask {
@@ -103,8 +109,10 @@ export interface TaskSetTask {
   requires_deliverable: boolean
   task_order: number
   sop_id: string | null
+  default_position_id: string | null
   created_at: string
   sop?: Sop | null
+  default_position?: Position | null
   checklist_items?: TaskSetChecklistItem[]
 }
 
@@ -211,11 +219,14 @@ export interface Task {
   phase_id: string | null
   due_date: string | null
   assignee_id: string | null
+  position_id?: string | null
+  assignment_flag?: "no_match" | "multi" | null
   sop_id: string | null
   task_set_task_id: string | null
   created_at: string
   project?: Project | null
   assignee?: Profile | null
+  position?: Position | null
   phase?: { id: string; name: string; phase_order: number } | null
   sop?: Sop | null
   task_set_task?: { sop_id: string | null; sop?: Sop | null } | null
