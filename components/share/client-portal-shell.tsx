@@ -1,15 +1,17 @@
 "use client"
 
 import { ReactNode, useEffect, useState } from "react"
+import Image from "next/image"
 
 interface Props {
   brand: string
+  logoUrl?: string | null
   clientName: string | null
   projectName: string
   children: ReactNode
 }
 
-export function ClientPortalShell({ brand, clientName, projectName, children }: Props) {
+export function ClientPortalShell({ brand, logoUrl, clientName, projectName, children }: Props) {
   const [progress, setProgress] = useState(0)
   const [condensed, setCondensed] = useState(false)
 
@@ -32,8 +34,19 @@ export function ClientPortalShell({ brand, clientName, projectName, children }: 
       <header className="sticky top-0 z-20 bg-white/85 backdrop-blur-md border-b border-slate-200/70">
         <div className="max-w-6xl mx-auto px-4 sm:px-8 h-14 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
-            <span className="w-7 h-7 rounded-lg bg-slate-900 text-white flex items-center justify-center text-[11px] font-bold flex-shrink-0">
-              A
+            <span className={`w-7 h-7 rounded-lg flex-shrink-0 overflow-hidden flex items-center justify-center ${logoUrl ? "" : "bg-slate-900 text-white"}`}>
+              {logoUrl ? (
+                <Image
+                  src={logoUrl}
+                  alt={brand}
+                  width={28}
+                  height={28}
+                  className="object-contain w-full h-full"
+                  unoptimized
+                />
+              ) : (
+                <span className="text-[11px] font-bold">A</span>
+              )}
             </span>
             <span className="text-sm font-semibold tracking-tight flex-shrink-0">{brand}</span>
             {condensed && (

@@ -23,7 +23,7 @@ export default async function ShareConceptsPage({ params }: Props) {
   const { projectId } = await params
   const supabase = createAdminClient()
 
-  const [projectRes, conceptsRes, assetsRes] = await Promise.all([
+  const [projectRes, conceptsRes, assetsRes, settingsRes] = await Promise.all([
     supabase
       .from("projects")
       .select("name, customer:customers(name, company)")
@@ -46,6 +46,11 @@ export default async function ShareConceptsPage({ params }: Props) {
       .eq("project_id", projectId)
       .eq("client_visible", true)
       .order("created_at", { ascending: false }),
+    supabase
+      .from("workspace_settings")
+      .select("logo_url")
+      .eq("id", "default")
+      .maybeSingle(),
   ])
 
   if (projectRes.error || !projectRes.data) notFound()
@@ -58,6 +63,7 @@ export default async function ShareConceptsPage({ params }: Props) {
 
   const clientName  = customer?.company || customer?.name || null
   const projectName = project.name
+  const logoUrl     = settingsRes.data?.logo_url ?? null
 
   // KPIs
   const totalAssets   = assets.length
@@ -97,6 +103,7 @@ export default async function ShareConceptsPage({ params }: Props) {
   return (
     <ClientPortalShell
       brand="Alpha Marino"
+      logoUrl={logoUrl}
       clientName={clientName}
       projectName={projectName}
     >
