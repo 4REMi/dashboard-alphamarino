@@ -206,11 +206,12 @@ function ImportModal({
   onImport,
 }: {
   onClose: () => void
-  onImport: (json: string) => Promise<void>
+  onImport: (json: string, mode?: "default" | "rename" | "overwrite") => Promise<void>
 }) {
   const [text, setText] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [conflict, setConflict] = useState<{ suggestedName: string } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -221,19 +222,29 @@ function ImportModal({
     reader.readAsText(file)
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!text.trim()) { setError("Pega o carga un JSON primero"); return }
+  async function run(mode: "default" | "rename" | "overwrite") {
     setError(null)
+    setConflict(null)
     setLoading(true)
     try {
-      await onImport(text.trim())
+      await onImport(text.trim(), mode)
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al importar")
+      const msg = err instanceof Error ? err.message : "Error al importar"
+      if (msg.startsWith("__CONFLICT__:")) {
+        setConflict({ suggestedName: msg.slice("__CONFLICT__:".length) })
+      } else {
+        setError(msg)
+      }
     } finally {
       setLoading(false)
     }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!text.trim()) { setError("Pega o carga un JSON primero"); return }
+    await run("default")
   }
 
   const example = JSON.stringify({
@@ -302,6 +313,34 @@ function ImportModal({
               <p className="text-xs text-destructive bg-destructive/10 px-3 py-2 rounded-md">{error}</p>
             )}
 
+            {conflict && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 px-4 py-3 space-y-3">
+                <p className="text-sm font-medium text-amber-800 dark:text-amber-300">Ya existe un tipo con ese nombre. ¿Qué quieres hacer?</p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => run("rename")}
+                    disabled={loading}
+                    className="px-3 py-1.5 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                  >
+                    {loading ? "Importando…" : `Importar como "${conflict.suggestedName}"`}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => run("overwrite")}
+                    disabled={loading}
+                    className="px-3 py-1.5 text-sm rounded-md border border-destructive/50 text-destructive hover:bg-destructive/10 disabled:opacity-50 transition-colors"
+                  >
+                    Sobreescribir el existente
+                  </button>
+                  <button type="button" onClick={() => setConflict(null)} className="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                    Cancelar
+                  </button>
+                </div>
+                <p className="text-xs text-amber-700/70 dark:text-amber-400/70">Sobreescribir elimina el tipo, su phase set y sus task sets permanentemente.</p>
+              </div>
+            )}
+
             <details className="text-xs text-muted-foreground">
               <summary className="cursor-pointer hover:text-foreground transition-colors">Ver estructura esperada</summary>
               <pre className="mt-2 bg-muted rounded-md p-3 overflow-x-auto text-xs leading-relaxed">{example}</pre>
@@ -313,10 +352,12 @@ function ImportModal({
               className="px-4 py-2 text-sm rounded-md border border-border hover:bg-muted transition-colors">
               Cancelar
             </button>
-            <button type="submit" disabled={loading}
-              className="px-4 py-2 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
-              {loading ? "Importando…" : "Importar"}
-            </button>
+            {!conflict && (
+              <button type="submit" disabled={loading}
+                className="px-4 py-2 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                {loading ? "Importando…" : "Importar"}
+              </button>
+            )}
           </div>
         </form>
       </div>
@@ -960,11 +1001,17 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
   }
 
   // ── Import ───────────────────────────────────────────────────────────────────
-  async function handleImport(jsonStr: string) {
-    const result = await importOperationsTemplate(jsonStr) as {
+  async function handleImport(jsonStr: string, mode: "default" | "rename" | "overwrite" = "default") {
+    const result = await importOperationsTemplate(jsonStr, mode) as {
+      replacedName: string | null
       projectType: ProjectType
       phaseSet: PhaseSet | null
       taskSets: Array<{ id: string; name: string; tasks: TaskSetTask[] }>
+    }
+
+    // Remove overwritten entries from state
+    if (result.replacedName) {
+      setTypes((prev) => prev.filter((t) => t.name !== result.replacedName))
     }
 
     if (result.phaseSet) {
@@ -1323,7 +1370,7 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
       </div>
 
       {showImport && (
-        <ImportModal onClose={() => setShowImport(false)} onImport={handleImport} />
+        <ImportModal onClose={() => setShowImport(false)} onImport={(json, mode) => handleImport(json, mode)} />
       )}
 
       {editingTask && linkedTS && (

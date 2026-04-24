@@ -418,7 +418,7 @@ type ImportTemplate = {
   phaseSet?: { name: string; phases?: ImportPhase[] } | null
 }
 
-export async function importOperationsTemplate(jsonStr: string) {
+export async function importOperationsTemplate(jsonStr: string, mode: "default" | "rename" | "overwrite" = "default") {
   const supabase = await createClient()
 
   let template: ImportTemplate
@@ -432,17 +432,73 @@ export async function importOperationsTemplate(jsonStr: string) {
     throw new Error("Se requiere projectType.name")
   }
 
-  // Guard: prevent re-importing a template with the same project type name
+  const baseName = template.projectType.name.trim()
+
+  // ── Conflict detection ────────────────────────────────────────────────────
   const { data: existingPT } = await supabase
     .from("project_types")
-    .select("id")
-    .eq("name", template.projectType.name.trim())
+    .select("id, default_phase_set_id")
+    .eq("name", baseName)
     .maybeSingle()
+
   if (existingPT) {
-    throw new Error(`Ya existe un tipo de proyecto llamado "${template.projectType.name.trim()}". Elimínalo primero o cambia el nombre en el JSON.`)
+    if (mode === "default") {
+      // Compute next available name: "Shopify (2)", "Shopify (3)", …
+      const { data: allNames } = await supabase
+        .from("project_types").select("name").ilike("name", `${baseName} (%)`)
+      const takenNumbers = new Set((allNames ?? []).map((r: { name: string }) => {
+        const m = r.name.match(/\((\d+)\)$/)
+        return m ? Number(m[1]) : 0
+      }))
+      let n = 2
+      while (takenNumbers.has(n)) n++
+      throw new Error(`__CONFLICT__:${baseName} (${n})`)
+    }
+
+    if (mode === "overwrite") {
+      // Collect task set IDs linked to this phase set's phases
+      let taskSetIds: string[] = []
+      if (existingPT.default_phase_set_id) {
+        const { data: phases } = await supabase
+          .from("phase_set_phases")
+          .select("default_task_set_id")
+          .eq("phase_set_id", existingPT.default_phase_set_id)
+        taskSetIds = (phases ?? [])
+          .map((p: { default_task_set_id: string | null }) => p.default_task_set_id)
+          .filter(Boolean) as string[]
+      }
+      // Delete: project type → phase set (cascades phases) → task sets (manually cascade tasks+checklist)
+      await supabase.from("project_types").delete().eq("id", existingPT.id)
+      if (existingPT.default_phase_set_id) {
+        await supabase.from("phase_set_phases").delete().eq("phase_set_id", existingPT.default_phase_set_id)
+        await supabase.from("phase_sets").delete().eq("id", existingPT.default_phase_set_id)
+      }
+      if (taskSetIds.length > 0) {
+        const { data: taskRows } = await supabase.from("task_set_tasks").select("id").in("task_set_id", taskSetIds)
+        const taskIds = (taskRows ?? []).map((t: { id: string }) => t.id)
+        if (taskIds.length > 0) {
+          await supabase.from("task_set_checklist_items").delete().in("task_set_task_id", taskIds)
+          await supabase.from("task_set_tasks").delete().in("id", taskIds)
+        }
+        await supabase.from("task_sets").delete().in("id", taskSetIds)
+      }
+    }
+
+    if (mode === "rename") {
+      // Auto-suffix the name
+      const { data: allNames } = await supabase
+        .from("project_types").select("name").ilike("name", `${baseName} (%)`)
+      const takenNumbers = new Set((allNames ?? []).map((r: { name: string }) => {
+        const m = r.name.match(/\((\d+)\)$/)
+        return m ? Number(m[1]) : 0
+      }))
+      let n = 2
+      while (takenNumbers.has(n)) n++
+      template.projectType.name = `${baseName} (${n})`
+    }
   }
 
-  // 1. Create task sets and collect { phaseIndex → taskSetId }
+  // ── Create task sets ──────────────────────────────────────────────────────
   const tsIdByPhase: Record<number, string> = {}
   const createdTaskSets: Array<{ id: string; name: string; tasks: ImportTask[] }> = []
 
@@ -475,7 +531,6 @@ export async function importOperationsTemplate(jsonStr: string) {
         .single()
       if (taskErr) throw new Error(`Error creando tarea "${task.title}": ${taskErr.message}`)
 
-      // Insert checklist items if present
       const checklistItems = task.checklist ?? []
       if (checklistItems.length > 0 && taskRow) {
         await supabase.from("task_set_checklist_items").insert(
@@ -493,7 +548,7 @@ export async function importOperationsTemplate(jsonStr: string) {
     createdTaskSets.push({ id: tsRow.id, name: ts.name.trim(), tasks })
   }
 
-  // 2. Create phase set + phases
+  // ── Create phase set + phases ─────────────────────────────────────────────
   let phaseSetId: string | null = null
   const createdPhases: Array<{ id: string; name: string; description: string | null; phase_order: number; default_task_set_id: string | null }> = []
 
@@ -526,7 +581,7 @@ export async function importOperationsTemplate(jsonStr: string) {
     }
   }
 
-  // 3. Create project type
+  // ── Create project type ───────────────────────────────────────────────────
   const { data: ptRow, error: ptErr } = await supabase
     .from("project_types")
     .insert({
@@ -541,8 +596,8 @@ export async function importOperationsTemplate(jsonStr: string) {
   revalidatePath("/operations")
   revalidatePath("/projects")
 
-  // Return full created tree so the client can update state without reload
   return {
+    replacedName: mode === "overwrite" ? baseName : null,
     projectType: { ...ptRow, default_phase_set_id: phaseSetId },
     phaseSet: phaseSetId
       ? { id: phaseSetId, name: template.phaseSet!.name.trim(), phases: createdPhases }
