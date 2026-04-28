@@ -9,6 +9,7 @@ export type UserPermissions = {
   manage_tasks?: boolean             // add, edit, delete tasks in projects
   request_sops?: boolean             // request SOPs for tasks
   assign_sops?: boolean              // assign SOPs to tasks/templates
+  access_ad_lab?: boolean            // /ad-lab section
 }
 
 // Defaults per role (admin always returns true without checking)
@@ -21,6 +22,7 @@ const SUBADMIN_DEFAULTS: Required<UserPermissions> = {
   manage_tasks: true,
   request_sops: true,
   assign_sops: true,
+  access_ad_lab: true,
 }
 
 const EMPLOYEE_DEFAULTS: Required<UserPermissions> = {
@@ -32,6 +34,7 @@ const EMPLOYEE_DEFAULTS: Required<UserPermissions> = {
   manage_tasks: true,
   request_sops: false,
   assign_sops: false,
+  access_ad_lab: false,
 }
 
 export function can(

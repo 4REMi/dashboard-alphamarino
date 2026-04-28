@@ -558,6 +558,94 @@ export interface CreativeAsset {
 }
 
 // ============================================================
+// AD LAB
+// ============================================================
+
+export type AdStatus = "active" | "inactive"
+export type AdFormat = "UGC" | "Studio" | "Founder POV" | "Static + VO" | "Carousel" | "Other"
+
+export interface TrackedBrand {
+  id: string
+  customer_id: string
+  name: string
+  meta_page_id: string | null
+  page_url: string | null
+  notes: string | null
+  created_by: string | null
+  created_at: string
+  customer?: Pick<Customer, "id" | "name" | "company"> | null
+}
+
+export interface SavedAd {
+  id: string
+  ad_archive_id: string
+  page_id: string
+  page_name: string
+  body: string | null
+  image_url: string | null
+  video_url: string | null
+  snapshot_url: string | null
+  start_date: string | null
+  end_date: string | null
+  status: AdStatus | null
+  platforms: string[]
+  spend_lower: number | null
+  spend_upper: number | null
+  impressions_lower: number | null
+  impressions_upper: number | null
+  currency: string
+  // Enriched
+  hook: string | null
+  format: AdFormat | null
+  notes: string | null
+  created_by: string | null
+  created_at: string
+}
+
+export interface AdBoard {
+  id: string
+  name: string
+  description: string | null
+  cover_ad_id: string | null
+  created_by: string | null
+  created_at: string
+  // Relations
+  cover_ad?: Pick<SavedAd, "id" | "image_url" | "page_name"> | null
+  ad_count?: number
+}
+
+export interface ClientCreativeContext {
+  id: string
+  customer_id: string
+  brand_name: string | null
+  brand_voice: string | null
+  product_description: string | null
+  target_audience: string | null
+  key_differentiators: string | null
+  content_restrictions: string | null
+  reference_urls: string[]
+  updated_at: string
+  updated_by: string | null
+}
+
+// Shape returned by Meta Ads Library API (raw, before saving)
+export interface MetaAdResult {
+  id: string                      // ad_archive_id
+  page_id: string
+  page_name: string
+  ad_creative_bodies: string[]
+  ad_creative_link_descriptions: string[]
+  ad_creative_link_titles: string[]
+  snapshot_url: string
+  ad_delivery_start_time: string | null
+  ad_delivery_stop_time: string | null
+  is_active: boolean
+  publisher_platforms: string[]
+  spend?: { lower_bound: string; upper_bound: string; currency: string }
+  impressions?: { lower_bound: string; upper_bound: string }
+}
+
+// ============================================================
 // HELPERS
 // ============================================================
 
