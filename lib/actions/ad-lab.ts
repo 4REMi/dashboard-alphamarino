@@ -2,7 +2,57 @@
 
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
-import type { TrackedBrand, SavedAd, AdBoard, ClientCreativeContext } from "@/lib/types"
+import type { TrackedBrand, SavedAd, AdBoard, ClientCreativeContext, MetaAdResult } from "@/lib/types"
+
+// ── Meta Ads Library API ──────────────────────────────────────────
+
+export async function searchMetaAds(params: {
+  query?: string
+  pageId?: string
+  country?: string
+  status?: "ALL" | "ACTIVE" | "INACTIVE"
+  limit?: number
+}): Promise<MetaAdResult[]> {
+  await assertAuth()
+  const token = process.env.META_ADS_API_TOKEN
+  if (!token) throw new Error("META_ADS_API_TOKEN no configurado")
+
+  const sp = new URLSearchParams({
+    access_token:        token,
+    ad_reached_countries: JSON.stringify([params.country ?? "MX"]),
+    ad_active_status:    params.status ?? "ALL",
+    limit:               String(params.limit ?? 24),
+    fields: [
+      "id",
+      "page_id",
+      "page_name",
+      "ad_creative_bodies",
+      "ad_creative_link_titles",
+      "ad_creative_link_descriptions",
+      "ad_snapshot_url",
+      "ad_delivery_start_time",
+      "ad_delivery_stop_time",
+      "publisher_platforms",
+      "spend",
+      "impressions",
+    ].join(","),
+  })
+
+  if (params.query)  sp.set("search_terms", params.query)
+  if (params.pageId) sp.set("search_page_ids", params.pageId)
+
+  const res = await fetch(
+    `https://graph.facebook.com/v21.0/ads_archive?${sp.toString()}`,
+    { cache: "no-store" }
+  )
+  if (!res.ok) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const err: any = await res.json().catch(() => ({}))
+    throw new Error(err?.error?.message ?? `Meta API error ${res.status}`)
+  }
+  const json = await res.json()
+  return (json.data ?? []) as MetaAdResult[]
+}
 
 async function assertAuth() {
   const supabase = await createClient()
