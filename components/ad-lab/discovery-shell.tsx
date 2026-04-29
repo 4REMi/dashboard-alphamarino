@@ -4,6 +4,7 @@ import { useState, useTransition, useRef, useCallback } from "react"
 import type { TrackedBrand, AdBoard, MetaAdResult, Customer } from "@/lib/types"
 import { searchMetaAds, saveAd, addAdToBoard } from "@/lib/actions/ad-lab"
 import { AdCard } from "@/components/ad-lab/ad-card"
+import { AdDetailModal } from "@/components/ad-lab/ad-detail-modal"
 import {
   Search, LayoutGrid, ArrowLeft, Filter, ChevronDown,
   Loader2, AlertCircle, Radio, Tv2,
@@ -30,6 +31,7 @@ export function DiscoveryShell({ trackedBrands, boards, customers }: Props) {
   const [error, setError]             = useState<string | null>(null)
   const [isPending, startTransition]  = useTransition()
   const [savingId, setSavingId]       = useState<string | null>(null)
+  const [detailAd, setDetailAd]       = useState<MetaAdResult | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   // Brands filtered by selected customer
@@ -125,6 +127,14 @@ export function DiscoveryShell({ trackedBrands, boards, customers }: Props) {
       })
 
   return (
+    <>
+    {detailAd && (
+      <AdDetailModal
+        ad={detailAd}
+        boards={boards}
+        onClose={() => setDetailAd(null)}
+      />
+    )}
     <div className="flex flex-col h-full min-h-0">
       {/* ── Header ── */}
       <div className="px-6 pt-6 pb-4 border-b border-border flex-shrink-0">
@@ -318,6 +328,7 @@ export function DiscoveryShell({ trackedBrands, boards, customers }: Props) {
                   boards={boards}
                   savingId={savingId}
                   onSaveToBoard={handleSaveToBoard}
+                  onOpenDetail={setDetailAd}
                 />
               ))}
             </div>
@@ -325,5 +336,6 @@ export function DiscoveryShell({ trackedBrands, boards, customers }: Props) {
         )}
       </div>
     </div>
+    </>
   )
 }

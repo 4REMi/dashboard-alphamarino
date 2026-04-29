@@ -9,6 +9,7 @@ interface Props {
   boards: AdBoard[]
   savingId: string | null
   onSaveToBoard: (ad: MetaAdResult, boardId: string) => Promise<void>
+  onOpenDetail: (ad: MetaAdResult) => void
 }
 
 function brandColor(name: string): string {
@@ -38,7 +39,7 @@ function platformLabel(p: string) {
   return map[p.toUpperCase()] ?? p.slice(0, 2).toUpperCase()
 }
 
-export function AdCard({ ad, boards, savingId, onSaveToBoard }: Props) {
+export function AdCard({ ad, boards, savingId, onSaveToBoard, onOpenDetail }: Props) {
   const [showBoardPicker, setShowBoardPicker] = useState(false)
   const [savedBoards, setSavedBoards]         = useState<Set<string>>(new Set())
   const pickerRef = useRef<HTMLDivElement>(null)
@@ -82,7 +83,10 @@ export function AdCard({ ad, boards, savingId, onSaveToBoard }: Props) {
     <div className="group relative bg-card border border-border rounded-xl overflow-hidden hover:border-primary/30 hover:shadow-md transition-all duration-150">
 
       {/* ── Thumbnail ── */}
-      <div className="relative aspect-[4/5] bg-muted overflow-hidden">
+      <div
+        className="relative aspect-[4/5] bg-muted overflow-hidden cursor-pointer"
+        onClick={() => onOpenDetail(ad)}
+      >
         {thumbUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
