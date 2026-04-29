@@ -91,6 +91,7 @@ export function AdDetailModal({ ad, boards, onClose }: Props) {
   const imageItem = snap?.images?.[0]
 
   const body    = snap?.body?.text || card?.body || null
+  const linkUrl = snap?.link_url || card?.link_url || null
 
   const videoUrl = card?.video_hd_url || card?.video_sd_url
     || videoItem?.video_hd_url || videoItem?.video_sd_url || null
@@ -263,6 +264,22 @@ export function AdDetailModal({ ad, boards, onClose }: Props) {
                     {card.cta_text}
                   </span>
                 )}
+              </div>
+            )}
+
+            {/* Landing page link */}
+            {linkUrl && (
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Landing</p>
+                <a
+                  href={linkUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 text-xs text-primary hover:underline break-all"
+                >
+                  <ExternalLink className="w-3 h-3 flex-shrink-0" />
+                  {linkUrl}
+                </a>
               </div>
             )}
 

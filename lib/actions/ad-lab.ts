@@ -62,7 +62,7 @@ export async function searchMetaAds(params: {
   const input = {
     urls:                         [{ url }],
     count:                        params.limit ?? 24,
-    scrapeAdDetails:              true,
+    scrapeAdDetails:              false,
     "scrapePageAds.activeStatus": status.toLowerCase(),
     "scrapePageAds.countryCode":  country,
     "scrapePageAds.sortBy":       "impressions_desc",
