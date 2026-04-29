@@ -63,6 +63,12 @@ export function AdCard({ ad, boards, savingId, onSaveToBoard, onOpenDetail }: Pr
 
   const thumbUrl = videoPreview || imageUrl
 
+  // DEBUG — remove after diagnosis
+  if (typeof window !== "undefined") {
+    const c = ad.snapshot?.cards?.[0]
+    console.log(`[AdCard] ${ad.page_name} | thumbUrl=${thumbUrl} | video_preview=${c?.video_preview_image_url} | video_hd=${c?.video_hd_url} | video_sd=${c?.video_sd_url} | img=${c?.resized_image_url}`)
+  }
+
   useEffect(() => {
     function handle(e: MouseEvent) {
       if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
