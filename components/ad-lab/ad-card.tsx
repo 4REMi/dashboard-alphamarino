@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react"
 import type { MetaAdResult, AdBoard } from "@/lib/types"
-import { Wand2, Bookmark, Check, Loader2, ExternalLink } from "lucide-react"
+import { Wand2, Bookmark, Check, Loader2, ExternalLink, Play } from "lucide-react"
 
 interface Props {
   ad: MetaAdResult
@@ -39,6 +39,33 @@ function platformLabel(p: string) {
   return map[p.toUpperCase()] ?? p.slice(0, 2).toUpperCase()
 }
 
+/** Resolve the best available thumbnail and video URL from the Apify snapshot.
+ *  Apify returns media in three possible shapes:
+ *    1. snapshot.cards[]  — carousel / single card ads
+ *    2. snapshot.videos[] — video-only ads (no cards)
+ *    3. snapshot.images[] — image-only ads (no cards)
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function resolveMedia(snapshot: any) {
+  const card      = snapshot?.cards?.[0]
+  const videoItem = snapshot?.videos?.[0]
+  const imageItem = snapshot?.images?.[0]
+
+  const videoUrl = card?.video_hd_url  || card?.video_sd_url
+    || videoItem?.video_hd_url || videoItem?.video_sd_url
+    || null
+
+  const thumbUrl = card?.video_preview_image_url
+    || videoItem?.video_preview_image_url
+    || card?.resized_image_url
+    || card?.original_image_url
+    || imageItem?.resized_image_url
+    || imageItem?.original_image_url
+    || null
+
+  return { videoUrl, thumbUrl }
+}
+
 export function AdCard({ ad, boards, savingId, onSaveToBoard, onOpenDetail }: Props) {
   const [showBoardPicker, setShowBoardPicker] = useState(false)
   const [savedBoards, setSavedBoards]         = useState<Set<string>>(new Set())
@@ -47,27 +74,8 @@ export function AdCard({ ad, boards, savingId, onSaveToBoard, onOpenDetail }: Pr
   const color     = brandColor(ad.page_name)
   const initials  = ad.page_name.split(/\s+/).map((w) => w[0]).join("").toUpperCase().slice(0, 2)
 
-  // Best available body text
-  const body = ad.snapshot?.body?.text
-    || ad.snapshot?.cards?.[0]?.body
-    || null
-
-  // Best available image
-  const imageUrl = ad.snapshot?.cards?.[0]?.resized_image_url
-    || ad.snapshot?.cards?.[0]?.original_image_url
-    || ad.snapshot?.page_profile_picture_url
-    || null
-
-  // Video preview
-  const videoPreview = ad.snapshot?.cards?.[0]?.video_preview_image_url || null
-
-  const thumbUrl = videoPreview || imageUrl
-
-  // DEBUG — remove after diagnosis
-  if (typeof window !== "undefined") {
-    const c = ad.snapshot?.cards?.[0]
-    console.log(`[AdCard] ${ad.page_name} | thumbUrl=${thumbUrl} | video_preview=${c?.video_preview_image_url} | video_hd=${c?.video_hd_url} | video_sd=${c?.video_sd_url} | img=${c?.resized_image_url}`)
-  }
+  const body = ad.snapshot?.body?.text || ad.snapshot?.cards?.[0]?.body || null
+  const { videoUrl, thumbUrl } = resolveMedia(ad.snapshot)
 
   useEffect(() => {
     function handle(e: MouseEvent) {
@@ -109,8 +117,17 @@ export function AdCard({ ad, boards, savingId, onSaveToBoard, onOpenDetail }: Pr
           </>
         )}
 
-        {/* Hover: dim background (click opens modal) */}
+        {/* Hover dim */}
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors z-10 pointer-events-none" />
+
+        {/* Play indicator for video ads */}
+        {videoUrl && (
+          <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+            <div className="w-10 h-10 rounded-full bg-black/50 flex items-center justify-center group-hover:bg-black/70 transition-colors">
+              <Play className="w-4 h-4 text-white fill-white ml-0.5" />
+            </div>
+          </div>
+        )}
 
         {/* Status badge */}
         <div className="absolute top-2 left-2 z-20">

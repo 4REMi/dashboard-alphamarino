@@ -67,10 +67,28 @@ export function AdDetailModal({ ad, boards, onClose }: Props) {
 
   if (!ad) return null
 
-  const cards   = ad.snapshot?.cards ?? []
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const snap    = ad.snapshot as any
+  const cards   = snap?.cards ?? []
   const card    = cards[cardIndex] ?? null
-  const body    = ad.snapshot?.body?.text || card?.body || null
-  const thumbUrl = card?.video_preview_image_url || card?.resized_image_url || card?.original_image_url || null
+
+  // Also read from snapshot.videos[] for video-only ads (no cards)
+  const videoItem = snap?.videos?.[0]
+  const imageItem = snap?.images?.[0]
+
+  const body    = snap?.body?.text || card?.body || null
+
+  const videoUrl = card?.video_hd_url || card?.video_sd_url
+    || videoItem?.video_hd_url || videoItem?.video_sd_url || null
+
+  const thumbUrl = card?.video_preview_image_url
+    || videoItem?.video_preview_image_url
+    || card?.resized_image_url
+    || card?.original_image_url
+    || imageItem?.resized_image_url
+    || imageItem?.original_image_url
+    || null
+
   const color   = brandColor(ad.page_name)
   const initials = ad.page_name.split(/\s+/).map((w) => w[0]).join("").toUpperCase().slice(0, 2)
 
@@ -79,8 +97,8 @@ export function AdDetailModal({ ad, boards, onClose }: Props) {
     setSaving(true)
     try {
       const toDate = (ts: number | null) => ts ? new Date(ts * 1000).toISOString().slice(0, 10) : null
-      const imageUrl = card?.resized_image_url || card?.original_image_url || null
-      const videoUrl = card?.video_hd_url || card?.video_sd_url || null
+      const imageUrl = thumbUrl
+      const savedVideoUrl = videoUrl
 
       const saved = await saveAd({
         ad_archive_id:     ad.ad_archive_id,
@@ -88,7 +106,7 @@ export function AdDetailModal({ ad, boards, onClose }: Props) {
         page_name:         ad.page_name,
         body:              body,
         image_url:         imageUrl,
-        video_url:         videoUrl,
+        video_url:         savedVideoUrl,
         snapshot_url:      ad.ad_library_url ?? null,
         start_date:        toDate(ad.start_date),
         end_date:          toDate(ad.end_date),
@@ -118,10 +136,17 @@ export function AdDetailModal({ ad, boards, onClose }: Props) {
         onClick={(e) => e.stopPropagation()}
       >
         {/* ── Left: visual ── */}
-        <div className="relative md:w-[45%] flex-shrink-0 bg-muted min-h-64 md:min-h-0">
-          {thumbUrl ? (
+        <div className="relative md:w-[45%] flex-shrink-0 bg-black min-h-64 md:min-h-0 flex items-center justify-center">
+          {videoUrl ? (
+            <video
+              src={videoUrl}
+              poster={thumbUrl ?? undefined}
+              controls
+              className="w-full h-full object-contain max-h-[70vh]"
+            />
+          ) : thumbUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={thumbUrl} alt={ad.page_name} className="w-full h-full object-cover" />
+            <img src={thumbUrl} alt={ad.page_name} className="w-full h-full object-contain" />
           ) : (
             <>
               <div className={`absolute inset-0 ${color} opacity-10`} />
@@ -159,7 +184,7 @@ export function AdDetailModal({ ad, boards, onClose }: Props) {
                 <ChevronRight className="w-4 h-4" />
               </button>
               <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1">
-                {cards.map((_, i) => (
+                {(cards as unknown[]).map((_: unknown, i: number) => (
                   <button
                     key={i}
                     onClick={() => setCardIndex(i)}
