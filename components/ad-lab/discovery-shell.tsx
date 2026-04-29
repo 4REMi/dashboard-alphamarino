@@ -83,25 +83,31 @@ export function DiscoveryShell({ trackedBrands, boards, customers }: Props) {
   }
 
   async function handleSaveToBoard(ad: MetaAdResult, boardId: string) {
-    setSavingId(ad.id)
+    setSavingId(ad.ad_archive_id)
     try {
+      const card      = ad.snapshot?.cards?.[0]
+      const imageUrl  = card?.resized_image_url || card?.original_image_url || null
+      const videoUrl  = card?.video_hd_url || card?.video_sd_url || null
+      const toDate    = (ts: number | null) =>
+        ts ? new Date(ts * 1000).toISOString().slice(0, 10) : null
+
       const saved = await saveAd({
-        ad_archive_id:    ad.id,
-        page_id:          ad.page_id,
-        page_name:        ad.page_name,
-        body:             ad.ad_creative_bodies?.[0] ?? null,
-        image_url:        null,
-        video_url:        null,
-        snapshot_url:     ad.snapshot_url ?? null,
-        start_date:       ad.ad_delivery_start_time ?? null,
-        end_date:         ad.ad_delivery_stop_time ?? null,
-        status:           ad.is_active ? "active" : "inactive",
-        platforms:        ad.publisher_platforms ?? [],
-        spend_lower:      ad.spend ? parseFloat(ad.spend.lower_bound) : null,
-        spend_upper:      ad.spend ? parseFloat(ad.spend.upper_bound) : null,
-        impressions_lower: ad.impressions ? parseFloat(ad.impressions.lower_bound) : null,
-        impressions_upper: ad.impressions ? parseFloat(ad.impressions.upper_bound) : null,
-        currency:         ad.spend?.currency ?? "MXN",
+        ad_archive_id:     ad.ad_archive_id,
+        page_id:           ad.page_id,
+        page_name:         ad.page_name,
+        body:              ad.snapshot?.body?.text || card?.body || null,
+        image_url:         imageUrl,
+        video_url:         videoUrl,
+        snapshot_url:      ad.ad_library_url ?? null,
+        start_date:        toDate(ad.start_date),
+        end_date:          toDate(ad.end_date),
+        status:            ad.is_active ? "active" : "inactive",
+        platforms:         (ad.publisher_platform ?? []).map((p) => p.toLowerCase()),
+        spend_lower:       ad.spend?.lower_bound ?? null,
+        spend_upper:       ad.spend?.upper_bound ?? null,
+        impressions_lower: null,
+        impressions_upper: null,
+        currency:          ad.currency || "MXN",
       })
       await addAdToBoard(boardId, saved.id)
     } finally {
@@ -307,7 +313,7 @@ export function DiscoveryShell({ trackedBrands, boards, customers }: Props) {
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
               {activeResults.map((ad) => (
                 <AdCard
-                  key={ad.id}
+                  key={ad.ad_archive_id}
                   ad={ad}
                   boards={boards}
                   savingId={savingId}

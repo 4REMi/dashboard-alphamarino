@@ -4,7 +4,9 @@ import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import type { TrackedBrand, SavedAd, AdBoard, ClientCreativeContext, MetaAdResult } from "@/lib/types"
 
-// ── Meta Ads Library API ──────────────────────────────────────────
+// ── Apify — Facebook Ads Library scraper ─────────────────────────
+
+const APIFY_ACTOR = "curious_coder~facebook-ads-library-scraper"
 
 export async function searchMetaAds(params: {
   query?: string
@@ -14,44 +16,36 @@ export async function searchMetaAds(params: {
   limit?: number
 }): Promise<MetaAdResult[]> {
   await assertAuth()
-  const token = process.env.META_ADS_API_TOKEN
-  if (!token) throw new Error("META_ADS_API_TOKEN no configurado")
+  const token = process.env.APIFY_API_TOKEN
+  if (!token) throw new Error("APIFY_API_TOKEN no configurado")
 
-  const sp = new URLSearchParams({
-    access_token:        token,
-    ad_reached_countries: JSON.stringify([params.country ?? "MX"]),
-    ad_active_status:    params.status ?? "ALL",
-    limit:               String(params.limit ?? 24),
-    fields: [
-      "id",
-      "page_id",
-      "page_name",
-      "ad_creative_bodies",
-      "ad_creative_link_titles",
-      "ad_creative_link_descriptions",
-      "ad_snapshot_url",
-      "ad_delivery_start_time",
-      "ad_delivery_stop_time",
-      "publisher_platforms",
-      "spend",
-      "impressions",
-    ].join(","),
-  })
-
-  if (params.query)  sp.set("search_terms", params.query)
-  if (params.pageId) sp.set("search_page_ids", params.pageId)
+  const input: Record<string, unknown> = {
+    country:      params.country ?? "MX",
+    activeStatus: params.status  ?? "ALL",
+    adType:       "ALL",
+    limit:        params.limit   ?? 24,
+  }
+  if (params.pageId) input.pageIds     = [params.pageId]
+  else if (params.query) input.queries = [params.query]
 
   const res = await fetch(
-    `https://graph.facebook.com/v21.0/ads_archive?${sp.toString()}`,
-    { cache: "no-store" }
+    `https://api.apify.com/v2/acts/${APIFY_ACTOR}/run-sync-get-dataset-items?token=${token}`,
+    {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify(input),
+      cache:   "no-store",
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ...(({ next: { timeout: 90 } }) as any),
+    }
   )
   if (!res.ok) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const err: any = await res.json().catch(() => ({}))
-    throw new Error(err?.error?.message ?? `Meta API error ${res.status}`)
+    throw new Error(err?.error?.message ?? `Apify error ${res.status}`)
   }
-  const json = await res.json()
-  return (json.data ?? []) as MetaAdResult[]
+  const data = await res.json()
+  return (Array.isArray(data) ? data : []) as MetaAdResult[]
 }
 
 async function assertAuth() {

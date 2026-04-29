@@ -628,21 +628,51 @@ export interface ClientCreativeContext {
   updated_by: string | null
 }
 
-// Shape returned by Meta Ads Library API (raw, before saving)
+// Shape returned by Apify curious_coder/facebook-ads-library-scraper
+export interface ApifyAdCard {
+  body: string | null
+  title: string | null
+  link_url: string | null
+  cta_text: string | null
+  original_image_url: string | null
+  resized_image_url: string | null
+  video_hd_url: string | null
+  video_sd_url: string | null
+  video_preview_image_url: string | null
+}
+
+export interface ApifyAdSnapshot {
+  page_name: string
+  page_profile_picture_url: string | null
+  body: { text: string | null } | null
+  cards: ApifyAdCard[]
+  cta_text: string | null
+  display_format: string | null
+  link_url: string | null
+  page_like_count: number | null
+  images: unknown[]
+  videos: unknown[]
+}
+
 export interface MetaAdResult {
-  id: string                      // ad_archive_id
+  ad_archive_id: string
   page_id: string
   page_name: string
-  ad_creative_bodies: string[]
-  ad_creative_link_descriptions: string[]
-  ad_creative_link_titles: string[]
-  snapshot_url: string
-  ad_delivery_start_time: string | null
-  ad_delivery_stop_time: string | null
   is_active: boolean
-  publisher_platforms: string[]
-  spend?: { lower_bound: string; upper_bound: string; currency: string }
-  impressions?: { lower_bound: string; upper_bound: string }
+  start_date: number | null          // unix timestamp
+  end_date: number | null            // unix timestamp
+  start_date_formatted: string | null
+  end_date_formatted: string | null
+  publisher_platform: string[]       // ["FACEBOOK", "INSTAGRAM"]
+  spend: { lower_bound: number; upper_bound: number } | null
+  currency: string | null
+  snapshot: ApifyAdSnapshot
+  impressions_with_index: {
+    impressions_text: string | null
+    impressions_index: number
+  } | null
+  ad_library_url: string | null
+  total: number
 }
 
 // ============================================================
