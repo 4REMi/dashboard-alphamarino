@@ -8,6 +8,41 @@ import type { TrackedBrand, SavedAd, AdBoard, ClientCreativeContext, MetaAdResul
 
 const APIFY_ACTOR = "curious_coder~facebook-ads-library-scraper"
 
+function buildAdLibraryUrl(params: {
+  query?: string
+  pageId?: string
+  country: string
+  status: string
+}): string {
+  const base = "https://www.facebook.com/ads/library/"
+  const activeStatus = params.status.toLowerCase() === "all" ? "all"
+    : params.status.toLowerCase() === "active" ? "active"
+    : "inactive"
+
+  if (params.pageId) {
+    // Search by page ID — shows all ads from that specific page
+    const sp = new URLSearchParams({
+      active_status: activeStatus,
+      ad_type:       "all",
+      country:       params.country,
+      view_all_page_id: params.pageId,
+      media_type:    "all",
+    })
+    return `${base}?${sp.toString()}`
+  }
+
+  // Keyword search
+  const sp = new URLSearchParams({
+    active_status: activeStatus,
+    ad_type:       "all",
+    country:       params.country,
+    q:             params.query ?? "",
+    search_type:   "keyword_unordered",
+    media_type:    "all",
+  })
+  return `${base}?${sp.toString()}`
+}
+
 export async function searchMetaAds(params: {
   query?: string
   pageId?: string
@@ -19,14 +54,20 @@ export async function searchMetaAds(params: {
   const token = process.env.APIFY_API_TOKEN
   if (!token) throw new Error("APIFY_API_TOKEN no configurado")
 
-  const input: Record<string, unknown> = {
-    country:      params.country ?? "MX",
-    activeStatus: params.status  ?? "ALL",
-    adType:       "ALL",
-    limit:        params.limit   ?? 24,
+  const country = params.country ?? "MX"
+  const status  = params.status  ?? "ALL"
+
+  const url = buildAdLibraryUrl({ query: params.query, pageId: params.pageId, country, status })
+
+  const input = {
+    urls:                         [{ url }],
+    count:                        params.limit ?? 24,
+    scrapeAdDetails:              false,
+    "scrapePageAds.activeStatus": status.toLowerCase(),
+    "scrapePageAds.countryCode":  country,
+    "scrapePageAds.sortBy":       "impressions_desc",
+    "scrapePageAds.period":       "",
   }
-  if (params.pageId) input.pageIds     = [params.pageId]
-  else if (params.query) input.queries = [params.query]
 
   const res = await fetch(
     `https://api.apify.com/v2/acts/${APIFY_ACTOR}/run-sync-get-dataset-items?token=${token}`,
@@ -35,8 +76,6 @@ export async function searchMetaAds(params: {
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify(input),
       cache:   "no-store",
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ...(({ next: { timeout: 90 } }) as any),
     }
   )
   if (!res.ok) {
