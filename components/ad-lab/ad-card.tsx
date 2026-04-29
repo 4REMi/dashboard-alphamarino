@@ -103,21 +103,8 @@ export function AdCard({ ad, boards, savingId, onSaveToBoard, onOpenDetail }: Pr
           </>
         )}
 
-        {/* View ad overlay on hover */}
-        {ad.ad_library_url && (
-          <a
-            href={ad.ad_library_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30 z-10"
-          >
-            <span className="flex items-center gap-1.5 text-xs font-medium text-white bg-black/60 px-3 py-1.5 rounded-full">
-              <ExternalLink className="w-3 h-3" />
-              Ver en Ad Library
-            </span>
-          </a>
-        )}
+        {/* Hover: dim background (click opens modal) */}
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors z-10 pointer-events-none" />
 
         {/* Status badge */}
         <div className="absolute top-2 left-2 z-20">
@@ -181,8 +168,22 @@ export function AdCard({ ad, boards, savingId, onSaveToBoard, onOpenDetail }: Pr
 
         {/* Footer */}
         <div className="flex items-center justify-between border-t border-border/50 pt-2.5 mt-1">
-          <div className="text-[10px] text-muted-foreground font-mono">
-            {ad.impressions_with_index?.impressions_text ?? "—"}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-muted-foreground font-mono">
+              {ad.impressions_with_index?.impressions_text ?? "—"}
+            </span>
+            {ad.ad_library_url && (
+              <a
+                href={ad.ad_library_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                title="Ver en Meta Ad Library"
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            )}
           </div>
 
           {/* Save to board */}
