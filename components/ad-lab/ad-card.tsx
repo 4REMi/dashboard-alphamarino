@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react"
 import type { MetaAdResult, AdBoard } from "@/lib/types"
 import { Wand2, Bookmark, Check, Loader2, ExternalLink, Play } from "lucide-react"
+import { SiFacebook, SiInstagram, SiMessenger, SiMeta, SiThreads } from "@icons-pack/react-simple-icons"
 
 interface Props {
   ad: MetaAdResult
@@ -32,11 +33,15 @@ function daysAgo(ts: number | null): string {
   return `${Math.floor(diff / 365)}a`
 }
 
-function platformLabel(p: string) {
-  const map: Record<string, string> = {
-    FACEBOOK: "FB", INSTAGRAM: "IG", MESSENGER: "MS", AUDIENCE_NETWORK: "AN",
-  }
-  return map[p.toUpperCase()] ?? p.slice(0, 2).toUpperCase()
+function PlatformIcon({ platform }: { platform: string }) {
+  const p = platform.toUpperCase()
+  const cls = "w-3 h-3 text-white"
+  if (p === "FACEBOOK")        return <SiFacebook className={cls} />
+  if (p === "INSTAGRAM")       return <SiInstagram className={cls} />
+  if (p === "MESSENGER")       return <SiMessenger className={cls} />
+  if (p === "AUDIENCE_NETWORK") return <SiMeta className={cls} />
+  if (p === "THREADS")         return <SiThreads className={cls} />
+  return <span className="text-[7px] font-bold text-white">{platform.slice(0, 2).toUpperCase()}</span>
 }
 
 /** Resolve the best available thumbnail and video URL from the Apify snapshot.
@@ -143,8 +148,8 @@ export function AdCard({ ad, boards, savingId, onSaveToBoard, onOpenDetail }: Pr
         {(ad.publisher_platform ?? []).length > 0 && (
           <div className="absolute bottom-2 right-2 z-20 flex gap-1">
             {ad.publisher_platform.map((p) => (
-              <span key={p} className="w-5 h-5 rounded-full bg-black/50 text-white flex items-center justify-center text-[8px] font-bold">
-                {platformLabel(p)}
+              <span key={p} className="w-5 h-5 rounded-full bg-black/50 flex items-center justify-center">
+                <PlatformIcon platform={p} />
               </span>
             ))}
           </div>

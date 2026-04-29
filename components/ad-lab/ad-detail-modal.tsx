@@ -5,8 +5,9 @@ import type { MetaAdResult, AdBoard } from "@/lib/types"
 import { saveAd, addAdToBoard } from "@/lib/actions/ad-lab"
 import {
   X, ExternalLink, Bookmark, Check, Loader2,
-  Calendar, Globe, Wand2, ChevronLeft, ChevronRight,
+  Calendar, Wand2, ChevronLeft, ChevronRight,
 } from "lucide-react"
+import { SiFacebook, SiInstagram, SiMessenger, SiMeta, SiThreads } from "@icons-pack/react-simple-icons"
 
 interface Props {
   ad: MetaAdResult | null
@@ -14,11 +15,24 @@ interface Props {
   onClose: () => void
 }
 
-function platformLabel(p: string) {
-  const map: Record<string, string> = {
-    FACEBOOK: "Facebook", INSTAGRAM: "Instagram", MESSENGER: "Messenger", AUDIENCE_NETWORK: "Audience Network",
-  }
-  return map[p.toUpperCase()] ?? p
+const PLATFORM_META: Record<string, { label: string; icon: React.ElementType; color: string }> = {
+  FACEBOOK:         { label: "Facebook",         icon: SiFacebook,  color: "#1877F2" },
+  INSTAGRAM:        { label: "Instagram",         icon: SiInstagram, color: "#E4405F" },
+  MESSENGER:        { label: "Messenger",         icon: SiMessenger, color: "#00B2FF" },
+  AUDIENCE_NETWORK: { label: "Audience Network",  icon: SiMeta,      color: "#0082FB" },
+  THREADS:          { label: "Threads",            icon: SiThreads,   color: "#000000" },
+}
+
+function PlatformChip({ platform }: { platform: string }) {
+  const meta = PLATFORM_META[platform.toUpperCase()]
+  if (!meta) return <span className="text-xs">{platform}</span>
+  const Icon = meta.icon
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full bg-muted">
+      <Icon className="w-3 h-3 flex-shrink-0" style={{ color: meta.color }} />
+      {meta.label}
+    </span>
+  )
 }
 
 function fmtDate(ts: number | null) {
@@ -260,14 +274,22 @@ export function AdDetailModal({ ad, boards, onClose }: Props) {
               <MetaItem label="Fin" icon={Calendar}>
                 {ad.end_date ? fmtDate(ad.end_date) : "En curso"}
               </MetaItem>
-              <MetaItem label="Plataformas" icon={Globe}>
-                {(ad.publisher_platform ?? []).map(platformLabel).join(", ") || "—"}
-              </MetaItem>
-              <MetaItem label="Impresiones" icon={Globe}>
-                {ad.impressions_with_index?.impressions_text ?? "—"}
-              </MetaItem>
+              {(ad.publisher_platform ?? []).length > 0 && (
+                <MetaItem label="Plataformas" icon={Calendar} className="col-span-2">
+                  <div className="flex flex-wrap gap-1.5 mt-0.5">
+                    {ad.publisher_platform.map((p) => (
+                      <PlatformChip key={p} platform={p} />
+                    ))}
+                  </div>
+                </MetaItem>
+              )}
+              {ad.impressions_with_index?.impressions_text && (
+                <MetaItem label="Impresiones" icon={Calendar}>
+                  {ad.impressions_with_index.impressions_text}
+                </MetaItem>
+              )}
               {ad.spend && (
-                <MetaItem label="Inversión estimada" icon={Globe} className="col-span-2">
+                <MetaItem label="Inversión estimada" icon={Calendar} className={ad.impressions_with_index?.impressions_text ? "" : "col-span-2"}>
                   {fmtSpend(ad.spend, ad.currency)}
                 </MetaItem>
               )}
