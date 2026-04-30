@@ -10,6 +10,7 @@ export type UserPermissions = {
   request_sops?: boolean             // request SOPs for tasks
   assign_sops?: boolean              // assign SOPs to tasks/templates
   access_ad_lab?: boolean            // /ad-lab section
+  access_brand_brains?: boolean      // /brand-brains section
 }
 
 // Defaults per role (admin always returns true without checking)
@@ -23,6 +24,7 @@ const SUBADMIN_DEFAULTS: Required<UserPermissions> = {
   request_sops: true,
   assign_sops: true,
   access_ad_lab: true,
+  access_brand_brains: true,
 }
 
 const EMPLOYEE_DEFAULTS: Required<UserPermissions> = {
@@ -35,6 +37,7 @@ const EMPLOYEE_DEFAULTS: Required<UserPermissions> = {
   request_sops: false,
   assign_sops: false,
   access_ad_lab: false,
+  access_brand_brains: false,
 }
 
 export function can(

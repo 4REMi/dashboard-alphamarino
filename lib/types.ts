@@ -602,6 +602,49 @@ export interface SavedAd {
   created_at: string
 }
 
+
+// ============================================================
+// BRAND BRAINS
+// ============================================================
+
+export interface BrandBrainColor {
+  hex: string
+  label: string
+}
+
+export interface BrandBrain {
+  id: string
+  name: string
+  initials: string | null
+  industry: string | null
+  language: string | null
+  logo_url: string | null
+  brand_colors: BrandBrainColor[]
+  usps: string[]
+  key_benefits: string[]
+  pain_points: string[]
+  target_audience: string | null
+  key_features: string[]
+  ctas: string[]
+  tone_of_voice: string | null
+  additional_context: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  assets?: BrandBrainAsset[]
+}
+
+export interface BrandBrainAsset {
+  id: string
+  brand_brain_id: string
+  name: string | null
+  url: string
+  type: "image" | "video" | null
+  size: number | null
+  added_by: string | null
+  created_at: string
+}
+
 export interface AdBoard {
   id: string
   name: string

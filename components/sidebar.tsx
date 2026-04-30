@@ -20,6 +20,7 @@ import {
   BookOpen,
   Lightbulb,
   Tv2,
+  Brain,
 } from "lucide-react"
 import { useState } from "react"
 import Image from "next/image"
@@ -54,6 +55,7 @@ export function Sidebar({ profile, logoUrl, mobileOpen = false, onMobileClose }:
     { href: "/sops", icon: BookOpen, label: "SOPs" },
     { href: "/my-lab", icon: Lightbulb, label: "Mi Lab" },
     { href: "/ad-lab", icon: Tv2, label: "Ad Lab", permission: "access_ad_lab" as const },
+    { href: "/brand-brains", icon: Brain, label: "Brand Brains", permission: "access_brand_brains" as const },
     { href: "/operations", icon: FlaskConical, label: t("operationsLab"), adminOnly: true },
     { href: "/settings", icon: Settings, label: t("settings"), adminOnly: true },
   ]
