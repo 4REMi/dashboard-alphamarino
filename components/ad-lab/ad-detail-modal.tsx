@@ -8,6 +8,7 @@ import {
   Calendar, Wand2, ChevronLeft, ChevronRight,
 } from "lucide-react"
 import { SiFacebook, SiInstagram, SiMessenger, SiMeta, SiThreads } from "@icons-pack/react-simple-icons"
+import { CloneModal } from "@/components/ad-lab/clone-modal"
 
 interface Props {
   ad: MetaAdResult | null
@@ -62,6 +63,7 @@ export function AdDetailModal({ ad, boards, onClose }: Props) {
   const [showBoardPicker, setShowBoardPicker] = useState(false)
   const [savedBoards, setSavedBoards] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState(false)
+  const [showClone, setShowClone] = useState(false)
 
   // Reset card index when ad changes
   useEffect(() => { setCardIndex(0); setSavedBoards(new Set()) }, [ad?.ad_archive_id])
@@ -140,6 +142,10 @@ export function AdDetailModal({ ad, boards, onClose }: Props) {
     } finally {
       setSaving(false)
     }
+  }
+
+  if (showClone) {
+    return <CloneModal ad={ad} onClose={() => setShowClone(false)} />
   }
 
   return (
@@ -370,9 +376,10 @@ export function AdDetailModal({ ad, boards, onClose }: Props) {
               )}
             </div>
 
-            {/* Clone (placeholder) */}
+            {/* Clone */}
             <button
-              title="Clonar anuncio (próximamente)"
+              title="Clonar anuncio con IA"
+              onClick={() => setShowClone(true)}
               className="h-9 px-4 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted flex items-center gap-2 transition-colors"
             >
               <Wand2 className="w-4 h-4" />

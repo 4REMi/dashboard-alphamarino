@@ -725,6 +725,35 @@ export interface MetaAdResult {
 }
 
 // ============================================================
+// AD CLONE
+// ============================================================
+
+export type AdCloneStatus = "pending" | "transcribing" | "adapting" | "ready" | "error"
+
+export interface AdCloneLine {
+  speaker: string | null
+  original: string
+  adapted: string
+}
+
+export interface AdClone {
+  id: string
+  saved_ad_id: string
+  brand_brain_id: string | null
+  share_token: string
+  status: AdCloneStatus
+  assemblyai_transcript_id: string | null
+  original_lines: AdCloneLine[]
+  adapted_lines: AdCloneLine[]
+  error_message: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  brand_brain?: Pick<BrandBrain, "id" | "name"> | null
+  saved_ad?: Pick<SavedAd, "id" | "page_name" | "cached_video_url" | "video_url" | "cached_image_url" | "image_url"> | null
+}
+
+// ============================================================
 // HELPERS
 // ============================================================
 
