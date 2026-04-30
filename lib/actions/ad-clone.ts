@@ -162,10 +162,10 @@ export async function startClone(
 
   try {
     const transcript = await aaiPost("/transcript", {
-      audio_url:     videoSrc,
+      audio_url:      videoSrc,
       speaker_labels: true,
-      speech_model:  "universal-2",
-      language_code: "es",
+      speech_models:  ["universal-3-pro", "universal-2"],
+      language_code:  "es",
     })
     await supabase
       .from("ad_clones")
