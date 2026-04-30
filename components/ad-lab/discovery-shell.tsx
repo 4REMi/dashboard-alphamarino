@@ -110,6 +110,7 @@ export function DiscoveryShell({ trackedBrands, boards, customers }: Props) {
         impressions_lower: null,
         impressions_upper: null,
         currency:          ad.currency || "MXN",
+        ad_snapshot:       ad,
       })
       await addAdToBoard(boardId, saved.id)
     } finally {

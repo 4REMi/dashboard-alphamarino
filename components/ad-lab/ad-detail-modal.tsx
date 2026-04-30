@@ -132,6 +132,7 @@ export function AdDetailModal({ ad, boards, onClose }: Props) {
         impressions_lower: null,
         impressions_upper: null,
         currency:          ad.currency || "MXN",
+        ad_snapshot:       ad,
       })
       await addAdToBoard(boardId, saved.id)
       setSavedBoards((prev) => new Set([...prev, boardId]))

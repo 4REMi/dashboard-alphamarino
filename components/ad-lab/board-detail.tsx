@@ -14,45 +14,65 @@ interface Props {
   boards: AdBoard[]
 }
 
-/** Reconstruct a MetaAdResult shape from a flat SavedAd so AdDetailModal can be reused. */
+/**
+ * Return the MetaAdResult to pass to AdDetailModal.
+ * Prefers the full frozen snapshot stored at save time; falls back to
+ * reconstructing from flat fields for ads saved before this change.
+ */
 function savedAdToResult(ad: SavedAd): MetaAdResult {
+  // Use the frozen snapshot if available — includes landing page, CTA, all cards
+  if (ad.ad_snapshot) {
+    const snap = ad.ad_snapshot as MetaAdResult
+    // Swap in cached media URLs so the modal always shows our own copies
+    const thumbUrl = ad.cached_image_url ?? ad.image_url
+    const videoUrl = ad.cached_video_url ?? ad.video_url
+    if (thumbUrl || videoUrl) {
+      const cards = snap.snapshot?.cards?.length
+        ? snap.snapshot.cards.map((c, i) => i === 0 ? {
+            ...c,
+            resized_image_url:       thumbUrl ?? c.resized_image_url,
+            original_image_url:      thumbUrl ?? c.original_image_url,
+            video_hd_url:            videoUrl ?? c.video_hd_url,
+            video_preview_image_url: thumbUrl ?? c.video_preview_image_url,
+          } : c)
+        : [{
+            body: ad.body, title: null, link_url: null, cta_text: null,
+            original_image_url: thumbUrl, resized_image_url: thumbUrl,
+            video_hd_url: videoUrl, video_sd_url: null,
+            video_preview_image_url: thumbUrl,
+          }]
+      return { ...snap, snapshot: { ...snap.snapshot, cards } }
+    }
+    return snap
+  }
+
+  // Fallback for ads saved before full snapshot storage was added
   const thumbUrl = ad.cached_image_url ?? ad.image_url
   const videoUrl = ad.cached_video_url ?? ad.video_url
   return {
-    ad_archive_id:       ad.ad_archive_id,
-    page_id:             ad.page_id,
-    page_name:           ad.page_name,
-    is_active:           ad.status === "active",
-    start_date:          ad.start_date ? Math.floor(new Date(ad.start_date).getTime() / 1000) : null,
-    end_date:            ad.end_date   ? Math.floor(new Date(ad.end_date).getTime()   / 1000) : null,
+    ad_archive_id:        ad.ad_archive_id,
+    page_id:              ad.page_id,
+    page_name:            ad.page_name,
+    is_active:            ad.status === "active",
+    start_date:           ad.start_date ? Math.floor(new Date(ad.start_date).getTime() / 1000) : null,
+    end_date:             ad.end_date   ? Math.floor(new Date(ad.end_date).getTime()   / 1000) : null,
     start_date_formatted: ad.start_date,
     end_date_formatted:   ad.end_date,
-    publisher_platform:  (ad.platforms ?? []).map((p) => p.toUpperCase()),
-    spend:               ad.spend_lower != null
-                           ? { lower_bound: ad.spend_lower, upper_bound: ad.spend_upper ?? ad.spend_lower }
-                           : null,
-    currency:            ad.currency || null,
+    publisher_platform:   (ad.platforms ?? []).map((p) => p.toUpperCase()),
+    spend:                ad.spend_lower != null
+                            ? { lower_bound: ad.spend_lower, upper_bound: ad.spend_upper ?? ad.spend_lower }
+                            : null,
+    currency:             ad.currency || null,
     snapshot: {
-      page_name:                 ad.page_name,
-      page_profile_picture_url:  null,
-      body:                      ad.body ? { text: ad.body } : null,
+      page_name: ad.page_name, page_profile_picture_url: null,
+      body: ad.body ? { text: ad.body } : null,
       cards: [{
-        body:                     ad.body,
-        title:                    null,
-        link_url:                 null,
-        cta_text:                 null,
-        original_image_url:       thumbUrl,
-        resized_image_url:        thumbUrl,
-        video_hd_url:             videoUrl,
-        video_sd_url:             null,
-        video_preview_image_url:  thumbUrl,
+        body: ad.body, title: null, link_url: null, cta_text: null,
+        original_image_url: thumbUrl, resized_image_url: thumbUrl,
+        video_hd_url: videoUrl, video_sd_url: null, video_preview_image_url: thumbUrl,
       }],
-      cta_text:       null,
-      display_format: null,
-      link_url:       null,
-      page_like_count: null,
-      images:  [],
-      videos:  [],
+      cta_text: null, display_format: null, link_url: null, page_like_count: null,
+      images: [], videos: [],
     },
     impressions_with_index: null,
     ad_library_url:         ad.snapshot_url,

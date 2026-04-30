@@ -222,6 +222,7 @@ export async function saveAd(adData: {
   impressions_lower: number | null
   impressions_upper: number | null
   currency: string
+  ad_snapshot?: unknown   // full MetaAdResult — frozen at save time
 }): Promise<SavedAd> {
   const { supabase, user } = await assertAuth()
   const { data, error } = await supabase
@@ -230,6 +231,12 @@ export async function saveAd(adData: {
     .select()
     .single()
   if (error) throw error
+
+  // Persist full snapshot on first save (skip if already stored — frozen in time)
+  if (!data.ad_snapshot && adData.ad_snapshot) {
+    await supabase.from("saved_ads").update({ ad_snapshot: adData.ad_snapshot }).eq("id", data.id)
+    data.ad_snapshot = adData.ad_snapshot
+  }
 
   // Mirror media to Storage on first save (skip if already cached)
   const needsImage = !data.cached_image_url && adData.image_url

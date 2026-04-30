@@ -587,6 +587,7 @@ export interface SavedAd {
   cached_image_url: string | null
   cached_video_url: string | null
   snapshot_url: string | null
+  ad_snapshot: MetaAdResult | null  // full ad data frozen at save time
   start_date: string | null
   end_date: string | null
   status: AdStatus | null
