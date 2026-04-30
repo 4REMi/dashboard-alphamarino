@@ -182,11 +182,11 @@ export function BoardsGrid({ boards: initialBoards }: Props) {
               ) : (
                 <div
                   key={board.id}
-                  className="group relative rounded-xl border border-border bg-card overflow-hidden hover:border-primary/30 hover:shadow-md transition-all duration-150"
+                  className="group relative rounded-xl border border-border bg-card hover:border-primary/30 hover:shadow-md transition-all duration-150"
                 >
                   {/* Cover / thumbnail area */}
                   <Link href={`/ad-lab/boards/${board.id}`} className="block">
-                    <div className="aspect-[16/9] bg-muted relative overflow-hidden">
+                    <div className="aspect-[16/9] bg-muted relative overflow-hidden rounded-t-xl">
                       {((board as any).cover_ad?.cached_image_url ?? (board as any).cover_ad?.image_url) ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
