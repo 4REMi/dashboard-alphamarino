@@ -4,6 +4,45 @@ import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import type { TrackedBrand, SavedAd, AdBoard, ClientCreativeContext, MetaAdResult } from "@/lib/types"
 
+// ── Storage mirror ────────────────────────────────────────────────
+
+type SupabaseClient = Awaited<ReturnType<typeof createClient>>
+
+/**
+ * Downloads a URL and uploads to Supabase Storage.
+ * Returns the public URL or null if download/upload fails.
+ * maxSizeMB = 0 means no size limit.
+ */
+async function mirrorToStorage(
+  supabase: SupabaseClient,
+  sourceUrl: string,
+  storagePath: string,
+  maxSizeMB = 0,
+): Promise<string | null> {
+  try {
+    const res = await fetch(sourceUrl, { signal: AbortSignal.timeout(30_000) })
+    if (!res.ok) return null
+
+    if (maxSizeMB > 0) {
+      const len = Number(res.headers.get("content-length") ?? 0)
+      if (len > maxSizeMB * 1024 * 1024) return null
+    }
+
+    const buffer      = await res.arrayBuffer()
+    const contentType = res.headers.get("content-type") ?? "application/octet-stream"
+
+    const { error } = await supabase.storage
+      .from("ad-lab")
+      .upload(storagePath, buffer, { contentType, upsert: true })
+    if (error) return null
+
+    const { data: { publicUrl } } = supabase.storage.from("ad-lab").getPublicUrl(storagePath)
+    return publicUrl
+  } catch {
+    return null
+  }
+}
+
 // ── Apify — Facebook Ads Library scraper ─────────────────────────
 
 const APIFY_ACTOR = "curious_coder~facebook-ads-library-scraper"
@@ -191,6 +230,42 @@ export async function saveAd(adData: {
     .select()
     .single()
   if (error) throw error
+
+  // Mirror media to Storage on first save (skip if already cached)
+  const needsImage = !data.cached_image_url && adData.image_url
+  const needsVideo = !data.cached_video_url && adData.video_url
+
+  if (needsImage || needsVideo) {
+    const updates: Record<string, string> = {}
+
+    if (needsImage) {
+      const ext = (adData.image_url!.split("?")[0].split(".").pop() ?? "jpg").slice(0, 4)
+      const url = await mirrorToStorage(
+        supabase,
+        adData.image_url!,
+        `${data.id}/image.${ext}`,
+        20,            // 20 MB max for images
+      )
+      if (url) updates.cached_image_url = url
+    }
+
+    if (needsVideo) {
+      const ext = (adData.video_url!.split("?")[0].split(".").pop() ?? "mp4").slice(0, 4)
+      const url = await mirrorToStorage(
+        supabase,
+        adData.video_url!,
+        `${data.id}/video.${ext}`,
+        150,           // 150 MB max for videos
+      )
+      if (url) updates.cached_video_url = url
+    }
+
+    if (Object.keys(updates).length > 0) {
+      await supabase.from("saved_ads").update(updates).eq("id", data.id)
+      Object.assign(data, updates)
+    }
+  }
+
   revalidate()
   return data as SavedAd
 }
@@ -208,7 +283,7 @@ export async function getBoards(): Promise<AdBoard[]> {
   const { supabase } = await assertAuth()
   const { data } = await supabase
     .from("ad_boards")
-    .select("*, cover_ad:saved_ads!cover_ad_id(id, image_url, page_name)")
+    .select("*, cover_ad:saved_ads!cover_ad_id(id, image_url, cached_image_url, page_name)")
     .order("created_at", { ascending: false })
   // Attach ad count
   const boardIds = (data ?? []).map((b) => b.id)

@@ -584,6 +584,8 @@ export interface SavedAd {
   body: string | null
   image_url: string | null
   video_url: string | null
+  cached_image_url: string | null
+  cached_video_url: string | null
   snapshot_url: string | null
   start_date: string | null
   end_date: string | null
@@ -656,7 +658,7 @@ export interface AdBoard {
   created_by: string | null
   created_at: string
   // Relations
-  cover_ad?: Pick<SavedAd, "id" | "image_url" | "page_name"> | null
+  cover_ad?: Pick<SavedAd, "id" | "image_url" | "cached_image_url" | "page_name"> | null
   ad_count?: number
 }
 

@@ -187,10 +187,10 @@ export function BoardsGrid({ boards: initialBoards }: Props) {
                   {/* Cover / thumbnail area */}
                   <Link href={`/ad-lab/boards/${board.id}`} className="block">
                     <div className="aspect-[16/9] bg-muted relative overflow-hidden">
-                      {(board as any).cover_ad?.image_url ? (
+                      {((board as any).cover_ad?.cached_image_url ?? (board as any).cover_ad?.image_url) ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
-                          src={(board as any).cover_ad.image_url}
+                          src={(board as any).cover_ad.cached_image_url ?? (board as any).cover_ad.image_url}
                           alt={board.name}
                           className="w-full h-full object-cover"
                         />

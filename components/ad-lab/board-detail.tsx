@@ -109,11 +109,11 @@ export function BoardDetail({ board, initialAds }: Props) {
                     key={ad.id}
                     className="group relative bg-card border border-border rounded-xl overflow-hidden hover:border-primary/30 hover:shadow-md transition-all duration-150"
                   >
-                    {/* Thumbnail */}
+                    {/* Thumbnail — prefer cached copy over original Meta CDN URL */}
                     <div className="relative aspect-[4/5] bg-muted overflow-hidden">
-                      {ad.image_url ? (
+                      {(ad.cached_image_url ?? ad.image_url) ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={ad.image_url} alt={ad.page_name} className="w-full h-full object-cover" />
+                        <img src={ad.cached_image_url ?? ad.image_url!} alt={ad.page_name} className="w-full h-full object-cover" />
                       ) : (
                         <>
                           <div className={`absolute inset-0 ${color} opacity-10`} />
