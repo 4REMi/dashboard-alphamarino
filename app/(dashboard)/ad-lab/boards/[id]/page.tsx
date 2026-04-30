@@ -35,7 +35,7 @@ export default async function BoardDetailPage({ params }: PageProps) {
 
   return (
     <div className="flex flex-col h-full">
-      <BoardDetail board={board} initialAds={ads} />
+      <BoardDetail board={board} initialAds={ads} boards={boards} />
     </div>
   )
 }

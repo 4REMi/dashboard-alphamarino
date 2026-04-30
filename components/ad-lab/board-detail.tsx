@@ -1,15 +1,63 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import type { SavedAd, AdBoard } from "@/lib/types"
+import type { SavedAd, AdBoard, MetaAdResult } from "@/lib/types"
 import { removeAdFromBoard, deleteSavedAd } from "@/lib/actions/ad-lab"
 import { ArrowLeft, FolderOpen, Trash2, ExternalLink, MoreHorizontal, Loader2, Play } from "lucide-react"
 import { SiFacebook, SiInstagram, SiMessenger, SiMeta, SiThreads } from "@icons-pack/react-simple-icons"
+import { AdDetailModal } from "@/components/ad-lab/ad-detail-modal"
 import Link from "next/link"
 
 interface Props {
   board: AdBoard
   initialAds: SavedAd[]
+  boards: AdBoard[]
+}
+
+/** Reconstruct a MetaAdResult shape from a flat SavedAd so AdDetailModal can be reused. */
+function savedAdToResult(ad: SavedAd): MetaAdResult {
+  const thumbUrl = ad.cached_image_url ?? ad.image_url
+  const videoUrl = ad.cached_video_url ?? ad.video_url
+  return {
+    ad_archive_id:       ad.ad_archive_id,
+    page_id:             ad.page_id,
+    page_name:           ad.page_name,
+    is_active:           ad.status === "active",
+    start_date:          ad.start_date ? Math.floor(new Date(ad.start_date).getTime() / 1000) : null,
+    end_date:            ad.end_date   ? Math.floor(new Date(ad.end_date).getTime()   / 1000) : null,
+    start_date_formatted: ad.start_date,
+    end_date_formatted:   ad.end_date,
+    publisher_platform:  (ad.platforms ?? []).map((p) => p.toUpperCase()),
+    spend:               ad.spend_lower != null
+                           ? { lower_bound: ad.spend_lower, upper_bound: ad.spend_upper ?? ad.spend_lower }
+                           : null,
+    currency:            ad.currency || null,
+    snapshot: {
+      page_name:                 ad.page_name,
+      page_profile_picture_url:  null,
+      body:                      ad.body ? { text: ad.body } : null,
+      cards: [{
+        body:                     ad.body,
+        title:                    null,
+        link_url:                 null,
+        cta_text:                 null,
+        original_image_url:       thumbUrl,
+        resized_image_url:        thumbUrl,
+        video_hd_url:             videoUrl,
+        video_sd_url:             null,
+        video_preview_image_url:  thumbUrl,
+      }],
+      cta_text:       null,
+      display_format: null,
+      link_url:       null,
+      page_like_count: null,
+      images:  [],
+      videos:  [],
+    },
+    impressions_with_index: null,
+    ad_library_url:         ad.snapshot_url,
+    total:                  0,
+  }
 }
 
 function brandColor(name: string): string {
@@ -38,9 +86,10 @@ function PlatformIcon({ platform }: { platform: string }) {
   return <span className="text-[7px] font-bold text-white">{platform.slice(0, 2).toUpperCase()}</span>
 }
 
-export function BoardDetail({ board, initialAds }: Props) {
-  const [ads, setAds] = useState(initialAds)
-  const [menuId, setMenuId] = useState<string | null>(null)
+export function BoardDetail({ board, initialAds, boards }: Props) {
+  const [ads, setAds]           = useState(initialAds)
+  const [menuId, setMenuId]     = useState<string | null>(null)
+  const [detailAd, setDetailAd] = useState<MetaAdResult | null>(null)
   const [isPending, startTransition] = useTransition()
 
   function handleRemove(ad: SavedAd) {
@@ -59,6 +108,14 @@ export function BoardDetail({ board, initialAds }: Props) {
   }
 
   return (
+    <>
+      {detailAd && (
+        <AdDetailModal
+          ad={detailAd}
+          boards={boards}
+          onClose={() => setDetailAd(null)}
+        />
+      )}
     <div className="flex flex-col h-full min-h-0">
       {/* ── Header ── */}
       <div className="px-6 pt-6 pb-4 border-b border-border flex-shrink-0">
@@ -121,7 +178,10 @@ export function BoardDetail({ board, initialAds }: Props) {
                     className="group relative bg-card border border-border rounded-xl overflow-hidden hover:border-primary/30 hover:shadow-md transition-all duration-150"
                   >
                     {/* ── Thumbnail ── */}
-                    <div className="relative aspect-[4/5] bg-muted overflow-hidden">
+                    <div
+                      className="relative aspect-[4/5] bg-muted overflow-hidden cursor-pointer"
+                      onClick={() => setDetailAd(savedAdToResult(ad))}
+                    >
                       {thumbUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={thumbUrl} alt={ad.page_name} className="w-full h-full object-cover" />
@@ -248,5 +308,6 @@ export function BoardDetail({ board, initialAds }: Props) {
         )}
       </div>
     </div>
+    </>
   )
 }
