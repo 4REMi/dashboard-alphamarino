@@ -3,22 +3,13 @@
 import { useState, useTransition } from "react"
 import type { SavedAd, AdBoard } from "@/lib/types"
 import { removeAdFromBoard, deleteSavedAd } from "@/lib/actions/ad-lab"
-import { ArrowLeft, FolderOpen, Trash2, ExternalLink, MoreHorizontal, Loader2 } from "lucide-react"
+import { ArrowLeft, FolderOpen, Trash2, ExternalLink, MoreHorizontal, Loader2, Play } from "lucide-react"
+import { SiFacebook, SiInstagram, SiMessenger, SiMeta, SiThreads } from "@icons-pack/react-simple-icons"
 import Link from "next/link"
 
 interface Props {
   board: AdBoard
   initialAds: SavedAd[]
-}
-
-function fmtDate(d: string | null) {
-  if (!d) return "—"
-  return new Date(d).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "2-digit" })
-}
-
-function platformLabel(p: string) {
-  const map: Record<string, string> = { facebook: "FB", instagram: "IG", messenger: "MS", audience_network: "AN" }
-  return map[p.toLowerCase()] ?? p.slice(0, 2).toUpperCase()
 }
 
 function brandColor(name: string): string {
@@ -29,6 +20,22 @@ function brandColor(name: string): string {
   let hash = 0
   for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash)
   return colors[Math.abs(hash) % colors.length]
+}
+
+function fmtDate(d: string | null) {
+  if (!d) return "—"
+  return new Date(d).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "2-digit" })
+}
+
+function PlatformIcon({ platform }: { platform: string }) {
+  const p = platform.toUpperCase()
+  const cls = "w-3 h-3 text-white"
+  if (p === "FACEBOOK")         return <SiFacebook className={cls} />
+  if (p === "INSTAGRAM")        return <SiInstagram className={cls} />
+  if (p === "MESSENGER")        return <SiMessenger className={cls} />
+  if (p === "AUDIENCE_NETWORK") return <SiMeta className={cls} />
+  if (p === "THREADS")          return <SiThreads className={cls} />
+  return <span className="text-[7px] font-bold text-white">{platform.slice(0, 2).toUpperCase()}</span>
 }
 
 export function BoardDetail({ board, initialAds }: Props) {
@@ -104,16 +111,20 @@ export function BoardDetail({ board, initialAds }: Props) {
               {ads.map((ad) => {
                 const color    = brandColor(ad.page_name)
                 const initials = ad.page_name.split(/\s+/).map((w) => w[0]).join("").toUpperCase().slice(0, 2)
+                const thumbUrl = ad.cached_image_url ?? ad.image_url
+                const videoUrl = ad.cached_video_url ?? ad.video_url
+                const isActive = ad.status === "active"
+
                 return (
                   <div
                     key={ad.id}
                     className="group relative bg-card border border-border rounded-xl overflow-hidden hover:border-primary/30 hover:shadow-md transition-all duration-150"
                   >
-                    {/* Thumbnail — prefer cached copy over original Meta CDN URL */}
+                    {/* ── Thumbnail ── */}
                     <div className="relative aspect-[4/5] bg-muted overflow-hidden">
-                      {(ad.cached_image_url ?? ad.image_url) ? (
+                      {thumbUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={ad.cached_image_url ?? ad.image_url!} alt={ad.page_name} className="w-full h-full object-cover" />
+                        <img src={thumbUrl} alt={ad.page_name} className="w-full h-full object-cover" />
                       ) : (
                         <>
                           <div className={`absolute inset-0 ${color} opacity-10`} />
@@ -123,38 +134,34 @@ export function BoardDetail({ board, initialAds }: Props) {
                         </>
                       )}
 
-                      {/* View in Ad Library */}
-                      {ad.snapshot_url && (
-                        <a
-                          href={ad.snapshot_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30 z-10"
-                        >
-                          <span className="flex items-center gap-1.5 text-xs font-medium text-white bg-black/60 px-3 py-1.5 rounded-full">
-                            <ExternalLink className="w-3 h-3" />
-                            Ver en Ad Library
-                          </span>
-                        </a>
+                      {/* Hover dim — pointer-events-none so nothing intercepts clicks */}
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors z-10 pointer-events-none" />
+
+                      {/* Play indicator for video ads */}
+                      {videoUrl && (
+                        <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+                          <div className="w-10 h-10 rounded-full bg-black/50 flex items-center justify-center group-hover:bg-black/70 transition-colors">
+                            <Play className="w-4 h-4 text-white fill-white ml-0.5" />
+                          </div>
+                        </div>
                       )}
 
                       {/* Status badge */}
                       <div className="absolute top-2 left-2 z-20">
                         <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white/90 ${
-                          ad.status === "active" ? "text-emerald-700" : "text-slate-500"
+                          isActive ? "text-emerald-700" : "text-slate-500"
                         }`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${ad.status === "active" ? "bg-emerald-500" : "bg-slate-400"}`} />
-                          {ad.status === "active" ? "Activo" : "Inactivo"}
+                          <span className={`w-1.5 h-1.5 rounded-full ${isActive ? "bg-emerald-500" : "bg-slate-400"}`} />
+                          {isActive ? "Activo" : "Inactivo"}
                         </span>
                       </div>
 
-                      {/* Platforms */}
+                      {/* Platform icons */}
                       {(ad.platforms ?? []).length > 0 && (
                         <div className="absolute bottom-2 right-2 z-20 flex gap-1">
                           {ad.platforms.map((p) => (
-                            <span key={p} className="w-5 h-5 rounded-full bg-black/50 text-white flex items-center justify-center text-[8px] font-bold">
-                              {platformLabel(p)}
+                            <span key={p} className="w-5 h-5 rounded-full bg-black/50 flex items-center justify-center">
+                              <PlatformIcon platform={p} />
                             </span>
                           ))}
                         </div>
@@ -192,7 +199,7 @@ export function BoardDetail({ board, initialAds }: Props) {
                       </div>
                     </div>
 
-                    {/* Body */}
+                    {/* ── Body ── */}
                     <div className="p-3">
                       <div className="flex items-center gap-2 mb-2">
                         <div className={`w-6 h-6 rounded-md ${color} flex items-center justify-center flex-shrink-0`}>
@@ -205,10 +212,33 @@ export function BoardDetail({ board, initialAds }: Props) {
                       </div>
 
                       {ad.body && ad.body !== "{{product.brand}}" && (
-                        <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-3">
+                        <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-3 mb-3">
                           {ad.body}
                         </p>
                       )}
+
+                      {/* Footer */}
+                      <div className="flex items-center justify-between border-t border-border/50 pt-2.5 mt-1">
+                        <div className="flex items-center gap-1.5">
+                          {(ad.platforms ?? []).slice(0, 3).map((p) => (
+                            <span key={p} className="w-4 h-4 rounded-full bg-muted flex items-center justify-center">
+                              <PlatformIcon platform={p} />
+                            </span>
+                          ))}
+                        </div>
+                        {ad.snapshot_url && (
+                          <a
+                            href={ad.snapshot_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                            title="Ver en Ad Library"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                            Ad Library
+                          </a>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )
