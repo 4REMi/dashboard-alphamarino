@@ -1,9 +1,10 @@
 "use client"
 
-import { useState, useTransition, useRef } from "react"
+import { useState, useTransition, useRef, useEffect } from "react"
 import type { BrandBrain, BrandBrainColor } from "@/lib/types"
 import { createBrandBrain, updateBrandBrain } from "@/lib/actions/brand-brains"
 import { X, Plus, Trash2, Loader2, Upload, ChevronRight } from "lucide-react"
+import { HexColorPicker } from "react-colorful"
 
 const INDUSTRIES = [
   "E-commerce", "Moda y ropa", "Fitness y salud", "Alimentación",
@@ -25,6 +26,56 @@ interface Props {
   onClose: () => void
   onSaved: (brain: BrandBrain) => void
 }
+
+// ── Custom color picker popover ───────────────────────────────
+
+function ColorSwatch({
+  color,
+  onChange,
+}: {
+  color: BrandBrainColor
+  onChange: (hex: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    if (open) document.addEventListener("mousedown", handleClick)
+    return () => document.removeEventListener("mousedown", handleClick)
+  }, [open])
+
+  // Ensure hex is valid for the picker
+  const safeHex = /^#[0-9a-fA-F]{6}$/.test(color.hex) ? color.hex : "#000000"
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-9 h-9 rounded-lg border-2 border-border shadow-sm hover:scale-105 transition-transform flex-shrink-0"
+        style={{ background: safeHex }}
+        title={color.hex}
+      />
+      {open && (
+        <div className="absolute top-full left-0 mt-2 z-50 bg-popover border border-border rounded-xl shadow-xl p-3 space-y-2">
+          <HexColorPicker color={safeHex} onChange={onChange} />
+          <input
+            value={color.hex}
+            onChange={(e) => onChange(e.target.value)}
+            className="w-full h-8 px-2 rounded-lg border border-border bg-background text-xs font-mono text-center focus:outline-none focus:ring-2 focus:ring-primary/40"
+            placeholder="#000000"
+            spellCheck={false}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Dynamic list input ────────────────────────────────────────
 
 function TagListInput({
   label,
@@ -75,6 +126,8 @@ function TagListInput({
   )
 }
 
+// ── Main modal ────────────────────────────────────────────────
+
 export function BrandBrainModal({ brain, onClose, onSaved }: Props) {
   const [tab, setTab] = useState<Tab>("Datos básicos")
   const [isPending, startTransition] = useTransition()
@@ -86,6 +139,7 @@ export function BrandBrainModal({ brain, onClose, onSaved }: Props) {
   const [initials, setInitials]       = useState(brain?.initials ?? "")
   const [industry, setIndustry]       = useState(brain?.industry ?? "")
   const [language, setLanguage]       = useState(brain?.language ?? "es")
+  const [description, setDescription] = useState(brain?.description ?? "")
   const [colors, setColors]           = useState<BrandBrainColor[]>(
     brain?.brand_colors?.length ? brain.brand_colors : [{ hex: "#000000", label: "Primario" }]
   )
@@ -103,6 +157,18 @@ export function BrandBrainModal({ brain, onClose, onSaved }: Props) {
 
   function clean(arr: string[]) { return arr.filter((s) => s.trim()) }
 
+  function updateColor(i: number, hex: string) {
+    const next = [...colors]
+    next[i] = { ...next[i], hex }
+    setColors(next)
+  }
+
+  function updateColorLabel(i: number, label: string) {
+    const next = [...colors]
+    next[i] = { ...next[i], label }
+    setColors(next)
+  }
+
   function handleSubmit() {
     if (!name.trim()) { setTab("Datos básicos"); return }
     startTransition(async () => {
@@ -111,6 +177,7 @@ export function BrandBrainModal({ brain, onClose, onSaved }: Props) {
       fd.set("initials", initials)
       fd.set("industry", industry)
       fd.set("language", language)
+      fd.set("description", description)
       fd.set("brand_colors", JSON.stringify(colors))
       fd.set("usps", JSON.stringify(clean(usps)))
       fd.set("key_benefits", JSON.stringify(clean(keyBenefits)))
@@ -123,7 +190,14 @@ export function BrandBrainModal({ brain, onClose, onSaved }: Props) {
       if (fileRef.current?.files?.[0]) fd.set("logo", fileRef.current.files[0])
 
       const result = brain
-        ? await updateBrandBrain(brain.id, fd).then(() => ({ ...brain, name, initials, industry, language, brand_colors: colors, usps: clean(usps), key_benefits: clean(keyBenefits), pain_points: clean(painPoints), target_audience: targetAudience, key_features: clean(keyFeatures), ctas: clean(ctas), tone_of_voice: toneOfVoice, additional_context: additionalContext }))
+        ? await updateBrandBrain(brain.id, fd).then(() => ({
+            ...brain, name, initials, industry, language, description,
+            brand_colors: colors,
+            usps: clean(usps), key_benefits: clean(keyBenefits),
+            pain_points: clean(painPoints), target_audience: targetAudience,
+            key_features: clean(keyFeatures), ctas: clean(ctas),
+            tone_of_voice: toneOfVoice, additional_context: additionalContext,
+          }))
         : await createBrandBrain(fd)
 
       onSaved(result as BrandBrain)
@@ -174,7 +248,9 @@ export function BrandBrainModal({ brain, onClose, onSaved }: Props) {
               <>
                 {/* Logo */}
                 <div>
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Logo <span className="normal-case font-normal">(opcional)</span></p>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                    Logo <span className="normal-case font-normal">(opcional)</span>
+                  </p>
                   <div className="flex items-center gap-4">
                     <div className="w-16 h-16 rounded-xl border-2 border-dashed border-border bg-muted flex items-center justify-center overflow-hidden flex-shrink-0">
                       {logoPreview
@@ -255,48 +331,50 @@ export function BrandBrainModal({ brain, onClose, onSaved }: Props) {
                   </div>
                 </div>
 
+                {/* Description */}
+                <div>
+                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">
+                    Descripción <span className="normal-case font-normal">(opcional)</span>
+                  </label>
+                  <textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="ej. Marca de cinturones de piel con diseños de anime para atletas…"
+                    rows={3}
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
+                  />
+                </div>
+
                 {/* Brand colors */}
                 <div>
-                  <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center justify-between mb-3">
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Colores de marca</p>
                     <button
                       type="button"
-                      onClick={() => setColors([...colors, { hex: "#ffffff", label: "Secundario" }])}
+                      onClick={() => setColors([...colors, { hex: "#6366f1", label: "Secundario" }])}
                       className="text-xs text-primary font-medium hover:text-primary/80 flex items-center gap-1"
                     >
                       <Plus className="w-3 h-3" /> Agregar color
                     </button>
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     {colors.map((c, i) => (
                       <div key={i} className="flex items-center gap-2">
-                        <input
-                          type="color"
-                          value={c.hex}
-                          onChange={(e) => {
-                            const next = [...colors]
-                            next[i] = { ...next[i], hex: e.target.value }
-                            setColors(next)
-                          }}
-                          className="w-9 h-9 rounded-lg border border-border cursor-pointer p-0.5"
+                        <ColorSwatch
+                          color={c}
+                          onChange={(hex) => updateColor(i, hex)}
                         />
                         <input
                           value={c.hex}
-                          onChange={(e) => {
-                            const next = [...colors]
-                            next[i] = { ...next[i], hex: e.target.value }
-                            setColors(next)
-                          }}
+                          onChange={(e) => updateColor(i, e.target.value)}
                           className="w-24 h-9 px-3 rounded-lg border border-border bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40"
+                          placeholder="#000000"
+                          spellCheck={false}
                         />
                         <input
                           value={c.label}
-                          onChange={(e) => {
-                            const next = [...colors]
-                            next[i] = { ...next[i], label: e.target.value }
-                            setColors(next)
-                          }}
-                          placeholder="Nombre"
+                          onChange={(e) => updateColorLabel(i, e.target.value)}
+                          placeholder="ej. Primario"
                           className="flex-1 h-9 px-3 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
                         />
                         {colors.length > 1 && (
@@ -326,7 +404,7 @@ export function BrandBrainModal({ brain, onClose, onSaved }: Props) {
                   <textarea
                     value={targetAudience}
                     onChange={(e) => setTargetAudience(e.target.value)}
-                    placeholder="ej. Hombres 18-35, aficionados al gym, intereados en anime"
+                    placeholder="ej. Hombres 18-35, aficionados al gym, interesados en anime"
                     rows={3}
                     className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
                   />
@@ -354,7 +432,7 @@ export function BrandBrainModal({ brain, onClose, onSaved }: Props) {
                   <textarea
                     value={additionalContext}
                     onChange={(e) => setAdditionalContext(e.target.value)}
-                    placeholder="Cualquier información relevante: historia de la marca, restricciones, temporadas clave…"
+                    placeholder="Historia de la marca, restricciones, temporadas clave…"
                     rows={5}
                     className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
                   />

@@ -176,6 +176,15 @@ export function BrandBrainDetail({ brain: initialBrain, canEdit }: Props) {
                 </div>
               </div>
 
+              {/* Description */}
+              {brain.description && (
+                <div className="rounded-xl border border-border bg-card p-4">
+                  <Section title="Descripción">
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{brain.description}</p>
+                  </Section>
+                </div>
+              )}
+
               {/* Target audience */}
               {brain.target_audience && (
                 <div className="rounded-xl border border-border bg-card p-4">

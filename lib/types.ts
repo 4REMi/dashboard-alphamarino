@@ -620,6 +620,7 @@ export interface BrandBrain {
   language: string | null
   logo_url: string | null
   brand_colors: BrandBrainColor[]
+  description: string | null
   usps: string[]
   key_benefits: string[]
   pain_points: string[]
