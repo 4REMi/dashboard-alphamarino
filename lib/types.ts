@@ -619,6 +619,8 @@ export interface BrandBrain {
   industry: string | null
   language: string | null
   logo_url: string | null
+  logo_square_url: string | null
+  logo_horizontal_url: string | null
   brand_colors: BrandBrainColor[]
   description: string | null
   usps: string[]

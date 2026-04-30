@@ -3,7 +3,7 @@
 import { useState, useTransition, useRef, useEffect } from "react"
 import type { BrandBrain, BrandBrainColor } from "@/lib/types"
 import { createBrandBrain, updateBrandBrain } from "@/lib/actions/brand-brains"
-import { X, Plus, Trash2, Loader2, Upload, ChevronRight } from "lucide-react"
+import { X, Plus, Trash2, Loader2, Upload, ChevronRight, Image as ImageIcon } from "lucide-react"
 import { HexColorPicker } from "react-colorful"
 
 const INDUSTRIES = [
@@ -47,7 +47,6 @@ function ColorSwatch({
     return () => document.removeEventListener("mousedown", handleClick)
   }, [open])
 
-  // Ensure hex is valid for the picker
   const safeHex = /^#[0-9a-fA-F]{6}$/.test(color.hex) ? color.hex : "#000000"
 
   return (
@@ -82,15 +81,19 @@ function TagListInput({
   values,
   onChange,
   placeholder,
+  optional = true,
 }: {
   label: string
   values: string[]
   onChange: (v: string[]) => void
   placeholder?: string
+  optional?: boolean
 }) {
   return (
     <div>
-      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">{label}</p>
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+        {label}{optional && <span className="normal-case font-normal"> (opcional)</span>}
+      </p>
       <div className="space-y-2">
         {values.map((v, i) => (
           <div key={i} className="flex gap-2">
@@ -126,13 +129,77 @@ function TagListInput({
   )
 }
 
+// ── Logo upload slot ──────────────────────────────────────────
+
+function LogoSlot({
+  label,
+  hint,
+  preview,
+  aspect,
+  fileRef,
+  onFile,
+}: {
+  label: string
+  hint: string
+  preview: string | null
+  aspect: "square" | "wide"
+  fileRef: React.RefObject<HTMLInputElement | null>
+  onFile: (url: string) => void
+}) {
+  const previewClass = aspect === "square"
+    ? "w-16 h-16 rounded-xl"
+    : "w-28 h-14 rounded-xl"
+
+  return (
+    <div>
+      <p className="text-xs font-medium text-muted-foreground mb-2">{label}</p>
+      <div className="flex items-center gap-3">
+        <div className={`${previewClass} border-2 border-dashed border-border bg-muted flex items-center justify-center overflow-hidden flex-shrink-0`}>
+          {preview
+            // eslint-disable-next-line @next/next/no-img-element
+            ? <img src={preview} alt="" className="w-full h-full object-contain" />
+            : <ImageIcon className="w-4 h-4 text-muted-foreground" />
+          }
+        </div>
+        <div>
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            className="h-8 px-3 text-xs rounded-lg border border-border hover:bg-muted transition-colors flex items-center gap-1.5"
+          >
+            <Upload className="w-3 h-3" />
+            Subir
+          </button>
+          <p className="text-[11px] text-muted-foreground mt-1">{hint}</p>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) onFile(URL.createObjectURL(f))
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Main modal ────────────────────────────────────────────────
 
 export function BrandBrainModal({ brain, onClose, onSaved }: Props) {
   const [tab, setTab] = useState<Tab>("Datos básicos")
   const [isPending, startTransition] = useTransition()
-  const fileRef = useRef<HTMLInputElement>(null)
-  const [logoPreview, setLogoPreview] = useState<string | null>(brain?.logo_url ?? null)
+
+  // Logo refs / previews
+  const iconFileRef       = useRef<HTMLInputElement>(null)
+  const squareFileRef     = useRef<HTMLInputElement>(null)
+  const horizontalFileRef = useRef<HTMLInputElement>(null)
+  const [iconPreview,       setIconPreview]       = useState<string | null>(brain?.logo_url ?? null)
+  const [squarePreview,     setSquarePreview]     = useState<string | null>(brain?.logo_square_url ?? null)
+  const [horizontalPreview, setHorizontalPreview] = useState<string | null>(brain?.logo_horizontal_url ?? null)
 
   // Form state
   const [name, setName]               = useState(brain?.name ?? "")
@@ -146,7 +213,12 @@ export function BrandBrainModal({ brain, onClose, onSaved }: Props) {
   const [usps, setUsps]               = useState<string[]>(brain?.usps?.length ? brain.usps : [""])
   const [keyBenefits, setKeyBenefits] = useState<string[]>(brain?.key_benefits?.length ? brain.key_benefits : [""])
   const [painPoints, setPainPoints]   = useState<string[]>(brain?.pain_points?.length ? brain.pain_points : [""])
-  const [targetAudience, setTargetAudience] = useState(brain?.target_audience ?? "")
+  // target_audience stored as newline-joined text; split back into list
+  const [targetAudienceList, setTargetAudienceList] = useState<string[]>(
+    brain?.target_audience
+      ? brain.target_audience.split("\n").filter(Boolean)
+      : [""]
+  )
   const [keyFeatures, setKeyFeatures] = useState<string[]>(brain?.key_features?.length ? brain.key_features : [""])
   const [ctas, setCtas]               = useState<string[]>(brain?.ctas?.length ? brain.ctas : [""])
   const [toneOfVoice, setToneOfVoice] = useState(brain?.tone_of_voice ?? "")
@@ -158,15 +230,10 @@ export function BrandBrainModal({ brain, onClose, onSaved }: Props) {
   function clean(arr: string[]) { return arr.filter((s) => s.trim()) }
 
   function updateColor(i: number, hex: string) {
-    const next = [...colors]
-    next[i] = { ...next[i], hex }
-    setColors(next)
+    const next = [...colors]; next[i] = { ...next[i], hex }; setColors(next)
   }
-
   function updateColorLabel(i: number, label: string) {
-    const next = [...colors]
-    next[i] = { ...next[i], label }
-    setColors(next)
+    const next = [...colors]; next[i] = { ...next[i], label }; setColors(next)
   }
 
   function handleSubmit() {
@@ -182,21 +249,27 @@ export function BrandBrainModal({ brain, onClose, onSaved }: Props) {
       fd.set("usps", JSON.stringify(clean(usps)))
       fd.set("key_benefits", JSON.stringify(clean(keyBenefits)))
       fd.set("pain_points", JSON.stringify(clean(painPoints)))
-      fd.set("target_audience", targetAudience)
+      fd.set("target_audience", clean(targetAudienceList).join("\n"))
       fd.set("key_features", JSON.stringify(clean(keyFeatures)))
       fd.set("ctas", JSON.stringify(clean(ctas)))
       fd.set("tone_of_voice", toneOfVoice)
       fd.set("additional_context", additionalContext)
-      if (fileRef.current?.files?.[0]) fd.set("logo", fileRef.current.files[0])
+      if (iconFileRef.current?.files?.[0])       fd.set("logo",            iconFileRef.current.files[0])
+      if (squareFileRef.current?.files?.[0])     fd.set("logo_square",     squareFileRef.current.files[0])
+      if (horizontalFileRef.current?.files?.[0]) fd.set("logo_horizontal", horizontalFileRef.current.files[0])
 
       const result = brain
         ? await updateBrandBrain(brain.id, fd).then(() => ({
             ...brain, name, initials, industry, language, description,
             brand_colors: colors,
             usps: clean(usps), key_benefits: clean(keyBenefits),
-            pain_points: clean(painPoints), target_audience: targetAudience,
+            pain_points: clean(painPoints),
+            target_audience: clean(targetAudienceList).join("\n") || null,
             key_features: clean(keyFeatures), ctas: clean(ctas),
             tone_of_voice: toneOfVoice, additional_context: additionalContext,
+            logo_url:            iconFileRef.current?.files?.[0]       ? iconPreview       : brain.logo_url,
+            logo_square_url:     squareFileRef.current?.files?.[0]     ? squarePreview     : brain.logo_square_url,
+            logo_horizontal_url: horizontalFileRef.current?.files?.[0] ? horizontalPreview : brain.logo_horizontal_url,
           }))
         : await createBrandBrain(fd)
 
@@ -210,7 +283,7 @@ export function BrandBrainModal({ brain, onClose, onSaved }: Props) {
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-2xl max-h-[90vh] bg-card border border-border rounded-2xl shadow-2xl flex flex-col"
+        className="relative w-full max-w-3xl max-h-[90vh] bg-card border border-border rounded-2xl shadow-2xl flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -224,7 +297,7 @@ export function BrandBrainModal({ brain, onClose, onSaved }: Props) {
         {/* Body */}
         <div className="flex flex-1 min-h-0">
           {/* Left nav */}
-          <div className="w-44 flex-shrink-0 border-r border-border py-4 px-3 space-y-1">
+          <div className="w-48 flex-shrink-0 border-r border-border py-4 px-3 space-y-1">
             {TABS.map((t) => (
               <button
                 key={t}
@@ -246,37 +319,35 @@ export function BrandBrainModal({ brain, onClose, onSaved }: Props) {
             {/* ── Datos básicos ── */}
             {tab === "Datos básicos" && (
               <>
-                {/* Logo */}
+                {/* Dashboard icon (small avatar used in grid cards) */}
                 <div>
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                    Logo <span className="normal-case font-normal">(opcional)</span>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                    Ícono del dashboard <span className="normal-case font-normal">(opcional)</span>
                   </p>
+                  <p className="text-[11px] text-muted-foreground mb-2">Avatar cuadrado pequeño que aparece en la tarjeta del grid.</p>
                   <div className="flex items-center gap-4">
-                    <div className="w-16 h-16 rounded-xl border-2 border-dashed border-border bg-muted flex items-center justify-center overflow-hidden flex-shrink-0">
-                      {logoPreview
+                    <div className="w-14 h-14 rounded-xl border-2 border-dashed border-border bg-muted flex items-center justify-center overflow-hidden flex-shrink-0">
+                      {iconPreview
                         // eslint-disable-next-line @next/next/no-img-element
-                        ? <img src={logoPreview} alt="" className="w-full h-full object-cover" />
-                        : <Upload className="w-5 h-5 text-muted-foreground" />
+                        ? <img src={iconPreview} alt="" className="w-full h-full object-cover" />
+                        : <Upload className="w-4 h-4 text-muted-foreground" />
                       }
                     </div>
                     <div>
                       <button
                         type="button"
-                        onClick={() => fileRef.current?.click()}
+                        onClick={() => iconFileRef.current?.click()}
                         className="h-8 px-3 text-xs rounded-lg border border-border hover:bg-muted transition-colors"
                       >
                         Subir imagen
                       </button>
-                      <p className="text-[11px] text-muted-foreground mt-1">Cuadrada, mínimo 200×200px</p>
+                      <p className="text-[11px] text-muted-foreground mt-1">Cuadrada, mínimo 200×200 px</p>
                       <input
-                        ref={fileRef}
+                        ref={iconFileRef}
                         type="file"
                         accept="image/*"
                         className="hidden"
-                        onChange={(e) => {
-                          const f = e.target.files?.[0]
-                          if (f) setLogoPreview(URL.createObjectURL(f))
-                        }}
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) setIconPreview(URL.createObjectURL(f)) }}
                       />
                     </div>
                   </div>
@@ -345,6 +416,32 @@ export function BrandBrainModal({ brain, onClose, onSaved }: Props) {
                   />
                 </div>
 
+                {/* Brand logos */}
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                    Logos de marca <span className="normal-case font-normal">(opcional)</span>
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mb-3">Para usar en creativos y generación de anuncios.</p>
+                  <div className="grid grid-cols-2 gap-5">
+                    <LogoSlot
+                      label="Logo cuadrado"
+                      hint="Ratio 1:1"
+                      preview={squarePreview}
+                      aspect="square"
+                      fileRef={squareFileRef}
+                      onFile={setSquarePreview}
+                    />
+                    <LogoSlot
+                      label="Logo horizontal"
+                      hint="Formato wide"
+                      preview={horizontalPreview}
+                      aspect="wide"
+                      fileRef={horizontalFileRef}
+                      onFile={setHorizontalPreview}
+                    />
+                  </div>
+                </div>
+
                 {/* Brand colors */}
                 <div>
                   <div className="flex items-center justify-between mb-3">
@@ -360,10 +457,7 @@ export function BrandBrainModal({ brain, onClose, onSaved }: Props) {
                   <div className="space-y-3">
                     {colors.map((c, i) => (
                       <div key={i} className="flex items-center gap-2">
-                        <ColorSwatch
-                          color={c}
-                          onChange={(hex) => updateColor(i, hex)}
-                        />
+                        <ColorSwatch color={c} onChange={(hex) => updateColor(i, hex)} />
                         <input
                           value={c.hex}
                           onChange={(e) => updateColor(i, e.target.value)}
@@ -399,16 +493,12 @@ export function BrandBrainModal({ brain, onClose, onSaved }: Props) {
                 <TagListInput label="Unique Selling Points (USPs)" values={usps} onChange={setUsps} placeholder="ej. Piel real, no sintética" />
                 <TagListInput label="Key Benefits" values={keyBenefits} onChange={setKeyBenefits} placeholder="ej. Ahorra tiempo en el gym" />
                 <TagListInput label="Pain Points" values={painPoints} onChange={setPainPoints} placeholder="ej. Cinturones que se desbaratan" />
-                <div>
-                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Target Audience</label>
-                  <textarea
-                    value={targetAudience}
-                    onChange={(e) => setTargetAudience(e.target.value)}
-                    placeholder="ej. Hombres 18-35, aficionados al gym, interesados en anime"
-                    rows={3}
-                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
-                  />
-                </div>
+                <TagListInput
+                  label="Target Audience"
+                  values={targetAudienceList}
+                  onChange={setTargetAudienceList}
+                  placeholder="ej. Atletas y entusiastas del fitness"
+                />
                 <TagListInput label="Key Features" values={keyFeatures} onChange={setKeyFeatures} placeholder="ej. Bordados que no se despegan" />
                 <TagListInput label="CTAs y Ofertas" values={ctas} onChange={setCtas} placeholder="ej. Compra 2 y llévate 1 gratis" />
               </>

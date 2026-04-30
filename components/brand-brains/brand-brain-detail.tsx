@@ -185,11 +185,32 @@ export function BrandBrainDetail({ brain: initialBrain, canEdit }: Props) {
                 </div>
               )}
 
+              {/* Brand logos */}
+              {(brain.logo_square_url || brain.logo_horizontal_url) && (
+                <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Logos de marca</p>
+                  {brain.logo_square_url && (
+                    <div>
+                      <p className="text-[11px] text-muted-foreground mb-1.5">Cuadrado</p>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={brain.logo_square_url} alt="Logo cuadrado" className="w-16 h-16 rounded-lg object-contain border border-border bg-muted" />
+                    </div>
+                  )}
+                  {brain.logo_horizontal_url && (
+                    <div>
+                      <p className="text-[11px] text-muted-foreground mb-1.5">Horizontal</p>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={brain.logo_horizontal_url} alt="Logo horizontal" className="h-12 max-w-full rounded-lg object-contain border border-border bg-muted px-2" />
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Target audience */}
               {brain.target_audience && (
                 <div className="rounded-xl border border-border bg-card p-4">
                   <Section title="Target Audience">
-                    <p className="text-sm leading-relaxed">{brain.target_audience}</p>
+                    <TagList items={brain.target_audience.split("\n").filter(Boolean)} />
                   </Section>
                 </div>
               )}

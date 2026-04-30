@@ -37,6 +37,27 @@ export async function getBrandBrain(id: string): Promise<BrandBrain | null> {
   return { ...brainRes.data, assets: assetsRes.data ?? [] } as BrandBrain
 }
 
+// Upload a single logo file to Storage and return its public URL
+async function uploadLogo(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  brainId: string,
+  file: File,
+  filename: string,
+): Promise<string | null> {
+  const ext  = file.name.split(".").pop()
+  const path = `${brainId}/${filename}.${ext}`
+  const { error } = await supabase.storage.from("brand-brains").upload(path, file, { upsert: true })
+  if (error) return null
+  const { data: { publicUrl } } = supabase.storage.from("brand-brains").getPublicUrl(path)
+  return publicUrl
+}
+
+const LOGO_FIELDS = [
+  { field: "logo",            filename: "logo",            col: "logo_url"            },
+  { field: "logo_square",     filename: "logo_square",     col: "logo_square_url"     },
+  { field: "logo_horizontal", filename: "logo_horizontal", col: "logo_horizontal_url" },
+] as const
+
 export async function createBrandBrain(formData: FormData): Promise<BrandBrain> {
   const { supabase, user } = await assertAuth()
 
@@ -66,20 +87,15 @@ export async function createBrandBrain(formData: FormData): Promise<BrandBrain> 
 
   if (error) throw error
 
-  // Upload logo if provided
-  const logoFile = formData.get("logo") as File | null
-  if (logoFile && logoFile.size > 0) {
-    const ext = logoFile.name.split(".").pop()
-    const path = `${brain.id}/logo.${ext}`
-    const { error: uploadError } = await supabase.storage
-      .from("brand-brains")
-      .upload(path, logoFile, { upsert: true })
-
-    if (!uploadError) {
-      const { data: { publicUrl } } = supabase.storage.from("brand-brains").getPublicUrl(path)
-      await supabase.from("brand_brains").update({ logo_url: publicUrl }).eq("id", brain.id)
-      brain.logo_url = publicUrl
-    }
+  const logoUpdates: Record<string, string> = {}
+  for (const { field, filename, col } of LOGO_FIELDS) {
+    const file = formData.get(field) as File | null
+    if (!file || file.size === 0) continue
+    const url = await uploadLogo(supabase, brain.id, file, filename)
+    if (url) { logoUpdates[col] = url; (brain as Record<string, unknown>)[col] = url }
+  }
+  if (Object.keys(logoUpdates).length > 0) {
+    await supabase.from("brand_brains").update(logoUpdates).eq("id", brain.id)
   }
 
   revalidate()
@@ -113,19 +129,15 @@ export async function updateBrandBrain(id: string, formData: FormData): Promise<
 
   if (error) throw error
 
-  // Upload new logo if provided
-  const logoFile = formData.get("logo") as File | null
-  if (logoFile && logoFile.size > 0) {
-    const ext = logoFile.name.split(".").pop()
-    const path = `${id}/logo.${ext}`
-    const { error: uploadError } = await supabase.storage
-      .from("brand-brains")
-      .upload(path, logoFile, { upsert: true })
-
-    if (!uploadError) {
-      const { data: { publicUrl } } = supabase.storage.from("brand-brains").getPublicUrl(path)
-      await supabase.from("brand_brains").update({ logo_url: publicUrl }).eq("id", id)
-    }
+  const logoUpdates: Record<string, string> = {}
+  for (const { field, filename, col } of LOGO_FIELDS) {
+    const file = formData.get(field) as File | null
+    if (!file || file.size === 0) continue
+    const url = await uploadLogo(supabase, id, file, filename)
+    if (url) logoUpdates[col] = url
+  }
+  if (Object.keys(logoUpdates).length > 0) {
+    await supabase.from("brand_brains").update(logoUpdates).eq("id", id)
   }
 
   revalidate(id)
@@ -192,7 +204,6 @@ export async function deleteBrandBrainAsset(assetId: string, brandBrainId: strin
     .single()
 
   if (asset?.url) {
-    // Extract storage path from public URL
     const url = new URL(asset.url)
     const storagePath = url.pathname.split("/object/public/brand-brains/")[1]
     if (storagePath) {
