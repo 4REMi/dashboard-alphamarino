@@ -29,6 +29,9 @@ CREATE POLICY "auth_insert_clones" ON ad_clones
 CREATE POLICY "auth_update_clones" ON ad_clones
   FOR UPDATE USING (auth.uid() IS NOT NULL);
 
+CREATE POLICY "auth_delete_clones" ON ad_clones
+  FOR DELETE USING (auth.uid() IS NOT NULL);
+
 -- Updated_at trigger
 CREATE OR REPLACE FUNCTION update_ad_clones_updated_at()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
