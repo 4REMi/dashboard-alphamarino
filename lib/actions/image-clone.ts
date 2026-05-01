@@ -125,10 +125,11 @@ Devuelve ÚNICAMENTE un array JSON válido (sin markdown, sin texto extra) donde
   return JSON.parse(raw) as ImageCloneLine[]
 }
 
-function buildFalPrompt(
+function buildGenerationPrompt(
   adaptedLines: ImageCloneLine[],
   brain: BrainContext,
   brandColor: string | null,
+  additionalContext: string,
 ): string {
   const textElements = adaptedLines
     .map((l) => `${l.element}: "${l.adapted}"`)
@@ -136,19 +137,22 @@ function buildFalPrompt(
 
   const usps     = (brain.usps         ?? []).slice(0, 3).join(", ") || ""
   const benefits = (brain.key_benefits ?? []).slice(0, 3).join(", ") || ""
-
-  const colorNote = brandColor ? `Brand accent color: ${brandColor}.` : ""
+  const colorNote = brandColor ? `Brand color palette — use as primary accent color: ${brandColor}.` : ""
+  const contextNote = additionalContext.trim() ? `\nAdditional instructions: ${additionalContext.trim()}` : ""
 
   return `Professional advertisement for ${brain.name}${brain.industry ? `, ${brain.industry} brand` : ""}.
+
+Recreate this ad adapting it to the following brand guidelines. Keep the general layout and composition but replace the visual identity.
 
 Ad copy to feature in the image:
 ${textElements}
 
 ${usps ? `Key differentiators: ${usps}.` : ""}
-${benefits ? `Benefits highlighted: ${benefits}.` : ""}
+${benefits ? `Benefits to highlight: ${benefits}.` : ""}
 ${colorNote}
+${contextNote}
 
-High-quality commercial advertising photography. Clean, modern layout. The product from the reference image is the hero of the composition. Integrate the ad copy naturally into the design. Professional studio lighting. No text artifacts or distorted fonts.`
+High-quality commercial advertising. Clean, modern layout. Integrate the ad copy naturally. No distorted or artifacted text.`
 }
 
 // ── Public actions ────────────────────────────────────────────
@@ -314,30 +318,34 @@ export async function updateImageAdaptedLines(
 export async function generateImages(
   cloneId: string,
   config: {
-    adaptedLines:   ImageCloneLine[]
-    brandColor:     string | null
-    aspectRatio:    string
-    numImages:      number
+    adaptedLines:      ImageCloneLine[]
+    brandColor:        string | null
+    aspectRatio:       string
+    numImages:         number
+    additionalContext: string
   },
 ): Promise<void> {
   const { supabase } = await assertAuth()
 
   const { data: clone, error } = await supabase
     .from("image_clones")
-    .select("*, brand_brain:brand_brains(id, name, industry, tone_of_voice, usps, key_benefits, pain_points, target_audience, ctas)")
+    .select("*, brand_brain:brand_brains(id, name, industry, tone_of_voice, usps, key_benefits, pain_points, target_audience, ctas), saved_ad:saved_ads(cached_image_url, image_url)")
     .eq("id", cloneId)
     .single()
   if (error) throw error
 
+  // User-uploaded product images take priority; otherwise use the original ad as reference
   const referenceUrls: string[] = clone.reference_image_urls ?? []
-  const imageUrl = referenceUrls[0] ?? null
-  if (!imageUrl) throw new Error("No hay imágenes de referencia. Sube al menos una imagen del producto.")
+  const savedAd = clone.saved_ad as { cached_image_url: string | null; image_url: string | null } | null
+  const imageUrl = referenceUrls[0] ?? savedAd?.cached_image_url ?? savedAd?.image_url ?? null
+  if (!imageUrl) throw new Error("No se encontró imagen de referencia para la generación.")
 
   const brain = clone.brand_brain as BrainContext | null
-  const prompt = buildFalPrompt(
+  const prompt = buildGenerationPrompt(
     config.adaptedLines,
     brain ?? { name: "Marca", industry: null, tone_of_voice: null, usps: [], key_benefits: [], pain_points: [], target_audience: null, ctas: [] },
     config.brandColor,
+    config.additionalContext,
   )
 
   await supabase
