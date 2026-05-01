@@ -53,10 +53,14 @@ export function Sidebar({ profile, logoUrl, mobileOpen = false, onMobileClose }:
     { href: "/finances/domains", icon: Globe, label: t("domains"), permission: "view_global_finances" as const },
     { href: "/employees", icon: UserCircle, label: t("team") },
     { href: "/sops", icon: BookOpen, label: "SOPs" },
-    { href: "/my-lab", icon: Lightbulb, label: "Mi Lab" },
     { href: "/ad-lab", icon: Tv2, label: "Ad Lab", permission: "access_ad_lab" as const },
     { href: "/brand-brains", icon: Brain, label: "Brand Brains", permission: "access_brand_brains" as const },
-    { href: "/operations", icon: FlaskConical, label: t("operationsLab"), adminOnly: true },
+    {
+      href: "/operations", icon: FlaskConical, label: t("operationsLab"), adminOnly: true,
+      children: [
+        { href: "/my-lab", icon: Lightbulb, label: "Mi Lab" },
+      ],
+    },
     { href: "/settings", icon: Settings, label: t("settings"), adminOnly: true },
   ]
 
@@ -121,22 +125,43 @@ export function Sidebar({ profile, logoUrl, mobileOpen = false, onMobileClose }:
           const isActive = item.href === "/"
             ? pathname === "/"
             : pathname.startsWith(item.href)
+          const children = (item as any).children as { href: string; icon: React.ElementType; label: string }[] | undefined
 
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={onMobileClose}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-                isActive
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
-              )}
-            >
-              <item.icon className="w-5 h-5 flex-shrink-0" />
-              {!collapsed && <span>{item.label}</span>}
-            </Link>
+            <div key={item.href}>
+              <Link
+                href={item.href}
+                onClick={onMobileClose}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+                  isActive
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+                )}
+              >
+                <item.icon className="w-5 h-5 flex-shrink-0" />
+                {!collapsed && <span>{item.label}</span>}
+              </Link>
+              {!collapsed && children?.map((child) => {
+                const childActive = pathname.startsWith(child.href)
+                return (
+                  <Link
+                    key={child.href}
+                    href={child.href}
+                    onClick={onMobileClose}
+                    className={cn(
+                      "flex items-center gap-3 pl-9 pr-3 py-1.5 rounded-lg text-sm font-medium transition-colors mt-0.5",
+                      childActive
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+                    )}
+                  >
+                    <child.icon className="w-4 h-4 flex-shrink-0" />
+                    <span>{child.label}</span>
+                  </Link>
+                )
+              })}
+            </div>
           )
         })}
       </nav>
