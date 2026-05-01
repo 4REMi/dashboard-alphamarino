@@ -1,11 +1,12 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import type { MetaAdResult, AdBoard } from "@/lib/types"
+import type { MetaAdResult, AdBoard, AdClone } from "@/lib/types"
 import { saveAd, addAdToBoard } from "@/lib/actions/ad-lab"
+import { getAdClones } from "@/lib/actions/ad-clone"
 import {
   X, ExternalLink, Bookmark, Check, Loader2,
-  Calendar, Wand2, ChevronLeft, ChevronRight,
+  Calendar, Wand2, ChevronLeft, ChevronRight, Link as LinkIcon, Plus,
 } from "lucide-react"
 import { SiFacebook, SiInstagram, SiMessenger, SiMeta, SiThreads } from "@icons-pack/react-simple-icons"
 import { CloneModal } from "@/components/ad-lab/clone-modal"
@@ -13,6 +14,7 @@ import { CloneModal } from "@/components/ad-lab/clone-modal"
 interface Props {
   ad: MetaAdResult | null
   boards: AdBoard[]
+  savedAdId?: string
   onClose: () => void
 }
 
@@ -58,12 +60,14 @@ function brandColor(name: string): string {
   return colors[Math.abs(hash) % colors.length]
 }
 
-export function AdDetailModal({ ad, boards, onClose }: Props) {
+export function AdDetailModal({ ad, boards, onClose, savedAdId }: Props) {
   const [cardIndex, setCardIndex] = useState(0)
   const [showBoardPicker, setShowBoardPicker] = useState(false)
   const [savedBoards, setSavedBoards] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState(false)
   const [showClone, setShowClone] = useState(false)
+  const [clones, setClones] = useState<AdClone[] | null>(null)
+  const [loadingClones, setLoadingClones] = useState(false)
 
   // Reset card index when ad changes
   useEffect(() => { setCardIndex(0); setSavedBoards(new Set()) }, [ad?.ad_archive_id])
@@ -80,6 +84,16 @@ export function AdDetailModal({ ad, boards, onClose }: Props) {
     document.body.style.overflow = "hidden"
     return () => { document.body.style.overflow = "" }
   }, [])
+
+  // Fetch existing clones when savedAdId is known
+  useEffect(() => {
+    if (!savedAdId) return
+    setLoadingClones(true)
+    getAdClones(savedAdId).then((c) => {
+      setClones(c)
+      setLoadingClones(false)
+    })
+  }, [savedAdId])
 
   if (!ad) return null
 
@@ -145,7 +159,19 @@ export function AdDetailModal({ ad, boards, onClose }: Props) {
   }
 
   if (showClone) {
-    return <CloneModal ad={ad} onClose={() => setShowClone(false)} />
+    return (
+      <CloneModal
+        ad={ad}
+        onClose={() => {
+          setShowClone(false)
+          // Refresh clones list after returning from CloneModal
+          if (savedAdId) {
+            setLoadingClones(true)
+            getAdClones(savedAdId).then((c) => { setClones(c); setLoadingClones(false) })
+          }
+        }}
+      />
+    )
   }
 
   return (
@@ -376,15 +402,57 @@ export function AdDetailModal({ ad, boards, onClose }: Props) {
               )}
             </div>
 
-            {/* Clone */}
-            <button
-              title="Clonar anuncio con IA"
-              onClick={() => setShowClone(true)}
-              className="h-9 px-4 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted flex items-center gap-2 transition-colors"
-            >
-              <Wand2 className="w-4 h-4" />
-              Clonar
-            </button>
+            {/* Adaptations hub */}
+            {loadingClones ? (
+              <div className="h-9 px-4 flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span className="text-sm">Cargando…</span>
+              </div>
+            ) : clones && clones.length > 0 ? (
+              <div className="rounded-xl border border-border overflow-hidden min-w-[220px]">
+                <div className="flex items-center justify-between px-3 py-2 bg-muted/50 border-b border-border">
+                  <div className="flex items-center gap-1.5">
+                    <Wand2 className="w-3.5 h-3.5 text-primary" />
+                    <span className="text-xs font-semibold">Adaptaciones ({clones.length})</span>
+                  </div>
+                  <button
+                    onClick={() => setShowClone(true)}
+                    className="flex items-center gap-1 text-[11px] font-medium text-primary hover:text-primary/80 transition-colors"
+                  >
+                    <Plus className="w-3 h-3" />
+                    Nueva
+                  </button>
+                </div>
+                {clones.map((clone) => (
+                  <div key={clone.id} className="flex items-center gap-2 px-3 py-2 border-b border-border/50 last:border-0 hover:bg-muted/30 transition-colors">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium truncate">{clone.brand_brain?.name ?? "—"}</p>
+                      <p className="text-[10px] text-muted-foreground font-mono">
+                        {new Date(clone.created_at).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}
+                      </p>
+                    </div>
+                    <a
+                      href={`/share/clone/${clone.share_token}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-[11px] font-medium text-primary hover:text-primary/80 transition-colors flex-shrink-0"
+                    >
+                      <LinkIcon className="w-3 h-3" />
+                      Ver
+                    </a>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <button
+                title="Clonar anuncio con IA"
+                onClick={() => setShowClone(true)}
+                className="h-9 px-4 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted flex items-center gap-2 transition-colors"
+              >
+                <Wand2 className="w-4 h-4" />
+                Clonar
+              </button>
+            )}
 
             {/* View in Ad Library */}
             {ad.ad_library_url && (

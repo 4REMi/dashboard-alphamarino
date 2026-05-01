@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react"
 import type { SavedAd, AdBoard, MetaAdResult } from "@/lib/types"
 import { removeAdFromBoard, deleteSavedAd } from "@/lib/actions/ad-lab"
-import { ArrowLeft, FolderOpen, Trash2, ExternalLink, MoreHorizontal, Loader2, Play } from "lucide-react"
+import { ArrowLeft, FolderOpen, Trash2, ExternalLink, MoreHorizontal, Loader2, Play, Wand2 } from "lucide-react"
 import { SiFacebook, SiInstagram, SiMessenger, SiMeta, SiThreads } from "@icons-pack/react-simple-icons"
 import { AdDetailModal } from "@/components/ad-lab/ad-detail-modal"
 import Link from "next/link"
@@ -12,6 +12,7 @@ interface Props {
   board: AdBoard
   initialAds: SavedAd[]
   boards: AdBoard[]
+  initialCloneCounts?: Record<string, number>
 }
 
 /**
@@ -106,11 +107,13 @@ function PlatformIcon({ platform }: { platform: string }) {
   return <span className="text-[7px] font-bold text-white">{platform.slice(0, 2).toUpperCase()}</span>
 }
 
-export function BoardDetail({ board, initialAds, boards }: Props) {
-  const [ads, setAds]           = useState(initialAds)
-  const [menuId, setMenuId]     = useState<string | null>(null)
-  const [detailAd, setDetailAd] = useState<MetaAdResult | null>(null)
-  const [isPending, startTransition] = useTransition()
+export function BoardDetail({ board, initialAds, boards, initialCloneCounts = {} }: Props) {
+  const [ads, setAds]                   = useState(initialAds)
+  const [menuId, setMenuId]             = useState<string | null>(null)
+  const [detailAd, setDetailAd]         = useState<MetaAdResult | null>(null)
+  const [detailSavedAdId, setDetailSavedAdId] = useState<string | undefined>(undefined)
+  const [cloneCounts, setCloneCounts]   = useState<Record<string, number>>(initialCloneCounts)
+  const [isPending, startTransition]    = useTransition()
 
   function handleRemove(ad: SavedAd) {
     startTransition(async () => {
@@ -133,7 +136,8 @@ export function BoardDetail({ board, initialAds, boards }: Props) {
         <AdDetailModal
           ad={detailAd}
           boards={boards}
-          onClose={() => setDetailAd(null)}
+          savedAdId={detailSavedAdId}
+          onClose={() => { setDetailAd(null); setDetailSavedAdId(undefined) }}
         />
       )}
     <div className="flex flex-col h-full min-h-0">
@@ -200,7 +204,7 @@ export function BoardDetail({ board, initialAds, boards }: Props) {
                     {/* ── Thumbnail ── */}
                     <div
                       className="relative aspect-[4/5] bg-muted overflow-hidden cursor-pointer"
-                      onClick={() => setDetailAd(savedAdToResult(ad))}
+                      onClick={() => { setDetailAd(savedAdToResult(ad)); setDetailSavedAdId(ad.id) }}
                     >
                       {thumbUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
@@ -227,13 +231,19 @@ export function BoardDetail({ board, initialAds, boards }: Props) {
                       )}
 
                       {/* Status badge */}
-                      <div className="absolute top-2 left-2 z-20">
+                      <div className="absolute top-2 left-2 z-20 flex flex-col gap-1">
                         <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white/90 ${
                           isActive ? "text-emerald-700" : "text-slate-500"
                         }`}>
                           <span className={`w-1.5 h-1.5 rounded-full ${isActive ? "bg-emerald-500" : "bg-slate-400"}`} />
                           {isActive ? "Activo" : "Inactivo"}
                         </span>
+                        {(cloneCounts[ad.id] ?? 0) > 0 && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/90 text-primary-foreground">
+                            <Wand2 className="w-2.5 h-2.5" />
+                            {cloneCounts[ad.id]} adaptación{cloneCounts[ad.id] !== 1 ? "es" : ""}
+                          </span>
+                        )}
                       </div>
 
                       {/* Platform icons */}

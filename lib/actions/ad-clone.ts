@@ -284,6 +284,40 @@ export async function updateAdaptedLines(cloneId: string, adaptedLines: AdCloneL
 }
 
 /**
+ * Returns all ready clones for a given saved ad, with brand brain name.
+ */
+export async function getAdClones(savedAdId: string): Promise<AdClone[]> {
+  const { supabase } = await assertAuth()
+  const { data } = await supabase
+    .from("ad_clones")
+    .select("*, brand_brain:brand_brains(id, name)")
+    .eq("saved_ad_id", savedAdId)
+    .eq("status", "ready")
+    .order("created_at", { ascending: false })
+  return (data ?? []) as AdClone[]
+}
+
+/**
+ * Returns a map of savedAdId → ready clone count for a batch of ad IDs.
+ */
+export async function getAdCloneCountsByAdIds(
+  savedAdIds: string[]
+): Promise<Record<string, number>> {
+  const { supabase } = await assertAuth()
+  if (savedAdIds.length === 0) return {}
+  const { data } = await supabase
+    .from("ad_clones")
+    .select("saved_ad_id")
+    .in("saved_ad_id", savedAdIds)
+    .eq("status", "ready")
+  const counts: Record<string, number> = {}
+  for (const row of (data ?? [])) {
+    counts[row.saved_ad_id] = (counts[row.saved_ad_id] ?? 0) + 1
+  }
+  return counts
+}
+
+/**
  * Fetches a clone by share token — no auth required (uses admin client).
  */
 export async function getAdCloneByToken(token: string): Promise<AdClone | null> {

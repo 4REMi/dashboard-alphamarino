@@ -3,6 +3,7 @@ import { redirect, notFound } from "next/navigation"
 import { can } from "@/lib/permissions"
 import type { Profile } from "@/lib/types"
 import { getBoards, getBoardAds } from "@/lib/actions/ad-lab"
+import { getAdCloneCountsByAdIds } from "@/lib/actions/ad-clone"
 import { BoardDetail } from "@/components/ad-lab/board-detail"
 
 interface PageProps {
@@ -33,9 +34,11 @@ export default async function BoardDetailPage({ params }: PageProps) {
   const board = boards.find((b) => b.id === id)
   if (!board) notFound()
 
+  const cloneCounts = await getAdCloneCountsByAdIds(ads.map((a) => a.id))
+
   return (
     <div className="flex flex-col h-full">
-      <BoardDetail board={board} initialAds={ads} boards={boards} />
+      <BoardDetail board={board} initialAds={ads} boards={boards} initialCloneCounts={cloneCounts} />
     </div>
   )
 }
