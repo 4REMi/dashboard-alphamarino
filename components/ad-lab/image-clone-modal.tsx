@@ -1,0 +1,591 @@
+"use client"
+
+import { useCallback, useEffect, useRef, useState, useTransition } from "react"
+import type { BrandBrain, ImageCloneLine, MetaAdResult } from "@/lib/types"
+import {
+  startImageClone,
+  uploadReferenceImages,
+  generateImages,
+  pollImageGeneration,
+  updateImageAdaptedLines,
+} from "@/lib/actions/image-clone"
+import { getBrandBrains } from "@/lib/actions/brand-brains"
+import {
+  X, ImageIcon, Loader2, Check, ChevronRight, ChevronLeft,
+  AlertCircle, Upload, Trash2, Link as LinkIcon, Copy,
+} from "lucide-react"
+
+interface Props {
+  ad: MetaAdResult
+  onClose: () => void
+}
+
+type Step = 1 | 2 | 3
+
+const ASPECT_RATIOS = ["1:1", "9:16", "16:9", "4:5"] as const
+const RATIO_LABELS: Record<string, string> = {
+  "1:1":  "Cuadrado",
+  "9:16": "Vertical (Stories)",
+  "16:9": "Horizontal",
+  "4:5":  "Portrait",
+}
+
+export function ImageCloneModal({ ad, onClose }: Props) {
+  const [step, setStep]                         = useState<Step>(1)
+  const [brains, setBrains]                     = useState<Pick<BrandBrain, "id" | "name">[]>([])
+  const [selectedBrainId, setSelectedBrainId]   = useState("")
+  const [cloneId, setCloneId]                   = useState<string | null>(null)
+  const [shareToken, setShareToken]             = useState<string | null>(null)
+  const [adaptedLines, setAdaptedLines]         = useState<ImageCloneLine[]>([])
+  const [error, setError]                       = useState<string | null>(null)
+
+  // Generation state
+  const [refFiles, setRefFiles]                 = useState<File[]>([])
+  const [brandColor, setBrandColor]             = useState("#000000")
+  const [aspectRatio, setAspectRatio]           = useState<string>("1:1")
+  const [numImages, setNumImages]               = useState(2)
+  const [isGenerating, setIsGenerating]         = useState(false)
+  const [generatedUrls, setGeneratedUrls]       = useState<string[]>([])
+  const [copied, setCopied]                     = useState(false)
+
+  const [isPending, startTransition]            = useTransition()
+  const [isSaving, setIsSaving]                 = useState(false)
+  const fileInputRef                            = useRef<HTMLInputElement>(null)
+  const pollingRef                              = useRef<NodeJS.Timeout | null>(null)
+
+  const card     = ad.snapshot?.cards?.[0]
+  const imageUrl = card?.resized_image_url ?? card?.original_image_url ?? null
+
+  useEffect(() => {
+    getBrandBrains().then((all) =>
+      setBrains(all.map((b) => ({ id: b.id, name: b.name })))
+    )
+  }, [])
+
+  // Cleanup polling on unmount
+  useEffect(() => () => { if (pollingRef.current) clearInterval(pollingRef.current) }, [])
+
+  function handleStart() {
+    if (!selectedBrainId) return
+    startTransition(async () => {
+      try {
+        const result = await startImageClone(ad, selectedBrainId)
+        setCloneId(result.cloneId)
+        setShareToken(result.shareToken)
+        if (result.lines.length > 0) {
+          setAdaptedLines(result.lines)
+          setStep(2)
+        } else {
+          setError("No se encontró texto en el anuncio, o ocurrió un error.")
+        }
+      } catch (err) {
+        setError(String(err))
+      }
+    })
+  }
+
+  async function handleSaveEdits() {
+    if (!cloneId) return
+    setIsSaving(true)
+    try {
+      await updateImageAdaptedLines(cloneId, adaptedLines)
+      setStep(3)
+    } catch (err) {
+      setError(String(err))
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleFilePick = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const picked = Array.from(e.target.files ?? []).slice(0, 10)
+    setRefFiles((prev) => {
+      const combined = [...prev, ...picked]
+      return combined.slice(0, 10)
+    })
+    if (fileInputRef.current) fileInputRef.current.value = ""
+  }, [])
+
+  const removeFile = useCallback((idx: number) => {
+    setRefFiles((prev) => prev.filter((_, i) => i !== idx))
+  }, [])
+
+  async function handleGenerate() {
+    if (!cloneId || refFiles.length === 0) return
+    setIsGenerating(true)
+    setError(null)
+    try {
+      // 1. Upload reference images
+      const fd = new FormData()
+      refFiles.forEach((f) => fd.append("files", f))
+      await uploadReferenceImages(cloneId, fd)
+
+      // 2. Submit generation job
+      await generateImages(cloneId, {
+        adaptedLines,
+        brandColor,
+        aspectRatio,
+        numImages,
+      })
+
+      // 3. Poll for result
+      pollingRef.current = setInterval(async () => {
+        if (!cloneId) return
+        try {
+          const result = await pollImageGeneration(cloneId)
+          if (result.status === "done") {
+            clearInterval(pollingRef.current!)
+            setGeneratedUrls(result.generated_image_urls ?? [])
+            setIsGenerating(false)
+          } else if (result.status === "error") {
+            clearInterval(pollingRef.current!)
+            setError(result.error_message ?? "Error en la generación")
+            setIsGenerating(false)
+          }
+        } catch {
+          // network hiccup, keep polling
+        }
+      }, 5000)
+    } catch (err) {
+      setError(String(err))
+      setIsGenerating(false)
+    }
+  }
+
+  function copyLink() {
+    if (!shareToken) return
+    const url = `${window.location.origin}/share/image-clone/${shareToken}`
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2500)
+    })
+  }
+
+  const shareUrl = shareToken
+    ? `${typeof window !== "undefined" ? window.location.origin : ""}/share/image-clone/${shareToken}`
+    : ""
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+
+      <div className="relative w-full max-w-4xl bg-background rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-violet-500/10 flex items-center justify-center">
+              <ImageIcon className="w-4 h-4 text-violet-600" />
+            </div>
+            <div>
+              <h2 className="text-base font-semibold">Clonar imagen</h2>
+              <p className="text-xs text-muted-foreground">{ad.page_name}</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 mx-auto">
+            {([1, 2, 3] as Step[]).map((s) => (
+              <div key={s} className="flex items-center gap-1.5">
+                <div className={`w-6 h-6 rounded-full text-[11px] font-bold flex items-center justify-center transition-colors ${
+                  step === s
+                    ? "bg-violet-600 text-white"
+                    : step > s
+                    ? "bg-violet-200 text-violet-700"
+                    : "bg-muted text-muted-foreground"
+                }`}>
+                  {step > s ? <Check className="w-3 h-3" /> : s}
+                </div>
+                {s < 3 && <div className={`w-8 h-px transition-colors ${step > s ? "bg-violet-300" : "bg-border"}`} />}
+              </div>
+            ))}
+          </div>
+
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* ── Step 1: Brand Brain selector ── */}
+        {step === 1 && (
+          <div className="flex flex-1 min-h-0 overflow-hidden">
+            {/* Image preview */}
+            <div className="w-56 flex-shrink-0 bg-black flex items-center justify-center p-4">
+              {imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={imageUrl}
+                  alt="Ad preview"
+                  className="w-full rounded-xl object-contain max-h-80"
+                />
+              ) : (
+                <div className="w-full aspect-square bg-muted rounded-xl flex items-center justify-center">
+                  <ImageIcon className="w-10 h-10 text-muted-foreground/30" />
+                </div>
+              )}
+            </div>
+
+            {/* Brand brain selector */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              <div>
+                <p className="text-sm font-medium mb-1">Selecciona un Brand Brain</p>
+                <p className="text-xs text-muted-foreground">
+                  Claude analizará el anuncio con visión artificial y adaptará el copy a la marca.
+                </p>
+              </div>
+
+              {brains.length === 0 ? (
+                <div className="flex items-center justify-center py-10">
+                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  {brains.map((b) => (
+                    <button
+                      key={b.id}
+                      onClick={() => setSelectedBrainId(b.id)}
+                      className={`p-3 rounded-xl border text-left transition-all ${
+                        selectedBrainId === b.id
+                          ? "border-violet-500 bg-violet-50 ring-1 ring-violet-400"
+                          : "border-border hover:border-violet-300 bg-card hover:bg-violet-50/40"
+                      }`}
+                    >
+                      <p className="text-sm font-semibold">{b.name}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {error && (
+                <div className="flex items-center gap-2 text-destructive bg-destructive/10 rounded-lg px-3 py-2 text-sm">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  {error}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Step 2: Adapted text editor ── */}
+        {step === 2 && (
+          <div className="flex-1 overflow-y-auto p-6 space-y-3">
+            <div className="mb-4">
+              <p className="text-sm font-medium">Texto extraído y adaptado</p>
+              <p className="text-xs text-muted-foreground">
+                Edita las adaptaciones antes de generar las imágenes.
+              </p>
+            </div>
+
+            {adaptedLines.map((line, i) => (
+              <div key={i} className="rounded-xl border border-border bg-card overflow-hidden">
+                <div className="flex items-center gap-2 px-4 py-2 bg-muted/50 border-b border-border">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-violet-600">
+                    {line.element}
+                  </span>
+                </div>
+                <div className="grid sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-border">
+                  <div className="px-4 py-3">
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
+                      Original
+                    </p>
+                    <p className="text-sm text-muted-foreground">{line.original}</p>
+                  </div>
+                  <div className="px-4 py-3 bg-violet-50/40">
+                    <p className="text-[10px] font-semibold text-violet-600 uppercase tracking-wider mb-1.5">
+                      Adaptación
+                    </p>
+                    <textarea
+                      value={line.adapted}
+                      onChange={(e) => {
+                        const next = [...adaptedLines]
+                        next[i] = { ...next[i], adapted: e.target.value }
+                        setAdaptedLines(next)
+                      }}
+                      rows={2}
+                      className="w-full text-sm bg-transparent resize-none outline-none focus:ring-0 font-medium leading-relaxed"
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {adaptedLines.length === 0 && (
+              <div className="py-16 text-center text-muted-foreground">
+                <p className="text-sm">No se encontró texto en este anuncio.</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Step 3: Generation config + results ── */}
+        {step === 3 && (
+          <div className="flex-1 overflow-y-auto p-6 space-y-5">
+            {generatedUrls.length === 0 ? (
+              <>
+                <div>
+                  <p className="text-sm font-medium mb-0.5">Configura la generación</p>
+                  <p className="text-xs text-muted-foreground">
+                    Sube imágenes del producto y elige el estilo de salida.
+                  </p>
+                </div>
+
+                {/* Image upload */}
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                    Imágenes de referencia del producto
+                  </p>
+                  <div
+                    className="border-2 border-dashed border-border rounded-xl p-5 text-center cursor-pointer hover:border-violet-400 transition-colors"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Upload className="w-6 h-6 mx-auto text-muted-foreground mb-2" />
+                    <p className="text-sm text-muted-foreground">
+                      Haz clic para subir imágenes del producto
+                    </p>
+                    <p className="text-xs text-muted-foreground/60 mt-1">
+                      Hasta 10 imágenes · JPG, PNG, WebP
+                    </p>
+                  </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={handleFilePick}
+                  />
+
+                  {refFiles.length > 0 && (
+                    <div className="grid grid-cols-5 gap-2 mt-3">
+                      {refFiles.map((file, i) => (
+                        <div key={i} className="relative group aspect-square rounded-lg overflow-hidden border border-border bg-muted">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={URL.createObjectURL(file)}
+                            alt={file.name}
+                            className="w-full h-full object-cover"
+                          />
+                          <button
+                            onClick={() => removeFile(i)}
+                            className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
+                          >
+                            <Trash2 className="w-4 h-4 text-white" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Config grid */}
+                <div className="grid sm:grid-cols-3 gap-4">
+                  {/* Brand color */}
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-2">
+                      Color de marca
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={brandColor}
+                        onChange={(e) => setBrandColor(e.target.value)}
+                        className="w-9 h-9 rounded-lg border border-border cursor-pointer p-0.5"
+                      />
+                      <input
+                        type="text"
+                        value={brandColor}
+                        onChange={(e) => setBrandColor(e.target.value)}
+                        className="flex-1 h-9 px-3 rounded-lg border border-border text-sm font-mono bg-background"
+                        placeholder="#000000"
+                        maxLength={7}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Aspect ratio */}
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-2">
+                      Relación de aspecto
+                    </label>
+                    <select
+                      value={aspectRatio}
+                      onChange={(e) => setAspectRatio(e.target.value)}
+                      className="w-full h-9 px-3 rounded-lg border border-border text-sm bg-background"
+                    >
+                      {ASPECT_RATIOS.map((r) => (
+                        <option key={r} value={r}>
+                          {r} — {RATIO_LABELS[r]}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Num images */}
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-2">
+                      Cantidad de imágenes
+                    </label>
+                    <div className="flex gap-2">
+                      {[1, 2, 3, 4].map((n) => (
+                        <button
+                          key={n}
+                          onClick={() => setNumImages(n)}
+                          className={`flex-1 h-9 rounded-lg border text-sm font-medium transition-colors ${
+                            numImages === n
+                              ? "bg-violet-600 border-violet-600 text-white"
+                              : "border-border hover:border-violet-400"
+                          }`}
+                        >
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {error && (
+                  <div className="flex items-center gap-2 text-destructive bg-destructive/10 rounded-lg px-3 py-2 text-sm">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                    {error}
+                  </div>
+                )}
+
+                {isGenerating && (
+                  <div className="flex items-center gap-3 bg-violet-50 rounded-xl px-4 py-3 text-sm text-violet-700">
+                    <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />
+                    Generando imágenes con Flux Kontext… puede tomar 30–90 s.
+                  </div>
+                )}
+              </>
+            ) : (
+              /* Generated image results */
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-emerald-700">¡Imágenes generadas!</p>
+                    <p className="text-xs text-muted-foreground">
+                      {generatedUrls.length} imagen{generatedUrls.length > 1 ? "es" : ""} lista{generatedUrls.length > 1 ? "s" : ""}
+                    </p>
+                  </div>
+                  <button
+                    onClick={copyLink}
+                    className="inline-flex items-center gap-2 h-8 px-3 rounded-lg border border-border bg-card text-xs font-medium hover:bg-muted transition-colors"
+                  >
+                    {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <LinkIcon className="w-3.5 h-3.5" />}
+                    {copied ? "Copiado" : "Copiar enlace"}
+                  </button>
+                </div>
+
+                <div className={`grid gap-3 ${generatedUrls.length > 1 ? "grid-cols-2" : "grid-cols-1"}`}>
+                  {generatedUrls.map((url, i) => (
+                    <div key={i} className="rounded-xl overflow-hidden border border-border bg-muted">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={url} alt={`Generated ${i + 1}`} className="w-full object-cover" />
+                      <div className="flex items-center justify-between px-3 py-2 bg-card border-t border-border">
+                        <span className="text-xs text-muted-foreground">Opción {i + 1}</span>
+                        <a
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          download
+                          className="text-xs text-primary hover:underline font-medium"
+                        >
+                          Descargar
+                        </a>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {shareUrl && (
+                  <div className="mt-2 flex items-center gap-2 bg-muted rounded-xl px-4 py-3">
+                    <LinkIcon className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                    <a
+                      href={shareUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-primary truncate hover:underline flex-1"
+                    >
+                      {shareUrl}
+                    </a>
+                    <button
+                      onClick={copyLink}
+                      className="flex-shrink-0 p-1.5 rounded-lg hover:bg-background transition-colors"
+                    >
+                      {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5 text-muted-foreground" />}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="flex items-center justify-between px-6 py-4 border-t border-border flex-shrink-0">
+          {step > 1 && generatedUrls.length === 0 ? (
+            <button
+              onClick={() => { setStep((s) => (s > 1 ? (s - 1) as Step : s)); setError(null) }}
+              className="inline-flex items-center gap-1.5 h-9 px-4 rounded-xl border border-border text-sm font-medium hover:bg-muted transition-colors"
+              disabled={isPending || isSaving || isGenerating}
+            >
+              <ChevronLeft className="w-4 h-4" />
+              Atrás
+            </button>
+          ) : (
+            <div />
+          )}
+
+          {step === 1 && (
+            <button
+              onClick={handleStart}
+              disabled={!selectedBrainId || isPending}
+              className="inline-flex items-center gap-2 h-9 px-5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 disabled:opacity-50 transition-colors"
+            >
+              {isPending ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Analizando…</>
+              ) : (
+                <><ImageIcon className="w-4 h-4" /> Analizar anuncio <ChevronRight className="w-4 h-4" /></>
+              )}
+            </button>
+          )}
+
+          {step === 2 && (
+            <button
+              onClick={handleSaveEdits}
+              disabled={isSaving}
+              className="inline-flex items-center gap-2 h-9 px-5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 disabled:opacity-50 transition-colors"
+            >
+              {isSaving ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Guardando…</>
+              ) : (
+                <>Continuar <ChevronRight className="w-4 h-4" /></>
+              )}
+            </button>
+          )}
+
+          {step === 3 && generatedUrls.length === 0 && (
+            <button
+              onClick={handleGenerate}
+              disabled={refFiles.length === 0 || isGenerating}
+              className="inline-flex items-center gap-2 h-9 px-5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 disabled:opacity-50 transition-colors"
+            >
+              {isGenerating ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Generando…</>
+              ) : (
+                <><ImageIcon className="w-4 h-4" /> Generar imágenes</>
+              )}
+            </button>
+          )}
+
+          {step === 3 && generatedUrls.length > 0 && (
+            <button
+              onClick={onClose}
+              className="inline-flex items-center gap-2 h-9 px-5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 transition-colors"
+            >
+              <Check className="w-4 h-4" /> Listo
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}

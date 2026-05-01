@@ -1,15 +1,17 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import type { MetaAdResult, AdBoard, AdClone } from "@/lib/types"
+import type { MetaAdResult, AdBoard, AdClone, ImageClone } from "@/lib/types"
 import { saveAd, addAdToBoard } from "@/lib/actions/ad-lab"
 import { getAdClones, deleteAdClone } from "@/lib/actions/ad-clone"
+import { getImageClones, deleteImageClone } from "@/lib/actions/image-clone"
 import {
   X, ExternalLink, Bookmark, Check, Loader2,
-  Calendar, Wand2, ChevronLeft, ChevronRight, Link as LinkIcon, Plus, Trash2,
+  Calendar, Wand2, ImageIcon, ChevronLeft, ChevronRight, Link as LinkIcon, Plus, Trash2,
 } from "lucide-react"
 import { SiFacebook, SiInstagram, SiMessenger, SiMeta, SiThreads } from "@icons-pack/react-simple-icons"
 import { CloneModal } from "@/components/ad-lab/clone-modal"
+import { ImageCloneModal } from "@/components/ad-lab/image-clone-modal"
 
 interface Props {
   ad: MetaAdResult | null
@@ -69,6 +71,9 @@ export function AdDetailModal({ ad, boards, onClose, savedAdId }: Props) {
   const [clones, setClones] = useState<AdClone[] | null>(null)
   const [loadingClones, setLoadingClones] = useState(false)
   const [deletingCloneId, setDeletingCloneId] = useState<string | null>(null)
+  const [showImageClone, setShowImageClone] = useState(false)
+  const [imageClones, setImageClones] = useState<ImageClone[] | null>(null)
+  const [deletingImageCloneId, setDeletingImageCloneId] = useState<string | null>(null)
 
   // Reset card index when ad changes
   useEffect(() => { setCardIndex(0); setSavedBoards(new Set()) }, [ad?.ad_archive_id])
@@ -94,6 +99,7 @@ export function AdDetailModal({ ad, boards, onClose, savedAdId }: Props) {
       setClones(c)
       setLoadingClones(false)
     })
+    getImageClones(savedAdId).then((c) => setImageClones(c))
   }, [savedAdId])
 
   if (!ad) return null
@@ -165,10 +171,23 @@ export function AdDetailModal({ ad, boards, onClose, savedAdId }: Props) {
         ad={ad}
         onClose={() => {
           setShowClone(false)
-          // Refresh clones list after returning from CloneModal
           if (savedAdId) {
             setLoadingClones(true)
             getAdClones(savedAdId).then((c) => { setClones(c); setLoadingClones(false) })
+          }
+        }}
+      />
+    )
+  }
+
+  if (showImageClone) {
+    return (
+      <ImageCloneModal
+        ad={ad}
+        onClose={() => {
+          setShowImageClone(false)
+          if (savedAdId) {
+            getImageClones(savedAdId).then((c) => setImageClones(c))
           }
         }}
       />
@@ -419,6 +438,66 @@ export function AdDetailModal({ ad, boards, onClose, savedAdId }: Props) {
               </div>
             )}
 
+            {/* Image clones hub */}
+            {savedAdId && imageClones !== null && imageClones.length > 0 && (
+              <div className="border-b border-border px-4 py-3">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-1.5">
+                    <ImageIcon className="w-3.5 h-3.5 text-violet-600" />
+                    <span className="text-xs font-semibold">Imágenes generadas ({imageClones.length})</span>
+                  </div>
+                  <button
+                    onClick={() => setShowImageClone(true)}
+                    className="flex items-center gap-1 text-[11px] font-medium text-violet-600 hover:text-violet-800 transition-colors"
+                  >
+                    <Plus className="w-3 h-3" />
+                    Nueva
+                  </button>
+                </div>
+                <div className="space-y-1">
+                  {imageClones.map((clone) => (
+                    <div key={clone.id} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-muted/50 transition-colors group/row">
+                      <span className="text-xs flex-1 truncate font-medium">{clone.brand_brain?.name ?? "—"}</span>
+                      <span className="text-[10px] text-muted-foreground font-mono flex-shrink-0">
+                        {new Date(clone.created_at).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}
+                      </span>
+                      <a
+                        href={`/share/image-clone/${clone.share_token}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-[11px] font-medium text-violet-600 hover:text-violet-800 transition-colors flex-shrink-0"
+                      >
+                        <LinkIcon className="w-3 h-3" />
+                        Ver
+                      </a>
+                      <button
+                        onClick={async () => {
+                          if (!confirm(`¿Eliminar las imágenes de "${clone.brand_brain?.name}"?`)) return
+                          setDeletingImageCloneId(clone.id)
+                          try {
+                            await deleteImageClone(clone.id)
+                            setImageClones((prev) => prev?.filter((c) => c.id !== clone.id) ?? null)
+                          } catch (err) {
+                            alert(`Error al eliminar: ${err instanceof Error ? err.message : String(err)}`)
+                          } finally {
+                            setDeletingImageCloneId(null)
+                          }
+                        }}
+                        disabled={deletingImageCloneId === clone.id}
+                        className="opacity-0 group-hover/row:opacity-100 flex-shrink-0 text-muted-foreground hover:text-destructive transition-all disabled:opacity-50"
+                        title="Eliminar imágenes"
+                      >
+                        {deletingImageCloneId === clone.id
+                          ? <Loader2 className="w-3 h-3 animate-spin" />
+                          : <Trash2 className="w-3 h-3" />
+                        }
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Action row */}
             <div className="p-4 flex items-center gap-2">
             {/* Save to board */}
@@ -475,15 +554,27 @@ export function AdDetailModal({ ad, boards, onClose, savedAdId }: Props) {
               )}
             </div>
 
-            {/* Clone button — only when no savedAdId (discovery) or no clones yet */}
-            {(!savedAdId || (clones !== null && clones.length === 0)) && (
+            {/* Video clone button — only for video ads with no clones yet */}
+            {videoUrl && (!savedAdId || (clones !== null && clones.length === 0)) && (
               <button
-                title="Clonar anuncio con IA"
+                title="Clonar guión con IA"
                 onClick={() => setShowClone(true)}
                 className="h-9 px-4 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted flex items-center gap-2 transition-colors"
               >
                 <Wand2 className="w-4 h-4" />
                 Clonar
+              </button>
+            )}
+
+            {/* Image clone button — for image ads */}
+            {!videoUrl && thumbUrl && (!savedAdId || (imageClones !== null && imageClones.length === 0)) && (
+              <button
+                title="Generar imagen adaptada con IA"
+                onClick={() => setShowImageClone(true)}
+                className="h-9 px-4 rounded-xl border border-violet-200 text-sm font-medium text-violet-600 hover:bg-violet-50 flex items-center gap-2 transition-colors"
+              >
+                <ImageIcon className="w-4 h-4" />
+                Clonar imagen
               </button>
             )}
 

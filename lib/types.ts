@@ -753,6 +753,36 @@ export interface AdClone {
   saved_ad?: Pick<SavedAd, "id" | "page_name" | "cached_video_url" | "video_url" | "cached_image_url" | "image_url"> | null
 }
 
+export type ImageCloneStatus = "pending" | "extracting" | "ready" | "generating" | "done" | "error"
+
+export interface ImageCloneLine {
+  element: string    // e.g. "Headline", "CTA", "Body"
+  original: string
+  adapted: string
+}
+
+export interface ImageClone {
+  id: string
+  saved_ad_id: string
+  brand_brain_id: string | null
+  share_token: string
+  status: ImageCloneStatus
+  original_lines: ImageCloneLine[]
+  adapted_lines: ImageCloneLine[]
+  reference_image_urls: string[]
+  brand_color: string | null
+  aspect_ratio: "1:1" | "9:16" | "16:9" | "4:5"
+  num_images: number
+  fal_request_id: string | null
+  generated_image_urls: string[]
+  error_message: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  brand_brain?: Pick<BrandBrain, "id" | "name"> | null
+  saved_ad?: Pick<SavedAd, "id" | "page_name" | "cached_image_url" | "image_url"> | null
+}
+
 // ============================================================
 // HELPERS
 // ============================================================
