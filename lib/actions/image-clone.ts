@@ -7,7 +7,7 @@ import { saveAd } from "@/lib/actions/ad-lab"
 import type { ImageClone, ImageCloneLine, MetaAdResult, BrandBrain } from "@/lib/types"
 
 const REPLICATE_BASE = "https://api.replicate.com/v1"
-const REPLICATE_MODEL = "google/nano-banana"
+const REPLICATE_MODEL = "google/gemini-2.5-flash-image"
 
 async function assertAuth() {
   const supabase = await createClient()
