@@ -353,9 +353,13 @@ export async function generateImages(
   const inputImages = [adImageUrl, ...userUploads].slice(0, 8)
 
   const brain = clone.brand_brain as BrainContext | null
-  const brandName = brain?.name ?? "Marca"
-  const colorInstruction = config.brandColor ? ` Use ${config.brandColor} as the primary brand color.` : ""
-  const prompt = `Recreate the advertisement from image 1 for ${brandName}.${colorInstruction}${config.additionalContext.trim() ? " " + config.additionalContext.trim() : ""}`
+  const prompt = buildGenerationPrompt(
+    config.adaptedLines,
+    brain ?? { name: "Marca", industry: null, tone_of_voice: null, usps: [], key_benefits: [], pain_points: [], target_audience: null, ctas: [] },
+    config.brandColor,
+    config.additionalContext,
+    userUploads.length > 0,
+  )
 
   await supabase
     .from("image_clones")
