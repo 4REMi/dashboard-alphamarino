@@ -6,8 +6,8 @@ import Anthropic from "@anthropic-ai/sdk"
 import { saveAd } from "@/lib/actions/ad-lab"
 import type { ImageClone, ImageCloneLine, MetaAdResult, BrandBrain } from "@/lib/types"
 
-const FAL_BASE = "https://queue.fal.run"
-const FAL_MODEL = "fal-ai/flux-pro/kontext"
+const REPLICATE_BASE = "https://api.replicate.com/v1"
+const REPLICATE_MODEL = "black-forest-labs/flux-kontext-pro"
 
 async function assertAuth() {
   const supabase = await createClient()
@@ -16,47 +16,45 @@ async function assertAuth() {
   return { supabase, user }
 }
 
-// ── FAL.ai helpers ────────────────────────────────────────────
+// ── Replicate helpers ─────────────────────────────────────────
 
-function falHeaders() {
-  const key = process.env.FAL_KEY
-  if (!key) throw new Error("FAL_KEY no configurado")
-  return { Authorization: `Key ${key}`, "Content-Type": "application/json" }
+function replicateHeaders() {
+  const token = process.env.REPLICATE_API_TOKEN
+  if (!token) throw new Error("REPLICATE_API_TOKEN no configurado")
+  return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }
 }
 
-async function falSubmit(input: Record<string, unknown>): Promise<string> {
-  const res = await fetch(`${FAL_BASE}/${FAL_MODEL}`, {
+async function replicateSubmit(input: Record<string, unknown>): Promise<string> {
+  const res = await fetch(`${REPLICATE_BASE}/models/${REPLICATE_MODEL}/predictions`, {
     method: "POST",
-    headers: falHeaders(),
-    body: JSON.stringify(input),
+    headers: replicateHeaders(),
+    body: JSON.stringify({ input }),
     cache: "no-store",
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error((err as { detail?: string }).detail ?? `FAL error ${res.status}`)
+    throw new Error((err as { detail?: string }).detail ?? `Replicate error ${res.status}`)
   }
-  const data = await res.json() as { request_id: string }
-  return data.request_id
+  const data = await res.json() as { id: string }
+  return data.id
 }
 
-async function falStatus(requestId: string): Promise<string> {
-  const res = await fetch(`${FAL_BASE}/${FAL_MODEL}/requests/${requestId}/status`, {
-    headers: falHeaders(),
+async function replicatePoll(predictionId: string): Promise<{ status: string; urls?: string[]; error?: string }> {
+  const res = await fetch(`${REPLICATE_BASE}/predictions/${predictionId}`, {
+    headers: replicateHeaders(),
     cache: "no-store",
   })
-  if (!res.ok) return "ERROR"
-  const data = await res.json() as { status: string }
-  return data.status
-}
-
-async function falResult(requestId: string): Promise<string[]> {
-  const res = await fetch(`${FAL_BASE}/${FAL_MODEL}/requests/${requestId}`, {
-    headers: falHeaders(),
-    cache: "no-store",
-  })
-  if (!res.ok) throw new Error(`FAL result error ${res.status}`)
-  const data = await res.json() as { images?: Array<{ url: string }> }
-  return (data.images ?? []).map((img) => img.url)
+  if (!res.ok) return { status: "failed" }
+  const data = await res.json() as {
+    status: string
+    output?: string[] | null
+    error?: string | null
+  }
+  return {
+    status: data.status,
+    urls:   data.output ?? undefined,
+    error:  data.error ?? undefined,
+  }
 }
 
 // ── Claude Vision helpers ─────────────────────────────────────
@@ -307,8 +305,8 @@ export async function updateImageAdaptedLines(
 }
 
 /**
- * Submits a generation job to FAL.ai Flux Kontext.
- * Updates the clone to status "generating" and stores the fal_request_id.
+ * Submits a generation job to Replicate (Flux Kontext Pro).
+ * Updates the clone to status "generating" and stores the prediction id.
  */
 export async function generateImages(
   cloneId: string,
@@ -321,7 +319,6 @@ export async function generateImages(
 ): Promise<void> {
   const { supabase } = await assertAuth()
 
-  // Fetch clone to get reference_image_urls + brand brain
   const { data: clone, error } = await supabase
     .from("image_clones")
     .select("*, brand_brain:brand_brains(id, name, industry, tone_of_voice, usps, key_benefits, pain_points, target_audience, ctas)")
@@ -334,37 +331,35 @@ export async function generateImages(
   if (!imageUrl) throw new Error("No hay imágenes de referencia. Sube al menos una imagen del producto.")
 
   const brain = clone.brand_brain as BrainContext | null
-  const falPrompt = buildFalPrompt(
+  const prompt = buildFalPrompt(
     config.adaptedLines,
     brain ?? { name: "Marca", industry: null, tone_of_voice: null, usps: [], key_benefits: [], pain_points: [], target_audience: null, ctas: [] },
     config.brandColor,
   )
 
-  // Save config to DB
   await supabase
     .from("image_clones")
     .update({
-      adapted_lines:        config.adaptedLines,
-      brand_color:          config.brandColor,
-      aspect_ratio:         config.aspectRatio,
-      num_images:           config.numImages,
-      status:               "generating",
+      adapted_lines: config.adaptedLines,
+      brand_color:   config.brandColor,
+      aspect_ratio:  config.aspectRatio,
+      num_images:    config.numImages,
+      status:        "generating",
     })
     .eq("id", cloneId)
 
-  // Submit to FAL queue
   try {
-    const requestId = await falSubmit({
-      prompt:          falPrompt,
-      image_url:       imageUrl,
-      num_images:      config.numImages,
-      aspect_ratio:    config.aspectRatio,
-      output_format:   "jpeg",
-      safety_tolerance: "6",
+    const predictionId = await replicateSubmit({
+      prompt,
+      input_image:      imageUrl,
+      aspect_ratio:     config.aspectRatio,
+      num_outputs:      config.numImages,
+      output_format:    "jpg",
+      safety_tolerance: 6,
     })
     await supabase
       .from("image_clones")
-      .update({ fal_request_id: requestId })
+      .update({ fal_request_id: predictionId })
       .eq("id", cloneId)
   } catch (err) {
     await supabase
@@ -376,7 +371,7 @@ export async function generateImages(
 }
 
 /**
- * Polls FAL.ai for job completion. If done, saves generated_image_urls.
+ * Polls Replicate for job completion. If done, saves generated_image_urls.
  * Returns the current clone record.
  */
 export async function pollImageGeneration(cloneId: string): Promise<ImageClone> {
@@ -393,10 +388,10 @@ export async function pollImageGeneration(cloneId: string): Promise<ImageClone> 
     return clone as ImageClone
   }
 
-  const status = await falStatus(clone.fal_request_id)
+  const result = await replicatePoll(clone.fal_request_id)
 
-  if (status === "COMPLETED") {
-    const urls = await falResult(clone.fal_request_id)
+  if (result.status === "succeeded") {
+    const urls = result.urls ?? []
     await supabase
       .from("image_clones")
       .update({
@@ -408,14 +403,16 @@ export async function pollImageGeneration(cloneId: string): Promise<ImageClone> 
     return { ...clone, status: "done", generated_image_urls: urls } as ImageClone
   }
 
-  if (status === "ERROR") {
+  if (result.status === "failed" || result.status === "canceled") {
+    const msg = result.error ?? "Error en la generación"
     await supabase
       .from("image_clones")
-      .update({ status: "error", error_message: "FAL.ai reportó un error en la generación." })
+      .update({ status: "error", error_message: msg })
       .eq("id", cloneId)
-    return { ...clone, status: "error" } as ImageClone
+    return { ...clone, status: "error", error_message: msg } as ImageClone
   }
 
+  // status is "starting" or "processing" — keep polling
   return clone as ImageClone
 }
 
