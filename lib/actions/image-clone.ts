@@ -332,7 +332,7 @@ export async function generateImages(
     numImages:         number
     additionalContext: string
   },
-): Promise<void> {
+): Promise<{ prompt: string }> {
   const { supabase } = await assertAuth()
 
   const { data: clone, error } = await supabase
@@ -394,6 +394,8 @@ export async function generateImages(
       .eq("id", cloneId)
     throw err
   }
+
+  return { prompt }
 }
 
 /**

@@ -51,6 +51,8 @@ export function ImageCloneModal({ ad, onClose }: Props) {
   // Generation result
   const [isGenerating, setIsGenerating]         = useState(false)
   const [generatedUrls, setGeneratedUrls]       = useState<string[]>([])
+  const [lastPrompt, setLastPrompt]             = useState<string | null>(null)
+  const [showPrompt, setShowPrompt]             = useState(false)
   const [copied, setCopied]                     = useState(false)
 
   const [isPending, startTransition]            = useTransition()
@@ -134,13 +136,14 @@ export function ImageCloneModal({ ad, onClose }: Props) {
         await uploadReferenceImages(cloneId, fd)
       }
 
-      await generateImages(cloneId, {
+      const { prompt } = await generateImages(cloneId, {
         adaptedLines,
         brandColor:        useBrandColor ? brandColor : null,
         aspectRatio,
         numImages,
         additionalContext: additionalContext.trim(),
       })
+      setLastPrompt(prompt)
 
       pollingRef.current = setInterval(async () => {
         if (!cloneId) return
@@ -560,6 +563,25 @@ export function ImageCloneModal({ ad, onClose }: Props) {
                 <button onClick={copyLink} className="flex-shrink-0 p-1.5 rounded-lg hover:bg-background transition-colors">
                   {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5 text-muted-foreground" />}
                 </button>
+              </div>
+            )}
+
+            {lastPrompt && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 overflow-hidden">
+                <button
+                  onClick={() => setShowPrompt((v) => !v)}
+                  className="w-full flex items-center justify-between px-4 py-2.5 text-left"
+                >
+                  <span className="text-xs font-semibold text-amber-700 uppercase tracking-wider">
+                    🐛 Debug — Prompt enviado
+                  </span>
+                  <span className="text-xs text-amber-600">{showPrompt ? "Ocultar" : "Ver"}</span>
+                </button>
+                {showPrompt && (
+                  <pre className="px-4 pb-4 text-[11px] text-amber-900 whitespace-pre-wrap break-words font-mono leading-relaxed border-t border-amber-200 pt-3">
+                    {lastPrompt}
+                  </pre>
+                )}
               </div>
             )}
           </div>
