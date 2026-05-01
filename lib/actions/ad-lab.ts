@@ -309,7 +309,7 @@ export async function getBoards(): Promise<AdBoard[]> {
     .from("board_ads")
     .select("board_id, saved_ad:saved_ads(id, cached_image_url, image_url)")
     .in("board_id", boardIds)
-    .order("created_at", { ascending: false })
+    .order("added_at", { ascending: false })
   const previewMap: Record<string, Pick<SavedAd, "id" | "cached_image_url" | "image_url">[]> = {}
   for (const row of previewRows ?? []) {
     const ad = row.saved_ad as unknown as Pick<SavedAd, "id" | "cached_image_url" | "image_url"> | null
