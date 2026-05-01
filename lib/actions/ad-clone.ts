@@ -285,8 +285,13 @@ export async function updateAdaptedLines(cloneId: string, adaptedLines: AdCloneL
 
 export async function deleteAdClone(cloneId: string): Promise<void> {
   const { supabase } = await assertAuth()
-  const { error } = await supabase.from("ad_clones").delete().eq("id", cloneId)
+  const { data, error } = await supabase
+    .from("ad_clones")
+    .delete()
+    .eq("id", cloneId)
+    .select("id")
   if (error) throw error
+  if (!data || data.length === 0) throw new Error("No se pudo eliminar la adaptación — verifica permisos")
 }
 
 /**

@@ -393,9 +393,14 @@ export function AdDetailModal({ ad, boards, onClose, savedAdId }: Props) {
                             onClick={async () => {
                               if (!confirm(`¿Eliminar la adaptación de "${clone.brand_brain?.name}"?`)) return
                               setDeletingCloneId(clone.id)
-                              await deleteAdClone(clone.id)
-                              setClones((prev) => prev?.filter((c) => c.id !== clone.id) ?? null)
-                              setDeletingCloneId(null)
+                              try {
+                                await deleteAdClone(clone.id)
+                                setClones((prev) => prev?.filter((c) => c.id !== clone.id) ?? null)
+                              } catch (err) {
+                                alert(`Error al eliminar: ${err instanceof Error ? err.message : String(err)}`)
+                              } finally {
+                                setDeletingCloneId(null)
+                              }
                             }}
                             disabled={deletingCloneId === clone.id}
                             className="opacity-0 group-hover/row:opacity-100 flex-shrink-0 text-muted-foreground hover:text-destructive transition-all disabled:opacity-50"
