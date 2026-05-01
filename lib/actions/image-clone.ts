@@ -154,8 +154,17 @@ function buildGenerationPrompt(
     : ""
 
   return [
-    `You are recreating a real advertisement for a new brand.`,
-    `TASK: Reproduce the exact layout, composition, and visual structure of image 1. Replace brand identity, colors, and all text.`,
+    `You are a visual design system that clones ad layouts for new brands.
+
+PHASE 1 — STRUCTURAL ANALYSIS (before applying any brand elements):
+Study image 1 and extract the following:
+- Layout zones: identify every distinct region (background, product area, text blocks, badges, dividers, etc.)
+- Visual hierarchy: note which elements are dominant, secondary, and tertiary
+- Contrast logic: identify where light-on-dark, dark-on-light, and accent pops occur
+- Spatial rhythm: note padding, proportions, and alignment patterns
+
+PHASE 2 — BRAND SUBSTITUTION:
+Rebuild the exact same layout using the brand system below. Preserve all structural decisions from Phase 1. Apply brand colors by mapping them to the contrast logic you identified — not by filling every element with the primary color.`,
     `---`,
     `BRAND\nName: ${brain.name}${brain.industry ? `\nIndustry: ${brain.industry}` : ""}${brain.tone_of_voice ? `\nTone: ${brain.tone_of_voice}` : ""}`,
     colorBlock ? `---\n\nCOLORS\n${colorBlock}` : "",
