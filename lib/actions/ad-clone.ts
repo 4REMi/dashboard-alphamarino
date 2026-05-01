@@ -283,6 +283,12 @@ export async function updateAdaptedLines(cloneId: string, adaptedLines: AdCloneL
   if (error) throw error
 }
 
+export async function deleteAdClone(cloneId: string): Promise<void> {
+  const { supabase } = await assertAuth()
+  const { error } = await supabase.from("ad_clones").delete().eq("id", cloneId)
+  if (error) throw error
+}
+
 /**
  * Returns all ready clones for a given saved ad, with brand brain name.
  */

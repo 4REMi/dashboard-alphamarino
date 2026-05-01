@@ -3,10 +3,10 @@
 import { useEffect, useState } from "react"
 import type { MetaAdResult, AdBoard, AdClone } from "@/lib/types"
 import { saveAd, addAdToBoard } from "@/lib/actions/ad-lab"
-import { getAdClones } from "@/lib/actions/ad-clone"
+import { getAdClones, deleteAdClone } from "@/lib/actions/ad-clone"
 import {
   X, ExternalLink, Bookmark, Check, Loader2,
-  Calendar, Wand2, ChevronLeft, ChevronRight, Link as LinkIcon, Plus,
+  Calendar, Wand2, ChevronLeft, ChevronRight, Link as LinkIcon, Plus, Trash2,
 } from "lucide-react"
 import { SiFacebook, SiInstagram, SiMessenger, SiMeta, SiThreads } from "@icons-pack/react-simple-icons"
 import { CloneModal } from "@/components/ad-lab/clone-modal"
@@ -68,6 +68,7 @@ export function AdDetailModal({ ad, boards, onClose, savedAdId }: Props) {
   const [showClone, setShowClone] = useState(false)
   const [clones, setClones] = useState<AdClone[] | null>(null)
   const [loadingClones, setLoadingClones] = useState(false)
+  const [deletingCloneId, setDeletingCloneId] = useState<string | null>(null)
 
   // Reset card index when ad changes
   useEffect(() => { setCardIndex(0); setSavedBoards(new Set()) }, [ad?.ad_archive_id])
@@ -374,7 +375,7 @@ export function AdDetailModal({ ad, boards, onClose, savedAdId }: Props) {
                     </div>
                     <div className="space-y-1">
                       {clones.map((clone) => (
-                        <div key={clone.id} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-muted/50 transition-colors">
+                        <div key={clone.id} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-muted/50 transition-colors group/row">
                           <span className="text-xs flex-1 truncate font-medium">{clone.brand_brain?.name ?? "—"}</span>
                           <span className="text-[10px] text-muted-foreground font-mono flex-shrink-0">
                             {new Date(clone.created_at).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}
@@ -388,6 +389,23 @@ export function AdDetailModal({ ad, boards, onClose, savedAdId }: Props) {
                             <LinkIcon className="w-3 h-3" />
                             Ver
                           </a>
+                          <button
+                            onClick={async () => {
+                              if (!confirm(`¿Eliminar la adaptación de "${clone.brand_brain?.name}"?`)) return
+                              setDeletingCloneId(clone.id)
+                              await deleteAdClone(clone.id)
+                              setClones((prev) => prev?.filter((c) => c.id !== clone.id) ?? null)
+                              setDeletingCloneId(null)
+                            }}
+                            disabled={deletingCloneId === clone.id}
+                            className="opacity-0 group-hover/row:opacity-100 flex-shrink-0 text-muted-foreground hover:text-destructive transition-all disabled:opacity-50"
+                            title="Eliminar adaptación"
+                          >
+                            {deletingCloneId === clone.id
+                              ? <Loader2 className="w-3 h-3 animate-spin" />
+                              : <Trash2 className="w-3 h-3" />
+                            }
+                          </button>
                         </div>
                       ))}
                     </div>
