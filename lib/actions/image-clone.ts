@@ -7,7 +7,7 @@ import { saveAd } from "@/lib/actions/ad-lab"
 import type { ImageClone, ImageCloneLine, MetaAdResult, BrandBrain } from "@/lib/types"
 
 const REPLICATE_BASE = "https://api.replicate.com/v1"
-const REPLICATE_MODEL = "google/gemini-2.5-flash-image"
+const REPLICATE_MODEL = "google/nano-banana-pro"
 
 async function assertAuth() {
   const supabase = await createClient()
@@ -378,9 +378,11 @@ export async function generateImages(
     // Submit N predictions in parallel (one per desired image)
     const submissionInput = {
       prompt,
-      image_input:   inputImages,
-      aspect_ratio:  config.aspectRatio,
-      output_format: "jpg",
+      image_input:         inputImages,
+      aspect_ratio:        config.aspectRatio,
+      resolution:          "2K",
+      output_format:       "jpg",
+      safety_filter_level: "block_only_high",
     }
     const ids = await Promise.all(
       Array.from({ length: config.numImages }, () => replicateSubmit(submissionInput))
