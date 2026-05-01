@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation"
 import { getAdCloneByToken } from "@/lib/actions/ad-clone"
+import { CopyScriptButton } from "@/components/share/copy-script-button"
 import type { AdCloneLine } from "@/lib/types"
 
 interface Props {
@@ -20,7 +21,7 @@ export default async function ShareClonePage({ params }: Props) {
   return (
     <div className="min-h-screen bg-[#f8f9fb]">
       {/* Top bar */}
-      <header className="border-b border-gray-200 bg-white">
+      <header className="border-b border-gray-200 bg-white sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
           <div>
             <p className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-0.5">
@@ -30,20 +31,27 @@ export default async function ShareClonePage({ params }: Props) {
               {savedAd?.page_name ?? "Anuncio clonado"}
             </h1>
           </div>
-          {clone.brand_brain && (
-            <div className="text-right">
-              <p className="text-xs text-gray-500">Adaptado para</p>
-              <p className="text-sm font-semibold text-gray-900">{clone.brand_brain.name}</p>
-            </div>
-          )}
+          <div className="flex items-center gap-4">
+            {clone.brand_brain && (
+              <div className="text-right">
+                <p className="text-xs text-gray-500">Adaptado para</p>
+                <p className="text-sm font-semibold text-gray-900">{clone.brand_brain.name}</p>
+              </div>
+            )}
+            <CopyScriptButton
+              lines={adaptedLines}
+              brandName={clone.brand_brain?.name ?? null}
+            />
+          </div>
         </div>
       </header>
 
       {/* Body */}
       <main className="max-w-5xl mx-auto px-6 py-10">
-        <div className="grid lg:grid-cols-[320px_1fr] gap-8">
-          {/* Video column */}
-          <div className="space-y-4">
+        <div className="grid lg:grid-cols-[300px_1fr] gap-8 items-start">
+
+          {/* Video column — sticky */}
+          <div className="sticky top-[73px] space-y-3">
             <div className="bg-black rounded-2xl overflow-hidden aspect-[9/16] flex items-center justify-center">
               {videoUrl ? (
                 <video
@@ -63,12 +71,14 @@ export default async function ShareClonePage({ params }: Props) {
                 <div className="text-gray-600 text-sm">Sin preview</div>
               )}
             </div>
-            <p className="text-xs text-gray-400 text-center">Referencia: {savedAd?.page_name}</p>
+            <p className="text-xs text-gray-400 text-center">
+              Referencia: {savedAd?.page_name}
+            </p>
           </div>
 
           {/* Script column */}
           <div>
-            <div className="flex items-center gap-3 mb-6">
+            <div className="flex items-center gap-3 mb-2">
               <h2 className="text-xl font-bold text-gray-900">Guión adaptado</h2>
               <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
@@ -77,7 +87,7 @@ export default async function ShareClonePage({ params }: Props) {
             </div>
 
             <p className="text-sm text-gray-500 mb-6">
-              A continuación encontrarás el guión original y su adaptación línea por línea. Graba el audio nuevo siguiendo el timing del video de referencia.
+              Graba el audio nuevo siguiendo el timing del video de referencia.
             </p>
 
             <div className="space-y-3">
