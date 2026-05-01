@@ -257,7 +257,11 @@ export async function uploadReferenceImages(
   cloneId: string,
   formData: FormData,
 ): Promise<string[]> {
+  // assertAuth verifies the user is authenticated before we proceed
   const { supabase } = await assertAuth()
+  // Use admin client for storage uploads — bucket INSERT policies may not be
+  // configured for the authenticated user role, and this runs server-side.
+  const adminStorage = createAdminClient()
 
   const files = formData.getAll("files") as File[]
   if (!files.length) return []
@@ -269,12 +273,12 @@ export async function uploadReferenceImages(
     const path = `image-clones/${cloneId}/ref-${Date.now()}-${i}.${ext}`
     const buffer = await file.arrayBuffer()
 
-    const { error } = await supabase.storage
+    const { error } = await adminStorage.storage
       .from("ad-lab")
       .upload(path, buffer, { contentType: file.type, upsert: false })
     if (error) throw new Error(`Error subiendo imagen: ${error.message}`)
 
-    const { data: { publicUrl } } = supabase.storage.from("ad-lab").getPublicUrl(path)
+    const { data: { publicUrl } } = adminStorage.storage.from("ad-lab").getPublicUrl(path)
     urls.push(publicUrl)
   }
 
