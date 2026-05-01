@@ -346,8 +346,58 @@ export function AdDetailModal({ ad, boards, onClose, savedAdId }: Props) {
             </div>
           </div>
 
-          {/* Footer actions */}
-          <div className="flex-shrink-0 border-t border-border p-4 flex items-center gap-2">
+          {/* Footer */}
+          <div className="flex-shrink-0 border-t border-border">
+
+            {/* Adaptations hub — full-width section above the action row */}
+            {savedAdId && (
+              <div className="border-b border-border px-4 py-3">
+                {loadingClones ? (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Buscando adaptaciones…
+                  </div>
+                ) : clones && clones.length > 0 ? (
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-1.5">
+                        <Wand2 className="w-3.5 h-3.5 text-primary" />
+                        <span className="text-xs font-semibold">Adaptaciones ({clones.length})</span>
+                      </div>
+                      <button
+                        onClick={() => setShowClone(true)}
+                        className="flex items-center gap-1 text-[11px] font-medium text-primary hover:text-primary/80 transition-colors"
+                      >
+                        <Plus className="w-3 h-3" />
+                        Nueva
+                      </button>
+                    </div>
+                    <div className="space-y-1">
+                      {clones.map((clone) => (
+                        <div key={clone.id} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-muted/50 transition-colors">
+                          <span className="text-xs flex-1 truncate font-medium">{clone.brand_brain?.name ?? "—"}</span>
+                          <span className="text-[10px] text-muted-foreground font-mono flex-shrink-0">
+                            {new Date(clone.created_at).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}
+                          </span>
+                          <a
+                            href={`/share/clone/${clone.share_token}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-[11px] font-medium text-primary hover:text-primary/80 transition-colors flex-shrink-0"
+                          >
+                            <LinkIcon className="w-3 h-3" />
+                            Ver
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            )}
+
+            {/* Action row */}
+            <div className="p-4 flex items-center gap-2">
             {/* Save to board */}
             <div className="relative flex-1">
               <button
@@ -402,48 +452,8 @@ export function AdDetailModal({ ad, boards, onClose, savedAdId }: Props) {
               )}
             </div>
 
-            {/* Adaptations hub */}
-            {loadingClones ? (
-              <div className="h-9 px-4 flex items-center gap-2 text-muted-foreground">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span className="text-sm">Cargando…</span>
-              </div>
-            ) : clones && clones.length > 0 ? (
-              <div className="rounded-xl border border-border overflow-hidden min-w-[220px]">
-                <div className="flex items-center justify-between px-3 py-2 bg-muted/50 border-b border-border">
-                  <div className="flex items-center gap-1.5">
-                    <Wand2 className="w-3.5 h-3.5 text-primary" />
-                    <span className="text-xs font-semibold">Adaptaciones ({clones.length})</span>
-                  </div>
-                  <button
-                    onClick={() => setShowClone(true)}
-                    className="flex items-center gap-1 text-[11px] font-medium text-primary hover:text-primary/80 transition-colors"
-                  >
-                    <Plus className="w-3 h-3" />
-                    Nueva
-                  </button>
-                </div>
-                {clones.map((clone) => (
-                  <div key={clone.id} className="flex items-center gap-2 px-3 py-2 border-b border-border/50 last:border-0 hover:bg-muted/30 transition-colors">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium truncate">{clone.brand_brain?.name ?? "—"}</p>
-                      <p className="text-[10px] text-muted-foreground font-mono">
-                        {new Date(clone.created_at).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}
-                      </p>
-                    </div>
-                    <a
-                      href={`/share/clone/${clone.share_token}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-[11px] font-medium text-primary hover:text-primary/80 transition-colors flex-shrink-0"
-                    >
-                      <LinkIcon className="w-3 h-3" />
-                      Ver
-                    </a>
-                  </div>
-                ))}
-              </div>
-            ) : (
+            {/* Clone button — only when no savedAdId (discovery) or no clones yet */}
+            {(!savedAdId || (clones !== null && clones.length === 0)) && (
               <button
                 title="Clonar anuncio con IA"
                 onClick={() => setShowClone(true)}
@@ -466,6 +476,7 @@ export function AdDetailModal({ ad, boards, onClose, savedAdId }: Props) {
                 <ExternalLink className="w-4 h-4" />
               </a>
             )}
+            </div>
           </div>
         </div>
       </div>
