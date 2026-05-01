@@ -7,7 +7,7 @@ import { saveAd } from "@/lib/actions/ad-lab"
 import type { ImageClone, ImageCloneLine, MetaAdResult, BrandBrain } from "@/lib/types"
 
 const REPLICATE_BASE = "https://api.replicate.com/v1"
-const REPLICATE_MODEL = "black-forest-labs/flux-kontext-pro"
+const REPLICATE_MODEL = "black-forest-labs/flux-2-pro"
 
 async function assertAuth() {
   const supabase = await createClient()
@@ -130,29 +130,36 @@ function buildGenerationPrompt(
   brain: BrainContext,
   brandColor: string | null,
   additionalContext: string,
+  hasProductImages: boolean,
 ): string {
-  const textElements = adaptedLines
-    .map((l) => `${l.element}: "${l.adapted}"`)
+  const textBlock = adaptedLines
+    .map((l) => `- ${l.element}: "${l.adapted}"`)
     .join("\n")
 
-  const usps     = (brain.usps         ?? []).slice(0, 3).join(", ") || ""
-  const benefits = (brain.key_benefits ?? []).slice(0, 3).join(", ") || ""
-  const colorNote = brandColor ? `Brand color palette — use as primary accent color: ${brandColor}.` : ""
-  const contextNote = additionalContext.trim() ? `\nAdditional instructions: ${additionalContext.trim()}` : ""
+  const colorLine = brandColor
+    ? `Brand primary color ${brandColor} — apply to backgrounds, accents, buttons, and highlights.`
+    : ""
 
-  return `Professional advertisement for ${brain.name}${brain.industry ? `, ${brain.industry} brand` : ""}.
+  const productLine = hasProductImages
+    ? "The product shown in image 2 (and any additional images) should replace the product in image 1. Feature it prominently."
+    : ""
 
-Recreate this ad adapting it to the following brand guidelines. Keep the general layout and composition but replace the visual identity.
+  const extraLine = additionalContext.trim()
+    ? `Additional instructions: ${additionalContext.trim()}`
+    : ""
 
-Ad copy to feature in the image:
-${textElements}
+  return `Recreate the advertisement in image 1 for a new brand. Keep the exact same layout, composition, grid structure, and proportions. Replace all visual identity elements.
 
-${usps ? `Key differentiators: ${usps}.` : ""}
-${benefits ? `Benefits to highlight: ${benefits}.` : ""}
-${colorNote}
-${contextNote}
+BRAND: ${brain.name}${brain.industry ? ` — ${brain.industry}` : ""}${brain.tone_of_voice ? ` — tone: ${brain.tone_of_voice}` : ""}
 
-High-quality commercial advertising. Clean, modern layout. Integrate the ad copy naturally. No distorted or artifacted text.`
+RENDER THESE EXACT TEXT ELEMENTS (replace all existing text in image 1):
+${textBlock}
+
+${colorLine}
+${productLine}
+${extraLine}
+
+High-quality commercial advertising. Render all text elements legibly in the same typographic positions as the original. No garbled or distorted text.`.replace(/\n{3,}/g, "\n\n").trim()
 }
 
 // ── Public actions ────────────────────────────────────────────
@@ -312,8 +319,9 @@ export async function updateImageAdaptedLines(
 }
 
 /**
- * Submits a generation job to Replicate (Flux Kontext Pro).
- * Updates the clone to status "generating" and stores the prediction id.
+ * Submits N parallel generation jobs to Replicate (Flux 2 Pro).
+ * Flux 2 Pro generates 1 image per prediction, so numImages = N submissions.
+ * Stores all prediction IDs as a JSON array in fal_request_id.
  */
 export async function generateImages(
   cloneId: string,
@@ -334,11 +342,15 @@ export async function generateImages(
     .single()
   if (error) throw error
 
-  // User-uploaded product images take priority; otherwise use the original ad as reference
-  const referenceUrls: string[] = clone.reference_image_urls ?? []
+  // Original ad is always the first reference (layout/composition anchor).
+  // User-uploaded product images are appended after it.
   const savedAd = clone.saved_ad as { cached_image_url: string | null; image_url: string | null } | null
-  const imageUrl = referenceUrls[0] ?? savedAd?.cached_image_url ?? savedAd?.image_url ?? null
-  if (!imageUrl) throw new Error("No se encontró imagen de referencia para la generación.")
+  const adImageUrl = savedAd?.cached_image_url ?? savedAd?.image_url ?? null
+  if (!adImageUrl) throw new Error("No se encontró imagen del anuncio original.")
+
+  const userUploads: string[] = clone.reference_image_urls ?? []
+  // Build input_images: [original ad, ...user uploads] (max 8 total)
+  const inputImages = [adImageUrl, ...userUploads].slice(0, 8)
 
   const brain = clone.brand_brain as BrainContext | null
   const prompt = buildGenerationPrompt(
@@ -346,6 +358,7 @@ export async function generateImages(
     brain ?? { name: "Marca", industry: null, tone_of_voice: null, usps: [], key_benefits: [], pain_points: [], target_audience: null, ctas: [] },
     config.brandColor,
     config.additionalContext,
+    userUploads.length > 0,
   )
 
   await supabase
@@ -360,17 +373,22 @@ export async function generateImages(
     .eq("id", cloneId)
 
   try {
-    const predictionId = await replicateSubmit({
+    // Submit N predictions in parallel (one per desired image)
+    const submissionInput = {
       prompt,
-      image:            imageUrl,
+      input_images:     inputImages,
       aspect_ratio:     config.aspectRatio,
-      num_outputs:      config.numImages,
+      resolution:       "1 MP",
       output_format:    "jpg",
-      safety_tolerance: 6,
-    })
+      output_quality:   90,
+      safety_tolerance: 5,
+    }
+    const ids = await Promise.all(
+      Array.from({ length: config.numImages }, () => replicateSubmit(submissionInput))
+    )
     await supabase
       .from("image_clones")
-      .update({ fal_request_id: predictionId })
+      .update({ fal_request_id: JSON.stringify(ids) })
       .eq("id", cloneId)
   } catch (err) {
     await supabase
@@ -382,7 +400,7 @@ export async function generateImages(
 }
 
 /**
- * Polls Replicate for job completion. If done, saves generated_image_urls.
+ * Polls all Replicate predictions. Marks done when every prediction settles.
  * Returns the current clone record.
  */
 export async function pollImageGeneration(cloneId: string): Promise<ImageClone> {
@@ -399,10 +417,25 @@ export async function pollImageGeneration(cloneId: string): Promise<ImageClone> 
     return clone as ImageClone
   }
 
-  const result = await replicatePoll(clone.fal_request_id)
+  // fal_request_id stores a JSON array of prediction IDs
+  let ids: string[]
+  try {
+    const parsed = JSON.parse(clone.fal_request_id)
+    ids = Array.isArray(parsed) ? parsed : [parsed]
+  } catch {
+    ids = [clone.fal_request_id]
+  }
 
-  if (result.status === "succeeded") {
-    const urls = result.urls ?? []
+  const results = await Promise.all(ids.map((id) => replicatePoll(id)))
+
+  const allSettled = results.every((r) => r.status === "succeeded" || r.status === "failed" || r.status === "canceled")
+  if (!allSettled) {
+    // Still in progress — keep polling
+    return clone as ImageClone
+  }
+
+  const urls = results.flatMap((r) => r.urls ?? [])
+  if (urls.length > 0) {
     await supabase
       .from("image_clones")
       .update({
@@ -414,17 +447,13 @@ export async function pollImageGeneration(cloneId: string): Promise<ImageClone> 
     return { ...clone, status: "done", generated_image_urls: urls } as ImageClone
   }
 
-  if (result.status === "failed" || result.status === "canceled") {
-    const msg = result.error ?? "Error en la generación"
-    await supabase
-      .from("image_clones")
-      .update({ status: "error", error_message: msg })
-      .eq("id", cloneId)
-    return { ...clone, status: "error", error_message: msg } as ImageClone
-  }
-
-  // status is "starting" or "processing" — keep polling
-  return clone as ImageClone
+  // All predictions failed
+  const msg = results.find((r) => r.error)?.error ?? "Error en la generación"
+  await supabase
+    .from("image_clones")
+    .update({ status: "error", error_message: msg })
+    .eq("id", cloneId)
+  return { ...clone, status: "error", error_message: msg } as ImageClone
 }
 
 /**
