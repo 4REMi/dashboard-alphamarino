@@ -262,8 +262,8 @@ export function ImageCloneModal({ ad, onClose }: Props) {
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-sm font-semibold">{b.name}</p>
                         {(b.brand_colors ?? []).length > 0 && (
-                          <div className="flex gap-1 flex-shrink-0">
-                            {b.brand_colors.slice(0, 3).map((c) => (
+                          <div className="flex flex-wrap gap-1 flex-shrink-0">
+                            {b.brand_colors.map((c) => (
                               <span
                                 key={c.hex}
                                 className="w-3 h-3 rounded-full border border-black/10 flex-shrink-0"
