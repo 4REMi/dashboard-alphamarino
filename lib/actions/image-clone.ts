@@ -133,7 +133,7 @@ function buildGenerationPrompt(
   hasProductImages: boolean,
 ): string {
   const textBlock = adaptedLines
-    .map((l) => `- ${l.element}: "${l.adapted}"`)
+    .map((l) => `- "${l.original}" → "${l.adapted}"`)
     .join("\n")
 
   const colorLine = brandColor
@@ -152,14 +152,14 @@ function buildGenerationPrompt(
 
 BRAND: ${brain.name}${brain.industry ? ` — ${brain.industry}` : ""}${brain.tone_of_voice ? ` — tone: ${brain.tone_of_voice}` : ""}
 
-RENDER THESE EXACT TEXT ELEMENTS (replace all existing text in image 1):
+TEXT REPLACEMENTS — locate each original string in image 1 and replace it with the adapted version:
 ${textBlock}
 
 ${colorLine}
 ${productLine}
 ${extraLine}
 
-High-quality commercial advertising. Render all text elements legibly in the same typographic positions as the original. No garbled or distorted text.`.replace(/\n{3,}/g, "\n\n").trim()
+High-quality commercial advertising. Render all replaced text legibly in the same typographic positions as the original. No garbled or distorted text.`.replace(/\n{3,}/g, "\n\n").trim()
 }
 
 // ── Public actions ────────────────────────────────────────────
