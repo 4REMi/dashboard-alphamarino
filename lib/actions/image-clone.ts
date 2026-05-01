@@ -62,7 +62,7 @@ async function replicatePoll(predictionId: string): Promise<{ status: string; ur
 
 // ── Claude Vision helpers ─────────────────────────────────────
 
-type BrainContext = Pick<BrandBrain, "name" | "industry" | "tone_of_voice" | "usps" | "key_benefits" | "pain_points" | "target_audience" | "ctas">
+type BrainContext = Pick<BrandBrain, "name" | "industry" | "tone_of_voice" | "usps" | "key_benefits" | "pain_points" | "target_audience" | "ctas" | "brand_colors">
 
 async function extractAndAdaptWithClaude(
   imageUrl: string,
@@ -128,38 +128,40 @@ Devuelve ÚNICAMENTE un array JSON válido (sin markdown, sin texto extra) donde
 function buildGenerationPrompt(
   adaptedLines: ImageCloneLine[],
   brain: BrainContext,
-  brandColor: string | null,
+  primaryColor: string | null,
   additionalContext: string,
-  hasProductImages: boolean,
 ): string {
+  const allColors = (brain.brand_colors ?? []).map((c) => c.hex)
+  const primary = primaryColor ?? allColors[0] ?? null
+  const secondaryColors = allColors.filter((h) => h !== primary)
+
+  const colorBlock = primary
+    ? [
+        `Primary: ${primary}`,
+        secondaryColors.length > 0 ? `Secondary: ${secondaryColors.join(", ")}` : "",
+        `→ Apply primary to main backgrounds, buttons, and dominant graphic elements.`,
+        secondaryColors.length > 0 ? `→ Apply secondary as accents, borders, and supporting elements.` : "",
+        `→ Remove all original brand colors completely.`,
+      ].filter(Boolean).join("\n")
+    : ""
+
   const textBlock = adaptedLines
-    .map((l) => `- "${l.original}" → "${l.adapted}"`)
+    .map((l, i) => `${i + 1}. "${l.original}" → "${l.adapted}"`)
     .join("\n")
 
-  const colorLine = brandColor
-    ? `Brand primary color ${brandColor} — apply to backgrounds, accents, buttons, and highlights.`
-    : ""
-
-  const productLine = hasProductImages
-    ? "The product shown in image 2 (and any additional images) should replace the product in image 1. Feature it prominently."
-    : ""
-
   const extraLine = additionalContext.trim()
-    ? `Additional instructions: ${additionalContext.trim()}`
+    ? `\n\n---\n\nADDITIONAL INSTRUCTIONS\n${additionalContext.trim()}`
     : ""
 
-  return `Recreate the advertisement in image 1 for a new brand. Keep the exact same layout, composition, grid structure, and proportions. Replace all visual identity elements.
-
-BRAND: ${brain.name}${brain.industry ? ` — ${brain.industry}` : ""}${brain.tone_of_voice ? ` — tone: ${brain.tone_of_voice}` : ""}
-
-TEXT REPLACEMENTS — locate each original string in image 1 and replace it with the adapted version:
-${textBlock}
-
-${colorLine}
-${productLine}
-${extraLine}
-
-High-quality commercial advertising. Render all replaced text legibly in the same typographic positions as the original. No garbled or distorted text.`.replace(/\n{3,}/g, "\n\n").trim()
+  return [
+    `You are recreating a real advertisement for a new brand.`,
+    `TASK: Reproduce the exact layout, composition, and visual structure of image 1. Replace brand identity, colors, and all text.`,
+    `---`,
+    `BRAND\nName: ${brain.name}${brain.industry ? `\nIndustry: ${brain.industry}` : ""}${brain.tone_of_voice ? `\nTone: ${brain.tone_of_voice}` : ""}`,
+    colorBlock ? `---\n\nCOLORS\n${colorBlock}` : "",
+    `---\n\nTEXT REPLACEMENTS\nReplace each string exactly as written, in its original position:\n${textBlock}`,
+    extraLine,
+  ].filter(Boolean).join("\n\n")
 }
 
 // ── Public actions ────────────────────────────────────────────
@@ -227,7 +229,7 @@ export async function startImageClone(
   // 4. Fetch brand brain
   const { data: brain, error: brainErr } = await supabase
     .from("brand_brains")
-    .select("id, name, industry, tone_of_voice, usps, key_benefits, pain_points, target_audience, ctas")
+    .select("id, name, industry, tone_of_voice, usps, key_benefits, pain_points, target_audience, ctas, brand_colors")
     .eq("id", brandBrainId)
     .single()
   if (brainErr || !brain) {
@@ -337,7 +339,7 @@ export async function generateImages(
 
   const { data: clone, error } = await supabase
     .from("image_clones")
-    .select("*, brand_brain:brand_brains(id, name, industry, tone_of_voice, usps, key_benefits, pain_points, target_audience, ctas), saved_ad:saved_ads(cached_image_url, image_url)")
+    .select("*, brand_brain:brand_brains(id, name, industry, tone_of_voice, usps, key_benefits, pain_points, target_audience, ctas, brand_colors), saved_ad:saved_ads(cached_image_url, image_url)")
     .eq("id", cloneId)
     .single()
   if (error) throw error
@@ -355,10 +357,9 @@ export async function generateImages(
   const brain = clone.brand_brain as BrainContext | null
   const prompt = buildGenerationPrompt(
     config.adaptedLines,
-    brain ?? { name: "Marca", industry: null, tone_of_voice: null, usps: [], key_benefits: [], pain_points: [], target_audience: null, ctas: [] },
+    brain ?? { name: "Marca", industry: null, tone_of_voice: null, usps: [], key_benefits: [], pain_points: [], target_audience: null, ctas: [], brand_colors: [] },
     config.brandColor,
     config.additionalContext,
-    userUploads.length > 0,
   )
 
   await supabase
