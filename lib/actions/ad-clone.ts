@@ -50,7 +50,7 @@ async function aaiGet(path: string) {
 // ── Claude adaptation ─────────────────────────────────────────
 
 async function adaptWithClaude(
-  utterances: Array<{ speaker: string | null; text: string }>,
+  rawText: string,
   brain: Pick<BrandBrain, "name" | "industry" | "tone_of_voice" | "usps" | "key_benefits" | "pain_points" | "target_audience" | "ctas">
 ): Promise<AdCloneLine[]> {
   const apiKey = process.env.ANTHROPIC_API_KEY
@@ -58,16 +58,19 @@ async function adaptWithClaude(
 
   const client = new Anthropic({ apiKey })
 
-  const scriptText = utterances.map((u, i) => `${i + 1}. "${u.text}"`).join("\n")
-  const usps = (brain.usps ?? []).join(", ") || "—"
+  const usps    = (brain.usps         ?? []).join(", ") || "—"
   const benefits = (brain.key_benefits ?? []).join(", ") || "—"
-  const pains = (brain.pain_points ?? []).join(", ") || "—"
-  const ctas = (brain.ctas ?? []).join(", ") || "—"
+  const pains   = (brain.pain_points   ?? []).join(", ") || "—"
+  const ctas    = (brain.ctas          ?? []).join(", ") || "—"
 
-  const prompt = `Eres un redactor creativo experto en publicidad digital. Adapta el siguiente guión de un anuncio de video para que encaje con la marca indicada. Preserva la estructura emocional y el ritmo del original — cada línea debe quedar aproximadamente de la misma longitud para mantener el timing. Adapta los nombres de producto, beneficios, dolores y tono de voz a la marca.
+  const prompt = `Eres un redactor creativo experto en publicidad digital. Tu tarea tiene dos pasos:
 
-GUIÓN ORIGINAL:
-${scriptText}
+PASO 1 — DIVIDE el siguiente guión en líneas naturales de longitud similar, como aparecerían en un teleprompter o guión de video. Cada línea debe ser una unidad de sentido completa que se pueda decir de un tirón (entre 10 y 25 palabras aproximadamente). Agrupa frases cortas relacionadas en una misma línea. Separa en líneas distintas los cambios de idea o de gancho.
+
+PASO 2 — ADAPTA cada línea al Brand Brain de la marca destino. Preserva la estructura emocional y el ritmo del original. Mantén cada línea adaptada aproximadamente de la misma extensión que la original para respetar el timing del video. Adapta nombres de producto, beneficios, dolores y tono de voz.
+
+GUIÓN ORIGINAL (texto continuo):
+${rawText}
 
 MARCA DESTINO:
 - Nombre: ${brain.name}
@@ -80,7 +83,7 @@ MARCA DESTINO:
 - CTAs: ${ctas}
 
 Devuelve ÚNICAMENTE un array JSON válido (sin markdown, sin texto extra) donde cada elemento tenga este formato exacto:
-{"speaker": null, "original": "<línea original>", "adapted": "<línea adaptada>"}`
+{"speaker": null, "original": "<línea original tal como la dividiste>", "adapted": "<línea adaptada para la marca>"}`
 
   const msg = await client.messages.create({
     model: "claude-opus-4-7",
@@ -89,12 +92,7 @@ Devuelve ÚNICAMENTE un array JSON válido (sin markdown, sin texto extra) donde
   })
 
   const raw = (msg.content[0] as { type: string; text: string }).text.trim()
-  const parsed = JSON.parse(raw) as AdCloneLine[]
-  return parsed.map((line, i) => ({
-    speaker: utterances[i]?.speaker ?? null,
-    original: line.original,
-    adapted: line.adapted,
-  }))
+  return JSON.parse(raw) as AdCloneLine[]
 }
 
 // ── Public actions ────────────────────────────────────────────
@@ -224,24 +222,23 @@ export async function pollClone(cloneId: string): Promise<AdClone> {
     return clone as AdClone
   }
 
-  // Transcription complete — build utterances list
-  const utterances: Array<{ speaker: string | null; text: string }> = transcript.utterances?.length
-    ? transcript.utterances.map((u) => ({ speaker: u.speaker, text: u.text }))
-    : (transcript.text ?? "").split(/[.!?]+/).filter((s) => s.trim()).map((s) => ({ speaker: null, text: s.trim() }))
+  // Transcription complete — use full text; Claude will split + adapt in one pass
+  const rawText = transcript.text ?? ""
+  if (!rawText.trim()) {
+    await supabase
+      .from("ad_clones")
+      .update({ status: "error", error_message: "La transcripción no produjo texto." })
+      .eq("id", cloneId)
+    return { ...clone, status: "error", error_message: "La transcripción no produjo texto." } as AdClone
+  }
 
-  const originalLines = utterances.map((u) => ({
-    speaker: u.speaker,
-    original: u.text,
-    adapted: "",
-  }))
-
-  // Store original lines and update status to "adapting"
+  // Update status to "adapting" before calling Claude
   await supabase
     .from("ad_clones")
-    .update({ status: "adapting", original_lines: originalLines })
+    .update({ status: "adapting" })
     .eq("id", cloneId)
 
-  // Run Claude adaptation
+  // Run Claude adaptation (splits + adapts in a single call)
   const brain = clone.brand_brain as Pick<BrandBrain, "name" | "industry" | "tone_of_voice" | "usps" | "key_benefits" | "pain_points" | "target_audience" | "ctas"> | null
   if (!brain) {
     await supabase
@@ -252,14 +249,16 @@ export async function pollClone(cloneId: string): Promise<AdClone> {
   }
 
   try {
-    const adaptedLines = await adaptWithClaude(utterances, brain)
+    const adaptedLines = await adaptWithClaude(rawText, brain)
+    // original_lines mirrors the split Claude produced (for display in the table)
+    const originalLines = adaptedLines.map((l) => ({ speaker: l.speaker, original: l.original, adapted: "" }))
     await supabase
       .from("ad_clones")
       .update({
-        status:        "ready",
+        status:         "ready",
         original_lines: originalLines,
         adapted_lines:  adaptedLines,
-        updated_at:    new Date().toISOString(),
+        updated_at:     new Date().toISOString(),
       })
       .eq("id", cloneId)
     return { ...clone, status: "ready", original_lines: originalLines, adapted_lines: adaptedLines } as AdClone
