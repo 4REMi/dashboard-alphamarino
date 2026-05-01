@@ -62,7 +62,7 @@ async function replicatePoll(predictionId: string): Promise<{ status: string; ur
 
 // ── Claude Vision helpers ─────────────────────────────────────
 
-type BrainContext = Pick<BrandBrain, "name" | "industry" | "tone_of_voice" | "usps" | "key_benefits" | "pain_points" | "target_audience" | "ctas" | "brand_colors">
+type BrainContext = Pick<BrandBrain, "name" | "industry" | "tone_of_voice" | "usps" | "key_benefits" | "pain_points" | "target_audience" | "ctas" | "brand_colors" | "logo_url" | "logo_square_url" | "logo_horizontal_url">
 
 async function extractAndAdaptWithClaude(
   imageUrl: string,
@@ -229,7 +229,7 @@ export async function startImageClone(
   // 4. Fetch brand brain
   const { data: brain, error: brainErr } = await supabase
     .from("brand_brains")
-    .select("id, name, industry, tone_of_voice, usps, key_benefits, pain_points, target_audience, ctas, brand_colors")
+    .select("id, name, industry, tone_of_voice, usps, key_benefits, pain_points, target_audience, ctas, brand_colors, logo_url, logo_square_url, logo_horizontal_url")
     .eq("id", brandBrainId)
     .single()
   if (brainErr || !brain) {
@@ -339,7 +339,7 @@ export async function generateImages(
 
   const { data: clone, error } = await supabase
     .from("image_clones")
-    .select("*, brand_brain:brand_brains(id, name, industry, tone_of_voice, usps, key_benefits, pain_points, target_audience, ctas, brand_colors), saved_ad:saved_ads(cached_image_url, image_url)")
+    .select("*, brand_brain:brand_brains(id, name, industry, tone_of_voice, usps, key_benefits, pain_points, target_audience, ctas, brand_colors, logo_url, logo_square_url, logo_horizontal_url), saved_ad:saved_ads(cached_image_url, image_url)")
     .eq("id", cloneId)
     .single()
   if (error) throw error
@@ -351,13 +351,14 @@ export async function generateImages(
   if (!adImageUrl) throw new Error("No se encontró imagen del anuncio original.")
 
   const userUploads: string[] = clone.reference_image_urls ?? []
-  // Build input_images: [original ad, ...user uploads] (max 8 total)
-  const inputImages = [adImageUrl, ...userUploads].slice(0, 8)
-
   const brain = clone.brand_brain as BrainContext | null
+  const logoUrl = brain?.logo_square_url ?? brain?.logo_url ?? brain?.logo_horizontal_url ?? null
+  // Order: original ad → logo (if any) → user uploads (max 8 total)
+  const inputImages = [adImageUrl, ...(logoUrl ? [logoUrl] : []), ...userUploads].slice(0, 8)
+
   const prompt = buildGenerationPrompt(
     config.adaptedLines,
-    brain ?? { name: "Marca", industry: null, tone_of_voice: null, usps: [], key_benefits: [], pain_points: [], target_audience: null, ctas: [], brand_colors: [] },
+    brain ?? { name: "Marca", industry: null, tone_of_voice: null, usps: [], key_benefits: [], pain_points: [], target_audience: null, ctas: [], brand_colors: [], logo_url: null, logo_square_url: null, logo_horizontal_url: null },
     config.brandColor,
     config.additionalContext,
   )
