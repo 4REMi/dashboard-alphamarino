@@ -19,8 +19,8 @@ async function assertAuth() {
 // ── Replicate helpers ─────────────────────────────────────────
 
 function replicateHeaders() {
-  const token = process.env.REPLICATE_API_TOKEN
-  if (!token) throw new Error("REPLICATE_API_TOKEN no configurado")
+  const token = process.env.REPLICATE_KEY
+  if (!token) throw new Error("REPLICATE_KEY no configurado")
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }
 }
 
