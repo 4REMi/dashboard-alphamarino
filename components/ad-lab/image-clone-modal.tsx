@@ -135,7 +135,8 @@ export function ImageCloneModal({ ad, onClose }: Props) {
           const result = await pollImageGeneration(cloneId)
           if (result.status === "done") {
             clearInterval(pollingRef.current!)
-            setGeneratedUrls(result.generated_image_urls ?? [])
+            const urls = result.generated_image_urls
+            setGeneratedUrls(Array.isArray(urls) ? urls : urls ? [String(urls)] : [])
             setIsGenerating(false)
           } else if (result.status === "error") {
             clearInterval(pollingRef.current!)

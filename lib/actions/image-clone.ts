@@ -47,13 +47,16 @@ async function replicatePoll(predictionId: string): Promise<{ status: string; ur
   if (!res.ok) return { status: "failed" }
   const data = await res.json() as {
     status: string
-    output?: string[] | null
+    output?: string | string[] | null
     error?: string | null
   }
+  // Replicate may return a single string or an array of strings
+  const raw = data.output
+  const urls = Array.isArray(raw) ? raw : raw ? [String(raw)] : []
   return {
     status: data.status,
-    urls:   data.output ?? undefined,
-    error:  data.error ?? undefined,
+    urls,
+    error: data.error ?? undefined,
   }
 }
 
@@ -351,7 +354,7 @@ export async function generateImages(
   try {
     const predictionId = await replicateSubmit({
       prompt,
-      input_image:      imageUrl,
+      image:            imageUrl,
       aspect_ratio:     config.aspectRatio,
       num_outputs:      config.numImages,
       output_format:    "jpg",
