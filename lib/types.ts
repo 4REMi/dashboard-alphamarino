@@ -661,6 +661,7 @@ export interface AdBoard {
   // Relations
   cover_ad?: Pick<SavedAd, "id" | "image_url" | "cached_image_url" | "page_name"> | null
   ad_count?: number
+  preview_ads?: Pick<SavedAd, "id" | "cached_image_url" | "image_url">[]
 }
 
 export interface ClientCreativeContext {

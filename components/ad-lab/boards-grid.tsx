@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react"
 import type { AdBoard } from "@/lib/types"
 import { createBoard, updateBoard, deleteBoard } from "@/lib/actions/ad-lab"
-import { FolderOpen, Plus, MoreHorizontal, Pencil, Trash2, Loader2, X, Check, LayoutGrid } from "lucide-react"
+import { FolderOpen, Plus, MoreHorizontal, Pencil, Trash2, Loader2, X, Check, LayoutGrid, ChevronLeft } from "lucide-react"
 import Link from "next/link"
 
 interface Props {
@@ -61,6 +61,10 @@ export function BoardsGrid({ boards: initialBoards }: Props) {
     <div className="flex flex-col h-full min-h-0">
       {/* ── Header ── */}
       <div className="px-6 pt-6 pb-4 border-b border-border flex-shrink-0">
+        <Link href="/ad-lab" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mb-3">
+          <ChevronLeft className="w-3.5 h-3.5" />
+          Ad Lab
+        </Link>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
@@ -184,21 +188,43 @@ export function BoardsGrid({ boards: initialBoards }: Props) {
                   key={board.id}
                   className="group relative rounded-xl border border-border bg-card hover:border-primary/30 hover:shadow-md transition-all duration-150"
                 >
-                  {/* Cover / thumbnail area */}
+                  {/* Cover / thumbnail collage */}
                   <Link href={`/ad-lab/boards/${board.id}`} className="block">
                     <div className="aspect-[16/9] bg-muted relative overflow-hidden rounded-t-xl">
-                      {((board as any).cover_ad?.cached_image_url ?? (board as any).cover_ad?.image_url) ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={(board as any).cover_ad.cached_image_url ?? (board as any).cover_ad.image_url}
-                          alt={board.name}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <LayoutGrid className="w-8 h-8 text-muted-foreground/30" />
-                        </div>
-                      )}
+                      {(() => {
+                        const previews = (board as any).preview_ads ?? []
+                        const thumbs = previews
+                          .map((a: any) => a.cached_image_url ?? a.image_url)
+                          .filter(Boolean)
+                        if (thumbs.length === 0) {
+                          return (
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <LayoutGrid className="w-8 h-8 text-muted-foreground/30" />
+                            </div>
+                          )
+                        }
+                        if (thumbs.length === 1) {
+                          return (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={thumbs[0]} alt={board.name} className="w-full h-full object-cover" />
+                          )
+                        }
+                        // 2×2 collage for 2–4 images
+                        const cells = [...thumbs.slice(0, 4)]
+                        while (cells.length < 4) cells.push(null)
+                        return (
+                          <div className="absolute inset-0 grid grid-cols-2 grid-rows-2 gap-px bg-border">
+                            {cells.map((url, i) => (
+                              <div key={i} className="bg-muted overflow-hidden">
+                                {url && (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={url} alt="" className="w-full h-full object-cover" />
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )
+                      })()}
                       {/* Ad count badge */}
                       <div className="absolute bottom-2 left-2">
                         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-black/60 text-white">
