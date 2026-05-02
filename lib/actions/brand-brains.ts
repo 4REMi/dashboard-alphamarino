@@ -37,6 +37,29 @@ export async function getBrandBrain(id: string): Promise<BrandBrain | null> {
   return { ...brainRes.data, assets: assetsRes.data ?? [] } as BrandBrain
 }
 
+// Download a remote URL and upload it to Storage, return public URL or null
+async function mirrorUrlToStorage(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  brainId: string,
+  sourceUrl: string,
+  filename: string,
+): Promise<string | null> {
+  try {
+    const res = await fetch(sourceUrl, { signal: AbortSignal.timeout(20_000) })
+    if (!res.ok) return null
+    const buffer      = await res.arrayBuffer()
+    const contentType = res.headers.get("content-type") ?? "image/jpeg"
+    const ext         = (contentType.split("/")[1]?.split(";")[0] ?? "jpg").slice(0, 4)
+    const path        = `${brainId}/${filename}.${ext}`
+    const { error }   = await supabase.storage.from("brand-brains").upload(path, buffer, { contentType, upsert: true })
+    if (error) return null
+    const { data: { publicUrl } } = supabase.storage.from("brand-brains").getPublicUrl(path)
+    return publicUrl
+  } catch {
+    return null
+  }
+}
+
 // Upload a single logo file to Storage and return its public URL
 async function uploadLogo(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -94,6 +117,20 @@ export async function createBrandBrain(formData: FormData): Promise<BrandBrain> 
     const url = await uploadLogo(supabase, brain.id, file, filename)
     if (url) { logoUpdates[col] = url; (brain as Record<string, unknown>)[col] = url }
   }
+
+  // Mirror remote logo URLs (from import) to Storage when no file was uploaded
+  const remoteFields = [
+    { key: "logo_url_remote",            col: "logo_url",            filename: "logo"         },
+    { key: "logo_square_url_remote",     col: "logo_square_url",     filename: "logo_square"  },
+    { key: "logo_horizontal_url_remote", col: "logo_horizontal_url", filename: "logo_horizontal" },
+  ] as const
+  for (const { key, col, filename } of remoteFields) {
+    const remoteUrl = formData.get(key) as string | null
+    if (!remoteUrl || logoUpdates[col]) continue
+    const url = await mirrorUrlToStorage(supabase, brain.id, remoteUrl, filename)
+    if (url) { logoUpdates[col] = url; (brain as Record<string, unknown>)[col] = url }
+  }
+
   if (Object.keys(logoUpdates).length > 0) {
     await supabase.from("brand_brains").update(logoUpdates).eq("id", brain.id)
   }

@@ -258,9 +258,21 @@ export function BrandBrainModal({ brain, initialValues, onClose, onSaved }: Prop
       fd.set("ctas", JSON.stringify(clean(ctas)))
       fd.set("tone_of_voice", toneOfVoice)
       fd.set("additional_context", additionalContext)
-      if (iconFileRef.current?.files?.[0])       fd.set("logo",            iconFileRef.current.files[0])
-      if (squareFileRef.current?.files?.[0])     fd.set("logo_square",     squareFileRef.current.files[0])
-      if (horizontalFileRef.current?.files?.[0]) fd.set("logo_horizontal", horizontalFileRef.current.files[0])
+      if (iconFileRef.current?.files?.[0]) {
+        fd.set("logo", iconFileRef.current.files[0])
+      } else if (!brain?.id && iconPreview?.startsWith("http")) {
+        fd.set("logo_url_remote", iconPreview)
+      }
+      if (squareFileRef.current?.files?.[0]) {
+        fd.set("logo_square", squareFileRef.current.files[0])
+      } else if (!brain?.id && squarePreview?.startsWith("http")) {
+        fd.set("logo_square_url_remote", squarePreview)
+      }
+      if (horizontalFileRef.current?.files?.[0]) {
+        fd.set("logo_horizontal", horizontalFileRef.current.files[0])
+      } else if (!brain?.id && horizontalPreview?.startsWith("http")) {
+        fd.set("logo_horizontal_url_remote", horizontalPreview)
+      }
 
       const result = brain?.id
         ? await updateBrandBrain(brain.id, fd).then(() => ({

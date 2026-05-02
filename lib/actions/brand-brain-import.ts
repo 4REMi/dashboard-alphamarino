@@ -31,10 +31,40 @@ async function runApifyActor(actorId: string, input: Record<string, unknown>): P
   return res.json()
 }
 
-async function analyzeWithClaude(content: string): Promise<Partial<BrandBrain>> {
+// Canonical gray/black/white shades to skip as non-brand colors
+const COMMON_COLORS = new Set([
+  "#ffffff","#fffffe","#fafafa","#f9f9f9","#f8f8f8","#f5f5f5","#f0f0f0",
+  "#eeeeee","#e5e5e5","#dddddd","#cccccc","#bdbdbd","#aaaaaa","#999999",
+  "#888888","#777777","#666666","#555555","#444444","#333333","#222222",
+  "#111111","#000000","#00000000",
+])
+
+function extractCssColors(html: string): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  // Match #rrggbb and #rgb in style blocks and inline styles
+  const re = /#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(html)) !== null) {
+    let hex = m[0].toLowerCase()
+    // Expand shorthand #rgb → #rrggbb
+    if (hex.length === 4) hex = `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`
+    if (COMMON_COLORS.has(hex) || seen.has(hex)) continue
+    seen.add(hex)
+    out.push(hex)
+    if (out.length >= 30) break
+  }
+  return out
+}
+
+async function analyzeWithClaude(content: string, cssColors?: string[]): Promise<Partial<BrandBrain>> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY no configurado")
   const client = new Anthropic({ apiKey })
+
+  const colorHint = cssColors?.length
+    ? `\nCSS COLOR CANDIDATES (from the site's stylesheets — pick 1-4 that best represent the brand):\n${cssColors.join("  ")}\n`
+    : ""
 
   const prompt = `Analyze the following brand content and extract a Brand Brain profile.
 Return ONLY a valid JSON object (no markdown, no extra text) with these exact fields:
@@ -48,14 +78,16 @@ Return ONLY a valid JSON object (no markdown, no extra text) with these exact fi
   "pain_points": ["string"],
   "target_audience": "string",
   "ctas": ["string"],
-  "key_features": ["string"]
+  "key_features": ["string"],
+  "brand_colors": [{"hex": "#RRGGBB", "label": "string"}]
 }
 
 Rules:
 - usps, key_benefits, pain_points, ctas, key_features: 3-5 items each, no more
+- brand_colors: 1-4 items. Only include colors you are confident are brand identity colors (not generic grays/whites/blacks). Labels: "Primario", "Secundario", "Acento", etc. Use [] if uncertain.
 - If a field cannot be inferred, use [] or ""
 - Match the language of the brand content
-
+${colorHint}
 CONTENT:
 ${content}`
 
@@ -113,7 +145,10 @@ export async function importBrainFromInstagram(username: string): Promise<Partia
 
   const draft = await analyzeWithClaude(content)
 
-  if (profile?.profilePicUrl) draft.logo_url = profile.profilePicUrl as string
+  if (profile?.profilePicUrl) {
+    draft.logo_url        = profile.profilePicUrl as string
+    draft.logo_square_url = profile.profilePicUrl as string
+  }
   if (!draft.name && profile?.fullName) draft.name = profile.fullName as string
 
   return draft
@@ -130,6 +165,7 @@ export async function importBrainFromWebsite(url: string): Promise<Partial<Brand
   if (!res.ok) throw new Error(`No se pudo acceder al sitio (${res.status})`)
 
   const html = await res.text()
+  const cssColors = extractCssColors(html)
   const text = html
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
@@ -138,5 +174,5 @@ export async function importBrainFromWebsite(url: string): Promise<Partial<Brand
     .trim()
     .slice(0, 8000)
 
-  return analyzeWithClaude(`WEBSITE URL: ${normalizedUrl}\n\nWEBSITE CONTENT:\n${text}`)
+  return analyzeWithClaude(`WEBSITE URL: ${normalizedUrl}\n\nWEBSITE CONTENT:\n${text}`, cssColors)
 }
