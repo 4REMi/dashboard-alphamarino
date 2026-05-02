@@ -122,7 +122,8 @@ export async function importBrainFromInstagram(username: string): Promise<Partia
 export async function importBrainFromWebsite(url: string): Promise<Partial<BrandBrain>> {
   await assertAuth()
 
-  const res = await fetch(url, {
+  const normalizedUrl = /^https?:\/\//i.test(url) ? url : `https://${url}`
+  const res = await fetch(normalizedUrl, {
     signal:  AbortSignal.timeout(15_000),
     headers: { "User-Agent": "Mozilla/5.0 (compatible; AlphaMarino/1.0)" },
   })
@@ -137,5 +138,5 @@ export async function importBrainFromWebsite(url: string): Promise<Partial<Brand
     .trim()
     .slice(0, 8000)
 
-  return analyzeWithClaude(`WEBSITE URL: ${url}\n\nWEBSITE CONTENT:\n${text}`)
+  return analyzeWithClaude(`WEBSITE URL: ${normalizedUrl}\n\nWEBSITE CONTENT:\n${text}`)
 }

@@ -23,6 +23,7 @@ type Tab = typeof TABS[number]
 
 interface Props {
   brain?: BrandBrain
+  initialValues?: Partial<BrandBrain>
   onClose: () => void
   onSaved: (brain: BrandBrain) => void
 }
@@ -189,40 +190,43 @@ function LogoSlot({
 
 // ── Main modal ────────────────────────────────────────────────
 
-export function BrandBrainModal({ brain, onClose, onSaved }: Props) {
+export function BrandBrainModal({ brain, initialValues, onClose, onSaved }: Props) {
   const [tab, setTab] = useState<Tab>("Datos básicos")
   const [isPending, startTransition] = useTransition()
+
+  // `seed` is used only for initial state — `brain` for editing, `initialValues` for imported drafts
+  const seed = brain ?? initialValues
 
   // Logo refs / previews
   const iconFileRef       = useRef<HTMLInputElement>(null)
   const squareFileRef     = useRef<HTMLInputElement>(null)
   const horizontalFileRef = useRef<HTMLInputElement>(null)
-  const [iconPreview,       setIconPreview]       = useState<string | null>(brain?.logo_url ?? null)
-  const [squarePreview,     setSquarePreview]     = useState<string | null>(brain?.logo_square_url ?? null)
-  const [horizontalPreview, setHorizontalPreview] = useState<string | null>(brain?.logo_horizontal_url ?? null)
+  const [iconPreview,       setIconPreview]       = useState<string | null>(seed?.logo_url ?? null)
+  const [squarePreview,     setSquarePreview]     = useState<string | null>(seed?.logo_square_url ?? null)
+  const [horizontalPreview, setHorizontalPreview] = useState<string | null>(seed?.logo_horizontal_url ?? null)
 
   // Form state
-  const [name, setName]               = useState(brain?.name ?? "")
-  const [initials, setInitials]       = useState(brain?.initials ?? "")
-  const [industry, setIndustry]       = useState(brain?.industry ?? "")
-  const [language, setLanguage]       = useState(brain?.language ?? "es")
-  const [description, setDescription] = useState(brain?.description ?? "")
+  const [name, setName]               = useState(seed?.name ?? "")
+  const [initials, setInitials]       = useState(seed?.initials ?? "")
+  const [industry, setIndustry]       = useState(seed?.industry ?? "")
+  const [language, setLanguage]       = useState(seed?.language ?? "es")
+  const [description, setDescription] = useState(seed?.description ?? "")
   const [colors, setColors]           = useState<BrandBrainColor[]>(
-    brain?.brand_colors?.length ? brain.brand_colors : [{ hex: "#000000", label: "Primario" }]
+    seed?.brand_colors?.length ? seed.brand_colors : [{ hex: "#000000", label: "Primario" }]
   )
-  const [usps, setUsps]               = useState<string[]>(brain?.usps?.length ? brain.usps : [""])
-  const [keyBenefits, setKeyBenefits] = useState<string[]>(brain?.key_benefits?.length ? brain.key_benefits : [""])
-  const [painPoints, setPainPoints]   = useState<string[]>(brain?.pain_points?.length ? brain.pain_points : [""])
+  const [usps, setUsps]               = useState<string[]>(seed?.usps?.length ? seed.usps : [""])
+  const [keyBenefits, setKeyBenefits] = useState<string[]>(seed?.key_benefits?.length ? seed.key_benefits : [""])
+  const [painPoints, setPainPoints]   = useState<string[]>(seed?.pain_points?.length ? seed.pain_points : [""])
   // target_audience stored as newline-joined text; split back into list
   const [targetAudienceList, setTargetAudienceList] = useState<string[]>(
-    brain?.target_audience
-      ? brain.target_audience.split("\n").filter(Boolean)
+    seed?.target_audience
+      ? seed.target_audience.split("\n").filter(Boolean)
       : [""]
   )
-  const [keyFeatures, setKeyFeatures] = useState<string[]>(brain?.key_features?.length ? brain.key_features : [""])
-  const [ctas, setCtas]               = useState<string[]>(brain?.ctas?.length ? brain.ctas : [""])
-  const [toneOfVoice, setToneOfVoice] = useState(brain?.tone_of_voice ?? "")
-  const [additionalContext, setAdditionalContext] = useState(brain?.additional_context ?? "")
+  const [keyFeatures, setKeyFeatures] = useState<string[]>(seed?.key_features?.length ? seed.key_features : [""])
+  const [ctas, setCtas]               = useState<string[]>(seed?.ctas?.length ? seed.ctas : [""])
+  const [toneOfVoice, setToneOfVoice] = useState(seed?.tone_of_voice ?? "")
+  const [additionalContext, setAdditionalContext] = useState(seed?.additional_context ?? "")
 
   const tabIndex = TABS.indexOf(tab)
   const isLast   = tabIndex === TABS.length - 1
@@ -258,7 +262,7 @@ export function BrandBrainModal({ brain, onClose, onSaved }: Props) {
       if (squareFileRef.current?.files?.[0])     fd.set("logo_square",     squareFileRef.current.files[0])
       if (horizontalFileRef.current?.files?.[0]) fd.set("logo_horizontal", horizontalFileRef.current.files[0])
 
-      const result = brain
+      const result = brain?.id
         ? await updateBrandBrain(brain.id, fd).then(() => ({
             ...brain, name, initials, industry, language, description,
             brand_colors: colors,

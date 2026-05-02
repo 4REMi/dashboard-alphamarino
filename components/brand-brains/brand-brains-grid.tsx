@@ -66,7 +66,8 @@ export function BrandBrainsGrid({ brains: initialBrains }: Props) {
       )}
       {(showModal || editing) && (
         <BrandBrainModal
-          brain={(editing ?? draft ?? undefined) as BrandBrain | undefined}
+          brain={editing ?? undefined}
+          initialValues={draft ?? undefined}
           onClose={() => { setShowModal(false); setEditing(null); setDraft(null) }}
           onSaved={handleSaved}
         />
