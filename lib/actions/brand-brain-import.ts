@@ -76,7 +76,7 @@ export async function importBrainFromInstagram(username: string): Promise<Partia
   const profileUrl = `https://www.instagram.com/${handle}/`
 
   const [profileData, postsData] = await Promise.all([
-    runApifyActor("apify~instagram-profile-scraper", { directUrls: [profileUrl] }),
+    runApifyActor("apify~instagram-profile-scraper", { usernames: [handle] }),
     runApifyActor("apify~instagram-scraper", {
       directUrls:  [profileUrl],
       resultsType: "posts",
