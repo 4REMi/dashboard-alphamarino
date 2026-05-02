@@ -4,7 +4,8 @@ import { useState } from "react"
 import type { BrandBrain } from "@/lib/types"
 import { deleteBrandBrain } from "@/lib/actions/brand-brains"
 import { BrandBrainModal } from "@/components/brand-brains/brand-brain-modal"
-import { Brain, Plus, MoreHorizontal, Pencil, Trash2 } from "lucide-react"
+import { BrainImportModal } from "@/components/brand-brains/brain-import-modal"
+import { Brain, Plus, MoreHorizontal, Pencil, Trash2, Sparkles } from "lucide-react"
 import Link from "next/link"
 
 interface Props {
@@ -22,10 +23,12 @@ function brandColor(name: string): string {
 }
 
 export function BrandBrainsGrid({ brains: initialBrains }: Props) {
-  const [brains, setBrains]     = useState(initialBrains)
-  const [showModal, setShowModal] = useState(false)
-  const [editing, setEditing]   = useState<BrandBrain | null>(null)
-  const [menuId, setMenuId]     = useState<string | null>(null)
+  const [brains, setBrains]         = useState(initialBrains)
+  const [showModal, setShowModal]   = useState(false)
+  const [showImport, setShowImport] = useState(false)
+  const [editing, setEditing]       = useState<BrandBrain | null>(null)
+  const [draft, setDraft]           = useState<Partial<BrandBrain> | null>(null)
+  const [menuId, setMenuId]         = useState<string | null>(null)
 
   function handleSaved(brain: BrandBrain) {
     setBrains((prev) => {
@@ -47,12 +50,24 @@ export function BrandBrainsGrid({ brains: initialBrains }: Props) {
     setBrains((prev) => prev.filter((b) => b.id !== id))
   }
 
+  function handleDraftReady(d: Partial<BrandBrain>) {
+    setDraft(d)
+    setShowImport(false)
+    setShowModal(true)
+  }
+
   return (
     <>
+      {showImport && (
+        <BrainImportModal
+          onClose={() => setShowImport(false)}
+          onDraftReady={handleDraftReady}
+        />
+      )}
       {(showModal || editing) && (
         <BrandBrainModal
-          brain={editing ?? undefined}
-          onClose={() => { setShowModal(false); setEditing(null) }}
+          brain={(editing ?? draft ?? undefined) as BrandBrain | undefined}
+          onClose={() => { setShowModal(false); setEditing(null); setDraft(null) }}
           onSaved={handleSaved}
         />
       )}
@@ -70,13 +85,22 @@ export function BrandBrainsGrid({ brains: initialBrains }: Props) {
                 <p className="text-sm text-muted-foreground">Contexto completo de cada marca</p>
               </div>
             </div>
-            <button
-              onClick={() => setShowModal(true)}
-              className="flex items-center gap-1.5 h-9 px-4 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              Nuevo Brand Brain
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowImport(true)}
+                className="flex items-center gap-1.5 h-9 px-4 rounded-xl border border-border text-sm font-medium hover:bg-muted transition-colors text-muted-foreground"
+              >
+                <Sparkles className="w-4 h-4" />
+                Importar
+              </button>
+              <button
+                onClick={() => setShowModal(true)}
+                className="flex items-center gap-1.5 h-9 px-4 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                Nuevo Brand Brain
+              </button>
+            </div>
           </div>
         </div>
 
