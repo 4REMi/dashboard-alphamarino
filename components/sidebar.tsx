@@ -38,23 +38,45 @@ interface SidebarProps {
   onMobileClose?: () => void
 }
 
+type Permission = "view_global_finances" | "access_ad_lab" | "access_brand_brains"
+
+type NavChild = {
+  href: string
+  icon: React.ElementType
+  label: string
+  permission?: Permission
+}
+
+type NavItem = {
+  href: string
+  icon: React.ElementType
+  label: string
+  permission?: Permission
+  adminOnly?: boolean
+  children?: NavChild[]
+}
+
 export function Sidebar({ profile, logoUrl, mobileOpen = false, onMobileClose }: SidebarProps) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
   const t = useTranslations("nav")
   const tRoles = useTranslations("roles")
 
-  const navItems = [
+  const navItems: NavItem[] = [
     { href: "/", icon: LayoutDashboard, label: t("dashboard") },
     { href: "/customers", icon: Users, label: t("clients") },
     { href: "/projects", icon: FolderKanban, label: t("projects") },
     { href: "/tasks", icon: CheckSquare, label: t("tasks") },
-    { href: "/finances", icon: DollarSign, label: t("finances"), permission: "view_global_finances" as const },
-    { href: "/finances/domains", icon: Globe, label: t("domains"), permission: "view_global_finances" as const },
+    { href: "/finances", icon: DollarSign, label: t("finances"), permission: "view_global_finances" },
+    { href: "/finances/domains", icon: Globe, label: t("domains"), permission: "view_global_finances" },
     { href: "/employees", icon: UserCircle, label: t("team") },
     { href: "/sops", icon: BookOpen, label: "SOPs" },
-    { href: "/ad-lab", icon: Tv2, label: "Ad Lab", permission: "access_ad_lab" as const },
-    { href: "/brand-brains", icon: Brain, label: "Brand Brains", permission: "access_brand_brains" as const },
+    {
+      href: "/ad-lab", icon: Tv2, label: "Ad Lab", permission: "access_ad_lab",
+      children: [
+        { href: "/brand-brains", icon: Brain, label: "Brand Brains", permission: "access_brand_brains" },
+      ],
+    },
     {
       href: "/operations", icon: FlaskConical, label: t("operationsLab"), adminOnly: true,
       children: [
@@ -71,19 +93,37 @@ export function Sidebar({ profile, logoUrl, mobileOpen = false, onMobileClose }:
     return true
   })
 
-  const roleLabel = profile?.role ? (tRoles(profile.role as "admin" | "subadmin" | "employee") ?? profile.role) : ""
+  // Auto-expand sections whose children (or the section itself) match the current path
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(() => {
+    const expanded = new Set<string>()
+    for (const item of navItems) {
+      if (!item.children) continue
+      const selfActive   = pathname.startsWith(item.href)
+      const childActive  = item.children.some((c) => pathname.startsWith(c.href))
+      if (selfActive || childActive) expanded.add(item.href)
+    }
+    return expanded
+  })
+
+  function toggleSection(href: string) {
+    setExpandedSections((prev) => {
+      const next = new Set(prev)
+      next.has(href) ? next.delete(href) : next.add(href)
+      return next
+    })
+  }
+
+  const roleLabel = profile?.role
+    ? (tRoles(profile.role as "admin" | "subadmin" | "employee") ?? profile.role)
+    : ""
 
   return (
     <aside
       className={cn(
         "flex flex-col h-screen bg-sidebar border-r border-sidebar-border transition-all duration-300",
-        // Mobile: fixed overlay drawer
         "fixed inset-y-0 left-0 z-50",
-        // Desktop: sticky in-flow sidebar
         "md:sticky md:top-0",
-        // Mobile open/close via translate; desktop always visible
         mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
-        // Width: always w-60 on mobile, collapsible on desktop
         "w-60",
         collapsed && "md:w-16",
       )}
@@ -92,14 +132,7 @@ export function Sidebar({ profile, logoUrl, mobileOpen = false, onMobileClose }:
       <div className="flex items-center gap-3 px-4 py-5 border-b border-sidebar-border">
         <div className={`flex items-center justify-center w-8 h-8 rounded-lg flex-shrink-0 overflow-hidden ${logoUrl ? "" : "bg-primary"}`}>
           {logoUrl ? (
-            <Image
-              src={logoUrl}
-              alt="Logo"
-              width={32}
-              height={32}
-              className="object-contain w-full h-full"
-              unoptimized
-            />
+            <Image src={logoUrl} alt="Logo" width={32} height={32} className="object-contain w-full h-full" unoptimized />
           ) : (
             <Anchor className="w-4 h-4 text-white" />
           )}
@@ -110,7 +143,6 @@ export function Sidebar({ profile, logoUrl, mobileOpen = false, onMobileClose }:
             <p className="text-xs text-muted-foreground">Dashboard</p>
           </div>
         )}
-        {/* Collapse toggle — desktop only */}
         <button
           onClick={() => setCollapsed(!collapsed)}
           className="ml-auto p-1 rounded hover:bg-sidebar-accent text-muted-foreground hover:text-foreground transition-colors hidden md:flex"
@@ -125,24 +157,48 @@ export function Sidebar({ profile, logoUrl, mobileOpen = false, onMobileClose }:
           const isActive = item.href === "/"
             ? pathname === "/"
             : pathname.startsWith(item.href)
-          const children = (item as any).children as { href: string; icon: React.ElementType; label: string }[] | undefined
+
+          const visibleChildren = item.children?.filter((c) => {
+            if (!c.permission) return true
+            return can(profile, c.permission)
+          })
+          const hasChildren = visibleChildren && visibleChildren.length > 0
+          const isExpanded  = expandedSections.has(item.href)
 
           return (
             <div key={item.href}>
-              <Link
-                href={item.href}
-                onClick={onMobileClose}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-                  isActive
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+              {/* Parent row */}
+              <div className="flex items-center gap-0.5">
+                <Link
+                  href={item.href}
+                  onClick={onMobileClose}
+                  className={cn(
+                    "flex-1 flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors min-w-0",
+                    isActive
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+                  )}
+                >
+                  <item.icon className="w-5 h-5 flex-shrink-0" />
+                  {!collapsed && <span className="truncate">{item.label}</span>}
+                </Link>
+
+                {/* Chevron toggle — only when not collapsed and has children */}
+                {!collapsed && hasChildren && (
+                  <button
+                    onClick={() => toggleSection(item.href)}
+                    className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-sidebar-accent transition-colors flex-shrink-0"
+                    aria-label={isExpanded ? "Colapsar" : "Expandir"}
+                  >
+                    <ChevronRight
+                      className={cn("w-3.5 h-3.5 transition-transform duration-150", isExpanded && "rotate-90")}
+                    />
+                  </button>
                 )}
-              >
-                <item.icon className="w-5 h-5 flex-shrink-0" />
-                {!collapsed && <span>{item.label}</span>}
-              </Link>
-              {!collapsed && children?.map((child) => {
+              </div>
+
+              {/* Children */}
+              {!collapsed && isExpanded && visibleChildren?.map((child) => {
                 const childActive = pathname.startsWith(child.href)
                 return (
                   <Link
