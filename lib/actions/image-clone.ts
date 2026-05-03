@@ -18,6 +18,26 @@ async function assertAuth() {
 
 // ── Replicate helpers ─────────────────────────────────────────
 
+async function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function replicateSubmitWithRetry(input: Record<string, unknown>): Promise<string> {
+  let delay = 12_000
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      return await replicateSubmit(input)
+    } catch (err) {
+      const msg = String(err).toLowerCase()
+      const isThrottled = msg.includes("throttled") || msg.includes("rate limit") || msg.includes("429")
+      if (!isThrottled || attempt === 4) throw err
+      await sleep(delay)
+      delay = Math.min(Math.floor(delay * 1.5), 60_000)
+    }
+  }
+  throw new Error("Max retries exceeded")
+}
+
 function replicateHeaders() {
   const token = process.env.REPLICATE_KEY
   if (!token) throw new Error("REPLICATE_KEY no configurado")
@@ -393,9 +413,12 @@ export async function generateImages(
       output_format:       "jpg",
       safety_filter_level: "block_only_high",
     }
-    const ids = await Promise.all(
-      Array.from({ length: config.numImages }, () => replicateSubmit(submissionInput))
-    )
+    // Submit sequentially — Replicate's burst=1 limit blocks parallel submissions
+    const ids: string[] = []
+    for (let i = 0; i < config.numImages; i++) {
+      if (i > 0) await sleep(300) // small gap between sequential calls
+      ids.push(await replicateSubmitWithRetry(submissionInput))
+    }
     await supabase
       .from("image_clones")
       .update({ fal_request_id: JSON.stringify(ids) })
