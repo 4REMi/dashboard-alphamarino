@@ -1,8 +1,10 @@
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { can } from "@/lib/permissions"
-import type { Profile, TrackedBrand, AdBoard } from "@/lib/types"
-import { Tv2, LayoutGrid, FolderOpen, Radio } from "lucide-react"
+import { getAllImageClones } from "@/lib/actions/image-clone"
+import { CreativesGrid } from "@/components/ad-lab/creatives-grid"
+import type { Profile } from "@/lib/types"
+import { Tv2, LayoutGrid, FolderOpen, Radio, ImagePlay } from "lucide-react"
 
 export default async function AdLabPage() {
   const supabase = await createClient()
@@ -19,16 +21,19 @@ export default async function AdLabPage() {
 
   if (!can(profile, "access_ad_lab")) redirect("/")
 
-  // Fetch counts for the landing overview
-  const [brandsRes, boardsRes, savedAdsRes] = await Promise.all([
+  // Fetch counts + recent creatives in parallel
+  const [brandsRes, boardsRes, savedAdsRes, clonesCountRes, recentClones] = await Promise.all([
     supabase.from("tracked_brands").select("id", { count: "exact", head: true }),
     supabase.from("ad_boards").select("id", { count: "exact", head: true }),
     supabase.from("saved_ads").select("id", { count: "exact", head: true }),
+    supabase.from("image_clones").select("id", { count: "exact", head: true }).eq("status", "done"),
+    getAllImageClones(12),
   ])
 
-  const brandCount   = brandsRes.count   ?? 0
-  const boardCount   = boardsRes.count   ?? 0
-  const savedAdCount = savedAdsRes.count ?? 0
+  const brandCount    = brandsRes.count      ?? 0
+  const boardCount    = boardsRes.count      ?? 0
+  const savedAdCount  = savedAdsRes.count    ?? 0
+  const creativesCount = clonesCountRes.count ?? 0
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-8">
@@ -46,25 +51,11 @@ export default async function AdLabPage() {
       </div>
 
       {/* Quick stats */}
-      <div className="grid grid-cols-3 gap-4">
-        <StatCard
-          icon={Radio}
-          label="Marcas trackeadas"
-          value={brandCount}
-          href="/ad-lab/brands"
-        />
-        <StatCard
-          icon={LayoutGrid}
-          label="Anuncios guardados"
-          value={savedAdCount}
-          href="/ad-lab/discovery"
-        />
-        <StatCard
-          icon={FolderOpen}
-          label="Boards"
-          value={boardCount}
-          href="/ad-lab/boards"
-        />
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <StatCard icon={Radio}      label="Marcas trackeadas"   value={brandCount}     href="/ad-lab/brands"     />
+        <StatCard icon={LayoutGrid} label="Anuncios guardados"  value={savedAdCount}   href="/ad-lab/discovery"  />
+        <StatCard icon={FolderOpen} label="Boards"              value={boardCount}     href="/ad-lab/boards"     />
+        <StatCard icon={ImagePlay}  label="Creativos generados" value={creativesCount} href="#creatives"         />
       </div>
 
       {/* Nav cards */}
@@ -87,6 +78,11 @@ export default async function AdLabPage() {
           title="Marcas"
           description="Gestiona las marcas competidoras trackeadas por cliente."
         />
+      </div>
+
+      {/* Creatives gallery */}
+      <div id="creatives">
+        <CreativesGrid clones={recentClones as Parameters<typeof CreativesGrid>[0]["clones"]} />
       </div>
     </div>
   )

@@ -536,6 +536,17 @@ export async function deleteImageClone(cloneId: string): Promise<void> {
   if (!data || data.length === 0) throw new Error("No se pudo eliminar el clon — verifica permisos")
 }
 
+export async function getAllImageClones(limit = 12): Promise<ImageClone[]> {
+  const { supabase } = await assertAuth()
+  const { data } = await supabase
+    .from("image_clones")
+    .select("*, brand_brain:brand_brains(id, name, logo_url, brand_colors), saved_ad:saved_ads(id, page_name, cached_image_url, image_url)")
+    .eq("status", "done")
+    .order("created_at", { ascending: false })
+    .limit(limit)
+  return (data ?? []) as ImageClone[]
+}
+
 /**
  * Fetches a clone by share token — no auth required (uses admin client).
  */
