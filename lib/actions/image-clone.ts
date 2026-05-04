@@ -16,6 +16,34 @@ async function assertAuth() {
   return { supabase, user }
 }
 
+// ── Storage mirror ────────────────────────────────────────────
+
+async function mirrorGeneratedImages(cloneId: string, sourceUrls: string[]): Promise<string[]> {
+  const adminStorage = createAdminClient()
+  const mirrored: string[] = []
+
+  for (let i = 0; i < sourceUrls.length; i++) {
+    try {
+      const res = await fetch(sourceUrls[i], { signal: AbortSignal.timeout(30_000) })
+      if (!res.ok) { mirrored.push(sourceUrls[i]); continue }
+      const buffer      = await res.arrayBuffer()
+      const contentType = res.headers.get("content-type") ?? "image/jpeg"
+      const ext         = (contentType.split("/")[1]?.split(";")[0] ?? "jpg").slice(0, 4)
+      const path        = `image-clones/${cloneId}/gen-${i}.${ext}`
+      const { error }   = await adminStorage.storage
+        .from("ad-lab")
+        .upload(path, buffer, { contentType, upsert: true })
+      if (error) { mirrored.push(sourceUrls[i]); continue }
+      const { data: { publicUrl } } = adminStorage.storage.from("ad-lab").getPublicUrl(path)
+      mirrored.push(publicUrl)
+    } catch {
+      mirrored.push(sourceUrls[i]) // fallback to original if mirror fails
+    }
+  }
+
+  return mirrored
+}
+
 // ── Replicate helpers ─────────────────────────────────────────
 
 async function sleep(ms: number) {
@@ -471,15 +499,16 @@ export async function pollImageGeneration(cloneId: string): Promise<ImageClone> 
 
   const urls = results.flatMap((r) => r.urls ?? [])
   if (urls.length > 0) {
+    const stableUrls = await mirrorGeneratedImages(cloneId, urls)
     await supabase
       .from("image_clones")
       .update({
         status:               "done",
-        generated_image_urls: urls,
+        generated_image_urls: stableUrls,
         updated_at:           new Date().toISOString(),
       })
       .eq("id", cloneId)
-    return { ...clone, status: "done", generated_image_urls: urls } as ImageClone
+    return { ...clone, status: "done", generated_image_urls: stableUrls } as ImageClone
   }
 
   // All predictions failed
