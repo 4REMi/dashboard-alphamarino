@@ -130,7 +130,22 @@ function CreativeCard({ clone }: { clone: CloneRich }) {
 }
 
 export function CreativesGrid({ clones }: Props) {
+  const [selectedBrainId, setSelectedBrainId] = useState<string | null>(null)
+
   const validClones = clones.filter((c) => c.generated_image_urls?.length > 0)
+
+  // Deduplicated list of brands that appear in the gallery
+  const brands = Array.from(
+    validClones.reduce((map, c) => {
+      const b = c.brand_brain
+      if (b && !map.has(b.id)) map.set(b.id, b)
+      return map
+    }, new Map<string, BrainMeta>()).values()
+  )
+
+  const filtered = selectedBrainId
+    ? validClones.filter((c) => c.brand_brain?.id === selectedBrainId)
+    : validClones
 
   if (validClones.length === 0) {
     return (
@@ -147,10 +162,74 @@ export function CreativesGrid({ clones }: Props) {
   }
 
   return (
-    <div className="columns-2 sm:columns-3 lg:columns-4 xl:columns-5 gap-3">
-      {validClones.map((clone) => (
-        <CreativeCard key={clone.id} clone={clone} />
-      ))}
+    <div className="space-y-5">
+      {/* Brand filter — only shown when there's more than one brand */}
+      {brands.length > 1 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => setSelectedBrainId(null)}
+            className={`flex items-center gap-2 h-8 px-3 rounded-full text-xs font-medium border transition-colors ${
+              !selectedBrainId
+                ? "bg-foreground text-background border-foreground"
+                : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"
+            }`}
+          >
+            Todas
+          </button>
+
+          {brands.map((brain) => {
+            const isActive = selectedBrainId === brain.id
+            const colors   = brain.brand_colors?.slice(0, 3) ?? []
+
+            return (
+              <button
+                key={brain.id}
+                onClick={() => setSelectedBrainId(isActive ? null : brain.id)}
+                className={`flex items-center gap-2 h-8 px-3 rounded-full text-xs font-medium border transition-colors ${
+                  isActive
+                    ? "bg-foreground text-background border-foreground"
+                    : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"
+                }`}
+              >
+                {/* Color swatches */}
+                {colors.length > 0 ? (
+                  <span className="flex gap-0.5">
+                    {colors.map((c, i) => (
+                      <span
+                        key={i}
+                        className="w-3 h-3 rounded-full flex-shrink-0 ring-1 ring-black/10"
+                        style={{ background: c.hex }}
+                      />
+                    ))}
+                  </span>
+                ) : brain.logo_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={brain.logo_url} alt="" className="w-4 h-4 rounded-full object-cover flex-shrink-0" />
+                ) : (
+                  <span className="w-3 h-3 rounded-full bg-muted-foreground/30 flex-shrink-0" />
+                )}
+                {brain.name}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Masonry grid */}
+      <div className="columns-2 sm:columns-3 lg:columns-4 xl:columns-5 gap-3">
+        {filtered.map((clone) => (
+          <CreativeCard key={clone.id} clone={clone} />
+        ))}
+      </div>
+
+      {filtered.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-20 gap-2 text-center">
+          <p className="text-sm font-semibold">Sin creativos para esta marca</p>
+          <button onClick={() => setSelectedBrainId(null)} className="text-xs text-primary underline">
+            Ver todos
+          </button>
+        </div>
+      )}
     </div>
   )
 }
