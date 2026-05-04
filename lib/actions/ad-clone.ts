@@ -114,7 +114,10 @@ export async function startClone(
   const videoItem = (snap as any)?.videos?.[0]
   const imageItem = (snap as any)?.images?.[0]
   const imageUrl  = card?.resized_image_url ?? card?.original_image_url
-    ?? (imageItem?.resized_image_url ?? imageItem?.original_image_url) ?? null
+    ?? card?.video_preview_image_url
+    ?? (imageItem?.resized_image_url ?? imageItem?.original_image_url)
+    ?? (videoItem?.video_preview_image_url)
+    ?? null
   const videoUrl  = card?.video_hd_url ?? card?.video_sd_url
     ?? (videoItem?.video_hd_url ?? videoItem?.video_sd_url) ?? null
   const toDate = (ts: number | null) =>

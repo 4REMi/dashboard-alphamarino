@@ -211,7 +211,15 @@ export function BoardDetail({ board, initialAds, boards, initialCloneCounts = {}
                 const safeName  = ad.page_name ?? ""
                 const color     = brandColor(safeName)
                 const initials  = safeName.split(/\s+/).filter(Boolean).map((w) => w[0]).join("").toUpperCase().slice(0, 2) || "?"
-                const thumbUrl  = ad.cached_image_url ?? ad.image_url
+                // Fall back to video preview from frozen snapshot for ads saved before multi-shape fix
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const snap      = ad.ad_snapshot as any
+                const snapThumb = snap?.snapshot?.cards?.[0]?.video_preview_image_url
+                  ?? snap?.snapshot?.videos?.[0]?.video_preview_image_url
+                  ?? snap?.snapshot?.cards?.[0]?.resized_image_url
+                  ?? snap?.snapshot?.images?.[0]?.resized_image_url
+                  ?? null
+                const thumbUrl  = ad.cached_image_url ?? ad.image_url ?? snapThumb
                 const videoUrl  = ad.cached_video_url ?? ad.video_url
                 const isUpload  = ad.source === "upload"
                 const isActive  = ad.status === "active"
