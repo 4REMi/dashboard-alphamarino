@@ -108,6 +108,31 @@ async function replicatePoll(predictionId: string): Promise<{ status: string; ur
   }
 }
 
+// ── Image URL validation ──────────────────────────────────────
+
+/**
+ * Returns true if the URL is reachable and responds with a raster image
+ * content-type that Replicate accepts. SVGs and non-image responses are
+ * rejected. Falls back to true for URLs we can't HEAD (e.g. some CDNs
+ * drop HEAD), so we only filter clear failures.
+ */
+async function isValidReplicateImageUrl(url: string): Promise<boolean> {
+  if (!url.startsWith("http")) return false
+  // Reject SVGs early — Replicate doesn't support them
+  if (/\.svg(\?|$)/i.test(url)) return false
+  try {
+    const res = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(6_000) })
+    if (res.status === 405) return true // HEAD not allowed → assume valid
+    if (!res.ok) return false
+    const ct = res.headers.get("content-type") ?? ""
+    // Accept image/* but not SVG; if no content-type header, give benefit of doubt
+    if (!ct) return true
+    return ct.startsWith("image/") && !ct.includes("svg")
+  } catch {
+    return true // network timeout / CORS on HEAD → assume valid, let Replicate decide
+  }
+}
+
 // ── Claude Vision helpers ─────────────────────────────────────
 
 type BrainContext = Pick<BrandBrain, "name" | "industry" | "tone_of_voice" | "usps" | "key_benefits" | "pain_points" | "target_audience" | "ctas" | "brand_colors" | "logo_url" | "logo_square_url" | "logo_horizontal_url">
@@ -419,8 +444,19 @@ export async function generateImages(
   const userUploads: string[] = clone.reference_image_urls ?? []
   const brain = clone.brand_brain as BrainContext | null
   const logoUrl = brain?.logo_square_url ?? brain?.logo_url ?? brain?.logo_horizontal_url ?? null
-  // Order: original ad → logo (if any) → user uploads (max 8 total)
-  const inputImages = [adImageUrl, ...(logoUrl ? [logoUrl] : []), ...userUploads].slice(0, 8)
+
+  // Validate auxiliary URLs before sending to Replicate.
+  // adImageUrl is always included (it lives in our own Storage).
+  // Logo and user uploads are validated with a HEAD request — any URL that
+  // returns a non-image or is unreachable (SVG, private bucket, expired CDN)
+  // is silently dropped to avoid Replicate E006 errors.
+  const auxUrls = [...(logoUrl ? [logoUrl] : []), ...userUploads]
+  const validatedAux = (
+    await Promise.all(auxUrls.map(async (url) => ((await isValidReplicateImageUrl(url)) ? url : null)))
+  ).filter(Boolean) as string[]
+
+  // Order: original ad → valid logo (if any) → valid user uploads (max 8 total)
+  const inputImages = [adImageUrl, ...validatedAux].slice(0, 8)
 
   const prompt = buildGenerationPrompt(
     config.adaptedLines,
