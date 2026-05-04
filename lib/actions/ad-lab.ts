@@ -82,6 +82,87 @@ function buildAdLibraryUrl(params: {
   return `${base}?${sp.toString()}`
 }
 
+const APIFY_BASE = "https://api.apify.com/v2"
+const PAGE_SIZE  = 24
+
+function buildApifyInput(params: {
+  query?: string; pageId?: string; country: string; status: string; count: number
+}) {
+  const url = buildAdLibraryUrl({ query: params.query, pageId: params.pageId, country: params.country, status: params.status })
+  return {
+    urls:                         [{ url }],
+    count:                        params.count,
+    scrapeAdDetails:              false,
+    "scrapePageAds.activeStatus": params.status.toLowerCase(),
+    "scrapePageAds.countryCode":  params.country,
+    "scrapePageAds.sortBy":       "impressions_desc",
+    "scrapePageAds.period":       "",
+  }
+}
+
+export async function startMetaAdsSearch(params: {
+  query?: string
+  pageId?: string
+  country?: string
+  status?: "ALL" | "ACTIVE" | "INACTIVE"
+}): Promise<{ runId: string; datasetId: string }> {
+  await assertAuth()
+  const token   = process.env.APIFY_API_TOKEN
+  if (!token) throw new Error("APIFY_API_TOKEN no configurado")
+
+  const country = params.country ?? "MX"
+  const status  = params.status  ?? "ALL"
+  const input   = buildApifyInput({ ...params, country, status, count: 100 })
+
+  const res = await fetch(`${APIFY_BASE}/acts/${APIFY_ACTOR}/runs?token=${token}`, {
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify(input),
+    cache:   "no-store",
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: { message?: string } }
+    throw new Error(err?.error?.message ?? `Apify error ${res.status}`)
+  }
+  const { data } = await res.json() as { data: { id: string; defaultDatasetId: string } }
+  return { runId: data.id, datasetId: data.defaultDatasetId }
+}
+
+export async function getMetaAdsRunStatus(runId: string): Promise<{
+  status: "READY" | "RUNNING" | "SUCCEEDED" | "FAILED" | "ABORTED" | "TIMED-OUT"
+  itemCount: number
+}> {
+  await assertAuth()
+  const token = process.env.APIFY_API_TOKEN
+  if (!token) throw new Error("APIFY_API_TOKEN no configurado")
+
+  const res = await fetch(`${APIFY_BASE}/actor-runs/${runId}?token=${token}`, {
+    cache: "no-store",
+  })
+  if (!res.ok) throw new Error(`Apify poll error ${res.status}`)
+  const { data } = await res.json() as { data: { status: string; stats?: { itemCount?: number } } }
+  return {
+    status:    data.status as "READY" | "RUNNING" | "SUCCEEDED" | "FAILED" | "ABORTED" | "TIMED-OUT",
+    itemCount: data.stats?.itemCount ?? 0,
+  }
+}
+
+export async function getMetaAdsDatasetPage(
+  datasetId: string,
+  offset: number,
+  limit = PAGE_SIZE,
+): Promise<MetaAdResult[]> {
+  await assertAuth()
+  const token = process.env.APIFY_API_TOKEN
+  if (!token) throw new Error("APIFY_API_TOKEN no configurado")
+
+  const url = `${APIFY_BASE}/datasets/${datasetId}/items?token=${token}&offset=${offset}&limit=${limit}&clean=true`
+  const res = await fetch(url, { cache: "no-store" })
+  if (!res.ok) throw new Error(`Dataset fetch error ${res.status}`)
+  const data = await res.json()
+  return (Array.isArray(data) ? data : []) as MetaAdResult[]
+}
+
 export async function searchMetaAds(params: {
   query?: string
   pageId?: string
@@ -95,21 +176,10 @@ export async function searchMetaAds(params: {
 
   const country = params.country ?? "MX"
   const status  = params.status  ?? "ALL"
-
-  const url = buildAdLibraryUrl({ query: params.query, pageId: params.pageId, country, status })
-
-  const input = {
-    urls:                         [{ url }],
-    count:                        params.limit ?? 24,
-    scrapeAdDetails:              false,
-    "scrapePageAds.activeStatus": status.toLowerCase(),
-    "scrapePageAds.countryCode":  country,
-    "scrapePageAds.sortBy":       "impressions_desc",
-    "scrapePageAds.period":       "",
-  }
+  const input   = buildApifyInput({ ...params, country, status, count: params.limit ?? 24 })
 
   const res = await fetch(
-    `https://api.apify.com/v2/acts/${APIFY_ACTOR}/run-sync-get-dataset-items?token=${token}`,
+    `${APIFY_BASE}/acts/${APIFY_ACTOR}/run-sync-get-dataset-items?token=${token}`,
     {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
