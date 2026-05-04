@@ -155,27 +155,27 @@ function CreativeCard({ clone }: { clone: CloneRich }) {
 }
 
 export function CreativesGrid({ clones }: Props) {
-  if (clones.length === 0) return null
-
-  return (
-    <section>
-      <div className="flex items-center justify-between mb-4">
+  if (clones.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 gap-3 text-center">
+        <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center">
+          <span className="text-2xl">🎨</span>
+        </div>
         <div>
-          <h2 className="text-base font-semibold">Creativos recientes</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Imágenes clonadas y adaptadas para tus marcas
+          <p className="text-sm font-semibold">Sin creativos todavía</p>
+          <p className="text-xs text-muted-foreground mt-1 max-w-xs">
+            Clona un anuncio desde Discovery o un Board para ver tus creativos aquí.
           </p>
         </div>
-        <span className="text-xs text-muted-foreground tabular-nums">
-          {clones.length} {clones.length === 1 ? "creativo" : "creativos"}
-        </span>
       </div>
+    )
+  }
 
-      <div className="columns-2 sm:columns-3 lg:columns-4 gap-3">
-        {clones.map((clone) => (
-          <CreativeCard key={clone.id} clone={clone} />
-        ))}
-      </div>
-    </section>
+  return (
+    <div className="columns-2 sm:columns-3 lg:columns-4 gap-3">
+      {clones.map((clone) => (
+        <CreativeCard key={clone.id} clone={clone} />
+      ))}
+    </div>
   )
 }

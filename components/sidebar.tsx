@@ -21,6 +21,7 @@ import {
   Lightbulb,
   Tv2,
   Brain,
+  ImagePlay,
 } from "lucide-react"
 import { useState } from "react"
 import Image from "next/image"
@@ -74,7 +75,8 @@ export function Sidebar({ profile, logoUrl, mobileOpen = false, onMobileClose }:
     {
       href: "/ad-lab", icon: Tv2, label: "Ad Lab", permission: "access_ad_lab",
       children: [
-        { href: "/brand-brains", icon: Brain, label: "Brand Brains", permission: "access_brand_brains" },
+        { href: "/ad-lab/creatives", icon: ImagePlay,  label: "Creatives"    },
+        { href: "/brand-brains",     icon: Brain,      label: "Brand Brains", permission: "access_brand_brains" },
       ],
     },
     {
