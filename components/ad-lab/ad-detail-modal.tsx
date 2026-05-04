@@ -52,11 +52,12 @@ function fmtSpend(spend: { lower_bound: number; upper_bound: number } | null, cu
   return `${fmt(spend.lower_bound)} – ${fmt(spend.upper_bound)}`
 }
 
-function brandColor(name: string): string {
+function brandColor(name: string | null | undefined): string {
   const colors = [
     "bg-blue-500", "bg-violet-500", "bg-emerald-500", "bg-amber-500",
     "bg-rose-500", "bg-cyan-500", "bg-orange-500", "bg-indigo-500",
   ]
+  if (!name) return colors[0]
   let hash = 0
   for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash)
   return colors[Math.abs(hash) % colors.length]
@@ -75,6 +76,14 @@ export function AdDetailModal({ ad, boards, onClose, savedAdId }: Props) {
   const [imageClones, setImageClones] = useState<ImageClone[] | null>(null)
   const [deletingImageCloneId, setDeletingImageCloneId] = useState<string | null>(null)
 
+  // When cloning from Discovery (no savedAdId), we capture the intent and
+  // force the user to save to a board first, then auto-proceed.
+  const [pendingCloneType, setPendingCloneType] = useState<"video" | "image" | null>(null)
+  const [localSavedAdId, setLocalSavedAdId] = useState<string | null>(null)
+
+  // Use the prop savedAdId when available; fall back to one obtained in this session.
+  const effectiveSavedAdId = savedAdId ?? localSavedAdId ?? undefined
+
   // Reset card index when ad changes
   useEffect(() => { setCardIndex(0); setSavedBoards(new Set()) }, [ad?.ad_archive_id])
 
@@ -91,16 +100,13 @@ export function AdDetailModal({ ad, boards, onClose, savedAdId }: Props) {
     return () => { document.body.style.overflow = "" }
   }, [])
 
-  // Fetch existing clones when savedAdId is known
+  // Fetch existing clones whenever we have a resolved saved ad ID
   useEffect(() => {
-    if (!savedAdId) return
+    if (!effectiveSavedAdId) return
     setLoadingClones(true)
-    getAdClones(savedAdId).then((c) => {
-      setClones(c)
-      setLoadingClones(false)
-    })
-    getImageClones(savedAdId).then((c) => setImageClones(c))
-  }, [savedAdId])
+    getAdClones(effectiveSavedAdId).then((c) => { setClones(c); setLoadingClones(false) })
+    getImageClones(effectiveSavedAdId).then((c) => setImageClones(c))
+  }, [effectiveSavedAdId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!ad) return null
 
@@ -127,24 +133,22 @@ export function AdDetailModal({ ad, boards, onClose, savedAdId }: Props) {
     || imageItem?.original_image_url
     || null
 
-  const color   = brandColor(ad.page_name)
-  const initials = ad.page_name.split(/\s+/).map((w) => w[0]).join("").toUpperCase().slice(0, 2)
+  const safeName = ad.page_name ?? ""
+  const color    = brandColor(safeName)
+  const initials = safeName.split(/\s+/).filter(Boolean).map((w) => w[0]).join("").toUpperCase().slice(0, 2) || "?"
 
   async function handleSaveToBoard(boardId: string) {
     if (!ad) return
     setSaving(true)
     try {
       const toDate = (ts: number | null) => ts ? new Date(ts * 1000).toISOString().slice(0, 10) : null
-      const imageUrl = thumbUrl
-      const savedVideoUrl = videoUrl
-
       const saved = await saveAd({
         ad_archive_id:     ad.ad_archive_id,
         page_id:           ad.page_id,
         page_name:         ad.page_name,
         body:              body,
-        image_url:         imageUrl,
-        video_url:         savedVideoUrl,
+        image_url:         thumbUrl,
+        video_url:         videoUrl,
         snapshot_url:      ad.ad_library_url ?? null,
         start_date:        toDate(ad.start_date),
         end_date:          toDate(ad.end_date),
@@ -159,7 +163,12 @@ export function AdDetailModal({ ad, boards, onClose, savedAdId }: Props) {
       })
       await addAdToBoard(boardId, saved.id)
       setSavedBoards((prev) => new Set([...prev, boardId]))
+      setLocalSavedAdId(saved.id)
       setShowBoardPicker(false)
+
+      // If the user was waiting to clone, proceed now
+      if (pendingCloneType === "video")  { setPendingCloneType(null); setShowClone(true) }
+      if (pendingCloneType === "image")  { setPendingCloneType(null); setShowImageClone(true) }
     } finally {
       setSaving(false)
     }
@@ -171,9 +180,9 @@ export function AdDetailModal({ ad, boards, onClose, savedAdId }: Props) {
         ad={ad}
         onClose={() => {
           setShowClone(false)
-          if (savedAdId) {
+          if (effectiveSavedAdId) {
             setLoadingClones(true)
-            getAdClones(savedAdId).then((c) => { setClones(c); setLoadingClones(false) })
+            getAdClones(effectiveSavedAdId).then((c) => { setClones(c); setLoadingClones(false) })
           }
         }}
       />
@@ -186,8 +195,8 @@ export function AdDetailModal({ ad, boards, onClose, savedAdId }: Props) {
         ad={ad}
         onClose={() => {
           setShowImageClone(false)
-          if (savedAdId) {
-            getImageClones(savedAdId).then((c) => setImageClones(c))
+          if (effectiveSavedAdId) {
+            getImageClones(effectiveSavedAdId).then((c) => setImageClones(c))
           }
         }}
       />
@@ -214,7 +223,7 @@ export function AdDetailModal({ ad, boards, onClose, savedAdId }: Props) {
             />
           ) : thumbUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={thumbUrl} alt={ad.page_name} className="w-full h-full object-contain" />
+            <img src={thumbUrl} alt={safeName} className="w-full h-full object-contain" />
           ) : (
             <>
               <div className={`absolute inset-0 ${color} opacity-10`} />
@@ -273,7 +282,7 @@ export function AdDetailModal({ ad, boards, onClose, savedAdId }: Props) {
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={ad.snapshot.page_profile_picture_url}
-                  alt={ad.page_name}
+                  alt={safeName}
                   className="w-9 h-9 rounded-lg object-cover flex-shrink-0"
                 />
               ) : (
@@ -282,7 +291,7 @@ export function AdDetailModal({ ad, boards, onClose, savedAdId }: Props) {
                 </div>
               )}
               <div className="min-w-0">
-                <p className="text-sm font-bold truncate">{ad.page_name}</p>
+                <p className="text-sm font-bold truncate">{safeName}</p>
                 {ad.snapshot?.page_like_count != null && (
                   <p className="text-xs text-muted-foreground">
                     {ad.snapshot.page_like_count.toLocaleString("es-MX")} seguidores
@@ -370,7 +379,7 @@ export function AdDetailModal({ ad, boards, onClose, savedAdId }: Props) {
           <div className="flex-shrink-0 border-t border-border">
 
             {/* Adaptations hub — full-width section above the action row */}
-            {savedAdId && (
+            {effectiveSavedAdId && (
               <div className="border-b border-border px-4 py-3">
                 {loadingClones ? (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -439,7 +448,7 @@ export function AdDetailModal({ ad, boards, onClose, savedAdId }: Props) {
             )}
 
             {/* Image clones hub */}
-            {savedAdId && imageClones !== null && imageClones.length > 0 && (
+            {effectiveSavedAdId && imageClones !== null && imageClones.length > 0 && (
               <div className="border-b border-border px-4 py-3">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-1.5">
@@ -503,7 +512,7 @@ export function AdDetailModal({ ad, boards, onClose, savedAdId }: Props) {
             {/* Save to board */}
             <div className="relative flex-1">
               <button
-                onClick={() => setShowBoardPicker((v) => !v)}
+                onClick={() => { setShowBoardPicker((v) => !v); if (showBoardPicker) setPendingCloneType(null) }}
                 disabled={saving}
                 className={`w-full h-9 rounded-xl text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
                   savedBoards.size > 0
@@ -521,7 +530,14 @@ export function AdDetailModal({ ad, boards, onClose, savedAdId }: Props) {
               {showBoardPicker && (
                 <div className="absolute bottom-full left-0 mb-2 w-full bg-popover border border-border rounded-xl shadow-lg z-30 overflow-hidden">
                   <div className="px-3 py-2 border-b border-border">
-                    <p className="text-xs font-semibold">Selecciona un board</p>
+                    <p className="text-xs font-semibold">
+                      {pendingCloneType ? "Guarda en un board para clonar" : "Selecciona un board"}
+                    </p>
+                    {pendingCloneType && (
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        El anuncio quedará guardado y el clon tendrá un lugar de referencia.
+                      </p>
+                    )}
                   </div>
                   {boards.length === 0 ? (
                     <div className="px-3 py-3 text-xs text-muted-foreground">
@@ -554,11 +570,18 @@ export function AdDetailModal({ ad, boards, onClose, savedAdId }: Props) {
               )}
             </div>
 
-            {/* Video clone button — only for video ads with no clones yet */}
-            {videoUrl && (!savedAdId || (clones !== null && clones.length === 0)) && (
+            {/* Video clone button */}
+            {videoUrl && (!effectiveSavedAdId || (clones !== null && clones.length === 0)) && (
               <button
                 title="Clonar guión con IA"
-                onClick={() => setShowClone(true)}
+                onClick={() => {
+                  if (effectiveSavedAdId) {
+                    setShowClone(true)
+                  } else {
+                    setPendingCloneType("video")
+                    setShowBoardPicker(true)
+                  }
+                }}
                 className="h-9 px-4 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted flex items-center gap-2 transition-colors"
               >
                 <Wand2 className="w-4 h-4" />
@@ -566,11 +589,18 @@ export function AdDetailModal({ ad, boards, onClose, savedAdId }: Props) {
               </button>
             )}
 
-            {/* Image clone button — for image ads */}
-            {!videoUrl && thumbUrl && (!savedAdId || (imageClones !== null && imageClones.length === 0)) && (
+            {/* Image clone button */}
+            {!videoUrl && thumbUrl && (!effectiveSavedAdId || (imageClones !== null && imageClones.length === 0)) && (
               <button
                 title="Generar imagen adaptada con IA"
-                onClick={() => setShowImageClone(true)}
+                onClick={() => {
+                  if (effectiveSavedAdId) {
+                    setShowImageClone(true)
+                  } else {
+                    setPendingCloneType("image")
+                    setShowBoardPicker(true)
+                  }
+                }}
                 className="h-9 px-4 rounded-xl border border-violet-200 text-sm font-medium text-violet-600 hover:bg-violet-50 flex items-center gap-2 transition-colors"
               >
                 <ImageIcon className="w-4 h-4" />
