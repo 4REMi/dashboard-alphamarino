@@ -181,9 +181,16 @@ export function DiscoveryShell({ trackedBrands, boards, customers }: Props) {
   async function handleSaveToBoard(ad: MetaAdResult, boardId: string) {
     setSavingId(ad.ad_archive_id)
     try {
-      const card     = ad.snapshot?.cards?.[0]
-      const imageUrl = card?.resized_image_url || card?.original_image_url || null
-      const videoUrl = card?.video_hd_url || card?.video_sd_url || null
+      const snap      = ad.snapshot
+      const card      = snap?.cards?.[0]
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const videoItem = (snap as any)?.videos?.[0]
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const imageItem = (snap as any)?.images?.[0]
+      const imageUrl  = card?.resized_image_url ?? card?.original_image_url
+        ?? imageItem?.resized_image_url ?? imageItem?.original_image_url ?? null
+      const videoUrl  = card?.video_hd_url ?? card?.video_sd_url
+        ?? videoItem?.video_hd_url ?? videoItem?.video_sd_url ?? null
       const toDate   = (ts: number | null) =>
         ts ? new Date(ts * 1000).toISOString().slice(0, 10) : null
 
