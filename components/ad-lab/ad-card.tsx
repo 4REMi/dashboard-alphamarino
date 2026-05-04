@@ -13,11 +13,12 @@ interface Props {
   onOpenDetail: (ad: MetaAdResult) => void
 }
 
-function brandColor(name: string): string {
+function brandColor(name: string | null | undefined): string {
   const colors = [
     "bg-blue-500", "bg-violet-500", "bg-emerald-500", "bg-amber-500",
     "bg-rose-500", "bg-cyan-500", "bg-orange-500", "bg-indigo-500",
   ]
+  if (!name) return colors[0]
   let hash = 0
   for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash)
   return colors[Math.abs(hash) % colors.length]
@@ -76,8 +77,9 @@ export function AdCard({ ad, boards, savingId, onSaveToBoard, onOpenDetail }: Pr
   const [savedBoards, setSavedBoards]         = useState<Set<string>>(new Set())
   const pickerRef = useRef<HTMLDivElement>(null)
   const isSaving  = savingId === ad.ad_archive_id
-  const color     = brandColor(ad.page_name)
-  const initials  = ad.page_name.split(/\s+/).map((w) => w[0]).join("").toUpperCase().slice(0, 2)
+  const safeName  = ad.page_name ?? ""
+  const color     = brandColor(safeName)
+  const initials  = safeName.split(/\s+/).filter(Boolean).map((w) => w[0]).join("").toUpperCase().slice(0, 2) || "?"
 
   const body = ad.snapshot?.body?.text || ad.snapshot?.cards?.[0]?.body || null
   const { videoUrl, thumbUrl } = resolveMedia(ad.snapshot)
@@ -110,7 +112,7 @@ export function AdCard({ ad, boards, savingId, onSaveToBoard, onOpenDetail }: Pr
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={thumbUrl}
-            alt={ad.page_name}
+            alt={safeName}
             className="w-full h-full object-cover"
           />
         ) : (
@@ -173,7 +175,7 @@ export function AdCard({ ad, boards, savingId, onSaveToBoard, onOpenDetail }: Pr
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={ad.snapshot.page_profile_picture_url}
-              alt={ad.page_name}
+              alt={safeName}
               className="w-6 h-6 rounded-md object-cover flex-shrink-0"
             />
           ) : (
@@ -181,7 +183,7 @@ export function AdCard({ ad, boards, savingId, onSaveToBoard, onOpenDetail }: Pr
               <span className="text-[9px] font-bold text-white">{initials}</span>
             </div>
           )}
-          <p className="text-xs font-semibold truncate flex-1">{ad.page_name}</p>
+          <p className="text-xs font-semibold truncate flex-1">{safeName || "—"}</p>
           <span className="text-[10px] font-mono text-muted-foreground flex-shrink-0">
             {daysAgo(ad.start_date)}
           </span>

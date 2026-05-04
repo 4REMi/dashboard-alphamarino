@@ -218,7 +218,7 @@ export function DiscoveryShell({ trackedBrands, boards, customers }: Props) {
     ? results
     : results.filter((r) =>
         trackedBrands.some((b) =>
-          b.meta_page_id === r.page_id || b.name.toLowerCase() === r.page_name.toLowerCase()
+          b.meta_page_id === r.page_id || b.name.toLowerCase() === (r.page_name ?? "").toLowerCase()
         )
       )
 

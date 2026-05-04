@@ -82,11 +82,12 @@ function savedAdToResult(ad: SavedAd): MetaAdResult {
   }
 }
 
-function brandColor(name: string): string {
+function brandColor(name: string | null | undefined): string {
   const colors = [
     "bg-blue-500", "bg-violet-500", "bg-emerald-500", "bg-amber-500",
     "bg-rose-500", "bg-cyan-500", "bg-orange-500", "bg-indigo-500",
   ]
+  if (!name) return colors[0]
   let hash = 0
   for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash)
   return colors[Math.abs(hash) % colors.length]
@@ -207,8 +208,9 @@ export function BoardDetail({ board, initialAds, boards, initialCloneCounts = {}
             </p>
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
               {ads.map((ad) => {
-                const color     = brandColor(ad.page_name)
-                const initials  = ad.page_name.split(/\s+/).map((w) => w[0]).join("").toUpperCase().slice(0, 2)
+                const safeName  = ad.page_name ?? ""
+                const color     = brandColor(safeName)
+                const initials  = safeName.split(/\s+/).filter(Boolean).map((w) => w[0]).join("").toUpperCase().slice(0, 2) || "?"
                 const thumbUrl  = ad.cached_image_url ?? ad.image_url
                 const videoUrl  = ad.cached_video_url ?? ad.video_url
                 const isUpload  = ad.source === "upload"
@@ -226,7 +228,7 @@ export function BoardDetail({ board, initialAds, boards, initialCloneCounts = {}
                     >
                       {thumbUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={thumbUrl} alt={ad.page_name} className="w-full h-full object-cover" />
+                        <img src={thumbUrl} alt={safeName} className="w-full h-full object-cover" />
                       ) : (
                         <>
                           <div className={`absolute inset-0 ${color} opacity-10`} />
@@ -320,7 +322,7 @@ export function BoardDetail({ board, initialAds, boards, initialCloneCounts = {}
                         <div className={`w-6 h-6 rounded-md ${color} flex items-center justify-center flex-shrink-0`}>
                           <span className="text-[9px] font-bold text-white">{initials}</span>
                         </div>
-                        <p className="text-xs font-semibold truncate flex-1">{ad.page_name}</p>
+                        <p className="text-xs font-semibold truncate flex-1">{safeName || "—"}</p>
                         <span className="text-[10px] font-mono text-muted-foreground flex-shrink-0">
                           {fmtDate(ad.start_date)}
                         </span>
