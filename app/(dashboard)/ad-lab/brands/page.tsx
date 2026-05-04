@@ -5,7 +5,7 @@ import { getTrackedBrands } from "@/lib/actions/ad-lab"
 import { TrackedBrandsManager } from "@/components/ad-lab/tracked-brands-manager"
 import { Radio, ArrowLeft } from "lucide-react"
 import Link from "next/link"
-import type { Profile, Customer } from "@/lib/types"
+import type { Profile } from "@/lib/types"
 
 export default async function AdLabBrandsPage() {
   const supabase = await createClient()
@@ -20,12 +20,7 @@ export default async function AdLabBrandsPage() {
   const profile = profileData as Pick<Profile, "id" | "full_name" | "email" | "role" | "permissions"> | null
   if (!can(profile, "access_ad_lab")) redirect("/")
 
-  const [brands, customersRes] = await Promise.all([
-    getTrackedBrands(),
-    supabase.from("customers").select("id, name, company").order("name"),
-  ])
-
-  const customers = (customersRes.data ?? []) as Pick<Customer, "id" | "name" | "company">[]
+  const brands = await getTrackedBrands()
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
@@ -43,12 +38,12 @@ export default async function AdLabBrandsPage() {
         <div>
           <h1 className="text-xl font-bold tracking-tight">Marcas trackeadas</h1>
           <p className="text-sm text-muted-foreground">
-            Competidores organizados por cliente para búsquedas rápidas en Meta Ads Library.
+            Competidores para búsquedas rápidas en Discovery.
           </p>
         </div>
       </div>
 
-      <TrackedBrandsManager initialBrands={brands} customers={customers} />
+      <TrackedBrandsManager initialBrands={brands} />
     </div>
   )
 }

@@ -1,59 +1,32 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import type { TrackedBrand, Customer } from "@/lib/types"
+import type { TrackedBrand } from "@/lib/types"
 import {
   addTrackedBrand,
   updateTrackedBrand,
   deleteTrackedBrand,
 } from "@/lib/actions/ad-lab"
-import {
-  Radio, Plus, X, Pencil, Check, ExternalLink,
-  ChevronDown, ChevronRight, Users,
-} from "lucide-react"
+import { Radio, Plus, X, Pencil, ExternalLink } from "lucide-react"
 
 interface Props {
   initialBrands: TrackedBrand[]
-  customers: Pick<Customer, "id" | "name" | "company">[]
 }
 
-export function TrackedBrandsManager({ initialBrands, customers }: Props) {
-  const [brands, setBrands] = useState<TrackedBrand[]>(initialBrands)
-  const [showAdd, setShowAdd] = useState(false)
+export function TrackedBrandsManager({ initialBrands }: Props) {
+  const [brands, setBrands]       = useState<TrackedBrand[]>(initialBrands)
+  const [showAdd, setShowAdd]     = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [expandedCustomers, setExpandedCustomers] = useState<Set<string>>(new Set())
   const [isPending, startTransition] = useTransition()
-
-  // Group brands by customer
-  const byCustomer = new Map<string, TrackedBrand[]>()
-  for (const b of brands) {
-    const list = byCustomer.get(b.customer_id) ?? []
-    list.push(b)
-    byCustomer.set(b.customer_id, list)
-  }
-
-  // Customers that have at least one brand, sorted
-  const activeCustomerIds = new Set(brands.map((b) => b.customer_id))
-  const sortedCustomers = customers.filter((c) => activeCustomerIds.has(c.id))
-
-  function toggleCustomer(id: string) {
-    setExpandedCustomers((prev) => {
-      const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
-      return next
-    })
-  }
 
   function handleAdd(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const fd = new FormData(e.currentTarget)
-    if (!(fd.get("name") as string).trim() || !(fd.get("customer_id") as string)) return
+    if (!(fd.get("name") as string).trim()) return
     startTransition(async () => {
       const brand = await addTrackedBrand(fd)
       setBrands((prev) => [brand, ...prev])
       setShowAdd(false)
-      // Auto-expand the customer
-      setExpandedCustomers((prev) => new Set([...prev, brand.customer_id]))
     })
   }
 
@@ -83,7 +56,7 @@ export function TrackedBrandsManager({ initialBrands, customers }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* Add brand button */}
+      {/* Header row */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
           {brands.length} marca{brands.length !== 1 ? "s" : ""} trackeada{brands.length !== 1 ? "s" : ""}
@@ -100,7 +73,6 @@ export function TrackedBrandsManager({ initialBrands, customers }: Props) {
       {/* Add form */}
       {showAdd && (
         <AddBrandForm
-          customers={customers}
           onSubmit={handleAdd}
           onCancel={() => setShowAdd(false)}
           isPending={isPending}
@@ -116,62 +88,29 @@ export function TrackedBrandsManager({ initialBrands, customers }: Props) {
           <div>
             <p className="text-sm font-medium">Sin marcas trackeadas</p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Agrega la primera marca competidora de un cliente.
+              Agrega competidores para buscarlos rápidamente en Discovery.
             </p>
           </div>
         </div>
       )}
 
-      {/* Grouped by customer */}
-      <div className="space-y-2">
-        {sortedCustomers.map((customer) => {
-          const customerBrands = byCustomer.get(customer.id) ?? []
-          const isExpanded = expandedCustomers.has(customer.id)
-          const displayName = customer.company || customer.name
-
-          return (
-            <div key={customer.id} className="rounded-xl border border-border overflow-hidden">
-              {/* Customer header */}
-              <button
-                onClick={() => toggleCustomer(customer.id)}
-                className="w-full flex items-center gap-3 px-4 py-3 bg-muted/30 hover:bg-muted/50 transition-colors text-left"
-              >
-                <div className="w-7 h-7 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0">
-                  <Users className="w-3.5 h-3.5 text-primary" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold truncate">{displayName}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {customerBrands.length} marca{customerBrands.length !== 1 ? "s" : ""}
-                  </p>
-                </div>
-                {isExpanded
-                  ? <ChevronDown className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                  : <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                }
-              </button>
-
-              {/* Brand rows */}
-              {isExpanded && (
-                <div className="divide-y divide-border/50">
-                  {customerBrands.map((brand) => (
-                    <BrandRow
-                      key={brand.id}
-                      brand={brand}
-                      editing={editingId === brand.id}
-                      isPending={isPending}
-                      onEdit={() => setEditingId(brand.id)}
-                      onCancelEdit={() => setEditingId(null)}
-                      onUpdate={(e) => handleUpdate(brand.id, e)}
-                      onDelete={() => handleDelete(brand.id)}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          )
-        })}
-      </div>
+      {/* Flat brand list */}
+      {brands.length > 0 && (
+        <div className="rounded-xl border border-border overflow-hidden divide-y divide-border/50">
+          {brands.map((brand) => (
+            <BrandRow
+              key={brand.id}
+              brand={brand}
+              editing={editingId === brand.id}
+              isPending={isPending}
+              onEdit={() => setEditingId(brand.id)}
+              onCancelEdit={() => setEditingId(null)}
+              onUpdate={(e) => handleUpdate(brand.id, e)}
+              onDelete={() => handleDelete(brand.id)}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -179,12 +118,10 @@ export function TrackedBrandsManager({ initialBrands, customers }: Props) {
 // ── Add Brand Form ────────────────────────────────────────────────
 
 function AddBrandForm({
-  customers,
   onSubmit,
   onCancel,
   isPending,
 }: {
-  customers: Pick<Customer, "id" | "name" | "company">[]
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void
   onCancel: () => void
   isPending: boolean
@@ -196,23 +133,6 @@ function AddBrandForm({
     >
       <p className="text-sm font-semibold">Nueva marca</p>
       <div className="grid sm:grid-cols-2 gap-3">
-        {/* Customer */}
-        <div className="sm:col-span-2">
-          <label className="text-xs text-muted-foreground mb-1 block">Cliente *</label>
-          <select
-            name="customer_id"
-            required
-            className="w-full text-sm rounded-lg border border-border bg-background px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/40"
-          >
-            <option value="">Selecciona un cliente…</option>
-            {customers.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.company || c.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
         {/* Name */}
         <div>
           <label className="text-xs text-muted-foreground mb-1 block">Nombre de la marca *</label>

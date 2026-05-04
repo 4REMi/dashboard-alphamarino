@@ -228,7 +228,7 @@ export async function addTrackedBrand(formData: FormData): Promise<TrackedBrand>
   const { data, error } = await supabase
     .from("tracked_brands")
     .insert({
-      customer_id:  formData.get("customer_id") as string,
+      customer_id:  (formData.get("customer_id") as string | null) || null,
       name:         (formData.get("name") as string).trim(),
       meta_page_id: (formData.get("meta_page_id") as string)?.trim() || null,
       page_url:     (formData.get("page_url") as string)?.trim() || null,

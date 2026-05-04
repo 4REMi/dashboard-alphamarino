@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useCallback, useEffect } from "react"
-import type { TrackedBrand, AdBoard, MetaAdResult, Customer } from "@/lib/types"
+import type { TrackedBrand, AdBoard, MetaAdResult } from "@/lib/types"
 import {
   startMetaAdsSearch, getMetaAdsRunStatus, getMetaAdsDatasetPage,
   saveAd, addAdToBoard,
@@ -18,7 +18,6 @@ import { UploadAdModal } from "@/components/ad-lab/upload-ad-modal"
 interface Props {
   trackedBrands: TrackedBrand[]
   boards: AdBoard[]
-  customers: Pick<Customer, "id" | "name" | "company">[]
 }
 
 type FilterTab    = "all" | "tracked"
@@ -27,12 +26,11 @@ type SearchStatus = "idle" | "starting" | "running" | "ready" | "failed"
 
 const PAGE_SIZE = 24
 
-export function DiscoveryShell({ trackedBrands, boards, customers }: Props) {
+export function DiscoveryShell({ trackedBrands, boards }: Props) {
   // ── Search inputs ──────────────────────────────────────────────
-  const [query,            setQuery]            = useState("")
-  const [selectedPageId,   setSelectedPageId]   = useState("")
-  const [selectedCustomerId, setSelectedCustomerId] = useState("")
-  const [statusFilter,     setStatusFilter]     = useState<StatusFilter>("ALL")
+  const [query,          setQuery]          = useState("")
+  const [selectedPageId, setSelectedPageId] = useState("")
+  const [statusFilter,   setStatusFilter]   = useState<StatusFilter>("ALL")
   const [tab,              setTab]              = useState<FilterTab>("all")
 
   // ── Async run state ────────────────────────────────────────────
@@ -56,10 +54,6 @@ export function DiscoveryShell({ trackedBrands, boards, customers }: Props) {
   const hasMoreRef      = useRef(false)
   const isLoadingRef    = useRef(false)
   const sentinelRef     = useRef<HTMLDivElement>(null)
-
-  const filteredBrands = selectedCustomerId
-    ? trackedBrands.filter((b) => b.customer_id === selectedCustomerId)
-    : trackedBrands
 
   // ── Core search flow ───────────────────────────────────────────
 
@@ -320,19 +314,7 @@ export function DiscoveryShell({ trackedBrands, boards, customers }: Props) {
             {trackedBrands.length > 0 && (
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-xs text-muted-foreground">Acceso rápido:</span>
-                {customers.length > 1 && (
-                  <select
-                    value={selectedCustomerId}
-                    onChange={(e) => setSelectedCustomerId(e.target.value)}
-                    className="text-xs h-7 px-2 rounded-lg border border-border bg-background appearance-none focus:outline-none focus:ring-1 focus:ring-primary/40 cursor-pointer"
-                  >
-                    <option value="">Todos los clientes</option>
-                    {customers.map((c) => (
-                      <option key={c.id} value={c.id}>{c.company || c.name}</option>
-                    ))}
-                  </select>
-                )}
-                {filteredBrands.slice(0, 6).map((brand) => (
+                {trackedBrands.slice(0, 6).map((brand) => (
                   <button
                     key={brand.id}
                     onClick={() => handleBrandClick(brand)}

@@ -566,7 +566,7 @@ export type AdFormat = "UGC" | "Studio" | "Founder POV" | "Static + VO" | "Carou
 
 export interface TrackedBrand {
   id: string
-  customer_id: string
+  customer_id: string | null
   name: string
   meta_page_id: string | null
   page_url: string | null

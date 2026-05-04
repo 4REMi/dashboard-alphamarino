@@ -3,7 +3,7 @@ import { redirect } from "next/navigation"
 import { can } from "@/lib/permissions"
 import { getTrackedBrands, getBoards } from "@/lib/actions/ad-lab"
 import { DiscoveryShell } from "@/components/ad-lab/discovery-shell"
-import type { Profile, Customer } from "@/lib/types"
+import type { Profile } from "@/lib/types"
 
 export default async function AdLabDiscoveryPage() {
   const supabase = await createClient()
@@ -18,19 +18,15 @@ export default async function AdLabDiscoveryPage() {
   const profile = profileData as Pick<Profile, "id" | "full_name" | "email" | "role" | "permissions"> | null
   if (!can(profile, "access_ad_lab")) redirect("/")
 
-  const [trackedBrands, boards, customersRes] = await Promise.all([
+  const [trackedBrands, boards] = await Promise.all([
     getTrackedBrands(),
     getBoards(),
-    supabase.from("customers").select("id, name, company").order("name"),
   ])
-
-  const customers = (customersRes.data ?? []) as Pick<Customer, "id" | "name" | "company">[]
 
   return (
     <DiscoveryShell
       trackedBrands={trackedBrands}
       boards={boards}
-      customers={customers}
     />
   )
 }
