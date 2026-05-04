@@ -2,13 +2,9 @@ import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { can } from "@/lib/permissions"
 import { getAllImageClones } from "@/lib/actions/image-clone"
-import { CreativesGrid } from "@/components/ad-lab/creatives-grid"
-import type { Profile, ImageClone, BrandBrainColor } from "@/lib/types"
+import { CreativesGrid, type CloneRich } from "@/components/ad-lab/creatives-grid"
+import type { Profile } from "@/lib/types"
 import { ImagePlay } from "lucide-react"
-
-type BrainMeta = { id: string; name: string; logo_url?: string | null; brand_colors?: BrandBrainColor[] }
-type AdMeta    = { id: string; page_name: string; cached_image_url?: string | null; image_url?: string | null }
-type CloneRich = Omit<ImageClone, "brand_brain" | "saved_ad"> & { brand_brain?: BrainMeta | null; saved_ad?: AdMeta | null }
 
 export default async function CreativesPage() {
   const supabase = await createClient()
