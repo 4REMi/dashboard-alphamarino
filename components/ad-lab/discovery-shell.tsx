@@ -10,9 +10,10 @@ import { AdCard } from "@/components/ad-lab/ad-card"
 import { AdDetailModal } from "@/components/ad-lab/ad-detail-modal"
 import {
   Search, LayoutGrid, ArrowLeft, ChevronDown,
-  Loader2, AlertCircle, Radio, Tv2,
+  Loader2, AlertCircle, Radio, Tv2, Upload,
 } from "lucide-react"
 import Link from "next/link"
+import { UploadAdModal } from "@/components/ad-lab/upload-ad-modal"
 
 interface Props {
   trackedBrands: TrackedBrand[]
@@ -44,8 +45,9 @@ export function DiscoveryShell({ trackedBrands, boards, customers }: Props) {
   const [itemCount,       setItemCount]       = useState<number | null>(null)
 
   // ── UI state ───────────────────────────────────────────────────
-  const [savingId,  setSavingId]  = useState<string | null>(null)
-  const [detailAd,  setDetailAd]  = useState<MetaAdResult | null>(null)
+  const [savingId,     setSavingId]     = useState<string | null>(null)
+  const [detailAd,     setDetailAd]     = useState<MetaAdResult | null>(null)
+  const [showUpload,   setShowUpload]   = useState(false)
 
   // ── Refs ───────────────────────────────────────────────────────
   const activeRunRef    = useRef<string | null>(null)  // cancels stale polls
@@ -230,6 +232,12 @@ export function DiscoveryShell({ trackedBrands, boards, customers }: Props) {
       {detailAd && (
         <AdDetailModal ad={detailAd} boards={boards} onClose={() => setDetailAd(null)} />
       )}
+      {showUpload && (
+        <UploadAdModal
+          boards={boards}
+          onClose={() => setShowUpload(false)}
+        />
+      )}
 
       <div className="flex flex-col h-full min-h-0">
         {/* Header */}
@@ -241,10 +249,17 @@ export function DiscoveryShell({ trackedBrands, boards, customers }: Props) {
             <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
               <LayoutGrid className="w-4.5 h-4.5 text-primary" />
             </div>
-            <div>
+            <div className="flex-1 min-w-0">
               <h1 className="text-xl font-bold tracking-tight">Discovery</h1>
               <p className="text-sm text-muted-foreground">Busca anuncios de competidores en Meta Ads Library</p>
             </div>
+            <button
+              onClick={() => setShowUpload(true)}
+              className="flex items-center gap-2 h-9 px-4 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors flex-shrink-0"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              Subir
+            </button>
           </div>
 
           {/* Search bar */}

@@ -3,9 +3,10 @@
 import { useState, useTransition } from "react"
 import type { SavedAd, AdBoard, MetaAdResult } from "@/lib/types"
 import { removeAdFromBoard, deleteSavedAd } from "@/lib/actions/ad-lab"
-import { ArrowLeft, FolderOpen, Trash2, ExternalLink, MoreHorizontal, Loader2, Play, Wand2 } from "lucide-react"
+import { ArrowLeft, FolderOpen, Trash2, ExternalLink, MoreHorizontal, Loader2, Play, Wand2, Upload } from "lucide-react"
 import { SiFacebook, SiInstagram, SiMessenger, SiMeta, SiThreads } from "@icons-pack/react-simple-icons"
 import { AdDetailModal } from "@/components/ad-lab/ad-detail-modal"
+import { UploadAdModal } from "@/components/ad-lab/upload-ad-modal"
 import Link from "next/link"
 
 interface Props {
@@ -114,6 +115,7 @@ export function BoardDetail({ board, initialAds, boards, initialCloneCounts = {}
   const [detailSavedAdId, setDetailSavedAdId] = useState<string | undefined>(undefined)
   const [cloneCounts, setCloneCounts]   = useState<Record<string, number>>(initialCloneCounts)
   const [isPending, startTransition]    = useTransition()
+  const [showUpload, setShowUpload]     = useState(false)
 
   function handleRemove(ad: SavedAd) {
     startTransition(async () => {
@@ -140,6 +142,14 @@ export function BoardDetail({ board, initialAds, boards, initialCloneCounts = {}
           onClose={() => { setDetailAd(null); setDetailSavedAdId(undefined) }}
         />
       )}
+      {showUpload && (
+        <UploadAdModal
+          boards={boards}
+          defaultBoardId={board.id}
+          onUploaded={(ad) => setAds((prev) => [ad, ...prev])}
+          onClose={() => setShowUpload(false)}
+        />
+      )}
     <div className="flex flex-col h-full min-h-0">
       {/* ── Header ── */}
       <div className="px-6 pt-6 pb-4 border-b border-border flex-shrink-0">
@@ -153,13 +163,20 @@ export function BoardDetail({ board, initialAds, boards, initialCloneCounts = {}
           <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
             <FolderOpen className="w-4.5 h-4.5 text-primary" />
           </div>
-          <div>
+          <div className="flex-1 min-w-0">
             <h1 className="text-xl font-bold tracking-tight">{board.name}</h1>
             {board.description && (
               <p className="text-sm text-muted-foreground">{board.description}</p>
             )}
           </div>
-          {isPending && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground ml-auto" />}
+          {isPending && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+          <button
+            onClick={() => setShowUpload(true)}
+            className="flex items-center gap-2 h-9 px-4 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors flex-shrink-0"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            Subir
+          </button>
         </div>
       </div>
 
@@ -190,11 +207,12 @@ export function BoardDetail({ board, initialAds, boards, initialCloneCounts = {}
             </p>
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
               {ads.map((ad) => {
-                const color    = brandColor(ad.page_name)
-                const initials = ad.page_name.split(/\s+/).map((w) => w[0]).join("").toUpperCase().slice(0, 2)
-                const thumbUrl = ad.cached_image_url ?? ad.image_url
-                const videoUrl = ad.cached_video_url ?? ad.video_url
-                const isActive = ad.status === "active"
+                const color     = brandColor(ad.page_name)
+                const initials  = ad.page_name.split(/\s+/).map((w) => w[0]).join("").toUpperCase().slice(0, 2)
+                const thumbUrl  = ad.cached_image_url ?? ad.image_url
+                const videoUrl  = ad.cached_video_url ?? ad.video_url
+                const isUpload  = ad.source === "upload"
+                const isActive  = ad.status === "active"
 
                 return (
                   <div
@@ -232,12 +250,19 @@ export function BoardDetail({ board, initialAds, boards, initialCloneCounts = {}
 
                       {/* Status badge */}
                       <div className="absolute top-2 left-2 z-20 flex flex-col gap-1">
-                        <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white/90 ${
-                          isActive ? "text-emerald-700" : "text-slate-500"
-                        }`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${isActive ? "bg-emerald-500" : "bg-slate-400"}`} />
-                          {isActive ? "Activo" : "Inactivo"}
-                        </span>
+                        {isUpload ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white/90 text-blue-600">
+                            <Upload className="w-2.5 h-2.5" />
+                            Subido
+                          </span>
+                        ) : (
+                          <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white/90 ${
+                            isActive ? "text-emerald-700" : "text-slate-500"
+                          }`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${isActive ? "bg-emerald-500" : "bg-slate-400"}`} />
+                            {isActive ? "Activo" : "Inactivo"}
+                          </span>
+                        )}
                         {(cloneCounts[ad.id] ?? 0) > 0 && (
                           <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/90 text-primary-foreground">
                             <Wand2 className="w-2.5 h-2.5" />
@@ -308,27 +333,29 @@ export function BoardDetail({ board, initialAds, boards, initialCloneCounts = {}
                       )}
 
                       {/* Footer */}
-                      <div className="flex items-center justify-between border-t border-border/50 pt-2.5 mt-1">
-                        <div className="flex items-center gap-1.5">
-                          {(ad.platforms ?? []).slice(0, 3).map((p) => (
-                            <span key={p} className="w-4 h-4 rounded-full bg-muted flex items-center justify-center">
-                              <PlatformIcon platform={p} />
-                            </span>
-                          ))}
+                      {!isUpload && (
+                        <div className="flex items-center justify-between border-t border-border/50 pt-2.5 mt-1">
+                          <div className="flex items-center gap-1.5">
+                            {(ad.platforms ?? []).slice(0, 3).map((p) => (
+                              <span key={p} className="w-4 h-4 rounded-full bg-muted flex items-center justify-center">
+                                <PlatformIcon platform={p} />
+                              </span>
+                            ))}
+                          </div>
+                          {ad.snapshot_url && (
+                            <a
+                              href={ad.snapshot_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                              title="Ver en Ad Library"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              Ad Library
+                            </a>
+                          )}
                         </div>
-                        {ad.snapshot_url && (
-                          <a
-                            href={ad.snapshot_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
-                            title="Ver en Ad Library"
-                          >
-                            <ExternalLink className="w-3 h-3" />
-                            Ad Library
-                          </a>
-                        )}
-                      </div>
+                      )}
                     </div>
                   </div>
                 )

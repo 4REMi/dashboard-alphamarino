@@ -601,6 +601,7 @@ export interface SavedAd {
   hook: string | null
   format: AdFormat | null
   notes: string | null
+  source: string | null   // 'discovery' | 'upload'
   created_by: string | null
   created_at: string
 }
