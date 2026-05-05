@@ -6,7 +6,7 @@ import { deleteBrandBrain, addBrandBrainAsset, deleteBrandBrainAsset } from "@/l
 import { BrandBrainModal } from "@/components/brand-brains/brand-brain-modal"
 import {
   ArrowLeft, Brain, Pencil, Trash2, Upload, X,
-  Loader2, Image as ImageIcon, Film,
+  Loader2, Image as ImageIcon, Film, Download,
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -65,6 +65,34 @@ export function BrandBrainDetail({ brain: initialBrain, canEdit }: Props) {
     setShowEdit(false)
   }
 
+  function handleExport() {
+    const payload = {
+      name:               brain.name,
+      industry:           brain.industry,
+      language:           brain.language,
+      tone_of_voice:      brain.tone_of_voice,
+      description:        brain.description,
+      target_audience:    brain.target_audience,
+      usps:               brain.usps,
+      key_benefits:       brain.key_benefits,
+      pain_points:        brain.pain_points,
+      key_features:       brain.key_features,
+      ctas:               brain.ctas,
+      additional_context: brain.additional_context,
+      brand_colors:       brain.brand_colors,
+      logo_url:           brain.logo_url,
+      logo_square_url:    brain.logo_square_url,
+      logo_horizontal_url: brain.logo_horizontal_url,
+    }
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement("a")
+    a.href     = url
+    a.download = `${brain.name.replace(/\s+/g, "-").toLowerCase()}-brain.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   async function handleDelete() {
     if (!confirm("¿Eliminar este Brand Brain permanentemente?")) return
     await deleteBrandBrain(brain.id)
@@ -114,23 +142,33 @@ export function BrandBrainDetail({ brain: initialBrain, canEdit }: Props) {
               <h1 className="text-xl font-bold tracking-tight truncate">{brain.name}</h1>
               {brain.industry && <p className="text-sm text-muted-foreground">{brain.industry}</p>}
             </div>
-            {canEdit && (
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <button
-                  onClick={() => setShowEdit(true)}
-                  className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                >
-                  <Pencil className="w-3.5 h-3.5" />
-                  Editar
-                </button>
-                <button
-                  onClick={handleDelete}
-                  className="h-8 px-3 rounded-lg border border-destructive/30 text-sm text-destructive hover:bg-destructive/10 transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            )}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                onClick={handleExport}
+                className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                title="Exportar como JSON"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Exportar
+              </button>
+              {canEdit && (
+                <>
+                  <button
+                    onClick={() => setShowEdit(true)}
+                    className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                    Editar
+                  </button>
+                  <button
+                    onClick={handleDelete}
+                    className="h-8 px-3 rounded-lg border border-destructive/30 text-sm text-destructive hover:bg-destructive/10 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
