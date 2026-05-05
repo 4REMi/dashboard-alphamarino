@@ -40,7 +40,7 @@ export default async function MyLabPage() {
           <Lightbulb className="w-5 h-5 text-primary" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold">Mi Lab</h1>
+          <h1 className="text-2xl font-bold">Mi Ops Lab</h1>
           <p className="text-sm text-muted-foreground">
             {profile?.full_name
               ? `Espacio personal de ${profile.full_name}`

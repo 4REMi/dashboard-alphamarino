@@ -7,7 +7,7 @@
     "finances": "Finances",
     "domains": "Domains",
     "team": "Team",
-    "operationsLab": "Operations Lab",
+    "operationsLab": "Ops Lab",
     "settings": "Settings",
     "signOut": "Sign Out"
   },
@@ -299,7 +299,7 @@
     "save": "Save changes"
   },
   "operations": {
-    "title": "Operations Lab",
+    "title": "Ops Lab",
     "subtitle": "Project types → Phase Sets → Task Sets. Select in each column to navigate the hierarchy.",
     "projectTypes": "Project Types",
     "phaseSets": "Phase Sets",

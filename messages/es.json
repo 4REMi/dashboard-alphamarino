@@ -7,7 +7,7 @@
     "finances": "Finanzas",
     "domains": "Dominios",
     "team": "Equipo",
-    "operationsLab": "Operations Lab",
+    "operationsLab": "Ops Lab",
     "settings": "Configuración",
     "signOut": "Cerrar Sesión"
   },
@@ -299,7 +299,7 @@
     "save": "Guardar cambios"
   },
   "operations": {
-    "title": "Operations Lab",
+    "title": "Ops Lab",
     "subtitle": "Tipos de proyecto → Phase Sets → Task Sets. Selecciona en cada columna para navegar la jerarquía.",
     "projectTypes": "Tipos de Proyecto",
     "phaseSets": "Phase Sets",

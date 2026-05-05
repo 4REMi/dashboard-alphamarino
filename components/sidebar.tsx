@@ -81,10 +81,8 @@ export function Sidebar({ profile, logoUrl, mobileOpen = false, onMobileClose }:
     },
     {
       href: "/operations", icon: FlaskConical, label: t("operationsLab"), adminOnly: true,
-      children: [
-        { href: "/my-lab", icon: Lightbulb, label: "Mi Lab" },
-      ],
     },
+    { href: "/my-lab", icon: Lightbulb, label: "Mi Ops Lab" },
     { href: "/settings", icon: Settings, label: t("settings"), adminOnly: true },
   ]
 
