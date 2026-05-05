@@ -30,9 +30,11 @@ import {
   reorderTasksInSet, reorderPhaseInSet,
   importOperationsTemplate,
   addChecklistItemToSetTask, updateSetTaskChecklistItem, deleteSetTaskChecklistItem,
+  reorderSetTaskChecklistItems,
 } from "@/lib/actions/config"
 import { cn } from "@/lib/utils"
 import { exportToXlsx } from "@/lib/utils/export-xlsx"
+import { ChecklistEditorModal, type ChecklistModalItem } from "@/components/ui/checklist-editor-modal"
 
 interface Props {
   projectTypes: ProjectType[]
@@ -304,121 +306,83 @@ function ImportModal({
 }
 
 // ── Sortable task row ─────────────────────────────────────────────────────────
-// ── Template checklist editor ─────────────────────────────────────────────────
+// ── Template checklist trigger (compact inline view + modal) ──────────────────
 
-function TemplateChecklistEditor({
+function TemplateChecklistTrigger({
+  taskTitle,
   taskSetTaskId,
-  initialItems,
+  items,
+  onItemsChange,
 }: {
+  taskTitle: string
   taskSetTaskId: string
-  initialItems: TaskSetChecklistItem[]
+  items: ChecklistModalItem[]
+  onItemsChange: (items: ChecklistModalItem[]) => void
 }) {
-  const [items, setItems] = useState<TaskSetChecklistItem[]>(
-    [...initialItems].sort((a, b) => a.item_order - b.item_order)
-  )
-  const [addingText, setAddingText] = useState("")
-  const [addingBlocking, setAddingBlocking] = useState(false)
-  const [isAdding, setIsAdding] = useState(false)
-  const [isPending, startTransition] = useTransition()
-
-  function handleAdd(e: React.FormEvent) {
-    e.preventDefault()
-    const text = addingText.trim()
-    if (!text) return
-    setAddingText("")
-    setAddingBlocking(false)
-    startTransition(async () => {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const created = await addChecklistItemToSetTask(taskSetTaskId, text, addingBlocking) as any
-        setItems((prev) => [...prev, created])
-      } catch { /* ignore */ }
-    })
-  }
-
-  function handleDelete(id: string) {
-    setItems((prev) => prev.filter((i) => i.id !== id))
-    startTransition(async () => {
-      try { await deleteSetTaskChecklistItem(id) }
-      catch { /* ignore */ }
-    })
-  }
-
-  function handleBlockingToggle(id: string, blocking: boolean) {
-    setItems((prev) => prev.map((i) => i.id === id ? { ...i, is_blocking: blocking } : i))
-    startTransition(async () => {
-      try { await updateSetTaskChecklistItem(id, { is_blocking: blocking }) }
-      catch { /* ignore */ }
-    })
-  }
+  const [showModal, setShowModal] = useState(false)
+  const blockingCount = items.filter((i) => i.is_blocking).length
 
   return (
-    <div className="mt-2 pl-5 space-y-1 border-t border-border/40 pt-2">
-      <p className="text-[11px] font-medium text-muted-foreground flex items-center gap-1 mb-1">
-        <ListChecks className="w-3 h-3" />
-        Checklist plantilla
-        {items.some((i) => i.is_blocking) && (
-          <span className="ml-1 text-destructive/70 flex items-center gap-0.5">
+    <div className="mt-2 pl-5 border-t border-border/40 pt-2">
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <ListChecks className="w-3 h-3 text-muted-foreground" />
+        <span className="text-[11px] font-medium text-muted-foreground">Checklist plantilla</span>
+        {blockingCount > 0 && (
+          <span className="text-[11px] text-destructive/70 flex items-center gap-0.5 ml-0.5">
             <Lock className="w-2.5 h-2.5" />
-            {items.filter((i) => i.is_blocking).length} obligatorio{items.filter((i) => i.is_blocking).length > 1 ? "s" : ""}
+            {blockingCount}
           </span>
         )}
-      </p>
-      {items.map((item) => (
-        <div key={item.id} className="flex items-center gap-2 group text-xs">
-          <span className={cn("flex-1 min-w-0 truncate", item.is_blocking && "font-medium")}>{item.text}</span>
-          <button
-            type="button"
-            onClick={() => handleBlockingToggle(item.id, !item.is_blocking)}
-            title={item.is_blocking ? "Obligatorio — click para hacer opcional" : "Opcional — click para hacer obligatorio"}
-            className={cn(
-              "flex-shrink-0 transition-opacity",
-              item.is_blocking ? "text-destructive opacity-100" : "text-muted-foreground/30 opacity-0 group-hover:opacity-100"
-            )}
-          >
-            <Lock className="w-3 h-3" />
-          </button>
-          <button
-            type="button"
-            onClick={() => handleDelete(item.id)}
-            disabled={isPending}
-            className="flex-shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
-          >
-            <X className="w-3 h-3" />
-          </button>
-        </div>
-      ))}
-      {isAdding ? (
-        <form onSubmit={handleAdd} className="flex items-center gap-2 pt-0.5">
-          <input
-            autoFocus
-            type="text"
-            value={addingText}
-            onChange={(e) => setAddingText(e.target.value)}
-            placeholder="Item de checklist…"
-            className="flex-1 text-xs border rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-            onKeyDown={(e) => { if (e.key === "Escape") { setIsAdding(false); setAddingText("") } }}
-          />
-          <label className="flex items-center gap-1 text-xs text-muted-foreground cursor-pointer flex-shrink-0" title="Marcar como obligatorio">
-            <input type="checkbox" checked={addingBlocking} onChange={(e) => setAddingBlocking(e.target.checked)} className="rounded" />
-            <Lock className={cn("w-3 h-3", addingBlocking ? "text-destructive" : "text-muted-foreground/40")} />
-          </label>
-          <button type="submit" disabled={!addingText.trim() || isPending} className="text-xs text-primary hover:underline disabled:opacity-40 flex-shrink-0">
-            Agregar
-          </button>
-          <button type="button" onClick={() => { setIsAdding(false); setAddingText("") }} className="flex-shrink-0 text-muted-foreground hover:text-foreground">
-            <X className="w-3 h-3" />
-          </button>
-        </form>
-      ) : (
         <button
           type="button"
-          onClick={() => setIsAdding(true)}
-          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors pt-0.5"
+          onClick={() => setShowModal(true)}
+          className="ml-auto text-[11px] text-primary hover:underline transition-colors"
         >
-          <Plus className="w-3 h-3" />
-          Agregar item
+          {items.length === 0 ? "+ Agregar" : "Editar"}
         </button>
+      </div>
+
+      {items.length > 0 && (
+        <div className="space-y-0.5">
+          {items.map((item) => (
+            <div key={item.id} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span className={cn("truncate flex-1 min-w-0", item.is_blocking && "font-medium text-foreground")}>
+                {item.text}
+              </span>
+              {item.is_blocking && <Lock className="w-2.5 h-2.5 text-destructive flex-shrink-0" />}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showModal && (
+        <ChecklistEditorModal
+          taskTitle={taskTitle}
+          initialItems={items}
+          onClose={() => setShowModal(false)}
+          onAdd={async (text, isBlocking) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const created = await addChecklistItemToSetTask(taskSetTaskId, text, isBlocking) as any
+            onItemsChange([...items, created])
+            return created
+          }}
+          onUpdate={async (id, text, isBlocking) => {
+            await updateSetTaskChecklistItem(id, { text, is_blocking: isBlocking })
+            onItemsChange(items.map((i) => i.id === id ? { ...i, text, is_blocking: isBlocking } : i))
+          }}
+          onDelete={async (id) => {
+            await deleteSetTaskChecklistItem(id)
+            onItemsChange(items.filter((i) => i.id !== id))
+          }}
+          onReorder={async (orderedIds) => {
+            await reorderSetTaskChecklistItems(taskSetTaskId, orderedIds)
+            const sorted = orderedIds.map((id, index) => {
+              const item = items.find((i) => i.id === id)!
+              return { ...item, item_order: index }
+            })
+            onItemsChange(sorted)
+          }}
+        />
       )}
     </div>
   )
@@ -439,6 +403,9 @@ function SortableTaskRow({
   sops?: Sop[]
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id })
+  const [checklistItems, setChecklistItems] = useState<ChecklistModalItem[]>(
+    (task.checklist_items ?? []) as ChecklistModalItem[]
+  )
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -447,8 +414,6 @@ function SortableTaskRow({
     zIndex: isDragging ? 10 : undefined,
   }
 
-  const checklistItems = (task.checklist_items ?? []) as TaskSetChecklistItem[]
-
   return (
     <div
       ref={setNodeRef}
@@ -456,7 +421,6 @@ function SortableTaskRow({
       className="group border-b border-border/50 hover:bg-muted/30 transition-colors bg-card"
     >
       <div className="flex items-center gap-2 px-3 py-3">
-        {/* Drag handle */}
         <button
           {...attributes}
           {...listeners}
@@ -466,7 +430,9 @@ function SortableTaskRow({
           <GripVertical className="w-3.5 h-3.5" />
         </button>
 
-        <span className="w-5 h-5 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground flex-shrink-0">{index + 1}</span>
+        <span className="w-5 h-5 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground flex-shrink-0">
+          {index + 1}
+        </span>
 
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium">{task.title}</p>
@@ -484,15 +450,15 @@ function SortableTaskRow({
             {checklistItems.length}
           </span>
         )}
-        {task.requires_deliverable && (
-          <Paperclip className="w-3.5 h-3.5 text-info flex-shrink-0" />
-        )}
+        {task.requires_deliverable && <Paperclip className="w-3.5 h-3.5 text-info flex-shrink-0" />}
         {task.is_urgent && (
           <span className="text-xs px-1.5 py-0.5 rounded font-medium flex-shrink-0 bg-destructive/10 text-destructive">Urgente</span>
         )}
         {task.default_position_id && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 bg-violet-100 text-violet-700 max-w-[80px] truncate"
-            title={(task.default_position as { name?: string } | null)?.name ?? "Puesto asignado"}>
+          <span
+            title={(task.default_position as { name?: string } | null)?.name ?? "Puesto asignado"}
+            className="text-[10px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 bg-violet-100 text-violet-700 max-w-[80px] truncate"
+          >
             {(task.default_position as { name?: string } | null)?.name ?? "Puesto"}
           </span>
         )}
@@ -520,10 +486,13 @@ function SortableTaskRow({
           <X className="w-3 h-3" />
         </button>
       </div>
+
       <div className="px-3 pb-2">
-        <TemplateChecklistEditor
+        <TemplateChecklistTrigger
+          taskTitle={task.title}
           taskSetTaskId={task.id}
-          initialItems={checklistItems}
+          items={checklistItems}
+          onItemsChange={setChecklistItems}
         />
       </div>
     </div>

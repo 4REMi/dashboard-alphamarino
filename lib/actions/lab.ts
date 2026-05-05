@@ -205,6 +205,18 @@ export async function deleteTaskChecklistItem(id: string): Promise<void> {
   revalidate()
 }
 
+export async function reorderLabTaskChecklistItems(
+  orderedIds: string[]
+): Promise<void> {
+  const { supabase } = await assertAuth()
+  await Promise.all(
+    orderedIds.map((id, index) =>
+      supabase.from("lab_phase_task_checklist_items").update({ item_order: index }).eq("id", id)
+    )
+  )
+  revalidate()
+}
+
 // ── Reviews ───────────────────────────────────────────────────────────────────
 
 export async function reviewPhase(
