@@ -3,14 +3,14 @@
 // Lab-specific task components — same visual language as Operations Lab
 
 import { useState, useTransition } from "react"
-import type { LabPhaseTask, LabPhaseTaskChecklistItem, Sop } from "@/lib/types"
+import type { LabPhaseTask, LabPhaseTaskChecklistItem, Sop, Position } from "@/lib/types"
 import {
   addTaskChecklistItem, updateTaskChecklistItem, deleteTaskChecklistItem,
   reorderLabTaskChecklistItems, updatePhaseTask,
 } from "@/lib/actions/lab"
 import {
   GripVertical, Pencil, X, BookOpen, Search, Lock, ListChecks,
-  Paperclip,
+  Paperclip, UserCircle,
 } from "lucide-react"
 import {
   useSortable,
@@ -130,6 +130,7 @@ export function LabSortableTaskRow({
 
   const checklistItems = task.checklist_items ?? []
   const sopName = (task.sop as { title?: string } | null)?.title ?? null
+  const positionName = (task.default_position as { name?: string } | null)?.name ?? null
 
   return (
     <div
@@ -165,6 +166,13 @@ export function LabSortableTaskRow({
           )}>
             {checklistItems.some((i) => i.is_blocking) && <Lock className="w-2.5 h-2.5" />}
             {checklistItems.length}
+          </span>
+        )}
+
+        {positionName && (
+          <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded flex-shrink-0">
+            <UserCircle className="w-2.5 h-2.5" />
+            <span className="hidden sm:inline max-w-[60px] truncate">{positionName}</span>
           </span>
         )}
 
@@ -212,18 +220,22 @@ export function LabSortableTaskRow({
 export function LabEditTaskModal({
   task,
   sops,
+  positions,
   isPending,
   onClose,
   onSave,
 }: {
   task: LabPhaseTask
   sops: Sop[]
+  positions: Position[]
   isPending: boolean
   onClose: () => void
   onSave: (patch: Partial<LabPhaseTask>) => void
 }) {
   const [sopId, setSopId] = useState(task.sop_id ?? "")
   const [sopSearch, setSopSearch] = useState("")
+  const [positionId, setPositionId] = useState(task.default_position_id ?? "")
+  const [positionSearch, setPositionSearch] = useState("")
   const [, startTransition] = useTransition()
 
   const filteredSops = sops.filter((s) =>
@@ -231,6 +243,10 @@ export function LabEditTaskModal({
     (s.category ?? "").toLowerCase().includes(sopSearch.toLowerCase())
   )
   const selectedSop = sops.find((s) => s.id === sopId) ?? null
+  const filteredPositions = positions.filter((p) =>
+    p.name.toLowerCase().includes(positionSearch.toLowerCase())
+  )
+  const selectedPosition = positions.find((p) => p.id === positionId) ?? null
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -244,6 +260,8 @@ export function LabEditTaskModal({
         requires_deliverable: fd.get("requires_deliverable") === "true",
         sop_id:               sopId || null,
         sop:                  selectedSop ? { id: selectedSop.id, title: selectedSop.title } : null,
+        default_position_id:  positionId || null,
+        default_position:     selectedPosition ? { id: selectedPosition.id, name: selectedPosition.name } : null,
       })
       onClose()
     })
@@ -289,6 +307,58 @@ export function LabEditTaskModal({
               Requiere entregable
             </label>
           </div>
+
+          {/* Position picker */}
+          {positions.length > 0 && (
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1.5 block">
+                <UserCircle className="w-3.5 h-3.5" />
+                Puesto predeterminado
+              </label>
+              {selectedPosition ? (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-md border border-primary/30 bg-primary/5 text-sm">
+                  <UserCircle className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                  <span className="flex-1 min-w-0 truncate font-medium text-primary">{selectedPosition.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => { setPositionId(""); setPositionSearch("") }}
+                    className="p-0.5 rounded text-muted-foreground hover:text-destructive transition-colors flex-shrink-0"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                    <input
+                      type="text"
+                      value={positionSearch}
+                      onChange={(e) => setPositionSearch(e.target.value)}
+                      placeholder="Buscar puesto…"
+                      className="w-full rounded border border-input bg-background pl-8 pr-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    />
+                  </div>
+                  {filteredPositions.length > 0 && (
+                    <div className="max-h-28 overflow-y-auto rounded-md border border-border divide-y divide-border/50">
+                      {filteredPositions.map((pos) => (
+                        <button
+                          key={pos.id}
+                          type="button"
+                          onClick={() => { setPositionId(pos.id); setPositionSearch("") }}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-muted/50 transition-colors"
+                        >
+                          <UserCircle className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                          <span className="text-sm truncate">{pos.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              <input type="hidden" name="default_position_id" value={positionId} />
+            </div>
+          )}
 
           {/* SOP picker */}
           <div>

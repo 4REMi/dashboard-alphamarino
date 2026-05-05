@@ -2,11 +2,13 @@ export const dynamic = "force-dynamic"
 
 import { createClient } from "@/lib/supabase/server"
 import { getMyPendingSopRequests, getSops } from "@/lib/actions/sops"
-import { getMyPhases, getAllSubmittedPhases } from "@/lib/actions/lab"
+import { getMyPhases, getAllSubmittedPhases, getCanonicalTree, getMyProposedTasks, getAllSubmittedProposedTasks, getMyProposedChecklistAdditions, getAllSubmittedProposedChecklistAdditions } from "@/lib/actions/lab"
 import { getPhaseSets } from "@/lib/actions/config"
+import { getPositions } from "@/lib/actions/config"
 import { SopRequestInbox } from "@/components/lab/sop-request-inbox"
 import { PhaseEditor } from "@/components/lab/phase-editor"
 import { PhaseReviewPanel } from "@/components/lab/phase-review-panel"
+import { CanonicalTreeView } from "@/components/lab/canonical-tree-view"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Lightbulb } from "lucide-react"
 import type { SopRequest, LabPhase, PhaseSet, Sop } from "@/lib/types"
@@ -22,16 +24,38 @@ export default async function MyLabPage() {
 
   const isAdmin = profile?.role === "admin" || profile?.role === "subadmin"
 
-  const [sopRequests, myPhases, allSops, submittedPhases, phaseSets] = await Promise.all([
+  const [
+    sopRequests,
+    myPhases,
+    allSops,
+    submittedPhases,
+    phaseSets,
+    canonicalTree,
+    myProposedTasks,
+    allProposedTasks,
+    myProposedChecklists,
+    allProposedChecklists,
+    positions,
+  ] = await Promise.all([
     getMyPendingSopRequests().catch(() => [] as SopRequest[]),
     getMyPhases().catch(() => [] as LabPhase[]),
     getSops().catch(() => [] as Sop[]),
     isAdmin ? getAllSubmittedPhases().catch(() => [] as LabPhase[]) : Promise.resolve([] as LabPhase[]),
     isAdmin ? getPhaseSets().catch(() => [] as PhaseSet[]) : Promise.resolve([] as PhaseSet[]),
+    getCanonicalTree().catch(() => []),
+    getMyProposedTasks().catch(() => []),
+    isAdmin ? getAllSubmittedProposedTasks().catch(() => []) : Promise.resolve([]),
+    getMyProposedChecklistAdditions().catch(() => []),
+    isAdmin ? getAllSubmittedProposedChecklistAdditions().catch(() => []) : Promise.resolve([]),
+    getPositions().catch(() => []),
   ])
 
   const pendingSopCount    = sopRequests.filter((r) => r.status === "pending").length
-  const pendingReviewCount = submittedPhases.filter((p) => p.status === "submitted").length
+  const pendingReviewCount = isAdmin
+    ? submittedPhases.filter((p) => p.status === "submitted").length
+      + allProposedTasks.filter((t) => t.status === "submitted").length
+      + allProposedChecklists.filter((c) => c.status === "submitted").length
+    : 0
 
   return (
     <div className="p-6 space-y-4">
@@ -49,8 +73,14 @@ export default async function MyLabPage() {
         </div>
       </div>
 
-      <Tabs defaultValue="phases" className="mt-2">
+      <Tabs defaultValue="canonical" className="mt-2">
         <TabsList>
+          <TabsTrigger value="canonical">
+            Árbol canónico
+            {canonicalTree.length === 0 && (
+              <span className="ml-1.5 text-[10px] text-muted-foreground">vacío</span>
+            )}
+          </TabsTrigger>
           <TabsTrigger value="phases">
             Mis fases
             {myPhases.length > 0 && (
@@ -79,8 +109,23 @@ export default async function MyLabPage() {
           )}
         </TabsList>
 
+        <TabsContent value="canonical" className="mt-4">
+          <CanonicalTreeView
+            phaseSets={canonicalTree}
+            myProposedTasks={myProposedTasks}
+            myProposedChecklists={myProposedChecklists}
+            positions={positions}
+            sops={allSops as Sop[]}
+            isAdmin={isAdmin}
+          />
+        </TabsContent>
+
         <TabsContent value="phases" className="mt-4">
-          <PhaseEditor initialPhases={myPhases} sops={allSops as Sop[]} />
+          <PhaseEditor
+            initialPhases={myPhases}
+            sops={allSops as Sop[]}
+            positions={positions}
+          />
         </TabsContent>
 
         <TabsContent value="sop-requests" className="mt-4">
@@ -92,6 +137,8 @@ export default async function MyLabPage() {
             <PhaseReviewPanel
               initialPhases={submittedPhases}
               phaseSets={phaseSets as PhaseSet[]}
+              initialProposedTasks={allProposedTasks}
+              initialProposedChecklists={allProposedChecklists}
             />
           </TabsContent>
         )}

@@ -287,7 +287,9 @@ export interface LabPhaseTask {
   task_order: number
   requires_deliverable: boolean
   sop_id: string | null
+  default_position_id: string | null
   sop?: Pick<Sop, "id" | "title"> | null
+  default_position?: Position | null
   checklist_items?: LabPhaseTaskChecklistItem[]
   created_at: string
 }
@@ -313,6 +315,116 @@ export interface LabPhase {
   author?: Profile | null
   tasks?: LabPhaseTask[]
   reviews?: LabPhaseReview[]
+}
+
+export type LabProposedStatus = "draft" | "submitted" | "approved" | "rejected"
+
+// ── Proposed task (anchored to a canonical PhaseSetPhase) ─────────────────────
+
+export interface LabProposedTaskChecklistItem {
+  id: string
+  proposed_task_id: string
+  text: string
+  is_blocking: boolean
+  item_order: number
+  created_at: string
+}
+
+export interface LabProposedTaskReview {
+  id: string
+  proposed_task_id: string
+  reviewer_id: string
+  action: LabReviewAction
+  comment: string | null
+  created_at: string
+  reviewer?: Pick<Profile, "id" | "full_name"> | null
+}
+
+export interface LabProposedTask {
+  id: string
+  author_id: string
+  anchor_phase_set_phase_id: string
+  anchor_task_set_id: string | null
+  position_after_task_id: string | null
+  title: string
+  description: string | null
+  requires_deliverable: boolean
+  sop_id: string | null
+  default_position_id: string | null
+  status: LabProposedStatus
+  created_at: string
+  updated_at: string
+  author?: Pick<Profile, "id" | "full_name"> | null
+  sop?: Pick<Sop, "id" | "title"> | null
+  default_position?: Position | null
+  checklist_items?: LabProposedTaskChecklistItem[]
+  reviews?: LabProposedTaskReview[]
+  anchor_phase?: Pick<PhaseSetPhase, "id" | "name"> | null
+}
+
+// ── Proposed checklist addition (anchored to a canonical TaskSetTask) ─────────
+
+export interface LabProposedChecklistItem {
+  id: string
+  addition_id: string
+  text: string
+  is_blocking: boolean
+  item_order: number
+  created_at: string
+}
+
+export interface LabProposedChecklistAdditionReview {
+  id: string
+  addition_id: string
+  reviewer_id: string
+  action: LabReviewAction
+  comment: string | null
+  created_at: string
+  reviewer?: Pick<Profile, "id" | "full_name"> | null
+}
+
+export interface LabProposedChecklistAddition {
+  id: string
+  author_id: string
+  anchor_task_set_task_id: string
+  status: LabProposedStatus
+  created_at: string
+  updated_at: string
+  author?: Pick<Profile, "id" | "full_name"> | null
+  items?: LabProposedChecklistItem[]
+  reviews?: LabProposedChecklistAdditionReview[]
+  anchor_task?: Pick<TaskSetTask, "id" | "title"> | null
+}
+
+// ── Canonical tree (read-only snapshot for Mi Ops Lab) ───────────────────────
+
+export interface CanonicalTask {
+  id: string
+  title: string
+  description: string | null
+  task_order: number
+  requires_deliverable: boolean
+  default_position_id: string | null
+  default_position_name: string | null
+  sop_id: string | null
+  sop_title: string | null
+  checklist_items: { id: string; text: string; is_blocking: boolean; item_order: number }[]
+}
+
+export interface CanonicalPhase {
+  id: string
+  name: string
+  description: string | null
+  phase_order: number
+  task_set_id: string | null
+  tasks: CanonicalTask[]
+}
+
+export interface CanonicalPhaseSet {
+  id: string
+  name: string
+  project_type_name: string | null
+  phases: CanonicalPhase[]
 }
 
 // ============================================================

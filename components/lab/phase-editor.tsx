@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import type { LabPhase, LabPhaseTask, Sop } from "@/lib/types"
+import type { LabPhase, LabPhaseTask, Sop, Position } from "@/lib/types"
 import {
   createPhase, updatePhase, deletePhase, submitPhase, retractPhase,
   addPhaseTask, deletePhaseTask, reorderPhaseTasks,
@@ -17,6 +17,7 @@ import { LabSortableTaskRow, LabEditTaskModal } from "@/components/lab/task-edit
 interface Props {
   initialPhases: LabPhase[]
   sops: Sop[]
+  positions: Position[]
 }
 
 const STATUS_LABEL: Record<LabPhase["status"], string> = {
@@ -27,7 +28,7 @@ const STATUS_COLOR: Record<LabPhase["status"], string> = {
   approved: "text-emerald-600", rejected: "text-destructive",
 }
 
-export function PhaseEditor({ initialPhases, sops }: Props) {
+export function PhaseEditor({ initialPhases, sops, positions }: Props) {
   const [phases, setPhases] = useState<LabPhase[]>(initialPhases)
   const [selectedId, setSelectedId] = useState<string | null>(phases[0]?.id ?? null)
   const [showNewPhase, setShowNewPhase] = useState(false)
@@ -347,6 +348,7 @@ export function PhaseEditor({ initialPhases, sops }: Props) {
         <LabEditTaskModal
           task={editingTask}
           sops={sops}
+          positions={positions}
           isPending={isPending}
           onClose={() => setEditingTask(null)}
           onSave={handleTaskSaved}
