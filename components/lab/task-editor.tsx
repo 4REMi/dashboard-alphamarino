@@ -261,7 +261,7 @@ export function LabEditTaskModal({
         sop_id:               sopId || null,
         sop:                  selectedSop ? { id: selectedSop.id, title: selectedSop.title } : null,
         default_position_id:  positionId || null,
-        default_position:     selectedPosition ? { id: selectedPosition.id, name: selectedPosition.name } : null,
+        default_position:     selectedPosition ? { id: selectedPosition.id, name: selectedPosition.name, created_at: selectedPosition.created_at } : null,
       })
       onClose()
     })
