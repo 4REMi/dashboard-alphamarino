@@ -318,7 +318,6 @@ function CanonicalTaskRow({
               <Plus className="w-2.5 h-2.5" />
               Checklist
             </button>
-          )}
         </div>
       </div>
 
