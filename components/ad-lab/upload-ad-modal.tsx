@@ -17,6 +17,32 @@ interface Props {
   onClose: () => void
 }
 
+/** Capture a JPEG thumbnail from a video blob URL by seeking to 1s (or 10% of duration). */
+function captureVideoThumbnail(blobUrl: string): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    const video = document.createElement("video")
+    video.preload = "metadata"
+    video.muted   = true
+    video.src     = blobUrl
+
+    video.onloadedmetadata = () => {
+      video.currentTime = Math.min(1, video.duration * 0.1)
+    }
+    video.onseeked = () => {
+      try {
+        const canvas = document.createElement("canvas")
+        canvas.width  = video.videoWidth
+        canvas.height = video.videoHeight
+        canvas.getContext("2d")?.drawImage(video, 0, 0)
+        canvas.toBlob((blob) => resolve(blob), "image/jpeg", 0.82)
+      } catch {
+        resolve(null)
+      }
+    }
+    video.onerror = () => resolve(null)
+  })
+}
+
 export function UploadAdModal({ boards, defaultBoardId, onUploaded, onClose }: Props) {
   const inputRef   = useRef<HTMLInputElement>(null)
   const [file,     setFile]     = useState<File | null>(null)
@@ -27,6 +53,9 @@ export function UploadAdModal({ boards, defaultBoardId, onUploaded, onClose }: P
   const [error,    setError]    = useState<string | null>(null)
   const [loading,  setLoading]  = useState(false)
   const [progress, setProgress] = useState<string | null>(null)
+
+  // Captured thumbnail blob for video files
+  const thumbnailBlobRef = useRef<Blob | null>(null)
 
   const isVideo = file?.type.startsWith("video/") ?? false
 
@@ -40,7 +69,16 @@ export function UploadAdModal({ boards, defaultBoardId, onUploaded, onClose }: P
     const auto = f.name.replace(/\.[^.]+$/, "").replace(/[-_]/g, " ")
     setFile(f)
     setName((prev) => prev || auto)
-    setPreview(URL.createObjectURL(f))
+    thumbnailBlobRef.current = null
+
+    const blobUrl = URL.createObjectURL(f)
+    setPreview(blobUrl)
+
+    if (f.type.startsWith("video/")) {
+      captureVideoThumbnail(blobUrl).then((blob) => {
+        thumbnailBlobRef.current = blob
+      })
+    }
   }
 
   const onDrop = useCallback((e: React.DragEvent) => {
@@ -61,24 +99,38 @@ export function UploadAdModal({ boards, defaultBoardId, onUploaded, onClose }: P
     setLoading(true)
     setError(null)
     try {
-      // Upload directly from browser → Supabase Storage (bypasses Next.js body limit)
-      setProgress("Subiendo archivo…")
       const supabase = createClient()
       const ext  = (file.name.split(".").pop() ?? (isVideo ? "mp4" : "jpg")).slice(0, 4)
       const uuid = crypto.randomUUID()
-      const path = `uploads/${uuid}/${isVideo ? "video" : "image"}.${ext}`
 
+      // 1. Upload the main file directly browser → Supabase Storage
+      setProgress("Subiendo archivo…")
+      const path = `uploads/${uuid}/${isVideo ? "video" : "image"}.${ext}`
       const { error: uploadError } = await supabase.storage
         .from("ad-lab")
         .upload(path, file, { contentType: file.type, upsert: false })
       if (uploadError) throw new Error(`Error al subir: ${uploadError.message}`)
-
       const { data: { publicUrl } } = supabase.storage.from("ad-lab").getPublicUrl(path)
 
-      // Server action only creates the DB record — no file data passes through Next.js
+      // 2. Upload video thumbnail if we captured one
+      let thumbnailUrl: string | undefined
+      if (isVideo && thumbnailBlobRef.current) {
+        setProgress("Generando miniatura…")
+        const thumbPath = `uploads/${uuid}/thumbnail.jpg`
+        const { error: thumbError } = await supabase.storage
+          .from("ad-lab")
+          .upload(thumbPath, thumbnailBlobRef.current, { contentType: "image/jpeg", upsert: false })
+        if (!thumbError) {
+          thumbnailUrl = supabase.storage.from("ad-lab").getPublicUrl(thumbPath).data.publicUrl
+        }
+      }
+
+      // 3. Server action creates only the DB record
       setProgress("Guardando registro…")
       const displayName = name.trim() || file.name.replace(/\.[^.]+$/, "").replace(/[-_]/g, " ")
-      const ad = await saveUploadedAdRecord(publicUrl, displayName, isVideo, boardId || undefined)
+      const ad = await saveUploadedAdRecord(
+        publicUrl, displayName, isVideo, boardId || undefined, thumbnailUrl,
+      )
 
       onUploaded?.(ad)
       onClose()

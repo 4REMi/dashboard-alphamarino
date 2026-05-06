@@ -361,6 +361,7 @@ export async function saveUploadedAdRecord(
   name: string,
   isVideo: boolean,
   boardId?: string,
+  thumbnailUrl?: string,
 ): Promise<SavedAd> {
   const { supabase, user } = await assertAuth()
 
@@ -377,6 +378,10 @@ export async function saveUploadedAdRecord(
   if (isVideo) {
     row.video_url        = publicUrl
     row.cached_video_url = publicUrl
+    if (thumbnailUrl) {
+      row.image_url        = thumbnailUrl
+      row.cached_image_url = thumbnailUrl
+    }
   } else {
     row.image_url        = publicUrl
     row.cached_image_url = publicUrl
