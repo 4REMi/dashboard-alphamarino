@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useState, useTransition, useEffect, useRef } from "react"
 import type {
   LabPhase, LabPhaseTask, PhaseSet, PhaseSetPhase,
   LabProposedTask, LabProposedChecklistAddition, LabProposedChecklistItem,
@@ -52,6 +52,15 @@ export function PhaseReviewPanel({
   const [selectedChecklistId, setSelectedChecklistId] = useState<string | null>(proposedChecklists[0]?.id ?? null)
   const [selectedNewPhaseId, setSelectedNewPhaseId] = useState<string | null>(proposedPhases[0]?.id ?? null)
   const [showPromote, setShowPromote] = useState(false)
+  const [successMsg, setSuccessMsg] = useState<string | null>(null)
+  const successTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  function showSuccess(msg: string) {
+    if (successTimer.current) clearTimeout(successTimer.current)
+    setSuccessMsg(msg)
+    successTimer.current = setTimeout(() => setSuccessMsg(null), 3000)
+  }
+  useEffect(() => () => { if (successTimer.current) clearTimeout(successTimer.current) }, [])
 
   const pendingPhases    = phases.filter((p) => p.status === "submitted")
   const reviewedPhases   = phases.filter((p) => p.status === "approved" || p.status === "rejected")
@@ -94,6 +103,7 @@ export function PhaseReviewPanel({
     setProposedTasks((prev) => prev.map((t) =>
       t.id !== id ? t : { ...t, status: "approved" }
     ))
+    showSuccess("✓ Tarea inyectada al árbol canónico")
   }
 
   function onChecklistReviewed(id: string, action: string) {
@@ -106,6 +116,7 @@ export function PhaseReviewPanel({
     setProposedChecklists((prev) => prev.map((c) =>
       c.id !== id ? c : { ...c, status: "approved" }
     ))
+    showSuccess("✓ Checklist inyectado al árbol canónico")
   }
 
   function onNewPhaseReviewed(id: string, action: string) {
@@ -118,6 +129,7 @@ export function PhaseReviewPanel({
     setProposedPhases((prev) => prev.map((p) =>
       p.id !== id ? p : { ...p, status: "approved" }
     ))
+    showSuccess("✓ Fase inyectada al árbol canónico")
   }
 
   const emptyAll = phases.length === 0 && proposedTasks.length === 0 && proposedChecklists.length === 0 && proposedPhases.length === 0
@@ -132,6 +144,12 @@ export function PhaseReviewPanel({
   }
 
   return (
+    <div className="space-y-2">
+    {successMsg && (
+      <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 text-sm font-medium">
+        {successMsg}
+      </div>
+    )}
     <div className="flex border border-border rounded-xl overflow-hidden bg-card"
       style={{ height: "calc(100vh - 220px)", minHeight: 480 }}>
 
@@ -331,6 +349,7 @@ export function PhaseReviewPanel({
           )
         )}
       </div>
+    </div>
     </div>
   )
 }

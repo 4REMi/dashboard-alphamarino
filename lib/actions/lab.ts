@@ -728,6 +728,13 @@ export async function retractProposedPhase(id: string) {
   revalidate()
 }
 
+export async function deleteProposedPhase(id: string): Promise<void> {
+  const { supabase } = await assertAuth()
+  const { error } = await supabase.from("lab_proposed_phases").delete().eq("id", id)
+  if (error) throw error
+  revalidate()
+}
+
 export async function getAllSubmittedProposedPhases() {
   const { supabase } = await assertAuth()
   const { data } = await supabase

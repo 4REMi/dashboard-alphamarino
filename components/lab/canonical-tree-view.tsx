@@ -7,10 +7,10 @@ import type {
 } from "@/lib/types"
 import {
   FolderKanban, ListChecks, Lock, Paperclip, BookOpen,
-  Plus, UserCircle, ChevronRight, Pencil, Layers, Send, RotateCcw,
+  Plus, UserCircle, ChevronRight, Pencil, Layers, Send, RotateCcw, Trash2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { submitProposedTask, retractProposedTask } from "@/lib/actions/lab"
+import { submitProposedTask, retractProposedTask, deleteProposedTask } from "@/lib/actions/lab"
 import { ProposedTaskModal } from "@/components/lab/proposed-task-modal"
 import { ProposedChecklistModal } from "@/components/lab/proposed-checklist-modal"
 import { ProposedPhaseModal } from "@/components/lab/proposed-phase-modal"
@@ -239,7 +239,7 @@ export function CanonicalTreeView({
             {/* My task proposals for the selected phase */}
             {selectedPhase && (() => {
               const myProposals = localProposedTasks.filter(
-                (pt) => pt.anchor_phase_set_phase_id === selectedPhase.id
+                (pt) => pt.anchor_phase_set_phase_id === selectedPhase.id && pt.status !== "approved"
               )
               if (myProposals.length === 0) return null
               return (
@@ -253,6 +253,7 @@ export function CanonicalTreeView({
                       proposal={pt}
                       onSubmit={() => setLocalProposedTasks((prev) => prev.map((t) => t.id === pt.id ? { ...t, status: "submitted" } : t))}
                       onRetract={() => setLocalProposedTasks((prev) => prev.map((t) => t.id === pt.id ? { ...t, status: "draft" } : t))}
+                      onDelete={() => setLocalProposedTasks((prev) => prev.filter((t) => t.id !== pt.id))}
                     />
                   ))}
                 </div>
@@ -446,10 +447,11 @@ const STATUS_COLOR: Record<string, string> = {
   rejected:  "text-destructive bg-destructive/10",
 }
 
-function ProposedTaskInlineRow({ proposal, onSubmit, onRetract }: {
+function ProposedTaskInlineRow({ proposal, onSubmit, onRetract, onDelete }: {
   proposal: LabProposedTask
   onSubmit: () => void
   onRetract: () => void
+  onDelete: () => void
 }) {
   const [isPending, startTransition] = useTransition()
 
@@ -458,6 +460,9 @@ function ProposedTaskInlineRow({ proposal, onSubmit, onRetract }: {
   }
   function handleRetract() {
     startTransition(async () => { await retractProposedTask(proposal.id); onRetract() })
+  }
+  function handleDelete() {
+    startTransition(async () => { await deleteProposedTask(proposal.id); onDelete() })
   }
 
   return (
@@ -481,15 +486,27 @@ function ProposedTaskInlineRow({ proposal, onSubmit, onRetract }: {
           {STATUS_LABEL[proposal.status] ?? proposal.status}
         </span>
         {proposal.status === "draft" && (
-          <button onClick={handleSubmit} disabled={isPending} title="Enviar a revisión"
-            className="p-1 rounded text-primary hover:bg-primary/10 disabled:opacity-50 transition-colors">
-            <Send className="w-3 h-3" />
-          </button>
+          <>
+            <button onClick={handleSubmit} disabled={isPending} title="Enviar a revisión"
+              className="p-1 rounded text-primary hover:bg-primary/10 disabled:opacity-50 transition-colors">
+              <Send className="w-3 h-3" />
+            </button>
+            <button onClick={handleDelete} disabled={isPending} title="Eliminar borrador"
+              className="p-1 rounded text-muted-foreground hover:text-destructive disabled:opacity-50 transition-colors">
+              <Trash2 className="w-3 h-3" />
+            </button>
+          </>
         )}
         {proposal.status === "submitted" && (
           <button onClick={handleRetract} disabled={isPending} title="Retirar"
             className="p-1 rounded text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors">
             <RotateCcw className="w-3 h-3" />
+          </button>
+        )}
+        {proposal.status === "rejected" && (
+          <button onClick={handleDelete} disabled={isPending} title="Descartar"
+            className="p-1 rounded text-muted-foreground hover:text-destructive disabled:opacity-50 transition-colors">
+            <Trash2 className="w-3 h-3" />
           </button>
         )}
       </div>
