@@ -116,7 +116,6 @@ export default async function MyLabPage() {
             myProposedChecklists={myProposedChecklists}
             positions={positions}
             sops={allSops as Sop[]}
-            isAdmin={isAdmin}
           />
         </TabsContent>
 
