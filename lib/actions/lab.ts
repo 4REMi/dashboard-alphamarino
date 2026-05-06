@@ -339,20 +339,29 @@ export async function promotePhase(
 export async function getCanonicalTree(): Promise<CanonicalPhaseSet[]> {
   const supabase = await createClient()
 
-  // Fetch both in parallel — project_types used to filter orphaned phase_sets
+  // Fetch both in parallel.
+  // The canonical relationship is project_types.default_phase_set_id → phase_sets.id,
+  // NOT phase_sets.project_type_id (which is optional and often null).
   const [{ data: allPhaseSets, error: psError }, { data: projectTypes }] = await Promise.all([
     supabase.from("phase_sets").select("id, name, project_type_id").order("name"),
-    supabase.from("project_types").select("id, name"),
+    supabase.from("project_types").select("id, name, default_phase_set_id"),
   ])
   if (psError || !allPhaseSets?.length) return []
 
-  const ptMap: Record<string, string> = {}
-  for (const pt of projectTypes ?? []) ptMap[pt.id] = pt.name
+  // Build lookup: phase_set_id → project_type_name (via default_phase_set_id)
+  const psToProjectTypeName: Record<string, string> = {}
+  const validPhaseSetIds = new Set<string>()
+  for (const pt of projectTypes ?? []) {
+    if (pt.default_phase_set_id) {
+      psToProjectTypeName[pt.default_phase_set_id] = pt.name
+      validPhaseSetIds.add(pt.default_phase_set_id)
+    }
+  }
 
-  // Filter out phase_sets whose project_type was deleted — but only if we got
-  // project type data (guards against RLS returning empty for some roles)
-  const phaseSets = Object.keys(ptMap).length > 0
-    ? allPhaseSets.filter((ps) => ps.project_type_id && ptMap[ps.project_type_id])
+  // Only show phase sets that are the active default for a project type.
+  // Fall back to all phase sets if project_types returned empty (RLS guard).
+  const phaseSets = validPhaseSetIds.size > 0
+    ? allPhaseSets.filter((ps) => validPhaseSetIds.has(ps.id))
     : allPhaseSets
 
   const { data: phases } = await supabase
@@ -429,7 +438,7 @@ export async function getCanonicalTree(): Promise<CanonicalPhaseSet[]> {
     return {
       id: ps.id,
       name: ps.name,
-      project_type_name: ps.project_type_id ? (ptMap[ps.project_type_id] ?? null) : null,
+      project_type_name: psToProjectTypeName[ps.id] ?? null,
       phases: psPhases,
     }
   })
