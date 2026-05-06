@@ -90,15 +90,33 @@ export function PhaseReviewPanel({
     ))
   }
 
+  function onTaskInjected(id: string) {
+    setProposedTasks((prev) => prev.map((t) =>
+      t.id !== id ? t : { ...t, status: "approved" }
+    ))
+  }
+
   function onChecklistReviewed(id: string, action: string) {
     setProposedChecklists((prev) => prev.map((c) =>
       c.id !== id ? c : { ...c, status: action === "approve" ? "approved" : "rejected" }
     ))
   }
 
+  function onChecklistInjected(id: string) {
+    setProposedChecklists((prev) => prev.map((c) =>
+      c.id !== id ? c : { ...c, status: "approved" }
+    ))
+  }
+
   function onNewPhaseReviewed(id: string, action: string) {
     setProposedPhases((prev) => prev.map((p) =>
       p.id !== id ? p : { ...p, status: action === "approve" ? "approved" : "rejected" }
+    ))
+  }
+
+  function onNewPhaseInjected(id: string) {
+    setProposedPhases((prev) => prev.map((p) =>
+      p.id !== id ? p : { ...p, status: "approved" }
     ))
   }
 
@@ -282,7 +300,8 @@ export function PhaseReviewPanel({
             </>
           ) : (
             <ProposedTaskDetail task={selectedTask}
-              onReviewed={(action) => onTaskReviewed(selectedTask.id, action)} />
+              onReviewed={(action) => onTaskReviewed(selectedTask.id, action)}
+              onInjected={() => onTaskInjected(selectedTask.id)} />
           )
         )}
 
@@ -294,7 +313,8 @@ export function PhaseReviewPanel({
             </>
           ) : (
             <ProposedChecklistDetail addition={selectedChecklist}
-              onReviewed={(action) => onChecklistReviewed(selectedChecklist.id, action)} />
+              onReviewed={(action) => onChecklistReviewed(selectedChecklist.id, action)}
+              onInjected={() => onChecklistInjected(selectedChecklist.id)} />
           )
         )}
 
@@ -306,7 +326,8 @@ export function PhaseReviewPanel({
             </>
           ) : (
             <ProposedNewPhaseDetail phase={selectedNewPhase}
-              onReviewed={(action) => onNewPhaseReviewed(selectedNewPhase.id, action)} />
+              onReviewed={(action) => onNewPhaseReviewed(selectedNewPhase.id, action)}
+              onInjected={() => onNewPhaseInjected(selectedNewPhase.id)} />
           )
         )}
       </div>
@@ -486,9 +507,10 @@ function PhaseDetail({ phase, onReviewed, onPromote }: {
 
 // ── Proposed task detail ──────────────────────────────────────────────────────
 
-function ProposedTaskDetail({ task, onReviewed }: {
+function ProposedTaskDetail({ task, onReviewed, onInjected }: {
   task: LabProposedTask
   onReviewed: (action: string) => void
+  onInjected: () => void
 }) {
   const [comment, setComment] = useState("")
   const [isPending, startTransition] = useTransition()
@@ -513,6 +535,7 @@ function ProposedTaskDetail({ task, onReviewed }: {
   function handleInject() {
     startTransition(async () => {
       await injectProposedTask(task.id)
+      onInjected()
     })
   }
 
@@ -613,9 +636,10 @@ function ProposedTaskDetail({ task, onReviewed }: {
 
 // ── Proposed checklist detail ─────────────────────────────────────────────────
 
-function ProposedChecklistDetail({ addition, onReviewed }: {
+function ProposedChecklistDetail({ addition, onReviewed, onInjected }: {
   addition: LabProposedChecklistAddition
   onReviewed: (action: string) => void
+  onInjected: () => void
 }) {
   const [comment, setComment] = useState("")
   const [isPending, startTransition] = useTransition()
@@ -639,6 +663,7 @@ function ProposedChecklistDetail({ addition, onReviewed }: {
   function handleInject() {
     startTransition(async () => {
       await injectProposedChecklistAddition(addition.id)
+      onInjected()
     })
   }
 
@@ -741,7 +766,7 @@ function ProposedPhaseListRow({ phase, isSelected, onSelect }: { phase: LabPropo
 
 // ── Proposed new phase detail ─────────────────────────────────────────────────
 
-function ProposedNewPhaseDetail({ phase, onReviewed }: { phase: LabProposedPhase; onReviewed: (action: string) => void }) {
+function ProposedNewPhaseDetail({ phase, onReviewed, onInjected }: { phase: LabProposedPhase; onReviewed: (action: string) => void; onInjected: () => void }) {
   const [comment, setComment] = useState("")
   const [isPending, startTransition] = useTransition()
   const author = (phase.author as { full_name?: string } | null)?.full_name ?? "Empleado"
@@ -756,7 +781,10 @@ function ProposedNewPhaseDetail({ phase, onReviewed }: { phase: LabProposedPhase
   }
 
   function handleInject() {
-    startTransition(async () => { await injectProposedPhase(phase.id) })
+    startTransition(async () => {
+      await injectProposedPhase(phase.id)
+      onInjected()
+    })
   }
 
   return (
