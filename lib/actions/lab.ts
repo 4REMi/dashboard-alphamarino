@@ -435,15 +435,45 @@ export async function getCanonicalTree(): Promise<CanonicalPhaseSet[]> {
 
 // ── Proposed tasks ────────────────────────────────────────────────────────────
 
+// Avoids author:profiles() and reviewer:profiles() joins — FK to profiles may
+// not exist as a DB constraint; we resolve profiles in a separate query instead.
 const PROPOSED_TASK_SELECT = `
   *,
-  author:profiles(id, full_name),
   sop:sops(id, title),
   default_position:positions(id, name),
   anchor_phase:phase_set_phases(id, name),
   checklist_items:lab_proposed_task_checklist_items(id, text, is_blocking, item_order),
-  reviews:lab_proposed_task_reviews(*, reviewer:profiles(id, full_name))
+  reviews:lab_proposed_task_reviews(id, action, comment, created_at, reviewer_id)
 `
+
+type WithProfiles = Record<string, unknown> & {
+  author_id?: string
+  reviews?: (Record<string, unknown> & { reviewer_id?: string })[]
+}
+
+async function attachProfiles(
+  supabase: Awaited<ReturnType<typeof import("@/lib/supabase/server").createClient>>,
+  rows: WithProfiles[]
+): Promise<WithProfiles[]> {
+  const ids = new Set<string>()
+  for (const r of rows) {
+    if (r.author_id) ids.add(r.author_id)
+    for (const rev of r.reviews ?? []) { if (rev.reviewer_id) ids.add(rev.reviewer_id) }
+  }
+  if (!ids.size) return rows
+  const { data: profiles } = await supabase
+    .from("profiles").select("id, full_name").in("id", [...ids])
+  const pm: Record<string, { id: string; full_name: string }> = {}
+  for (const p of profiles ?? []) pm[p.id] = p
+  return rows.map((r) => ({
+    ...r,
+    author: r.author_id ? (pm[r.author_id] ?? null) : null,
+    reviews: (r.reviews ?? []).map((rev) => ({
+      ...rev,
+      reviewer: rev.reviewer_id ? (pm[rev.reviewer_id] ?? null) : null,
+    })),
+  }))
+}
 
 export async function getMyProposedTasks(): Promise<LabProposedTask[]> {
   const { supabase, user } = await assertAuth()
@@ -462,7 +492,8 @@ export async function getAllSubmittedProposedTasks(): Promise<LabProposedTask[]>
     .select(PROPOSED_TASK_SELECT)
     .in("status", ["submitted", "approved", "rejected"])
     .order("updated_at", { ascending: false })
-  return (data ?? []) as unknown as LabProposedTask[]
+  const rows = (data ?? []) as unknown as WithProfiles[]
+  return attachProfiles(supabase, rows) as unknown as Promise<LabProposedTask[]>
 }
 
 export async function createProposedTask(
@@ -637,7 +668,7 @@ export async function injectProposedTask(id: string): Promise<void> {
 
 // ── Proposed phases ───────────────────────────────────────────────────────────
 
-const PROPOSED_PHASE_SELECT = `*, author:profiles(id, full_name)`
+const PROPOSED_PHASE_SELECT = `*`
 
 export async function getMyProposedPhases() {
   const { supabase, user } = await assertAuth()
@@ -687,10 +718,9 @@ export async function retractProposedPhase(id: string) {
 
 const PROPOSED_CHECKLIST_SELECT = `
   *,
-  author:profiles(id, full_name),
   anchor_task:task_set_tasks(id, title),
   items:lab_proposed_checklist_items(id, text, is_blocking, item_order),
-  reviews:lab_proposed_checklist_addition_reviews(*, reviewer:profiles(id, full_name))
+  reviews:lab_proposed_checklist_addition_reviews(id, action, comment, created_at, reviewer_id)
 `
 
 export async function getMyProposedChecklistAdditions(): Promise<LabProposedChecklistAddition[]> {
@@ -710,7 +740,8 @@ export async function getAllSubmittedProposedChecklistAdditions(): Promise<LabPr
     .select(PROPOSED_CHECKLIST_SELECT)
     .in("status", ["submitted", "approved", "rejected"])
     .order("updated_at", { ascending: false })
-  return (data ?? []) as unknown as LabProposedChecklistAddition[]
+  const rows = (data ?? []) as unknown as WithProfiles[]
+  return attachProfiles(supabase, rows) as unknown as Promise<LabProposedChecklistAddition[]>
 }
 
 export async function createProposedChecklistAddition(
