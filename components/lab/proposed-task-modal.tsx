@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react"
 import type { CanonicalPhase, CanonicalTask, LabProposedTask, Position, Sop } from "@/lib/types"
 import { createProposedTask } from "@/lib/actions/lab"
-import { X, BookOpen, Search, UserCircle } from "lucide-react"
+import { X, BookOpen, Search, UserCircle, Pencil } from "lucide-react"
 import { InlineInput } from "@/components/lab/shared"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
 
@@ -14,14 +14,22 @@ interface Props {
   sops: Sop[]
   onClose: () => void
   onCreated: (task: LabProposedTask) => void
+  /** When provided the modal operates in edit-proposal mode */
+  existingTask?: CanonicalTask
+  /** Pre-select "insert after" task */
+  defaultAfterTaskId?: string
 }
 
-export function ProposedTaskModal({ phase, phaseSetName, positions, sops, onClose, onCreated }: Props) {
-  const [sopId, setSopId] = useState("")
+export function ProposedTaskModal({
+  phase, phaseSetName, positions, sops, onClose, onCreated,
+  existingTask, defaultAfterTaskId,
+}: Props) {
+  const isEditMode = !!existingTask
+  const [sopId, setSopId] = useState(existingTask?.sop_id ?? "")
   const [sopSearch, setSopSearch] = useState("")
-  const [positionId, setPositionId] = useState("")
+  const [positionId, setPositionId] = useState(existingTask?.default_position_id ?? "")
   const [positionSearch, setPositionSearch] = useState("")
-  const [positionAfterTaskId, setPositionAfterTaskId] = useState("")
+  const [positionAfterTaskId, setPositionAfterTaskId] = useState(defaultAfterTaskId ?? "")
   const [isPending, startTransition] = useTransition()
 
   const filteredSops = sops.filter((s) =>
@@ -40,7 +48,8 @@ export function ProposedTaskModal({ phase, phaseSetName, positions, sops, onClos
     const fd = new FormData(e.currentTarget)
     fd.set("sop_id", sopId)
     fd.set("default_position_id", positionId)
-    fd.set("position_after_task_id", positionAfterTaskId)
+    fd.set("position_after_task_id", isEditMode ? "" : positionAfterTaskId)
+    if (isEditMode && existingTask) fd.set("anchor_task_set_task_id", existingTask.id)
     startTransition(async () => {
       const task = await createProposedTask(phase.id, phase.task_set_id, fd)
       onCreated(task)
@@ -55,9 +64,15 @@ export function ProposedTaskModal({ phase, phaseSetName, positions, sops, onClos
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
           <div>
-            <h2 className="font-semibold text-sm">Proponer nueva tarea</h2>
+            <div className="flex items-center gap-1.5">
+              {isEditMode && <Pencil className="w-3.5 h-3.5 text-muted-foreground" />}
+              <h2 className="font-semibold text-sm">
+                {isEditMode ? "Proponer edición de tarea" : "Proponer nueva tarea"}
+              </h2>
+            </div>
             <p className="text-xs text-muted-foreground mt-0.5">
               {phaseSetName} → {phase.name}
+              {isEditMode && existingTask && <> → <span className="italic">{existingTask.title}</span></>}
             </p>
           </div>
           <button onClick={onClose} className="p-1 rounded text-muted-foreground hover:text-foreground">
@@ -68,7 +83,7 @@ export function ProposedTaskModal({ phase, phaseSetName, positions, sops, onClos
         <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4 overflow-y-auto flex-1">
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Título *</label>
-            <InlineInput name="title" required autoFocus placeholder="Nombre de la tarea…" />
+            <InlineInput name="title" required autoFocus placeholder="Nombre de la tarea…" defaultValue={existingTask?.title ?? ""} />
           </div>
 
           <div>
@@ -77,13 +92,15 @@ export function ProposedTaskModal({ phase, phaseSetName, positions, sops, onClos
               name="description"
               rows={2}
               placeholder="Descripción detallada…"
+              defaultValue={existingTask?.description ?? ""}
               className="w-full rounded border border-input bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none"
             />
           </div>
 
           <div>
             <label className="flex items-center gap-2 px-3 py-2 rounded border border-input bg-background text-sm cursor-pointer select-none">
-              <input type="checkbox" name="requires_deliverable" value="true" className="accent-info" />
+              <input type="checkbox" name="requires_deliverable" value="true" className="accent-info"
+                defaultChecked={existingTask?.requires_deliverable ?? false} />
               Requiere entregable
             </label>
           </div>
@@ -141,8 +158,8 @@ export function ProposedTaskModal({ phase, phaseSetName, positions, sops, onClos
             <input type="hidden" name="default_position_id" value={positionId} />
           </div>
 
-          {/* Position in phase (after which task) */}
-          {phase.tasks.length > 0 && (
+          {/* Position in phase (after which task) — hidden in edit mode */}
+          {!isEditMode && phase.tasks.length > 0 && (
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
                 Insertar después de

@@ -7,11 +7,12 @@ import type {
 } from "@/lib/types"
 import {
   FolderKanban, ListChecks, Lock, Paperclip, BookOpen,
-  Plus, UserCircle, ChevronRight,
+  Plus, UserCircle, ChevronRight, Pencil, Layers,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ProposedTaskModal } from "@/components/lab/proposed-task-modal"
 import { ProposedChecklistModal } from "@/components/lab/proposed-checklist-modal"
+import { ProposedPhaseModal } from "@/components/lab/proposed-phase-modal"
 
 function PanelHeader({ title, subtitle }: { title: string; subtitle: string }) {
   return (
@@ -45,7 +46,18 @@ export function CanonicalTreeView({
 }: Props) {
   const [selectedPsId, setSelectedPsId] = useState<string | null>(null)
   const [selectedPhaseId, setSelectedPhaseId] = useState<string | null>(null)
-  const [proposingTask, setProposingTask] = useState<{
+  const [proposingPhase, setProposingPhase] = useState<{
+    phaseSet: { id: string; name: string }
+    allPhases: CanonicalPhase[]
+    defaultAfterPhaseId: string
+  } | null>(null)
+  const [proposingNewTask, setProposingNewTask] = useState<{
+    phase: CanonicalPhase
+    phaseSetName: string
+    defaultAfterTaskId?: string
+  } | null>(null)
+  const [editingTaskProposal, setEditingTaskProposal] = useState<{
+    task: CanonicalTask
     phase: CanonicalPhase
     phaseSetName: string
   } | null>(null)
@@ -150,13 +162,17 @@ export function CanonicalTreeView({
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
-                        setProposingTask({ phase, phaseSetName: selectedPs.name })
+                        setProposingPhase({
+                          phaseSet: { id: selectedPs.id, name: selectedPs.name },
+                          allPhases: phases,
+                          defaultAfterPhaseId: phase.id,
+                        })
                       }}
-                      title="Proponer nueva tarea en esta fase"
+                      title="Proponer nueva fase después de esta"
                       className="opacity-0 group-hover:opacity-100 flex items-center gap-1 text-[11px] text-primary hover:text-primary/80 transition-all px-1.5 py-0.5 rounded hover:bg-primary/10"
                     >
-                      <Plus className="w-3 h-3" />
-                      Proponer
+                      <Layers className="w-3 h-3" />
+                      Nueva fase
                     </button>
                     {isSelected && <ChevronRight className="w-3.5 h-3.5 text-primary" />}
                   </div>
@@ -175,7 +191,16 @@ export function CanonicalTreeView({
           <div className="flex-1 overflow-y-auto">
             {!selectedPhase && <EmptyPanel text="Selecciona una fase" />}
             {selectedPhase && tasks.length === 0 && (
-              <p className="text-xs text-muted-foreground text-center py-10 px-3">Sin tareas en esta fase.</p>
+              <div className="flex flex-col items-center py-10 px-4 gap-3">
+                <p className="text-xs text-muted-foreground text-center">Sin tareas en esta fase.</p>
+                <button
+                  onClick={() => setProposingNewTask({ phase: selectedPhase, phaseSetName: selectedPs!.name })}
+                  className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 px-3 py-1.5 rounded-md border border-primary/30 hover:bg-primary/5 transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Proponer primera tarea
+                </button>
+              </div>
             )}
             {selectedPhase && tasks.map((task) => {
               const checklistProposals = localProposedChecklists.filter(
@@ -186,6 +211,16 @@ export function CanonicalTreeView({
                   key={task.id}
                   task={task}
                   checklistProposals={checklistProposals}
+                  onProposeNewTask={() =>
+                    setProposingNewTask({
+                      phase: selectedPhase,
+                      phaseSetName: selectedPs!.name,
+                      defaultAfterTaskId: task.id,
+                    })
+                  }
+                  onProposeEdit={() =>
+                    setEditingTaskProposal({ task, phase: selectedPhase, phaseSetName: selectedPs!.name })
+                  }
                   onProposeChecklist={() =>
                     setProposingChecklist({ task, phaseName: selectedPhase.name })
                   }
@@ -214,16 +249,42 @@ export function CanonicalTreeView({
         </div>
       </div>
 
-      {proposingTask && (
+      {proposingPhase && (
+        <ProposedPhaseModal
+          phaseSet={proposingPhase.phaseSet}
+          allPhases={proposingPhase.allPhases}
+          defaultAfterPhaseId={proposingPhase.defaultAfterPhaseId}
+          onClose={() => setProposingPhase(null)}
+          onCreated={() => setProposingPhase(null)}
+        />
+      )}
+
+      {proposingNewTask && (
         <ProposedTaskModal
-          phase={proposingTask.phase}
-          phaseSetName={proposingTask.phaseSetName}
+          phase={proposingNewTask.phase}
+          phaseSetName={proposingNewTask.phaseSetName}
           positions={positions}
           sops={sops}
-          onClose={() => setProposingTask(null)}
+          defaultAfterTaskId={proposingNewTask.defaultAfterTaskId}
+          onClose={() => setProposingNewTask(null)}
           onCreated={(task) => {
             setLocalProposedTasks((prev) => [task, ...prev])
-            setProposingTask(null)
+            setProposingNewTask(null)
+          }}
+        />
+      )}
+
+      {editingTaskProposal && (
+        <ProposedTaskModal
+          phase={editingTaskProposal.phase}
+          phaseSetName={editingTaskProposal.phaseSetName}
+          positions={positions}
+          sops={sops}
+          existingTask={editingTaskProposal.task}
+          onClose={() => setEditingTaskProposal(null)}
+          onCreated={(task) => {
+            setLocalProposedTasks((prev) => [task, ...prev])
+            setEditingTaskProposal(null)
           }}
         />
       )}
@@ -246,10 +307,12 @@ export function CanonicalTreeView({
 // ── Task row (column 3) ───────────────────────────────────────────────────────
 
 function CanonicalTaskRow({
-  task, checklistProposals, onProposeChecklist,
+  task, checklistProposals, onProposeNewTask, onProposeEdit, onProposeChecklist,
 }: {
   task: CanonicalTask
   checklistProposals: LabProposedChecklistAddition[]
+  onProposeNewTask: () => void
+  onProposeEdit: () => void
   onProposeChecklist: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
@@ -310,14 +373,32 @@ function CanonicalTaskRow({
               +{pendingChecklistProposals.length}
             </span>
           )}
-          <button
-              onClick={onProposeChecklist}
-              title="Proponer ítems de checklist"
-              className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 text-[11px] text-primary hover:text-primary/80 transition-all px-1.5 py-0.5 rounded hover:bg-primary/10"
+          <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-all">
+            <button
+              onClick={onProposeNewTask}
+              title="Proponer nueva tarea después de esta"
+              className="flex items-center gap-0.5 text-[11px] text-primary hover:text-primary/80 px-1.5 py-0.5 rounded hover:bg-primary/10 transition-colors"
             >
               <Plus className="w-2.5 h-2.5" />
+              Tarea
+            </button>
+            <button
+              onClick={onProposeEdit}
+              title="Proponer edición de esta tarea"
+              className="flex items-center gap-0.5 text-[11px] text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded hover:bg-muted transition-colors"
+            >
+              <Pencil className="w-2.5 h-2.5" />
+              Editar
+            </button>
+            <button
+              onClick={onProposeChecklist}
+              title="Proponer ítems de checklist"
+              className="flex items-center gap-0.5 text-[11px] text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded hover:bg-muted transition-colors"
+            >
+              <ListChecks className="w-2.5 h-2.5" />
               Checklist
             </button>
+          </div>
         </div>
       </div>
 

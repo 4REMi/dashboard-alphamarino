@@ -474,13 +474,14 @@ export async function createProposedTask(
   const { data, error } = await supabase.from("lab_proposed_tasks").insert({
     author_id:                 user.id,
     anchor_phase_set_phase_id: anchorPhaseSetPhaseId,
-    anchor_task_set_id:        anchorTaskSetId,
-    position_after_task_id:    (formData.get("position_after_task_id") as string) || null,
-    title:                     formData.get("title") as string,
-    description:               (formData.get("description") as string) || null,
-    requires_deliverable:      formData.get("requires_deliverable") === "true",
-    sop_id:                    (formData.get("sop_id") as string) || null,
-    default_position_id:       (formData.get("default_position_id") as string) || null,
+    anchor_task_set_id:         anchorTaskSetId,
+    anchor_task_set_task_id:    (formData.get("anchor_task_set_task_id") as string) || null,
+    position_after_task_id:     (formData.get("position_after_task_id") as string) || null,
+    title:                      formData.get("title") as string,
+    description:                (formData.get("description") as string) || null,
+    requires_deliverable:       formData.get("requires_deliverable") === "true",
+    sop_id:                     (formData.get("sop_id") as string) || null,
+    default_position_id:        (formData.get("default_position_id") as string) || null,
   }).select(PROPOSED_TASK_SELECT).single()
   if (error) throw error
   revalidate()
@@ -631,6 +632,54 @@ export async function injectProposedTask(id: string): Promise<void> {
   }
 
   revalidatePath("/operations")
+  revalidate()
+}
+
+// ── Proposed phases ───────────────────────────────────────────────────────────
+
+const PROPOSED_PHASE_SELECT = `*, author:profiles(id, full_name)`
+
+export async function getMyProposedPhases() {
+  const { supabase, user } = await assertAuth()
+  const { data } = await supabase
+    .from("lab_proposed_phases")
+    .select(PROPOSED_PHASE_SELECT)
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
+  return (data ?? []) as unknown as import("@/lib/types").LabProposedPhase[]
+}
+
+export async function createProposedPhase(phaseSetId: string, formData: FormData) {
+  const { supabase, user } = await assertAuth()
+  const { data, error } = await supabase.from("lab_proposed_phases").insert({
+    user_id:                  user.id,
+    phase_set_id:             phaseSetId,
+    name:                     formData.get("name") as string,
+    description:              (formData.get("description") as string) || null,
+    position_after_phase_id:  (formData.get("position_after_phase_id") as string) || null,
+  }).select(PROPOSED_PHASE_SELECT).single()
+  if (error) throw error
+  revalidate()
+  return data as unknown as import("@/lib/types").LabProposedPhase
+}
+
+export async function submitProposedPhase(id: string) {
+  const { supabase } = await assertAuth()
+  const { error } = await supabase
+    .from("lab_proposed_phases")
+    .update({ status: "submitted", updated_at: new Date().toISOString() })
+    .eq("id", id)
+  if (error) throw error
+  revalidate()
+}
+
+export async function retractProposedPhase(id: string) {
+  const { supabase } = await assertAuth()
+  const { error } = await supabase
+    .from("lab_proposed_phases")
+    .update({ status: "draft", updated_at: new Date().toISOString() })
+    .eq("id", id)
+  if (error) throw error
   revalidate()
 }
 

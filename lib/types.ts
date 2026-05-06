@@ -427,6 +427,21 @@ export interface CanonicalPhaseSet {
   phases: CanonicalPhase[]
 }
 
+// ── Proposed phase (anchored to a canonical PhaseSet) ─────────────────────────
+
+export interface LabProposedPhase {
+  id: string
+  user_id: string
+  phase_set_id: string
+  name: string
+  description: string | null
+  position_after_phase_id: string | null
+  status: LabProposedStatus
+  created_at: string
+  updated_at: string
+  author?: Pick<Profile, "id" | "full_name"> | null
+}
+
 // ============================================================
 // PAID MEDIA HUB
 // ============================================================
