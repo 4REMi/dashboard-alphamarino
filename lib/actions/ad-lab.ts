@@ -356,6 +356,43 @@ export async function deleteSavedAd(id: string): Promise<void> {
 
 // ── Upload local asset as synthetic saved_ad ──────────────────────
 
+export async function saveUploadedAdRecord(
+  publicUrl: string,
+  name: string,
+  isVideo: boolean,
+  boardId?: string,
+): Promise<SavedAd> {
+  const { supabase, user } = await assertAuth()
+
+  const uuid = crypto.randomUUID()
+  const row: Record<string, unknown> = {
+    ad_archive_id: `upload_${uuid}`,
+    page_id:       "upload",
+    page_name:     name,
+    source:        "upload",
+    created_by:    user.id,
+    platforms:     [],
+    currency:      "",
+  }
+  if (isVideo) {
+    row.video_url        = publicUrl
+    row.cached_video_url = publicUrl
+  } else {
+    row.image_url        = publicUrl
+    row.cached_image_url = publicUrl
+  }
+
+  const { data, error } = await supabase.from("saved_ads").insert(row).select().single()
+  if (error) throw error
+
+  if (boardId) {
+    await supabase.from("board_ads").insert({ board_id: boardId, saved_ad_id: data.id })
+  }
+
+  revalidate()
+  return data as SavedAd
+}
+
 export async function uploadAdAsset(formData: FormData, boardId?: string): Promise<SavedAd> {
   const { supabase, user } = await assertAuth()
 

@@ -3,7 +3,8 @@
 import { useRef, useState, useCallback } from "react"
 import { X, Upload, Loader2, ImageIcon, Film, ChevronDown } from "lucide-react"
 import type { AdBoard, SavedAd } from "@/lib/types"
-import { uploadAdAsset } from "@/lib/actions/ad-lab"
+import { saveUploadedAdRecord } from "@/lib/actions/ad-lab"
+import { createClient } from "@/lib/supabase/client"
 
 const ACCEPT = "image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,video/webm"
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024   // 20 MB
@@ -25,6 +26,7 @@ export function UploadAdModal({ boards, defaultBoardId, onUploaded, onClose }: P
   const [dragOver, setDragOver] = useState(false)
   const [error,    setError]    = useState<string | null>(null)
   const [loading,  setLoading]  = useState(false)
+  const [progress, setProgress] = useState<string | null>(null)
 
   const isVideo = file?.type.startsWith("video/") ?? false
 
@@ -38,8 +40,7 @@ export function UploadAdModal({ boards, defaultBoardId, onUploaded, onClose }: P
     const auto = f.name.replace(/\.[^.]+$/, "").replace(/[-_]/g, " ")
     setFile(f)
     setName((prev) => prev || auto)
-    const url = URL.createObjectURL(f)
-    setPreview(url)
+    setPreview(URL.createObjectURL(f))
   }
 
   const onDrop = useCallback((e: React.DragEvent) => {
@@ -60,16 +61,32 @@ export function UploadAdModal({ boards, defaultBoardId, onUploaded, onClose }: P
     setLoading(true)
     setError(null)
     try {
-      const fd = new FormData()
-      fd.set("file", file)
-      fd.set("name", name.trim() || file.name)
-      const ad = await uploadAdAsset(fd, boardId || undefined)
+      // Upload directly from browser → Supabase Storage (bypasses Next.js body limit)
+      setProgress("Subiendo archivo…")
+      const supabase = createClient()
+      const ext  = (file.name.split(".").pop() ?? (isVideo ? "mp4" : "jpg")).slice(0, 4)
+      const uuid = crypto.randomUUID()
+      const path = `uploads/${uuid}/${isVideo ? "video" : "image"}.${ext}`
+
+      const { error: uploadError } = await supabase.storage
+        .from("ad-lab")
+        .upload(path, file, { contentType: file.type, upsert: false })
+      if (uploadError) throw new Error(`Error al subir: ${uploadError.message}`)
+
+      const { data: { publicUrl } } = supabase.storage.from("ad-lab").getPublicUrl(path)
+
+      // Server action only creates the DB record — no file data passes through Next.js
+      setProgress("Guardando registro…")
+      const displayName = name.trim() || file.name.replace(/\.[^.]+$/, "").replace(/[-_]/g, " ")
+      const ad = await saveUploadedAdRecord(publicUrl, displayName, isVideo, boardId || undefined)
+
       onUploaded?.(ad)
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al subir el archivo")
     } finally {
       setLoading(false)
+      setProgress(null)
     }
   }
 
@@ -193,7 +210,7 @@ export function UploadAdModal({ boards, defaultBoardId, onUploaded, onClose }: P
               className="flex-1 h-9 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
             >
               {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-              {loading ? "Subiendo…" : "Subir"}
+              {loading ? (progress ?? "Subiendo…") : "Subir"}
             </button>
           </div>
         </form>
