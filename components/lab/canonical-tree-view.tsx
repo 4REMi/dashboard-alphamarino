@@ -38,11 +38,10 @@ interface Props {
   myProposedChecklists: LabProposedChecklistAddition[]
   positions: Position[]
   sops: Sop[]
-  isAdmin: boolean
 }
 
 export function CanonicalTreeView({
-  phaseSets, myProposedTasks, myProposedChecklists, positions, sops, isAdmin,
+  phaseSets, myProposedTasks, myProposedChecklists, positions, sops,
 }: Props) {
   const [selectedPsId, setSelectedPsId] = useState<string | null>(null)
   const [selectedPhaseId, setSelectedPhaseId] = useState<string | null>(null)
@@ -148,19 +147,17 @@ export function CanonicalTreeView({
                         {pendingCount}
                       </span>
                     )}
-                    {!isAdmin && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setProposingTask({ phase, phaseSetName: selectedPs.name })
-                        }}
-                        title="Proponer nueva tarea en esta fase"
-                        className="opacity-0 group-hover:opacity-100 flex items-center gap-1 text-[11px] text-primary hover:text-primary/80 transition-all px-1.5 py-0.5 rounded hover:bg-primary/10"
-                      >
-                        <Plus className="w-3 h-3" />
-                        Proponer
-                      </button>
-                    )}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setProposingTask({ phase, phaseSetName: selectedPs.name })
+                      }}
+                      title="Proponer nueva tarea en esta fase"
+                      className="opacity-0 group-hover:opacity-100 flex items-center gap-1 text-[11px] text-primary hover:text-primary/80 transition-all px-1.5 py-0.5 rounded hover:bg-primary/10"
+                    >
+                      <Plus className="w-3 h-3" />
+                      Proponer
+                    </button>
                     {isSelected && <ChevronRight className="w-3.5 h-3.5 text-primary" />}
                   </div>
                 </div>
@@ -189,7 +186,6 @@ export function CanonicalTreeView({
                   key={task.id}
                   task={task}
                   checklistProposals={checklistProposals}
-                  isAdmin={isAdmin}
                   onProposeChecklist={() =>
                     setProposingChecklist({ task, phaseName: selectedPhase.name })
                   }
@@ -250,11 +246,10 @@ export function CanonicalTreeView({
 // ── Task row (column 3) ───────────────────────────────────────────────────────
 
 function CanonicalTaskRow({
-  task, checklistProposals, isAdmin, onProposeChecklist,
+  task, checklistProposals, onProposeChecklist,
 }: {
   task: CanonicalTask
   checklistProposals: LabProposedChecklistAddition[]
-  isAdmin: boolean
   onProposeChecklist: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
@@ -315,8 +310,7 @@ function CanonicalTaskRow({
               +{pendingChecklistProposals.length}
             </span>
           )}
-          {!isAdmin && (
-            <button
+          <button
               onClick={onProposeChecklist}
               title="Proponer ítems de checklist"
               className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 text-[11px] text-primary hover:text-primary/80 transition-all px-1.5 py-0.5 rounded hover:bg-primary/10"
