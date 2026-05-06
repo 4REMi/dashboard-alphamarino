@@ -345,6 +345,7 @@ export interface LabProposedTask {
   author_id: string
   anchor_phase_set_phase_id: string
   anchor_task_set_id: string | null
+  anchor_task_set_task_id?: string | null
   position_after_task_id: string | null
   title: string
   description: string | null

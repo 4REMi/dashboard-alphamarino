@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { createClient } from "@/lib/supabase/server"
 import { getMyPendingSopRequests, getSops } from "@/lib/actions/sops"
-import { getMyPhases, getAllSubmittedPhases, getCanonicalTree, getMyProposedTasks, getAllSubmittedProposedTasks, getMyProposedChecklistAdditions, getAllSubmittedProposedChecklistAdditions } from "@/lib/actions/lab"
+import { getMyPhases, getAllSubmittedPhases, getCanonicalTree, getMyProposedTasks, getAllSubmittedProposedTasks, getMyProposedChecklistAdditions, getAllSubmittedProposedChecklistAdditions, getAllSubmittedProposedPhases } from "@/lib/actions/lab"
 import { getPhaseSets } from "@/lib/actions/config"
 import { getPositions } from "@/lib/actions/config"
 import { SopRequestInbox } from "@/components/lab/sop-request-inbox"
@@ -11,7 +11,7 @@ import { PhaseReviewPanel } from "@/components/lab/phase-review-panel"
 import { CanonicalTreeView } from "@/components/lab/canonical-tree-view"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Lightbulb } from "lucide-react"
-import type { SopRequest, LabPhase, PhaseSet, Sop } from "@/lib/types"
+import type { SopRequest, LabPhase, PhaseSet, Sop, LabProposedPhase } from "@/lib/types"
 
 export default async function MyLabPage() {
   const supabase = await createClient()
@@ -36,6 +36,7 @@ export default async function MyLabPage() {
     myProposedChecklists,
     allProposedChecklists,
     positions,
+    allProposedPhases,
   ] = await Promise.all([
     getMyPendingSopRequests().catch(() => [] as SopRequest[]),
     getMyPhases().catch(() => [] as LabPhase[]),
@@ -48,6 +49,7 @@ export default async function MyLabPage() {
     getMyProposedChecklistAdditions().catch(() => []),
     isAdmin ? getAllSubmittedProposedChecklistAdditions().catch(() => []) : Promise.resolve([]),
     getPositions().catch(() => []),
+    isAdmin ? getAllSubmittedProposedPhases().catch(() => [] as LabProposedPhase[]) : Promise.resolve([] as LabProposedPhase[]),
   ])
 
   const pendingSopCount    = sopRequests.filter((r) => r.status === "pending").length
@@ -55,6 +57,7 @@ export default async function MyLabPage() {
     ? submittedPhases.filter((p) => p.status === "submitted").length
       + allProposedTasks.filter((t) => t.status === "submitted").length
       + allProposedChecklists.filter((c) => c.status === "submitted").length
+      + allProposedPhases.filter((p) => p.status === "submitted").length
     : 0
 
   return (
@@ -138,6 +141,7 @@ export default async function MyLabPage() {
               phaseSets={phaseSets as PhaseSet[]}
               initialProposedTasks={allProposedTasks}
               initialProposedChecklists={allProposedChecklists}
+              initialProposedPhases={allProposedPhases}
             />
           </TabsContent>
         )}

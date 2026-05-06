@@ -1,15 +1,16 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useTransition } from "react"
 import type {
   CanonicalPhaseSet, CanonicalPhase, CanonicalTask,
   LabProposedTask, LabProposedChecklistAddition, Position, Sop,
 } from "@/lib/types"
 import {
   FolderKanban, ListChecks, Lock, Paperclip, BookOpen,
-  Plus, UserCircle, ChevronRight, Pencil, Layers,
+  Plus, UserCircle, ChevronRight, Pencil, Layers, Send, RotateCcw,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { submitProposedTask, retractProposedTask } from "@/lib/actions/lab"
 import { ProposedTaskModal } from "@/components/lab/proposed-task-modal"
 import { ProposedChecklistModal } from "@/components/lab/proposed-checklist-modal"
 import { ProposedPhaseModal } from "@/components/lab/proposed-phase-modal"
@@ -247,7 +248,12 @@ export function CanonicalTreeView({
                     Mis propuestas de tarea
                   </p>
                   {myProposals.map((pt) => (
-                    <ProposedTaskInlineRow key={pt.id} proposal={pt} />
+                    <ProposedTaskInlineRow
+                      key={pt.id}
+                      proposal={pt}
+                      onSubmit={() => setLocalProposedTasks((prev) => prev.map((t) => t.id === pt.id ? { ...t, status: "submitted" } : t))}
+                      onRetract={() => setLocalProposedTasks((prev) => prev.map((t) => t.id === pt.id ? { ...t, status: "draft" } : t))}
+                    />
                   ))}
                 </div>
               )
@@ -440,21 +446,53 @@ const STATUS_COLOR: Record<string, string> = {
   rejected:  "text-destructive bg-destructive/10",
 }
 
-function ProposedTaskInlineRow({ proposal }: { proposal: LabProposedTask }) {
+function ProposedTaskInlineRow({ proposal, onSubmit, onRetract }: {
+  proposal: LabProposedTask
+  onSubmit: () => void
+  onRetract: () => void
+}) {
+  const [isPending, startTransition] = useTransition()
+
+  function handleSubmit() {
+    startTransition(async () => { await submitProposedTask(proposal.id); onSubmit() })
+  }
+  function handleRetract() {
+    startTransition(async () => { await retractProposedTask(proposal.id); onRetract() })
+  }
+
   return (
-    <div className="flex items-center gap-2 px-4 py-2.5 border-b border-dashed border-border/40">
+    <div className="flex items-center gap-2 px-4 py-2.5 border-b border-dashed border-border/40 bg-muted/20">
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate text-muted-foreground">{proposal.title}</p>
+        <div className="flex items-center gap-1.5">
+          <p className="text-sm font-medium truncate text-muted-foreground">{proposal.title}</p>
+          {(proposal as { anchor_task_set_task_id?: string | null }).anchor_task_set_task_id && (
+            <span className="text-[10px] px-1 py-0.5 rounded bg-blue-500/10 text-blue-600 flex-shrink-0">Edición</span>
+          )}
+        </div>
         {proposal.description && (
           <p className="text-xs text-muted-foreground/70 truncate mt-0.5">{proposal.description}</p>
         )}
       </div>
-      <span className={cn(
-        "text-[10px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0",
-        STATUS_COLOR[proposal.status] ?? STATUS_COLOR.draft
-      )}>
-        {STATUS_LABEL[proposal.status] ?? proposal.status}
-      </span>
+      <div className="flex items-center gap-1 flex-shrink-0">
+        <span className={cn(
+          "text-[10px] font-semibold px-1.5 py-0.5 rounded-full",
+          STATUS_COLOR[proposal.status] ?? STATUS_COLOR.draft
+        )}>
+          {STATUS_LABEL[proposal.status] ?? proposal.status}
+        </span>
+        {proposal.status === "draft" && (
+          <button onClick={handleSubmit} disabled={isPending} title="Enviar a revisión"
+            className="p-1 rounded text-primary hover:bg-primary/10 disabled:opacity-50 transition-colors">
+            <Send className="w-3 h-3" />
+          </button>
+        )}
+        {proposal.status === "submitted" && (
+          <button onClick={handleRetract} disabled={isPending} title="Retirar"
+            className="p-1 rounded text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors">
+            <RotateCcw className="w-3 h-3" />
+          </button>
+        )}
+      </div>
     </div>
   )
 }

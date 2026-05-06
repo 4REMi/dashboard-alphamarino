@@ -597,70 +597,84 @@ export async function injectProposedTask(id: string): Promise<void> {
     .eq("id", id).single()
   if (error || !proposal) throw new Error("Propuesta no encontrada")
 
-  let taskSetId = proposal.anchor_task_set_id as string | null
-
-  // If the target phase has no task set, create one
-  if (!taskSetId) {
-    const { data: phase } = await supabase
-      .from("phase_set_phases").select("name").eq("id", proposal.anchor_phase_set_phase_id).single()
-    const { data: newTS } = await supabase
-      .from("task_sets").insert({ name: phase?.name ?? "Tareas" }).select().single()
-    if (newTS) {
-      taskSetId = newTS.id
-      await supabase.from("phase_set_phases")
-        .update({ default_task_set_id: taskSetId }).eq("id", proposal.anchor_phase_set_phase_id)
-    }
-  }
-
-  if (!taskSetId) throw new Error("No se pudo determinar el Task Set destino")
-
-  // Determine task_order: after position_after_task_id, or at end
-  let insertOrder = 0
-  if (proposal.position_after_task_id) {
-    const { data: anchor } = await supabase
-      .from("task_set_tasks").select("task_order").eq("id", proposal.position_after_task_id).single()
-    if (anchor) {
-      // Shift all tasks with order > anchor down
-      const { data: toShift } = await supabase
-        .from("task_set_tasks")
-        .select("id, task_order")
-        .eq("task_set_id", taskSetId)
-        .gt("task_order", anchor.task_order)
-      if (toShift?.length) {
-        await Promise.all(toShift.map((t) =>
-          supabase.from("task_set_tasks").update({ task_order: t.task_order + 1 }).eq("id", t.id)
-        ))
-      }
-      insertOrder = anchor.task_order + 1
-    }
+  if (proposal.anchor_task_set_task_id) {
+    // UPDATE existing task_set_tasks row
+    await supabase.from("task_set_tasks").update({
+      title:                proposal.title,
+      description:          proposal.description,
+      requires_deliverable: proposal.requires_deliverable,
+      sop_id:               proposal.sop_id,
+      default_position_id:  proposal.default_position_id,
+    }).eq("id", proposal.anchor_task_set_task_id)
   } else {
-    const { data: last } = await supabase
-      .from("task_set_tasks").select("task_order")
-      .eq("task_set_id", taskSetId).order("task_order", { ascending: false }).limit(1)
-    insertOrder = last?.[0] ? last[0].task_order + 1 : 0
+    let taskSetId = proposal.anchor_task_set_id as string | null
+
+    // If the target phase has no task set, create one
+    if (!taskSetId) {
+      const { data: phase } = await supabase
+        .from("phase_set_phases").select("name").eq("id", proposal.anchor_phase_set_phase_id).single()
+      const { data: newTS } = await supabase
+        .from("task_sets").insert({ name: phase?.name ?? "Tareas" }).select().single()
+      if (newTS) {
+        taskSetId = newTS.id
+        await supabase.from("phase_set_phases")
+          .update({ default_task_set_id: taskSetId }).eq("id", proposal.anchor_phase_set_phase_id)
+      }
+    }
+
+    if (!taskSetId) throw new Error("No se pudo determinar el Task Set destino")
+
+    // Determine task_order: after position_after_task_id, or at end
+    let insertOrder = 0
+    if (proposal.position_after_task_id) {
+      const { data: anchor } = await supabase
+        .from("task_set_tasks").select("task_order").eq("id", proposal.position_after_task_id).single()
+      if (anchor) {
+        // Shift all tasks with order > anchor down
+        const { data: toShift } = await supabase
+          .from("task_set_tasks")
+          .select("id, task_order")
+          .eq("task_set_id", taskSetId)
+          .gt("task_order", anchor.task_order)
+        if (toShift?.length) {
+          await Promise.all(toShift.map((t) =>
+            supabase.from("task_set_tasks").update({ task_order: t.task_order + 1 }).eq("id", t.id)
+          ))
+        }
+        insertOrder = anchor.task_order + 1
+      }
+    } else {
+      const { data: last } = await supabase
+        .from("task_set_tasks").select("task_order")
+        .eq("task_set_id", taskSetId).order("task_order", { ascending: false }).limit(1)
+      insertOrder = last?.[0] ? last[0].task_order + 1 : 0
+    }
+
+    const { data: newTask } = await supabase.from("task_set_tasks").insert({
+      task_set_id:          taskSetId,
+      title:                proposal.title,
+      description:          proposal.description,
+      task_order:           insertOrder,
+      is_urgent:            false,
+      requires_deliverable: proposal.requires_deliverable,
+      sop_id:               proposal.sop_id,
+      default_position_id:  proposal.default_position_id,
+    }).select("id").single()
+
+    if (newTask && proposal.checklist_items?.length) {
+      await supabase.from("task_set_checklist_items").insert(
+        (proposal.checklist_items as LabProposedTaskChecklistItem[]).map((item) => ({
+          task_set_task_id: newTask.id,
+          text:             item.text,
+          is_blocking:      item.is_blocking,
+          item_order:       item.item_order,
+        }))
+      )
+    }
   }
 
-  const { data: newTask } = await supabase.from("task_set_tasks").insert({
-    task_set_id:          taskSetId,
-    title:                proposal.title,
-    description:          proposal.description,
-    task_order:           insertOrder,
-    is_urgent:            false,
-    requires_deliverable: proposal.requires_deliverable,
-    sop_id:               proposal.sop_id,
-    default_position_id:  proposal.default_position_id,
-  }).select("id").single()
-
-  if (newTask && proposal.checklist_items?.length) {
-    await supabase.from("task_set_checklist_items").insert(
-      (proposal.checklist_items as LabProposedTaskChecklistItem[]).map((item) => ({
-        task_set_task_id: newTask.id,
-        text:             item.text,
-        is_blocking:      item.is_blocking,
-        item_order:       item.item_order,
-      }))
-    )
-  }
+  await supabase.from("lab_proposed_tasks")
+    .update({ status: "approved", updated_at: new Date().toISOString() }).eq("id", id)
 
   revalidatePath("/operations")
   revalidate()
@@ -711,6 +725,71 @@ export async function retractProposedPhase(id: string) {
     .update({ status: "draft", updated_at: new Date().toISOString() })
     .eq("id", id)
   if (error) throw error
+  revalidate()
+}
+
+export async function getAllSubmittedProposedPhases() {
+  const { supabase } = await assertAuth()
+  const { data } = await supabase
+    .from("lab_proposed_phases")
+    .select(PROPOSED_PHASE_SELECT)
+    .in("status", ["submitted", "approved", "rejected"])
+    .order("created_at", { ascending: false })
+  const rows = (data ?? []) as unknown as WithProfiles[]
+  return attachProfiles(supabase, rows) as unknown as Promise<import("@/lib/types").LabProposedPhase[]>
+}
+
+export async function reviewProposedPhase(id: string, action: import("@/lib/types").LabReviewAction, comment: string): Promise<void> {
+  const { supabase } = await assertAuth()
+  if (action === "approve" || action === "reject") {
+    await supabase.from("lab_proposed_phases")
+      .update({ status: action === "approve" ? "approved" : "rejected", updated_at: new Date().toISOString() })
+      .eq("id", id)
+  }
+  revalidate()
+}
+
+export async function injectProposedPhase(id: string): Promise<void> {
+  const { supabase } = await assertAuth()
+  const { data: proposal, error } = await supabase
+    .from("lab_proposed_phases").select("*").eq("id", id).single()
+  if (error || !proposal) throw new Error("Propuesta no encontrada")
+
+  // Determine insertion order
+  let insertOrder = 0
+  if (proposal.position_after_phase_id) {
+    const { data: anchor } = await supabase
+      .from("phase_set_phases").select("phase_order").eq("id", proposal.position_after_phase_id).single()
+    if (anchor) {
+      const { data: toShift } = await supabase
+        .from("phase_set_phases").select("id, phase_order")
+        .eq("phase_set_id", proposal.phase_set_id).gt("phase_order", anchor.phase_order)
+      if (toShift?.length) {
+        await Promise.all(toShift.map((p: { id: string; phase_order: number }) =>
+          supabase.from("phase_set_phases").update({ phase_order: p.phase_order + 1 }).eq("id", p.id)
+        ))
+      }
+      insertOrder = anchor.phase_order + 1
+    }
+  } else {
+    const { data: last } = await supabase
+      .from("phase_set_phases").select("phase_order")
+      .eq("phase_set_id", proposal.phase_set_id)
+      .order("phase_order", { ascending: false }).limit(1)
+    insertOrder = last?.[0] ? (last[0] as { phase_order: number }).phase_order + 1 : 0
+  }
+
+  await supabase.from("phase_set_phases").insert({
+    phase_set_id: proposal.phase_set_id,
+    name:         proposal.name,
+    description:  proposal.description,
+    phase_order:  insertOrder,
+  })
+
+  await supabase.from("lab_proposed_phases")
+    .update({ status: "approved", updated_at: new Date().toISOString() }).eq("id", id)
+
+  revalidatePath("/operations")
   revalidate()
 }
 
