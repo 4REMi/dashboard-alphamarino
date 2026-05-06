@@ -339,19 +339,22 @@ export async function promotePhase(
 export async function getCanonicalTree(): Promise<CanonicalPhaseSet[]> {
   const supabase = await createClient()
 
-  // Load phase_sets without the FK join (same pattern as getProjectTypes in config.ts)
-  const { data: phaseSets, error: psError } = await supabase
-    .from("phase_sets")
-    .select("id, name, project_type_id")
-    .order("name")
-  if (psError || !phaseSets?.length) return []
-
-  // Load project type names separately to avoid FK dependency issues
+  // Load project types first — used to filter orphaned phase sets
   const { data: projectTypes } = await supabase
     .from("project_types")
     .select("id, name")
   const ptMap: Record<string, string> = {}
   for (const pt of projectTypes ?? []) ptMap[pt.id] = pt.name
+
+  const validProjectTypeIds = new Set(Object.keys(ptMap))
+
+  // Only load phase_sets that belong to an existing project type
+  const { data: phaseSets, error: psError } = await supabase
+    .from("phase_sets")
+    .select("id, name, project_type_id")
+    .in("project_type_id", [...validProjectTypeIds])
+    .order("name")
+  if (psError || !phaseSets?.length) return []
 
   const { data: phases } = await supabase
     .from("phase_set_phases")
