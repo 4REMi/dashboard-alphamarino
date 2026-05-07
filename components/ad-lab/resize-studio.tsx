@@ -77,6 +77,9 @@ export function ResizeStudio({ boards }: Props) {
 
     try {
       const supabase = createClient()
+      // Unique prefix per generate run — avoids path collisions on re-generate
+      // and eliminates the need for upsert (no UPDATE policy required)
+      const runId = crypto.randomUUID().slice(0, 8)
 
       // 1. Build padded image + feathered mask for each ratio (all concurrent, canvas only)
       const prepared = await Promise.all(
@@ -87,16 +90,18 @@ export function ResizeStudio({ boards }: Props) {
       const uploaded = await Promise.all(
         prepared.map(async ({ ratio, padded, mask }) => {
           const sr = ratio.replace(":", "x")
+          const paddedPath = `resizes/${sessionId}/${runId}/padded-${sr}.jpg`
+          const maskPath   = `resizes/${sessionId}/${runId}/mask-${sr}.jpg`
           const [{ error: pe }, { error: me }] = await Promise.all([
-            supabase.storage.from("ad-lab").upload(`resizes/${sessionId}/padded-${sr}.jpg`, padded, { contentType: "image/jpeg", upsert: true }),
-            supabase.storage.from("ad-lab").upload(`resizes/${sessionId}/mask-${sr}.jpg`,   mask,   { contentType: "image/jpeg", upsert: true }),
+            supabase.storage.from("ad-lab").upload(paddedPath, padded, { contentType: "image/jpeg", upsert: false }),
+            supabase.storage.from("ad-lab").upload(maskPath,   mask,   { contentType: "image/jpeg", upsert: false }),
           ])
           if (pe) throw new Error(`Error subiendo imagen: ${pe.message}`)
           if (me) throw new Error(`Error subiendo máscara: ${me.message}`)
           return {
             ratio,
-            paddedUrl: supabase.storage.from("ad-lab").getPublicUrl(`resizes/${sessionId}/padded-${sr}.jpg`).data.publicUrl,
-            maskUrl:   supabase.storage.from("ad-lab").getPublicUrl(`resizes/${sessionId}/mask-${sr}.jpg`).data.publicUrl,
+            paddedUrl: supabase.storage.from("ad-lab").getPublicUrl(paddedPath).data.publicUrl,
+            maskUrl:   supabase.storage.from("ad-lab").getPublicUrl(maskPath).data.publicUrl,
           }
         })
       )
