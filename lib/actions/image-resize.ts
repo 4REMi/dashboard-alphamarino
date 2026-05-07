@@ -3,7 +3,7 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 
 const REPLICATE_BASE  = "https://api.replicate.com/v1"
-const REPLICATE_MODEL = "google/nano-banana-pro"
+const REPLICATE_MODEL = "black-forest-labs/flux-fill-pro"
 
 function replicateHeaders() {
   const token = process.env.REPLICATE_KEY
@@ -14,19 +14,20 @@ function replicateHeaders() {
   }
 }
 
-/** Submit one ratio prediction. Returns the Replicate prediction ID. */
-export async function submitResizePrediction(imageUrl: string, ratio: string): Promise<string> {
+/** Submit one outpaint prediction. Returns the Replicate prediction ID. */
+export async function submitResizePrediction(paddedImageUrl: string, maskUrl: string): Promise<string> {
   const res = await fetch(`${REPLICATE_BASE}/models/${REPLICATE_MODEL}/predictions`, {
     method:  "POST",
     headers: replicateHeaders(),
     body: JSON.stringify({
       input: {
-        prompt:              "",
-        image_input:         [imageUrl],
-        aspect_ratio:        ratio,
-        resolution:          "2K",
-        output_format:       "jpg",
-        safety_filter_level: "block_only_high",
+        prompt:            "",
+        image:             paddedImageUrl,
+        mask:              maskUrl,
+        output_format:     "jpg",
+        steps:             50,
+        safety_tolerance:  2,
+        prompt_upsampling: false,
       },
     }),
     cache: "no-store",

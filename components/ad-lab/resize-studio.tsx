@@ -34,7 +34,6 @@ export function ResizeStudio({ boards }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
 
   const [sourceFile,  setSourceFile]  = useState<File | null>(null)
-  const [sourceUrl,   setSourceUrl]   = useState<string | null>(null)   // uploaded public URL
   const [preview,     setPreview]     = useState<string | null>(null)   // local blob URL
   const [selectedRatios, setSelectedRatios] = useState<string[]>([])
   const [predictions, setPredictions] = useState<PredictionState[]>([])
@@ -64,49 +63,55 @@ export function ResizeStudio({ boards }: Props) {
     setError(null)
     setSourceFile(f)
     setPreview(URL.createObjectURL(f))
-    setSourceUrl(null)
     setPredictions([])
-  }
-
-  async function uploadSourceImage(): Promise<string> {
-    if (!sourceFile) throw new Error("No hay imagen fuente")
-    setUploadingSource(true)
-    try {
-      const supabase = createClient()
-      const ext  = (sourceFile.name.split(".").pop() ?? "jpg").slice(0, 4)
-      const path = `resizes/${sessionId}/source.${ext}`
-      const { error: uploadError } = await supabase.storage
-        .from("ad-lab")
-        .upload(path, sourceFile, { contentType: sourceFile.type, upsert: false })
-      if (uploadError) throw new Error(uploadError.message)
-      return supabase.storage.from("ad-lab").getPublicUrl(path).data.publicUrl
-    } finally {
-      setUploadingSource(false)
-    }
   }
 
   async function handleGenerate() {
-    if (!sourceFile || selectedRatios.length === 0) return
+    if (!sourceFile || !preview || selectedRatios.length === 0) return
     setError(null)
     setIsRunning(true)
-    setPredictions([])
+    setUploadingSource(true)
+    setPredictions(selectedRatios.map((r) => ({
+      ratio: r, predictionId: null, status: "queued", url: null, savedToBoard: false,
+    })))
 
     try {
-      // 1. Upload source image to get a public URL for Replicate
-      const imgUrl = sourceUrl ?? await uploadSourceImage()
-      setSourceUrl(imgUrl)
+      const supabase = createClient()
 
-      // 2. Initialise prediction states
-      const initial: PredictionState[] = selectedRatios.map((r) => ({
-        ratio: r, predictionId: null, status: "queued", url: null, savedToBoard: false,
-      }))
-      setPredictions(initial)
+      // 1. Build padded image + mask for every ratio concurrently (canvas, client-side)
+      const prepared = await Promise.all(
+        selectedRatios.map(async (ratio) => {
+          const { padded, mask } = await buildPaddedAndMask(preview, ratio)
+          return { ratio, padded, mask }
+        })
+      )
 
-      // 3. Submit predictions sequentially (NanoBanana burst=1 limit)
+      // 2. Upload padded + mask for every ratio concurrently
+      const uploaded = await Promise.all(
+        prepared.map(async ({ ratio, padded, mask }) => {
+          const safeRatio  = ratio.replace(":", "x")
+          const paddedPath = `resizes/${sessionId}/padded-${safeRatio}.jpg`
+          const maskPath   = `resizes/${sessionId}/mask-${safeRatio}.jpg`
+          const [{ error: pe }, { error: me }] = await Promise.all([
+            supabase.storage.from("ad-lab").upload(paddedPath, padded, { contentType: "image/jpeg", upsert: true }),
+            supabase.storage.from("ad-lab").upload(maskPath,   mask,   { contentType: "image/jpeg", upsert: true }),
+          ])
+          if (pe) throw new Error(`Error subiendo imagen: ${pe.message}`)
+          if (me) throw new Error(`Error subiendo máscara: ${me.message}`)
+          return {
+            ratio,
+            paddedUrl: supabase.storage.from("ad-lab").getPublicUrl(paddedPath).data.publicUrl,
+            maskUrl:   supabase.storage.from("ad-lab").getPublicUrl(maskPath).data.publicUrl,
+          }
+        })
+      )
+      setUploadingSource(false)
+
+      // 3. Submit predictions sequentially
       const ids: string[] = []
-      for (let i = 0; i < selectedRatios.length; i++) {
-        if (i > 0) await sleep(350)
-        const id = await submitResizePrediction(imgUrl, selectedRatios[i])
+      for (let i = 0; i < uploaded.length; i++) {
+        if (i > 0) await sleep(500)
+        const id = await submitResizePrediction(uploaded[i].paddedUrl, uploaded[i].maskUrl)
         ids.push(id)
         setPredictions((prev) => prev.map((p, idx) =>
           idx === i ? { ...p, predictionId: id, status: "processing" } : p
@@ -119,6 +124,7 @@ export function ResizeStudio({ boards }: Props) {
       setError(err instanceof Error ? err.message : "Error al generar")
     } finally {
       setIsRunning(false)
+      setUploadingSource(false)
     }
   }
 
@@ -207,7 +213,7 @@ export function ResizeStudio({ boards }: Props) {
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={preview} alt="Source" className="w-full object-contain max-h-64" />
                 <button
-                  onClick={() => { setSourceFile(null); setSourceUrl(null); setPreview(null); setPredictions([]) }}
+                  onClick={() => { setSourceFile(null); setPreview(null); setPredictions([]) }}
                   className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 flex items-center justify-center text-white hover:bg-black/80 transition-colors"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -408,4 +414,62 @@ export function ResizeStudio({ boards }: Props) {
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms))
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload  = () => resolve(img)
+    img.onerror = reject
+    img.src     = src
+  })
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error("Canvas blob failed"))),
+      "image/jpeg",
+      0.92,
+    )
+  })
+}
+
+async function buildPaddedAndMask(
+  previewUrl: string,
+  ratio: string,
+): Promise<{ padded: Blob; mask: Blob }> {
+  const [rw, rh] = ratio.split(":").map(Number)
+  const img   = await loadImage(previewUrl)
+  const srcW  = img.naturalWidth
+  const srcH  = img.naturalHeight
+  const tgt   = rw / rh
+  const src   = srcW / srcH
+
+  // Expand whichever dimension is too small to reach target ratio
+  const newW = src > tgt ? srcW : Math.round(srcH * tgt)
+  const newH = src > tgt ? Math.round(srcW / tgt) : srcH
+
+  const ox = Math.round((newW - srcW) / 2)
+  const oy = Math.round((newH - srcH) / 2)
+
+  // Padded image: original centred on a white canvas
+  const ic = document.createElement("canvas")
+  ic.width = newW; ic.height = newH
+  const ictx = ic.getContext("2d")!
+  ictx.fillStyle = "#ffffff"
+  ictx.fillRect(0, 0, newW, newH)
+  ictx.drawImage(img, ox, oy, srcW, srcH)
+
+  // Mask: white = fill (padding areas), black = keep (original area)
+  const mc = document.createElement("canvas")
+  mc.width = newW; mc.height = newH
+  const mctx = mc.getContext("2d")!
+  mctx.fillStyle = "#ffffff"
+  mctx.fillRect(0, 0, newW, newH)
+  mctx.fillStyle = "#000000"
+  mctx.fillRect(ox, oy, srcW, srcH)
+
+  const [padded, mask] = await Promise.all([canvasToBlob(ic), canvasToBlob(mc)])
+  return { padded, mask }
 }
