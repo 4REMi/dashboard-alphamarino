@@ -3,7 +3,7 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 
 const REPLICATE_BASE  = "https://api.replicate.com/v1"
-const REPLICATE_MODEL = "openai/gpt-image-2"
+const REPLICATE_MODEL = "black-forest-labs/flux-fill-pro"
 
 function replicateHeaders() {
   const token = process.env.REPLICATE_KEY
@@ -14,20 +14,21 @@ function replicateHeaders() {
   }
 }
 
-/** Submit one resize prediction. Returns the Replicate prediction ID. */
-export async function submitResizePrediction(imageUrl: string, ratio: string): Promise<string> {
+/** Submit one outpaint prediction. Returns the Replicate prediction ID. */
+export async function submitResizePrediction(paddedImageUrl: string, maskUrl: string): Promise<string> {
   const res = await fetch(`${REPLICATE_BASE}/models/${REPLICATE_MODEL}/predictions`, {
     method:  "POST",
     headers: replicateHeaders(),
     body: JSON.stringify({
       input: {
-        prompt:       "Adapt this advertisement image to the new aspect ratio. Preserve the original style, colors, brand elements, and subject matter exactly. Fill any new space with content that blends seamlessly with the original.",
-        input_images: [imageUrl],
-        aspect_ratio: ratio,
-        quality:      "high",
-        output_format:       "jpeg",
-        output_compression:  90,
-        number_of_images:    1,
+        prompt:       "Seamlessly extend the background and surroundings only. Continue existing textures, colors, patterns, and lighting conditions. Do not add any new objects, people, animals, text, logos, or graphic elements. Keep the extension minimal, clean, and indistinguishable from the original.",
+        image:        paddedImageUrl,
+        mask:         maskUrl,
+        guidance:     75,
+        output_format:     "jpg",
+        steps:             50,
+        safety_tolerance:  2,
+        prompt_upsampling: false,
       },
     }),
     cache: "no-store",
