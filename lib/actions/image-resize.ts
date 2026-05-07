@@ -24,7 +24,7 @@ export async function submitResizePrediction(paddedImageUrl: string, maskUrl: st
         prompt:       "Seamlessly extend the background and surroundings only. Continue existing textures, colors, patterns, and lighting conditions. Do not add any new objects, people, animals, text, logos, or graphic elements. Keep the extension minimal, clean, and indistinguishable from the original.",
         image:        paddedImageUrl,
         mask:         maskUrl,
-        guidance:     75,
+        guidance:     25,
         output_format:     "jpg",
         steps:             50,
         safety_tolerance:  2,

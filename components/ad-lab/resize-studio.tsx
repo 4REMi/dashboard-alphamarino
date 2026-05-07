@@ -450,13 +450,13 @@ async function buildPaddedAndMask(
   const feather = Math.min(40, minPad === Infinity ? 20 : minPad * 0.6)
 
   // ── Padded image ──────────────────────────────────────────────────────────
-  // Fill with stretched source first (gives model edge-color context instead
-  // of blank white), then draw the original sharp on top.
+  // White padding + sharp original centred. Clean and unambiguous for the model.
   const ic = document.createElement("canvas")
   ic.width = newW; ic.height = newH
   const ictx = ic.getContext("2d")!
-  ictx.drawImage(img, 0, 0, newW, newH)   // stretched fill
-  ictx.drawImage(img, ox, oy, srcW, srcH) // sharp original centred
+  ictx.fillStyle = "#ffffff"
+  ictx.fillRect(0, 0, newW, newH)
+  ictx.drawImage(img, ox, oy, srcW, srcH)
 
   // ── Mask ──────────────────────────────────────────────────────────────────
   // White = fill (padding zone), Black = keep (original zone).
