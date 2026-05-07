@@ -9,13 +9,12 @@ import { saveUploadedAdRecord } from "@/lib/actions/ad-lab"
 import { cn } from "@/lib/utils"
 
 const RATIOS: { value: string; label: string; description: string; cssRatio: string }[] = [
-  { value: "1:1",  label: "1:1",  description: "Square",   cssRatio: "aspect-square"    },
-  { value: "4:5",  label: "4:5",  description: "Portrait", cssRatio: "aspect-[4/5]"     },
-  { value: "9:16", label: "9:16", description: "Story",    cssRatio: "aspect-[9/16]"    },
-  { value: "16:9", label: "16:9", description: "Wide",     cssRatio: "aspect-video"     },
+  { value: "1:1", label: "1:1", description: "Square",    cssRatio: "aspect-square"  },
+  { value: "3:2", label: "3:2", description: "Landscape", cssRatio: "aspect-[3/2]"   },
+  { value: "2:3", label: "2:3", description: "Portrait",  cssRatio: "aspect-[2/3]"   },
 ]
 
-const MAX_SELECTION = 4
+const MAX_SELECTION = 3
 const POLL_INTERVAL = 3000
 
 type PredictionState = {
@@ -34,6 +33,7 @@ export function ResizeStudio({ boards }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
 
   const [sourceFile,  setSourceFile]  = useState<File | null>(null)
+  const [sourceUrl,   setSourceUrl]   = useState<string | null>(null)   // cached public URL
   const [preview,     setPreview]     = useState<string | null>(null)   // local blob URL
   const [selectedRatios, setSelectedRatios] = useState<string[]>([])
   const [predictions, setPredictions] = useState<PredictionState[]>([])
@@ -62,69 +62,58 @@ export function ResizeStudio({ boards }: Props) {
 
     setError(null)
     setSourceFile(f)
+    setSourceUrl(null)
     setPreview(URL.createObjectURL(f))
     setPredictions([])
   }
 
+  async function uploadSourceImage(): Promise<string> {
+    if (!sourceFile) throw new Error("No hay imagen fuente")
+    setUploadingSource(true)
+    try {
+      const supabase = createClient()
+      const ext  = (sourceFile.name.split(".").pop() ?? "jpg").slice(0, 4)
+      const path = `resizes/${sessionId}/source.${ext}`
+      const { error: uploadError } = await supabase.storage
+        .from("ad-lab")
+        .upload(path, sourceFile, { contentType: sourceFile.type, upsert: false })
+      if (uploadError) throw new Error(uploadError.message)
+      return supabase.storage.from("ad-lab").getPublicUrl(path).data.publicUrl
+    } finally {
+      setUploadingSource(false)
+    }
+  }
+
   async function handleGenerate() {
-    if (!sourceFile || !preview || selectedRatios.length === 0) return
+    if (!sourceFile || selectedRatios.length === 0) return
     setError(null)
     setIsRunning(true)
-    setUploadingSource(true)
     setPredictions(selectedRatios.map((r) => ({
       ratio: r, predictionId: null, status: "queued", url: null, savedToBoard: false,
     })))
 
     try {
-      const supabase = createClient()
+      // 1. Upload source image once (cached on re-generate)
+      const imgUrl = sourceUrl ?? await uploadSourceImage()
+      setSourceUrl(imgUrl)
 
-      // 1. Build padded image + mask for every ratio concurrently (canvas, client-side)
-      const prepared = await Promise.all(
-        selectedRatios.map(async (ratio) => {
-          const { padded, mask } = await buildPaddedAndMask(preview, ratio)
-          return { ratio, padded, mask }
-        })
-      )
-
-      // 2. Upload padded + mask for every ratio concurrently
-      const uploaded = await Promise.all(
-        prepared.map(async ({ ratio, padded, mask }) => {
-          const safeRatio  = ratio.replace(":", "x")
-          const paddedPath = `resizes/${sessionId}/padded-${safeRatio}.jpg`
-          const maskPath   = `resizes/${sessionId}/mask-${safeRatio}.jpg`
-          const [{ error: pe }, { error: me }] = await Promise.all([
-            supabase.storage.from("ad-lab").upload(paddedPath, padded, { contentType: "image/jpeg", upsert: true }),
-            supabase.storage.from("ad-lab").upload(maskPath,   mask,   { contentType: "image/jpeg", upsert: true }),
-          ])
-          if (pe) throw new Error(`Error subiendo imagen: ${pe.message}`)
-          if (me) throw new Error(`Error subiendo máscara: ${me.message}`)
-          return {
-            ratio,
-            paddedUrl: supabase.storage.from("ad-lab").getPublicUrl(paddedPath).data.publicUrl,
-            maskUrl:   supabase.storage.from("ad-lab").getPublicUrl(maskPath).data.publicUrl,
-          }
-        })
-      )
-      setUploadingSource(false)
-
-      // 3. Submit predictions sequentially
+      // 2. Submit predictions sequentially
       const ids: string[] = []
-      for (let i = 0; i < uploaded.length; i++) {
+      for (let i = 0; i < selectedRatios.length; i++) {
         if (i > 0) await sleep(500)
-        const id = await submitResizePrediction(uploaded[i].paddedUrl, uploaded[i].maskUrl)
+        const id = await submitResizePrediction(imgUrl, selectedRatios[i])
         ids.push(id)
         setPredictions((prev) => prev.map((p, idx) =>
           idx === i ? { ...p, predictionId: id, status: "processing" } : p
         ))
       }
 
-      // 4. Poll all predictions concurrently until all settle
+      // 3. Poll all predictions concurrently until all settle
       await pollAll(ids, selectedRatios)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al generar")
     } finally {
       setIsRunning(false)
-      setUploadingSource(false)
     }
   }
 
@@ -213,7 +202,7 @@ export function ResizeStudio({ boards }: Props) {
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={preview} alt="Source" className="w-full object-contain max-h-64" />
                 <button
-                  onClick={() => { setSourceFile(null); setPreview(null); setPredictions([]) }}
+                  onClick={() => { setSourceFile(null); setSourceUrl(null); setPreview(null); setPredictions([]) }}
                   className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 flex items-center justify-center text-white hover:bg-black/80 transition-colors"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -263,10 +252,9 @@ export function ResizeStudio({ boards }: Props) {
                     <div className={cn(
                       "flex-shrink-0 rounded border-2",
                       selected ? "border-primary" : "border-muted-foreground/30",
-                      r.value === "1:1"  && "w-6 h-6",
-                      r.value === "4:5"  && "w-5 h-[25px]",
-                      r.value === "9:16" && "w-4 h-[28px]",
-                      r.value === "16:9" && "w-[28px] h-4",
+                      r.value === "1:1" && "w-6 h-6",
+                      r.value === "3:2" && "w-[27px] h-[18px]",
+                      r.value === "2:3" && "w-[18px] h-[27px]",
                     )} />
                     <div>
                       <p className="text-sm font-semibold leading-none">{r.label}</p>
@@ -414,62 +402,4 @@ export function ResizeStudio({ boards }: Props) {
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms))
-}
-
-function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.onload  = () => resolve(img)
-    img.onerror = reject
-    img.src     = src
-  })
-}
-
-function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => (blob ? resolve(blob) : reject(new Error("Canvas blob failed"))),
-      "image/jpeg",
-      0.92,
-    )
-  })
-}
-
-async function buildPaddedAndMask(
-  previewUrl: string,
-  ratio: string,
-): Promise<{ padded: Blob; mask: Blob }> {
-  const [rw, rh] = ratio.split(":").map(Number)
-  const img   = await loadImage(previewUrl)
-  const srcW  = img.naturalWidth
-  const srcH  = img.naturalHeight
-  const tgt   = rw / rh
-  const src   = srcW / srcH
-
-  // Expand whichever dimension is too small to reach target ratio
-  const newW = src > tgt ? srcW : Math.round(srcH * tgt)
-  const newH = src > tgt ? Math.round(srcW / tgt) : srcH
-
-  const ox = Math.round((newW - srcW) / 2)
-  const oy = Math.round((newH - srcH) / 2)
-
-  // Padded image: original centred on a white canvas
-  const ic = document.createElement("canvas")
-  ic.width = newW; ic.height = newH
-  const ictx = ic.getContext("2d")!
-  ictx.fillStyle = "#ffffff"
-  ictx.fillRect(0, 0, newW, newH)
-  ictx.drawImage(img, ox, oy, srcW, srcH)
-
-  // Mask: white = fill (padding areas), black = keep (original area)
-  const mc = document.createElement("canvas")
-  mc.width = newW; mc.height = newH
-  const mctx = mc.getContext("2d")!
-  mctx.fillStyle = "#ffffff"
-  mctx.fillRect(0, 0, newW, newH)
-  mctx.fillStyle = "#000000"
-  mctx.fillRect(ox, oy, srcW, srcH)
-
-  const [padded, mask] = await Promise.all([canvasToBlob(ic), canvasToBlob(mc)])
-  return { padded, mask }
 }

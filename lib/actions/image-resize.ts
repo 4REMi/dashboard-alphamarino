@@ -3,7 +3,7 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 
 const REPLICATE_BASE  = "https://api.replicate.com/v1"
-const REPLICATE_MODEL = "black-forest-labs/flux-fill-pro"
+const REPLICATE_MODEL = "openai/gpt-image-2"
 
 function replicateHeaders() {
   const token = process.env.REPLICATE_KEY
@@ -14,20 +14,20 @@ function replicateHeaders() {
   }
 }
 
-/** Submit one outpaint prediction. Returns the Replicate prediction ID. */
-export async function submitResizePrediction(paddedImageUrl: string, maskUrl: string): Promise<string> {
+/** Submit one resize prediction. Returns the Replicate prediction ID. */
+export async function submitResizePrediction(imageUrl: string, ratio: string): Promise<string> {
   const res = await fetch(`${REPLICATE_BASE}/models/${REPLICATE_MODEL}/predictions`, {
     method:  "POST",
     headers: replicateHeaders(),
     body: JSON.stringify({
       input: {
-        prompt:            "",
-        image:             paddedImageUrl,
-        mask:              maskUrl,
-        output_format:     "jpg",
-        steps:             50,
-        safety_tolerance:  2,
-        prompt_upsampling: false,
+        prompt:       "Adapt this advertisement image to the new aspect ratio. Preserve the original style, colors, brand elements, and subject matter exactly. Fill any new space with content that blends seamlessly with the original.",
+        input_images: [imageUrl],
+        aspect_ratio: ratio,
+        quality:      "high",
+        output_format:       "jpeg",
+        output_compression:  90,
+        number_of_images:    1,
       },
     }),
     cache: "no-store",
