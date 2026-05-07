@@ -14,31 +14,45 @@ function replicateHeaders() {
   }
 }
 
-/** Submit one outpaint prediction. Returns the Replicate prediction ID. */
+/** Submit one outpaint prediction, retrying on 429 rate-limit responses. Returns prediction ID. */
 export async function submitResizePrediction(paddedImageUrl: string, maskUrl: string): Promise<string> {
-  const res = await fetch(`${REPLICATE_BASE}/models/${REPLICATE_MODEL}/predictions`, {
-    method:  "POST",
-    headers: replicateHeaders(),
-    body: JSON.stringify({
-      input: {
-        prompt:       "Seamlessly extend the background and surroundings only. Continue existing textures, colors, patterns, and lighting conditions. Do not add any new objects, people, animals, text, logos, or graphic elements. Keep the extension minimal, clean, and indistinguishable from the original.",
-        image:        paddedImageUrl,
-        mask:         maskUrl,
-        guidance:     25,
-        output_format:     "jpg",
-        steps:             50,
-        safety_tolerance:  2,
-        prompt_upsampling: false,
-      },
-    }),
-    cache: "no-store",
+  const body = JSON.stringify({
+    input: {
+      prompt:       "Seamlessly extend the background and surroundings only. Continue existing textures, colors, patterns, and lighting conditions. Do not add any new objects, people, animals, text, logos, or graphic elements. Keep the extension minimal, clean, and indistinguishable from the original.",
+      image:        paddedImageUrl,
+      mask:         maskUrl,
+      guidance:     25,
+      output_format:     "jpg",
+      steps:             50,
+      safety_tolerance:  2,
+      prompt_upsampling: false,
+    },
   })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error((err as { detail?: string }).detail ?? `Replicate error ${res.status}`)
+
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const res = await fetch(`${REPLICATE_BASE}/models/${REPLICATE_MODEL}/predictions`, {
+      method: "POST", headers: replicateHeaders(), body, cache: "no-store",
+    })
+
+    if (res.ok) {
+      const data = await res.json() as { id: string }
+      return data.id
+    }
+
+    const err = await res.json().catch(() => ({})) as { detail?: string }
+
+    // Rate-limited: parse the suggested wait time and retry
+    if (res.status === 429 && attempt < 5) {
+      const match = (err.detail ?? "").match(/~?(\d+)s/)
+      const waitMs = match ? (parseInt(match[1]) + 3) * 1000 : 15_000
+      await new Promise((r) => setTimeout(r, waitMs))
+      continue
+    }
+
+    throw new Error(err.detail ?? `Replicate error ${res.status}`)
   }
-  const data = await res.json() as { id: string }
-  return data.id
+
+  throw new Error("Rate limit de Replicate: demasiados intentos. Espera un momento e intenta de nuevo.")
 }
 
 /** Poll one prediction. Returns status + output URL when done. */
