@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { can } from "@/lib/permissions"
 import type { Profile } from "@/lib/types"
-import { Tv2, LayoutGrid, FolderOpen, Radio, ImagePlay } from "lucide-react"
+import { Tv2, LayoutGrid, FolderOpen, Radio, ImagePlay, Expand } from "lucide-react"
 
 export default async function AdLabPage() {
   const supabase = await createClient()
@@ -60,6 +60,7 @@ export default async function AdLabPage() {
         <NavCard href="/ad-lab/boards"     icon={FolderOpen} title="Boards"     description="Colecciones de anuncios guardados organizados por tema o cliente." />
         <NavCard href="/ad-lab/brands"     icon={Radio}      title="Marcas"     description="Gestiona las marcas competidoras trackeadas por cliente." />
         <NavCard href="/ad-lab/creatives"  icon={ImagePlay}  title="Creatives"  description="Todos los estáticos clonados y adaptados para tus marcas." />
+        <NavCard href="/ad-lab/resize"     icon={Expand}     title="Image Resize" description="Expande creativos a múltiples aspect ratios usando IA." />
       </div>
     </div>
   )
