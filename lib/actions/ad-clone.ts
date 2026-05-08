@@ -266,7 +266,7 @@ export async function pollClone(cloneId: string, angulo?: string): Promise<AdClo
     .eq("id", cloneId)
 
   // Run Claude adaptation (splits + adapts in a single call)
-  const brain = clone.brand_brain as Pick<BrandBrain, "name" | "industry" | "tone_of_voice" | "usps" | "key_benefits" | "pain_points" | "target_audience" | "ctas"> | null
+  const brain = clone.brand_brain as Pick<BrandBrain, "name" | "industry" | "language" | "tone_of_voice" | "usps" | "key_benefits" | "pain_points" | "target_audience" | "ctas"> | null
   if (!brain) {
     await supabase
       .from("ad_clones")
