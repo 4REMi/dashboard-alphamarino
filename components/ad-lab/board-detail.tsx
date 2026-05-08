@@ -3,10 +3,11 @@
 import { useState, useTransition } from "react"
 import type { SavedAd, AdBoard, MetaAdResult } from "@/lib/types"
 import { removeAdFromBoard, deleteSavedAd } from "@/lib/actions/ad-lab"
-import { ArrowLeft, FolderOpen, Trash2, ExternalLink, MoreHorizontal, Loader2, Play, Wand2, Upload } from "lucide-react"
+import { ArrowLeft, FolderOpen, Trash2, ExternalLink, MoreHorizontal, Loader2, Play, Wand2, Upload, Layers, CheckSquare, Square, X } from "lucide-react"
 import { SiFacebook, SiInstagram, SiMessenger, SiMeta, SiThreads } from "@icons-pack/react-simple-icons"
 import { AdDetailModal } from "@/components/ad-lab/ad-detail-modal"
 import { UploadAdModal } from "@/components/ad-lab/upload-ad-modal"
+import { MassCreationModal } from "@/components/ad-lab/mass-creation-modal"
 import Link from "next/link"
 
 interface Props {
@@ -117,6 +118,28 @@ export function BoardDetail({ board, initialAds, boards, initialCloneCounts = {}
   const [cloneCounts, setCloneCounts]   = useState<Record<string, number>>(initialCloneCounts)
   const [isPending, startTransition]    = useTransition()
   const [showUpload, setShowUpload]     = useState(false)
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedIds, setSelectedIds]     = useState<Set<string>>(new Set())
+  const [showMassCreate, setShowMassCreate] = useState(false)
+
+  const MAX_SELECTION = 10
+
+  function toggleSelection(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else if (next.size < MAX_SELECTION) {
+        next.add(id)
+      }
+      return next
+    })
+  }
+
+  function exitSelectionMode() {
+    setSelectionMode(false)
+    setSelectedIds(new Set())
+  }
 
   function handleRemove(ad: SavedAd) {
     startTransition(async () => {
@@ -151,6 +174,12 @@ export function BoardDetail({ board, initialAds, boards, initialCloneCounts = {}
           onClose={() => setShowUpload(false)}
         />
       )}
+      {showMassCreate && (
+        <MassCreationModal
+          ads={ads.filter((a) => selectedIds.has(a.id))}
+          onClose={() => { setShowMassCreate(false); exitSelectionMode() }}
+        />
+      )}
     <div className="flex flex-col h-full min-h-0">
       {/* ── Header ── */}
       <div className="px-6 pt-6 pb-4 border-b border-border flex-shrink-0">
@@ -171,13 +200,34 @@ export function BoardDetail({ board, initialAds, boards, initialCloneCounts = {}
             )}
           </div>
           {isPending && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
-          <button
-            onClick={() => setShowUpload(true)}
-            className="flex items-center gap-2 h-9 px-4 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors flex-shrink-0"
-          >
-            <Upload className="w-3.5 h-3.5" />
-            Subir
-          </button>
+          {!selectionMode ? (
+            <>
+              <button
+                onClick={() => setShowUpload(true)}
+                className="flex items-center gap-2 h-9 px-4 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors flex-shrink-0"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                Subir
+              </button>
+              {ads.length > 0 && (
+                <button
+                  onClick={() => setSelectionMode(true)}
+                  className="flex items-center gap-2 h-9 px-4 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors flex-shrink-0"
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  Creación masiva
+                </button>
+              )}
+            </>
+          ) : (
+            <button
+              onClick={exitSelectionMode}
+              className="flex items-center gap-2 h-9 px-4 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors flex-shrink-0"
+            >
+              <X className="w-3.5 h-3.5" />
+              Cancelar
+            </button>
+          )}
         </div>
       </div>
 
@@ -224,16 +274,38 @@ export function BoardDetail({ board, initialAds, boards, initialCloneCounts = {}
                 const isUpload  = ad.source === "upload"
                 const isActive  = ad.status === "active"
 
+                const isSelected = selectedIds.has(ad.id)
+                const atLimit    = selectedIds.size >= MAX_SELECTION && !isSelected
+
                 return (
                   <div
                     key={ad.id}
-                    className="group relative bg-card border border-border rounded-xl overflow-hidden hover:border-primary/30 hover:shadow-md transition-all duration-150"
+                    className={`group relative bg-card border rounded-xl overflow-hidden transition-all duration-150 ${
+                      selectionMode
+                        ? isSelected
+                          ? "border-primary shadow-md ring-2 ring-primary/30"
+                          : atLimit
+                            ? "border-border opacity-50"
+                            : "border-border hover:border-primary/50 hover:shadow-md cursor-pointer"
+                        : "border-border hover:border-primary/30 hover:shadow-md"
+                    }`}
+                    onClick={selectionMode ? () => toggleSelection(ad.id) : undefined}
                   >
                     {/* ── Thumbnail ── */}
                     <div
                       className="relative aspect-[4/5] bg-muted overflow-hidden cursor-pointer"
-                      onClick={() => { setDetailAd(savedAdToResult(ad)); setDetailSavedAdId(ad.id) }}
+                      onClick={selectionMode ? undefined : () => { setDetailAd(savedAdToResult(ad)); setDetailSavedAdId(ad.id) }}
                     >
+                      {/* Selection checkbox overlay */}
+                      {selectionMode && (
+                        <div className="absolute top-2 left-2 z-30">
+                          {isSelected
+                            ? <CheckSquare className="w-5 h-5 text-primary drop-shadow" />
+                            : <Square className="w-5 h-5 text-white drop-shadow" />
+                          }
+                        </div>
+                      )}
+
                       {thumbUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={thumbUrl} alt={safeName} className="w-full h-full object-cover" />
@@ -292,7 +364,8 @@ export function BoardDetail({ board, initialAds, boards, initialCloneCounts = {}
                         </div>
                       )}
 
-                      {/* Action menu */}
+                      {/* Action menu (hidden in selection mode) */}
+                      {!selectionMode && (
                       <div className="absolute top-2 right-2 z-20">
                         <button
                           onClick={(e) => { e.stopPropagation(); setMenuId((v) => v === ad.id ? null : ad.id) }}
@@ -322,6 +395,7 @@ export function BoardDetail({ board, initialAds, boards, initialCloneCounts = {}
                           </div>
                         )}
                       </div>
+                      )}
                     </div>
 
                     {/* ── Body ── */}
@@ -374,6 +448,33 @@ export function BoardDetail({ board, initialAds, boards, initialCloneCounts = {}
           </>
         )}
       </div>
+
+      {/* ── Sticky selection bar ── */}
+      {selectionMode && (
+        <div className="flex-shrink-0 border-t border-border bg-background/95 backdrop-blur px-6 py-3 flex items-center gap-3">
+          <div className="flex-1 flex items-center gap-2">
+            <CheckSquare className="w-4 h-4 text-primary" />
+            <span className="text-sm font-medium">
+              {selectedIds.size} seleccionado{selectedIds.size !== 1 ? "s" : ""}
+            </span>
+            <span className="text-xs text-muted-foreground">(máx {MAX_SELECTION})</span>
+          </div>
+          <button
+            onClick={exitSelectionMode}
+            className="h-8 px-4 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            disabled={selectedIds.size === 0}
+            onClick={() => setShowMassCreate(true)}
+            className="h-8 px-4 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+          >
+            <Layers className="w-3.5 h-3.5" />
+            Crear ({selectedIds.size})
+          </button>
+        </div>
+      )}
     </div>
     </>
   )
