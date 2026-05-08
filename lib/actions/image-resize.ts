@@ -3,7 +3,7 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 
 const REPLICATE_BASE  = "https://api.replicate.com/v1"
-const REPLICATE_MODEL = "black-forest-labs/flux-fill-pro"
+const REPLICATE_MODEL = "google/nano-banana-pro"
 
 function replicateHeaders() {
   const token = process.env.REPLICATE_KEY
@@ -14,18 +14,16 @@ function replicateHeaders() {
   }
 }
 
-/** Submit one outpaint prediction, retrying on 429 rate-limit responses. Returns prediction ID. */
-export async function submitResizePrediction(paddedImageUrl: string, maskUrl: string): Promise<string> {
+/** Submit one resize prediction, retrying on 429 rate-limit responses. Returns prediction ID. */
+export async function submitResizePrediction(imageUrl: string, ratio: string): Promise<string> {
   const body = JSON.stringify({
     input: {
-      prompt:       "Seamlessly extend the background and surroundings only. Continue existing textures, colors, patterns, and lighting conditions. Do not add any new objects, people, animals, text, logos, or graphic elements. Keep the extension minimal, clean, and indistinguishable from the original.",
-      image:        paddedImageUrl,
-      mask:         maskUrl,
-      guidance:     25,
-      output_format:     "jpg",
-      steps:             50,
-      safety_tolerance:  2,
-      prompt_upsampling: false,
+      prompt:              "",
+      image_input:         [imageUrl],
+      aspect_ratio:        ratio,
+      resolution:          "2K",
+      output_format:       "jpg",
+      safety_filter_level: "block_only_high",
     },
   })
 

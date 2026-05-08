@@ -34,6 +34,7 @@ export function ResizeStudio({ boards }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
 
   const [sourceFile,  setSourceFile]  = useState<File | null>(null)
+  const [sourceUrl,   setSourceUrl]   = useState<string | null>(null)   // cached public URL
   const [preview,     setPreview]     = useState<string | null>(null)   // local blob URL
   const [selectedRatios, setSelectedRatios] = useState<string[]>([])
   const [predictions, setPredictions] = useState<PredictionState[]>([])
@@ -62,69 +63,58 @@ export function ResizeStudio({ boards }: Props) {
 
     setError(null)
     setSourceFile(f)
+    setSourceUrl(null)
     setPreview(URL.createObjectURL(f))
     setPredictions([])
   }
 
+  async function uploadSourceImage(): Promise<string> {
+    if (!sourceFile) throw new Error("No hay imagen fuente")
+    setUploadingSource(true)
+    try {
+      const supabase = createClient()
+      const ext  = (sourceFile.name.split(".").pop() ?? "jpg").slice(0, 4)
+      const path = `resizes/${sessionId}/source.${ext}`
+      const { error: uploadError } = await supabase.storage
+        .from("ad-lab")
+        .upload(path, sourceFile, { contentType: sourceFile.type, upsert: false })
+      if (uploadError) throw new Error(uploadError.message)
+      return supabase.storage.from("ad-lab").getPublicUrl(path).data.publicUrl
+    } finally {
+      setUploadingSource(false)
+    }
+  }
+
   async function handleGenerate() {
-    if (!sourceFile || !preview || selectedRatios.length === 0) return
+    if (!sourceFile || selectedRatios.length === 0) return
     setError(null)
     setIsRunning(true)
-    setUploadingSource(true)
     setPredictions(selectedRatios.map((r) => ({
       ratio: r, predictionId: null, status: "queued", url: null, savedToBoard: false,
     })))
 
     try {
-      const supabase = createClient()
-      // Unique prefix per generate run — avoids path collisions on re-generate
-      // and eliminates the need for upsert (no UPDATE policy required)
-      const runId = crypto.randomUUID().slice(0, 8)
+      // 1. Upload source image once (cached across re-generate in same session)
+      const imgUrl = sourceUrl ?? await uploadSourceImage()
+      setSourceUrl(imgUrl)
 
-      // 1. Build padded image + feathered mask for each ratio (all concurrent, canvas only)
-      const prepared = await Promise.all(
-        selectedRatios.map(async (ratio) => ({ ratio, ...(await buildPaddedAndMask(preview, ratio)) }))
-      )
-
-      // 2. Upload padded + mask pairs concurrently
-      const uploaded = await Promise.all(
-        prepared.map(async ({ ratio, padded, mask }) => {
-          const sr = ratio.replace(":", "x")
-          const paddedPath = `resizes/${sessionId}/${runId}/padded-${sr}.jpg`
-          const maskPath   = `resizes/${sessionId}/${runId}/mask-${sr}.jpg`
-          const [{ error: pe }, { error: me }] = await Promise.all([
-            supabase.storage.from("ad-lab").upload(paddedPath, padded, { contentType: "image/jpeg", upsert: false }),
-            supabase.storage.from("ad-lab").upload(maskPath,   mask,   { contentType: "image/jpeg", upsert: false }),
-          ])
-          if (pe) throw new Error(`Error subiendo imagen: ${pe.message}`)
-          if (me) throw new Error(`Error subiendo máscara: ${me.message}`)
-          return {
-            ratio,
-            paddedUrl: supabase.storage.from("ad-lab").getPublicUrl(paddedPath).data.publicUrl,
-            maskUrl:   supabase.storage.from("ad-lab").getPublicUrl(maskPath).data.publicUrl,
-          }
-        })
-      )
-      setUploadingSource(false)
-
-      // 3. Submit to Replicate sequentially
+      // 2. Submit predictions sequentially
       const ids: string[] = []
-      for (let i = 0; i < uploaded.length; i++) {
+      for (let i = 0; i < selectedRatios.length; i++) {
         if (i > 0) await sleep(500)
-        const id = await submitResizePrediction(uploaded[i].paddedUrl, uploaded[i].maskUrl)
+        const id = await submitResizePrediction(imgUrl, selectedRatios[i])
         ids.push(id)
         setPredictions((prev) => prev.map((p, idx) =>
           idx === i ? { ...p, predictionId: id, status: "processing" } : p
         ))
       }
 
-      // 4. Poll all concurrently until all settle
+      // 3. Poll all concurrently until all settle
       await pollAll(ids, selectedRatios)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al generar")
     } finally {
       setIsRunning(false)
-      setUploadingSource(false)
     }
   }
 
@@ -213,7 +203,7 @@ export function ResizeStudio({ boards }: Props) {
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={preview} alt="Source" className="w-full object-contain max-h-64" />
                 <button
-                  onClick={() => { setSourceFile(null); setPreview(null); setPredictions([]) }}
+                  onClick={() => { setSourceFile(null); setSourceUrl(null); setPreview(null); setPredictions([]) }}
                   className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 flex items-center justify-center text-white hover:bg-black/80 transition-colors"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -414,95 +404,4 @@ export function ResizeStudio({ boards }: Props) {
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms))
-}
-
-function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.onload  = () => resolve(img)
-    img.onerror = reject
-    img.src     = src
-  })
-}
-
-function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
-  return new Promise((resolve, reject) =>
-    canvas.toBlob(
-      (b) => (b ? resolve(b) : reject(new Error("Canvas blob failed"))),
-      "image/jpeg", 0.92,
-    )
-  )
-}
-
-async function buildPaddedAndMask(
-  previewUrl: string,
-  ratio: string,
-): Promise<{ padded: Blob; mask: Blob }> {
-  const [rw, rh] = ratio.split(":").map(Number)
-  const img  = await loadImage(previewUrl)
-  const srcW = img.naturalWidth
-  const srcH = img.naturalHeight
-  const src  = srcW / srcH
-  const tgt  = rw / rh
-
-  const newW = src > tgt ? srcW : Math.round(srcH * tgt)
-  const newH = src > tgt ? Math.round(srcW / tgt) : srcH
-  const ox   = Math.round((newW - srcW) / 2)
-  const oy   = Math.round((newH - srcH) / 2)
-
-  // Feather size: proportional to padding depth, capped at 40px
-  const minPad = Math.min(ox > 0 ? ox : Infinity, oy > 0 ? oy : Infinity)
-  const feather = Math.min(40, minPad === Infinity ? 20 : minPad * 0.6)
-
-  // ── Padded image ──────────────────────────────────────────────────────────
-  // White padding + sharp original centred. Clean and unambiguous for the model.
-  const ic = document.createElement("canvas")
-  ic.width = newW; ic.height = newH
-  const ictx = ic.getContext("2d")!
-  ictx.fillStyle = "#ffffff"
-  ictx.fillRect(0, 0, newW, newH)
-  ictx.drawImage(img, ox, oy, srcW, srcH)
-
-  // ── Mask ──────────────────────────────────────────────────────────────────
-  // White = fill (padding zone), Black = keep (original zone).
-  // Feathered gradients on the sides that actually have padding, so the model
-  // sees a smooth transition instead of a hard cliff.
-  const mc = document.createElement("canvas")
-  mc.width = newW; mc.height = newH
-  const mctx = mc.getContext("2d")!
-
-  mctx.fillStyle = "#ffffff"
-  mctx.fillRect(0, 0, newW, newH)
-
-  // Solid black core (inset by feather on padded sides)
-  mctx.fillStyle = "#000000"
-  mctx.fillRect(
-    ox + (ox > 0 ? feather : 0),
-    oy + (oy > 0 ? feather : 0),
-    srcW - (ox > 0 ? feather * 2 : 0),
-    srcH - (oy > 0 ? feather * 2 : 0),
-  )
-
-  // Gradient edges — only on sides with actual padding
-  if (ox > 0) {
-    const lg = mctx.createLinearGradient(ox, 0, ox + feather, 0)
-    lg.addColorStop(0, "#ffffff"); lg.addColorStop(1, "#000000")
-    mctx.fillStyle = lg; mctx.fillRect(ox, oy, feather, srcH)
-
-    const rg = mctx.createLinearGradient(ox + srcW - feather, 0, ox + srcW, 0)
-    rg.addColorStop(0, "#000000"); rg.addColorStop(1, "#ffffff")
-    mctx.fillStyle = rg; mctx.fillRect(ox + srcW - feather, oy, feather, srcH)
-  }
-  if (oy > 0) {
-    const tg = mctx.createLinearGradient(0, oy, 0, oy + feather)
-    tg.addColorStop(0, "#ffffff"); tg.addColorStop(1, "#000000")
-    mctx.fillStyle = tg; mctx.fillRect(ox, oy, srcW, feather)
-
-    const bg = mctx.createLinearGradient(0, oy + srcH - feather, 0, oy + srcH)
-    bg.addColorStop(0, "#000000"); bg.addColorStop(1, "#ffffff")
-    mctx.fillStyle = bg; mctx.fillRect(ox, oy + srcH - feather, srcW, feather)
-  }
-
-  const [padded, mask] = await Promise.all([canvasToBlob(ic), canvasToBlob(mc)])
-  return { padded, mask }
 }
