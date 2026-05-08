@@ -4,6 +4,7 @@ import { can } from "@/lib/permissions"
 import type { Profile } from "@/lib/types"
 import { getBoards, getBoardAds } from "@/lib/actions/ad-lab"
 import { getAdCloneCountsByAdIds } from "@/lib/actions/ad-clone"
+import { getImageCloneCountsByAdIds } from "@/lib/actions/image-clone"
 import { BoardDetail } from "@/components/ad-lab/board-detail"
 
 interface PageProps {
@@ -34,7 +35,16 @@ export default async function BoardDetailPage({ params }: PageProps) {
   const board = boards.find((b) => b.id === id)
   if (!board) notFound()
 
-  const cloneCounts = await getAdCloneCountsByAdIds(ads.map((a) => a.id))
+  const adIds = ads.map((a) => a.id)
+  const [scriptCounts, imageCounts] = await Promise.all([
+    getAdCloneCountsByAdIds(adIds),
+    getImageCloneCountsByAdIds(adIds),
+  ])
+  const cloneCounts: Record<string, number> = {}
+  for (const id of adIds) {
+    const total = (scriptCounts[id] ?? 0) + (imageCounts[id] ?? 0)
+    if (total > 0) cloneCounts[id] = total
+  }
 
   return (
     <div className="flex flex-col h-full">
