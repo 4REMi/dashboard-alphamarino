@@ -11,6 +11,7 @@ import {
   checkAnguloCompatibility,
 } from "@/lib/actions/image-clone"
 import { getBrandBrains } from "@/lib/actions/brand-brains"
+import { useRecentAngulos } from "@/lib/hooks/use-recent-angulos"
 import {
   X, ImageIcon, Loader2, Check, ChevronRight, ChevronLeft,
   AlertCircle, Upload, Trash2, Link as LinkIcon, Copy, Compass, CheckCircle2,
@@ -45,6 +46,7 @@ export function ImageCloneModal({ ad, onClose }: Props) {
   const [angulo, setAngulo]                     = useState("")
   const [anguloAdvisory, setAnguloAdvisory]     = useState<{ compatible: boolean; note: string } | null>(null)
   const [isCheckingAdvisory, setIsCheckingAdvisory] = useState(false)
+  const { recents: recentAngulos, saveAngulo }  = useRecentAngulos()
 
   // Generation config
   const [refFiles, setRefFiles]                 = useState<File[]>([])
@@ -104,6 +106,7 @@ export function ImageCloneModal({ ad, onClose }: Props) {
 
   function handleStart() {
     if (!selectedBrainId) return
+    if (angulo.trim()) saveAngulo(angulo)
     startTransition(async () => {
       try {
         const result = await startImageClone(ad, selectedBrainId, angulo.trim() || undefined)
@@ -314,6 +317,22 @@ export function ImageCloneModal({ ad, onClose }: Props) {
                   placeholder="Ej: Dirigido a dueños de negocio que ya probaron otras soluciones sin éxito. El ángulo es la frustración y la promesa de resultados concretos en 30 días."
                   className="w-full text-sm px-3 py-2.5 rounded-xl border border-border bg-background resize-none outline-none focus:ring-1 focus:ring-violet-400 focus:border-violet-400 placeholder:text-muted-foreground/50 transition-all"
                 />
+
+                {recentAngulos.length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {recentAngulos.map((r, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => { setAngulo(r); setAnguloAdvisory(null) }}
+                        className="max-w-[220px] truncate text-[11px] h-6 px-2.5 rounded-full border border-border bg-muted/50 text-muted-foreground hover:border-violet-300 hover:text-violet-700 hover:bg-violet-50 transition-colors text-left"
+                        title={r}
+                      >
+                        {r}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
                 {angulo.trim() && selectedBrainId && (
                   <div className="mt-2 flex items-start gap-2">

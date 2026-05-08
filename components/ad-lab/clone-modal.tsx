@@ -5,6 +5,7 @@ import type { AdCloneLine, AdCloneStatus, BrandBrain, MetaAdResult } from "@/lib
 import { startClone, pollClone, updateAdaptedLines } from "@/lib/actions/ad-clone"
 import { checkAnguloCompatibility } from "@/lib/actions/image-clone"
 import { getBrandBrains } from "@/lib/actions/brand-brains"
+import { useRecentAngulos } from "@/lib/hooks/use-recent-angulos"
 import {
   X, Wand2, Loader2, Check, Copy, ChevronRight,
   ChevronLeft, AlertCircle, Play, Link as LinkIcon, Compass, CheckCircle2,
@@ -42,6 +43,7 @@ export function CloneModal({ ad, onClose }: Props) {
   const [angulo, setAngulo]                         = useState("")
   const [anguloAdvisory, setAnguloAdvisory]         = useState<{ compatible: boolean; note: string } | null>(null)
   const [isCheckingAdvisory, setIsCheckingAdvisory] = useState(false)
+  const { recents: recentAngulos, saveAngulo }      = useRecentAngulos()
 
   const videoRef = useRef<HTMLVideoElement>(null)
 
@@ -101,6 +103,7 @@ export function CloneModal({ ad, onClose }: Props) {
 
   function handleStart() {
     if (!selectedBrainId) return
+    if (angulo.trim()) saveAngulo(angulo)
     startTransition(async () => {
       try {
         const result = await startClone(ad, selectedBrainId)
@@ -252,6 +255,22 @@ export function CloneModal({ ad, onClose }: Props) {
                   placeholder="Ej: Dirigido a dueños de negocio escépticos que ya probaron otras soluciones. El ángulo es la frustración convertida en certeza con prueba social."
                   className="w-full text-sm px-3 py-2.5 rounded-xl border border-border bg-background resize-none outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 placeholder:text-muted-foreground/50 transition-all"
                 />
+
+                {recentAngulos.length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {recentAngulos.map((r, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => { setAngulo(r); setAnguloAdvisory(null) }}
+                        className="max-w-[220px] truncate text-[11px] h-6 px-2.5 rounded-full border border-border bg-muted/50 text-muted-foreground hover:border-primary/40 hover:text-primary hover:bg-primary/5 transition-colors text-left"
+                        title={r}
+                      >
+                        {r}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
                 {angulo.trim() && selectedBrainId && (
                   <div className="mt-2 flex items-start gap-2">
