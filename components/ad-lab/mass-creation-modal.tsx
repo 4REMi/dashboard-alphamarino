@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import type { SavedAd, BrandBrain, ImageCloneLine, AdCloneLine, MetaAdResult } from "@/lib/types"
 import {
   startImageClone, generateImages, pollImageGeneration, checkAnguloCompatibility,
+  uploadReferenceImages,
 } from "@/lib/actions/image-clone"
 import { startClone, pollClone, updateAdaptedLines as updateScriptLines } from "@/lib/actions/ad-clone"
 import { getBrandBrains } from "@/lib/actions/brand-brains"
@@ -11,6 +12,7 @@ import { useRecentAngulos } from "@/lib/hooks/use-recent-angulos"
 import {
   X, Loader2, Check, ChevronRight, ChevronLeft, AlertCircle,
   ImageIcon, Wand2, ChevronDown, Link2, Download, Compass, CheckCircle2, Layers,
+  Upload, Trash2,
 } from "lucide-react"
 
 // ── Types ─────────────────────────────────────────────────────
@@ -95,9 +97,13 @@ export function MassCreationModal({ ads, onClose }: Props) {
   const { recents: recentAngulos, saveAngulo } = useRecentAngulos()
 
   // Estáticos config
-  const [aspectRatio, setAspectRatio]     = useState("1:1")
-  const [useBrandColor, setUseBrandColor] = useState(false)
-  const [brandColor, setBrandColor]       = useState("#000000")
+  const [aspectRatio, setAspectRatio]         = useState("1:1")
+  const [useBrandColor, setUseBrandColor]     = useState(false)
+  const [brandColor, setBrandColor]           = useState("#000000")
+  const [refFiles, setRefFiles]               = useState<File[]>([])
+  const [additionalContext, setAdditionalContext] = useState("")
+  const [numImages, setNumImages]             = useState(1)
+  const fileInputRef                          = useRef<HTMLInputElement>(null)
 
   // Items + refs (ref mirrors state for use inside intervals)
   const [items, setItems]   = useState<MassItem[]>([])
@@ -245,12 +251,17 @@ export function MassCreationModal({ ads, onClose }: Props) {
     await Promise.allSettled(
       readyItems.map(async (item) => {
         try {
+          if (refFiles.length > 0) {
+            const fd = new FormData()
+            refFiles.forEach((f) => fd.append("files", f))
+            await uploadReferenceImages(item.cloneId!, fd)
+          }
           await generateImages(item.cloneId!, {
             adaptedLines: item.adaptedLines as ImageCloneLine[],
             brandColor: useBrandColor ? brandColor : null,
             aspectRatio,
-            numImages: 1,
-            additionalContext: "",
+            numImages,
+            additionalContext: additionalContext.trim(),
           })
         } catch (err) {
           updateItems((prev) =>
@@ -425,7 +436,8 @@ export function MassCreationModal({ ads, onClose }: Props) {
 
             {/* Estáticos extra config */}
             {type === "estaticos" && (
-              <div className="border-t border-border pt-4">
+              <div className="border-t border-border pt-4 space-y-5">
+                {/* Ratio + color */}
                 <div className="grid grid-cols-2 gap-5">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Ratio</p>
@@ -455,6 +467,90 @@ export function MassCreationModal({ ads, onClose }: Props) {
                       </div>
                     )}
                   </div>
+                </div>
+
+                {/* Additional images */}
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+                    Imágenes adicionales <span className="font-normal normal-case">(opcional, ≤10)</span>
+                  </p>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Fotos del producto o elementos que deben aparecer en todos los creativos.
+                  </p>
+                  <div
+                    className="border border-dashed border-border rounded-xl p-3 text-center cursor-pointer hover:border-primary/40 hover:bg-primary/5 transition-colors"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Upload className="w-4 h-4 mx-auto text-muted-foreground mb-1" />
+                    <p className="text-xs text-muted-foreground">Haz clic para añadir imágenes</p>
+                  </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      const picked = Array.from(e.target.files ?? []).slice(0, 10)
+                      setRefFiles((prev) => [...prev, ...picked].slice(0, 10))
+                      if (fileInputRef.current) fileInputRef.current.value = ""
+                    }}
+                  />
+                  {refFiles.length > 0 && (
+                    <div className="grid grid-cols-5 gap-2 mt-3">
+                      {refFiles.map((file, i) => (
+                        <div key={i} className="relative group aspect-square rounded-lg overflow-hidden border border-border bg-muted">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={URL.createObjectURL(file)} alt={file.name} className="w-full h-full object-cover" />
+                          <button
+                            onClick={() => setRefFiles((prev) => prev.filter((_, idx) => idx !== i))}
+                            className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
+                          >
+                            <Trash2 className="w-4 h-4 text-white" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Additional context */}
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                    Contexto adicional <span className="font-normal normal-case">(opcional)</span>
+                  </p>
+                  <textarea
+                    value={additionalContext}
+                    onChange={(e) => setAdditionalContext(e.target.value)}
+                    rows={3}
+                    placeholder="Instrucciones específicas: estilo, mood, elementos a incluir o excluir, disposición del texto…"
+                    className="w-full text-sm px-3 py-2.5 rounded-xl border border-border bg-background resize-none outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 placeholder:text-muted-foreground/50 transition-all"
+                  />
+                </div>
+
+                {/* Variants count */}
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                    Variantes por anuncio
+                  </p>
+                  <div className="flex gap-2 w-fit">
+                    {[1, 2].map((n) => (
+                      <button
+                        key={n}
+                        onClick={() => setNumImages(n)}
+                        className={`w-14 h-9 rounded-lg border text-sm font-medium transition-colors ${
+                          numImages === n
+                            ? "bg-primary border-primary text-primary-foreground"
+                            : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                        }`}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-1.5">
+                    Se generará{numImages > 1 ? "n" : ""} {numImages} variante{numImages > 1 ? "s" : ""} por cada anuncio analizado.
+                  </p>
                 </div>
               </div>
             )}
