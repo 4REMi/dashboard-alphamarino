@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react"
 import type { MetaAdResult, AdBoard, AdClone, ImageClone } from "@/lib/types"
-import { saveAd, addAdToBoard } from "@/lib/actions/ad-lab"
+import { saveAd, addAdToBoard, createBoard } from "@/lib/actions/ad-lab"
 import { getAdClones, deleteAdClone } from "@/lib/actions/ad-clone"
 import { getImageClones, deleteImageClone } from "@/lib/actions/image-clone"
 import {
   X, ExternalLink, Bookmark, Check, Loader2,
-  Calendar, Wand2, ImageIcon, ChevronLeft, ChevronRight, Link as LinkIcon, Plus, Trash2,
+  Calendar, Wand2, ImageIcon, ChevronLeft, ChevronRight, Link as LinkIcon, Plus, Trash2, FolderPlus,
 } from "lucide-react"
 import { SiFacebook, SiInstagram, SiMessenger, SiMeta, SiThreads } from "@icons-pack/react-simple-icons"
 import { CloneModal } from "@/components/ad-lab/clone-modal"
@@ -63,11 +63,15 @@ function brandColor(name: string | null | undefined): string {
   return colors[Math.abs(hash) % colors.length]
 }
 
-export function AdDetailModal({ ad, boards, onClose, savedAdId }: Props) {
+export function AdDetailModal({ ad, boards: boardsProp, onClose, savedAdId }: Props) {
   const [cardIndex, setCardIndex] = useState(0)
   const [showBoardPicker, setShowBoardPicker] = useState(false)
   const [savedBoards, setSavedBoards] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState(false)
+  const [localBoards, setLocalBoards] = useState<AdBoard[]>(boardsProp)
+  const [showCreateBoard, setShowCreateBoard] = useState(false)
+  const [newBoardName, setNewBoardName] = useState("")
+  const [creatingBoard, setCreatingBoard] = useState(false)
   const [showClone, setShowClone] = useState(false)
   const [clones, setClones] = useState<AdClone[] | null>(null)
   const [loadingClones, setLoadingClones] = useState(false)
@@ -171,6 +175,23 @@ export function AdDetailModal({ ad, boards, onClose, savedAdId }: Props) {
       if (pendingCloneType === "image")  { setPendingCloneType(null); setShowImageClone(true) }
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function handleCreateBoard() {
+    if (!newBoardName.trim()) return
+    setCreatingBoard(true)
+    try {
+      const fd = new FormData()
+      fd.set("name", newBoardName.trim())
+      const created = await createBoard(fd)
+      setLocalBoards((prev) => [created, ...prev])
+      setNewBoardName("")
+      setShowCreateBoard(false)
+      // Save the current ad to the newly created board right away
+      await handleSaveToBoard(created.id)
+    } finally {
+      setCreatingBoard(false)
     }
   }
 
@@ -539,14 +560,9 @@ export function AdDetailModal({ ad, boards, onClose, savedAdId }: Props) {
                       </p>
                     )}
                   </div>
-                  {boards.length === 0 ? (
-                    <div className="px-3 py-3 text-xs text-muted-foreground">
-                      No tienes boards.{" "}
-                      <a href="/ad-lab/boards" className="text-primary underline">Crear uno →</a>
-                    </div>
-                  ) : (
+                  {localBoards.length > 0 && (
                     <div className="py-1 max-h-48 overflow-y-auto">
-                      {boards.map((board) => {
+                      {localBoards.map((board) => {
                         const saved = savedBoards.has(board.id)
                         return (
                           <button
@@ -566,6 +582,46 @@ export function AdDetailModal({ ad, boards, onClose, savedAdId }: Props) {
                       })}
                     </div>
                   )}
+
+                  {/* Inline create board */}
+                  <div className="border-t border-border">
+                    {showCreateBoard ? (
+                      <div className="px-3 py-2 flex items-center gap-2">
+                        <input
+                          autoFocus
+                          value={newBoardName}
+                          onChange={(e) => setNewBoardName(e.target.value)}
+                          onKeyDown={async (e) => {
+                            if (e.key === "Enter") await handleCreateBoard()
+                            if (e.key === "Escape") { setShowCreateBoard(false); setNewBoardName("") }
+                          }}
+                          placeholder="Nombre del board…"
+                          className="flex-1 text-xs h-7 px-2 rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary/40"
+                        />
+                        <button
+                          onClick={handleCreateBoard}
+                          disabled={!newBoardName.trim() || creatingBoard}
+                          className="h-7 px-2 rounded-md bg-primary text-primary-foreground text-xs font-medium disabled:opacity-50 flex items-center gap-1"
+                        >
+                          {creatingBoard ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                        </button>
+                        <button
+                          onClick={() => { setShowCreateBoard(false); setNewBoardName("") }}
+                          className="h-7 w-7 rounded-md flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setShowCreateBoard(true)}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                      >
+                        <FolderPlus className="w-3.5 h-3.5" />
+                        Nuevo board
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
