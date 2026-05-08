@@ -140,6 +140,7 @@ type BrainContext = Pick<BrandBrain, "name" | "industry" | "tone_of_voice" | "us
 async function extractAndAdaptWithClaude(
   imageUrl: string,
   brain: BrainContext,
+  angulo?: string,
 ): Promise<ImageCloneLine[]> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY no configurado")
@@ -151,12 +152,16 @@ async function extractAndAdaptWithClaude(
   const pains    = (brain.pain_points   ?? []).join(", ") || "—"
   const ctas     = (brain.ctas          ?? []).join(", ") || "—"
 
+  const anguloBlock = angulo?.trim()
+    ? `\nÁNGULO DEL CREATIVO:\n"${angulo.trim()}"\nTen en cuenta este ángulo al adaptar el copy: que el mensaje refleje este objetivo sin perder el tono de voz de la marca.\n`
+    : ""
+
   const prompt = `Eres un experto en publicidad digital y copywriting.
 
 PASO 1 — EXTRAE todos los elementos de texto visibles en este anuncio de imagen. Incluye: headline, subheadline, body copy, CTA, tags, precios, disclaimers, y cualquier texto visible. Omite textos puramente decorativos o ilegibles.
 
 PASO 2 — ADAPTA cada elemento al Brand Brain de la marca destino. Mantén la función comunicativa de cada elemento (un headline sigue siendo headline, un CTA sigue siendo CTA). Adapta el producto, los beneficios, el tono y el lenguaje al nuevo contexto de marca.
-
+${anguloBlock}
 MARCA DESTINO:
 - Nombre: ${brain.name}
 - Industria: ${brain.industry ?? "—"}
@@ -249,12 +254,69 @@ Rebuild the exact same layout using the brand system below. Preserve all structu
 // ── Public actions ────────────────────────────────────────────
 
 /**
+ * Evaluates the compatibility of an ángulo (creative angle) against a Brand Brain.
+ * Returns a short advisory note and a compatible flag.
+ */
+export async function checkAnguloCompatibility(
+  brainId: string,
+  angulo: string,
+): Promise<{ compatible: boolean; note: string }> {
+  const { supabase } = await assertAuth()
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY no configurado")
+
+  const { data: brain } = await supabase
+    .from("brand_brains")
+    .select("name, industry, tone_of_voice, usps, key_benefits, pain_points, target_audience")
+    .eq("id", brainId)
+    .single()
+  if (!brain) throw new Error("Brand Brain no encontrado")
+
+  const client = new Anthropic({ apiKey })
+  const usps     = ((brain.usps as string[] | null)         ?? []).join(", ") || "—"
+  const benefits = ((brain.key_benefits as string[] | null) ?? []).join(", ") || "—"
+  const pains    = ((brain.pain_points as string[] | null)  ?? []).join(", ") || "—"
+
+  const msg = await client.messages.create({
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 256,
+    messages: [{
+      role: "user",
+      content: `Evalúa si el siguiente ángulo creativo es compatible con el Brand Brain de la marca.
+
+BRAND BRAIN:
+- Nombre: ${brain.name}
+- Industria: ${brain.industry ?? "—"}
+- Tono de voz: ${brain.tone_of_voice ?? "—"}
+- USPs: ${usps}
+- Beneficios clave: ${benefits}
+- Dolores del cliente: ${pains}
+- Audiencia objetivo: ${brain.target_audience ?? "—"}
+
+ÁNGULO PROPUESTO:
+"${angulo.trim()}"
+
+Responde ÚNICAMENTE con un JSON válido (sin markdown) con este formato exacto:
+{"compatible": true, "note": "<una sola oración de advisory en español, máx 20 palabras>"}`,
+    }],
+  })
+
+  const raw = (msg.content[0] as { type: string; text: string }).text.trim()
+  try {
+    return JSON.parse(raw) as { compatible: boolean; note: string }
+  } catch {
+    return { compatible: true, note: raw.slice(0, 120) }
+  }
+}
+
+/**
  * Creates an image_clone row and immediately runs Claude Vision
  * to extract + adapt text. Returns cloneId, shareToken, and the lines.
  */
 export async function startImageClone(
   ad: MetaAdResult,
   brandBrainId: string,
+  angulo?: string,
 ): Promise<{ cloneId: string; shareToken: string; lines: ImageCloneLine[] }> {
   const { supabase, user } = await assertAuth()
 
@@ -333,7 +395,7 @@ export async function startImageClone(
 
   // 5. Run Claude Vision
   try {
-    const lines = await extractAndAdaptWithClaude(srcImageUrl, brain as BrainContext)
+    const lines = await extractAndAdaptWithClaude(srcImageUrl, brain as BrainContext, angulo)
     const originalLines = lines.map((l) => ({ element: l.element, original: l.original, adapted: "" }))
     await supabase
       .from("image_clones")
