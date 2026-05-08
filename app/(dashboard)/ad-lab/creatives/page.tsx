@@ -2,7 +2,8 @@ import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { can } from "@/lib/permissions"
 import { getAllImageClones } from "@/lib/actions/image-clone"
-import { CreativesGrid, type CloneRich } from "@/components/ad-lab/creatives-grid"
+import { getAllAdClones } from "@/lib/actions/ad-clone"
+import { CreativesGrid, type CloneRich, type AdCloneRich } from "@/components/ad-lab/creatives-grid"
 import type { Profile } from "@/lib/types"
 import { ImagePlay } from "lucide-react"
 
@@ -20,7 +21,12 @@ export default async function CreativesPage() {
   const profile = profileData as Pick<Profile, "id" | "full_name" | "email" | "role" | "permissions"> | null
   if (!can(profile, "access_ad_lab")) redirect("/")
 
-  const clones = await getAllImageClones(200) as CloneRich[]
+  const [imageClones, scriptClones] = await Promise.all([
+    getAllImageClones(200) as Promise<CloneRich[]>,
+    getAllAdClones(200)    as Promise<AdCloneRich[]>,
+  ])
+
+  const totalCount = imageClones.length + scriptClones.length
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -33,12 +39,12 @@ export default async function CreativesPage() {
             </div>
             <div>
               <h1 className="text-xl font-bold tracking-tight">Creatives</h1>
-              <p className="text-sm text-muted-foreground">Estáticos clonados y adaptados para tus marcas</p>
+              <p className="text-sm text-muted-foreground">Estáticos y guiones clonados para tus marcas</p>
             </div>
           </div>
-          {clones.length > 0 && (
+          {totalCount > 0 && (
             <span className="text-sm text-muted-foreground tabular-nums">
-              {clones.length} {clones.length === 1 ? "creativo" : "creativos"}
+              {totalCount} {totalCount === 1 ? "creativo" : "creativos"}
             </span>
           )}
         </div>
@@ -46,7 +52,7 @@ export default async function CreativesPage() {
 
       {/* Gallery */}
       <div className="flex-1 overflow-y-auto px-6 py-6">
-        <CreativesGrid clones={clones} />
+        <CreativesGrid clones={imageClones} scriptClones={scriptClones} />
       </div>
     </div>
   )

@@ -322,6 +322,17 @@ export async function getAdClones(savedAdId: string): Promise<AdClone[]> {
   return (data ?? []) as AdClone[]
 }
 
+export async function getAllAdClones(limit = 100): Promise<AdClone[]> {
+  const { supabase } = await assertAuth()
+  const { data } = await supabase
+    .from("ad_clones")
+    .select("*, brand_brain:brand_brains(id, name, logo_url, brand_colors), saved_ad:saved_ads(id, page_name, cached_image_url, image_url)")
+    .eq("status", "ready")
+    .order("created_at", { ascending: false })
+    .limit(limit)
+  return (data ?? []) as AdClone[]
+}
+
 /**
  * Returns a map of savedAdId → ready clone count for a batch of ad IDs.
  */
