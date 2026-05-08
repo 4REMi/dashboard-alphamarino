@@ -303,9 +303,10 @@ Responde ÚNICAMENTE con un JSON válido (sin markdown) con este formato exacto:
 
   const raw = (msg.content[0] as { type: string; text: string }).text.trim()
   try {
-    return JSON.parse(raw) as { compatible: boolean; note: string }
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim()
+    return JSON.parse(cleaned) as { compatible: boolean; note: string }
   } catch {
-    return { compatible: true, note: raw.slice(0, 120) }
+    return { compatible: true, note: raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").slice(0, 120) }
   }
 }
 

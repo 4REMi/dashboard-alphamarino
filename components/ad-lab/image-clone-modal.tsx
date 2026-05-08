@@ -355,46 +355,61 @@ export function ImageCloneModal({ ad, onClose }: Props) {
 
         {/* ── Step 2: Adapted text editor ── */}
         {step === 2 && (
-          <div className="flex-1 overflow-y-auto p-6 space-y-3">
-            <div className="mb-4">
-              <p className="text-sm font-medium">Texto extraído y adaptado</p>
-              <p className="text-xs text-muted-foreground">Edita las adaptaciones antes de generar las imágenes.</p>
+          <div className="flex flex-1 min-h-0 overflow-hidden">
+            {/* Left: ad image (sticky reference) */}
+            <div className="w-52 flex-shrink-0 bg-black flex items-center justify-center p-4">
+              {adImageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={adImageUrl} alt="Ad preview" className="w-full rounded-xl object-contain max-h-80" />
+              ) : (
+                <div className="w-full aspect-square bg-muted rounded-xl flex items-center justify-center">
+                  <ImageIcon className="w-10 h-10 text-muted-foreground/30" />
+                </div>
+              )}
             </div>
 
-            {adaptedLines.map((line, i) => (
-              <div key={i} className="rounded-xl border border-border bg-card overflow-hidden">
-                <div className="flex items-center gap-2 px-4 py-2 bg-muted/50 border-b border-border">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-violet-600">
-                    {line.element}
-                  </span>
-                </div>
-                <div className="grid sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-border">
-                  <div className="px-4 py-3">
-                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Original</p>
-                    <p className="text-sm text-muted-foreground">{line.original}</p>
-                  </div>
-                  <div className="px-4 py-3 bg-violet-50/40">
-                    <p className="text-[10px] font-semibold text-violet-600 uppercase tracking-wider mb-1.5">Adaptación</p>
-                    <textarea
-                      value={line.adapted}
-                      onChange={(e) => {
-                        const next = [...adaptedLines]
-                        next[i] = { ...next[i], adapted: e.target.value }
-                        setAdaptedLines(next)
-                      }}
-                      rows={2}
-                      className="w-full text-sm bg-transparent resize-none outline-none focus:ring-0 font-medium leading-relaxed"
-                    />
-                  </div>
-                </div>
+            {/* Right: adapted lines editor */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-3">
+              <div className="mb-4">
+                <p className="text-sm font-medium">Texto extraído y adaptado</p>
+                <p className="text-xs text-muted-foreground">Edita las adaptaciones antes de generar las imágenes.</p>
               </div>
-            ))}
 
-            {adaptedLines.length === 0 && (
-              <div className="py-16 text-center text-muted-foreground">
-                <p className="text-sm">No se encontró texto en este anuncio.</p>
-              </div>
-            )}
+              {adaptedLines.map((line, i) => (
+                <div key={i} className="rounded-xl border border-border bg-card overflow-hidden">
+                  <div className="flex items-center gap-2 px-4 py-2 bg-muted/50 border-b border-border">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-violet-600">
+                      {line.element}
+                    </span>
+                  </div>
+                  <div className="grid sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-border">
+                    <div className="px-4 py-3">
+                      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Original</p>
+                      <p className="text-sm text-muted-foreground">{line.original}</p>
+                    </div>
+                    <div className="px-4 py-3 bg-violet-50/40">
+                      <p className="text-[10px] font-semibold text-violet-600 uppercase tracking-wider mb-1.5">Adaptación</p>
+                      <textarea
+                        value={line.adapted}
+                        onChange={(e) => {
+                          const next = [...adaptedLines]
+                          next[i] = { ...next[i], adapted: e.target.value }
+                          setAdaptedLines(next)
+                        }}
+                        rows={2}
+                        className="w-full text-sm bg-transparent resize-none outline-none focus:ring-0 font-medium leading-relaxed"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {adaptedLines.length === 0 && (
+                <div className="py-16 text-center text-muted-foreground">
+                  <p className="text-sm">No se encontró texto en este anuncio.</p>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
