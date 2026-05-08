@@ -135,7 +135,17 @@ async function isValidReplicateImageUrl(url: string): Promise<boolean> {
 
 // ── Claude Vision helpers ─────────────────────────────────────
 
-type BrainContext = Pick<BrandBrain, "name" | "industry" | "tone_of_voice" | "usps" | "key_benefits" | "pain_points" | "target_audience" | "ctas" | "brand_colors" | "logo_url" | "logo_square_url" | "logo_horizontal_url">
+type BrainContext = Pick<BrandBrain, "name" | "industry" | "language" | "tone_of_voice" | "usps" | "key_benefits" | "pain_points" | "target_audience" | "ctas" | "brand_colors" | "logo_url" | "logo_square_url" | "logo_horizontal_url">
+
+function langInstruction(lang: string | null | undefined): string {
+  if (!lang) return ""
+  const l = lang.toLowerCase().trim()
+  const isEn = l === "en" || l.includes("engl") || l.includes("inglés") || l.includes("ingles")
+  const isEs = l === "es" || l.includes("span") || l.includes("español") || l.includes("espanol")
+  if (isEn) return "CRITICAL — OUTPUT LANGUAGE: Write ALL adapted text in English. Do NOT use Spanish under any circumstance."
+  if (isEs) return "CRÍTICO — IDIOMA DE SALIDA: Escribe TODA la adaptación en español. No uses inglés bajo ninguna circunstancia."
+  return `CRITICAL — OUTPUT LANGUAGE: Write ALL adapted text in this language: ${lang}.`
+}
 
 async function extractAndAdaptWithClaude(
   imageUrl: string,
@@ -156,8 +166,10 @@ async function extractAndAdaptWithClaude(
     ? `\nÁNGULO DEL CREATIVO:\n"${angulo.trim()}"\nTen en cuenta este ángulo al adaptar el copy: que el mensaje refleje este objetivo sin perder el tono de voz de la marca.\n`
     : ""
 
-  const prompt = `Eres un experto en publicidad digital y copywriting.
+  const langBlock = langInstruction(brain.language)
 
+  const prompt = `Eres un experto en publicidad digital y copywriting.
+${langBlock ? `\n${langBlock}\n` : ""}
 PASO 1 — EXTRAE todos los elementos de texto visibles en este anuncio de imagen. Incluye: headline, subheadline, body copy, CTA, tags, precios, disclaimers, y cualquier texto visible. Omite textos puramente decorativos o ilegibles.
 
 PASO 2 — ADAPTA cada elemento al Brand Brain de la marca destino. Mantén la función comunicativa de cada elemento (un headline sigue siendo headline, un CTA sigue siendo CTA). Adapta el producto, los beneficios, el tono y el lenguaje al nuevo contexto de marca.
@@ -165,6 +177,7 @@ ${anguloBlock}
 MARCA DESTINO:
 - Nombre: ${brain.name}
 - Industria: ${brain.industry ?? "—"}
+- Idioma: ${brain.language ?? "español"}
 - Tono de voz: ${brain.tone_of_voice ?? "—"}
 - USPs: ${usps}
 - Beneficios clave: ${benefits}
@@ -173,7 +186,7 @@ MARCA DESTINO:
 - CTAs: ${ctas}
 
 Devuelve ÚNICAMENTE un array JSON válido (sin markdown, sin texto extra) donde cada elemento tenga este formato exacto:
-{"element": "<tipo de elemento, e.g. Headline>", "original": "<texto exacto del anuncio>", "adapted": "<texto adaptado para la marca>"}`
+{"element": "<tipo de elemento, e.g. Headline>", "original": "<texto exacto del anuncio>", "adapted": "<texto adaptado para la marca — en ${brain.language ?? "español"}>"}`
 
   const imageRes = await fetch(imageUrl, { signal: AbortSignal.timeout(15_000) })
   if (!imageRes.ok) throw new Error("No se pudo descargar la imagen del anuncio")
@@ -383,7 +396,7 @@ export async function startImageClone(
   // 4. Fetch brand brain
   const { data: brain, error: brainErr } = await supabase
     .from("brand_brains")
-    .select("id, name, industry, tone_of_voice, usps, key_benefits, pain_points, target_audience, ctas, brand_colors, logo_url, logo_square_url, logo_horizontal_url")
+    .select("id, name, industry, language, tone_of_voice, usps, key_benefits, pain_points, target_audience, ctas, brand_colors, logo_url, logo_square_url, logo_horizontal_url")
     .eq("id", brandBrainId)
     .single()
   if (brainErr || !brain) {
@@ -493,7 +506,7 @@ export async function generateImages(
 
   const { data: clone, error } = await supabase
     .from("image_clones")
-    .select("*, brand_brain:brand_brains(id, name, industry, tone_of_voice, usps, key_benefits, pain_points, target_audience, ctas, brand_colors, logo_url, logo_square_url, logo_horizontal_url), saved_ad:saved_ads(cached_image_url, image_url)")
+    .select("*, brand_brain:brand_brains(id, name, industry, language, tone_of_voice, usps, key_benefits, pain_points, target_audience, ctas, brand_colors, logo_url, logo_square_url, logo_horizontal_url), saved_ad:saved_ads(cached_image_url, image_url)")
     .eq("id", cloneId)
     .single()
   if (error) throw error

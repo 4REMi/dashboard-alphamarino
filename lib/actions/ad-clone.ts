@@ -49,9 +49,19 @@ async function aaiGet(path: string) {
 
 // ── Claude adaptation ─────────────────────────────────────────
 
+function langInstruction(lang: string | null | undefined): string {
+  if (!lang) return ""
+  const l = lang.toLowerCase().trim()
+  const isEn = l === "en" || l.includes("engl") || l.includes("inglés") || l.includes("ingles")
+  const isEs = l === "es" || l.includes("span") || l.includes("español") || l.includes("espanol")
+  if (isEn) return "CRITICAL — OUTPUT LANGUAGE: Write ALL adapted text in English. Do NOT use Spanish under any circumstance."
+  if (isEs) return "CRÍTICO — IDIOMA DE SALIDA: Escribe TODA la adaptación en español. No uses inglés bajo ninguna circunstancia."
+  return `CRITICAL — OUTPUT LANGUAGE: Write ALL adapted text in this language: ${lang}.`
+}
+
 async function adaptWithClaude(
   rawText: string,
-  brain: Pick<BrandBrain, "name" | "industry" | "tone_of_voice" | "usps" | "key_benefits" | "pain_points" | "target_audience" | "ctas">,
+  brain: Pick<BrandBrain, "name" | "industry" | "language" | "tone_of_voice" | "usps" | "key_benefits" | "pain_points" | "target_audience" | "ctas">,
   angulo?: string,
 ): Promise<AdCloneLine[]> {
   const apiKey = process.env.ANTHROPIC_API_KEY
@@ -68,8 +78,10 @@ async function adaptWithClaude(
     ? `\nÁNGULO DEL CREATIVO:\n"${angulo.trim()}"\nTen en cuenta este ángulo al adaptar el guión: el mensaje debe reflejar este objetivo sin perder el tono de voz de la marca ni el ritmo del video.\n`
     : ""
 
-  const prompt = `Eres un redactor creativo experto en publicidad digital. Tu tarea tiene dos pasos:
+  const langBlock = langInstruction(brain.language)
 
+  const prompt = `Eres un redactor creativo experto en publicidad digital. Tu tarea tiene dos pasos:
+${langBlock ? `\n${langBlock}\n` : ""}
 PASO 1 — DIVIDE el siguiente guión en líneas naturales de longitud similar, como aparecerían en un teleprompter o guión de video. Cada línea debe ser una unidad de sentido completa que se pueda decir de un tirón (entre 10 y 25 palabras aproximadamente). Agrupa frases cortas relacionadas en una misma línea. Separa en líneas distintas los cambios de idea o de gancho.
 
 PASO 2 — ADAPTA cada línea al Brand Brain de la marca destino. Preserva la estructura emocional y el ritmo del original. Mantén cada línea adaptada aproximadamente de la misma extensión que la original para respetar el timing del video. Adapta nombres de producto, beneficios, dolores y tono de voz.
@@ -80,6 +92,7 @@ ${rawText}
 MARCA DESTINO:
 - Nombre: ${brain.name}
 - Industria: ${brain.industry ?? "—"}
+- Idioma: ${brain.language ?? "español"}
 - Tono de voz: ${brain.tone_of_voice ?? "—"}
 - USPs: ${usps}
 - Beneficios clave: ${benefits}
@@ -88,7 +101,7 @@ MARCA DESTINO:
 - CTAs: ${ctas}
 
 Devuelve ÚNICAMENTE un array JSON válido (sin markdown, sin texto extra) donde cada elemento tenga este formato exacto:
-{"speaker": null, "original": "<línea original tal como la dividiste>", "adapted": "<línea adaptada para la marca>"}`
+{"speaker": null, "original": "<línea original tal como la dividiste>", "adapted": "<línea adaptada para la marca — en ${brain.language ?? "español"}>"}`
 
   const msg = await client.messages.create({
     model: "claude-opus-4-7",
@@ -206,7 +219,7 @@ export async function pollClone(cloneId: string, angulo?: string): Promise<AdClo
 
   const { data: clone, error } = await supabase
     .from("ad_clones")
-    .select("*, brand_brain:brand_brains(id, name, industry, tone_of_voice, usps, key_benefits, pain_points, target_audience, ctas)")
+    .select("*, brand_brain:brand_brains(id, name, industry, language, tone_of_voice, usps, key_benefits, pain_points, target_audience, ctas)")
     .eq("id", cloneId)
     .single()
   if (error) throw error
