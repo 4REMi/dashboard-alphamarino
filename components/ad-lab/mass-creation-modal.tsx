@@ -12,7 +12,7 @@ import { useRecentAngulos } from "@/lib/hooks/use-recent-angulos"
 import {
   X, Loader2, Check, ChevronRight, ChevronLeft, AlertCircle,
   ImageIcon, Wand2, ChevronDown, Link2, Download, Compass, CheckCircle2, Layers,
-  Upload, Trash2,
+  Upload, Trash2, Maximize2,
 } from "lucide-react"
 
 // ── Types ─────────────────────────────────────────────────────
@@ -111,6 +111,29 @@ export function MassCreationModal({ ads, onClose }: Props) {
   const pollRef             = useRef<NodeJS.Timeout | null>(null)
   const [isAnalyzing, setIsAnalyzing]   = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [lightboxIdx, setLightboxIdx]   = useState<number | null>(null)
+
+  // Flat list of all generated images for lightbox navigation
+  function getFlatIdx(adId: string, urlIdx: number): number {
+    let idx = 0
+    for (const it of itemsRef.current) {
+      if (it.ad.id === adId) return idx + urlIdx
+      idx += it.generatedUrls.length
+    }
+    return -1
+  }
+
+  useEffect(() => {
+    if (lightboxIdx === null) return
+    function onKey(e: KeyboardEvent) {
+      const total = itemsRef.current.reduce((acc, it) => acc + it.generatedUrls.length, 0)
+      if (e.key === "Escape")      setLightboxIdx(null)
+      if (e.key === "ArrowRight")  setLightboxIdx((i) => i !== null && i < total - 1 ? i + 1 : i)
+      if (e.key === "ArrowLeft")   setLightboxIdx((i) => i !== null && i > 0 ? i - 1 : i)
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [lightboxIdx])
 
   useEffect(() => {
     getBrandBrains().then((all) =>
@@ -299,7 +322,92 @@ export function MassCreationModal({ ads, onClose }: Props) {
   const doneAnalyzing = items.length > 0 && items.every((it) => it.status !== "analyzing" && it.status !== "pending")
   const doneGenerating = items.length > 0 && items.every((it) => it.status !== "generating")
 
+  // Compute flat image list for lightbox (from current items state)
+  const allGenerated = items.flatMap((item) =>
+    item.generatedUrls.map((url, variantIdx) => ({ url, item, variantIdx }))
+  )
+  const lbEntry = lightboxIdx !== null ? allGenerated[lightboxIdx] : null
+
   return (
+    <>
+    {/* Lightbox */}
+    {lbEntry && (
+      <div className="fixed inset-0 z-[60] flex flex-col bg-black/95" onClick={() => setLightboxIdx(null)}>
+        {/* Top bar */}
+        <div className="flex items-center justify-between px-5 py-3 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center gap-3">
+            {(() => {
+              const srcThumb = lbEntry.item.ad.cached_image_url ?? lbEntry.item.ad.image_url
+              return srcThumb
+                ? <img src={srcThumb} alt="" className="w-9 h-9 rounded-lg object-cover opacity-80 border border-white/10" /> // eslint-disable-line @next/next/no-img-element
+                : <div className="w-9 h-9 rounded-lg bg-white/10 flex-shrink-0" />
+            })()}
+            <div>
+              <p className="text-sm font-semibold text-white">{lbEntry.item.ad.page_name ?? "Anuncio"}</p>
+              <p className="text-xs text-white/50">
+                Variante {lbEntry.variantIdx + 1} · {lightboxIdx! + 1} de {allGenerated.length}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <a
+              href={lbEntry.url} download target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-medium transition-colors"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Download className="w-3.5 h-3.5" /> Descargar
+            </a>
+            <button
+              onClick={() => setLightboxIdx(null)}
+              className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
+            >
+              <X className="w-4 h-4 text-white" />
+            </button>
+          </div>
+        </div>
+
+        {/* Image */}
+        <div className="flex-1 flex items-center justify-center p-4 min-h-0" onClick={(e) => e.stopPropagation()}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={lbEntry.url}
+            alt=""
+            className="max-h-full max-w-full object-contain rounded-xl shadow-2xl"
+          />
+        </div>
+
+        {/* Navigation arrows */}
+        {lightboxIdx! > 0 && (
+          <button
+            className="fixed left-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
+            onClick={(e) => { e.stopPropagation(); setLightboxIdx((i) => i !== null ? i - 1 : i) }}
+          >
+            <ChevronLeft className="w-5 h-5 text-white" />
+          </button>
+        )}
+        {lightboxIdx! < allGenerated.length - 1 && (
+          <button
+            className="fixed right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
+            onClick={(e) => { e.stopPropagation(); setLightboxIdx((i) => i !== null ? i + 1 : i) }}
+          >
+            <ChevronRight className="w-5 h-5 text-white" />
+          </button>
+        )}
+
+        {/* Dot nav */}
+        {allGenerated.length > 1 && (
+          <div className="flex items-center justify-center gap-1.5 pb-4 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+            {allGenerated.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => setLightboxIdx(i)}
+                className={`rounded-full transition-all ${i === lightboxIdx ? "w-5 h-1.5 bg-white" : "w-1.5 h-1.5 bg-white/30 hover:bg-white/60"}`}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    )}
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full max-w-3xl bg-background rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
@@ -651,7 +759,9 @@ export function MassCreationModal({ ads, onClose }: Props) {
           <div className="flex-1 overflow-y-auto p-6 space-y-3">
             <div className="flex items-center justify-between mb-1">
               <p className="text-sm font-medium">
-                {type === "estaticos" ? "Generando creativos…" : "Guiones adaptados"}
+                {type === "estaticos"
+                  ? items.every((it) => it.status !== "generating") ? "Creativos generados" : "Generando creativos…"
+                  : "Guiones adaptados"}
               </p>
               {type === "estaticos" && (
                 <span className="text-xs text-muted-foreground tabular-nums">
@@ -677,22 +787,50 @@ export function MassCreationModal({ ads, onClose }: Props) {
                     </span>
                   </div>
 
-                  {/* Generated images */}
+                  {/* Generated images grid */}
                   {type === "estaticos" && item.generatedUrls.length > 0 && (
-                    <div className="border-t border-border px-4 pb-3 pt-2 flex gap-2 flex-wrap">
-                      {item.generatedUrls.map((url, i) => (
-                        <div key={i} className="relative group">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={url} alt="" className="h-20 rounded-lg object-cover border border-border" />
-                          <a
-                            href={url} download target="_blank" rel="noopener noreferrer"
-                            className="absolute inset-0 bg-black/0 group-hover:bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 rounded-lg transition-all"
-                            onClick={(e) => e.stopPropagation()}
+                    <div className={`border-t border-border px-4 pb-4 pt-3 grid gap-3 ${item.generatedUrls.length > 1 ? "grid-cols-2" : "grid-cols-1 max-w-[200px]"}`}>
+                      {item.generatedUrls.map((url, i) => {
+                        const flatIdx = getFlatIdx(item.ad.id, i)
+                        return (
+                          <div
+                            key={i}
+                            className="relative group rounded-xl overflow-hidden border border-border bg-muted cursor-pointer aspect-[4/5]"
+                            onClick={() => setLightboxIdx(flatIdx)}
                           >
-                            <Download className="w-4 h-4 text-white" />
-                          </a>
-                        </div>
-                      ))}
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={url} alt="" className="w-full h-full object-cover" />
+                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors" />
+                            <div className="absolute inset-0 flex items-center justify-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setLightboxIdx(flatIdx) }}
+                                className="w-9 h-9 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center hover:bg-white/20 transition-colors"
+                              >
+                                <Maximize2 className="w-4 h-4 text-white" />
+                              </button>
+                              <a
+                                href={url} download target="_blank" rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="w-9 h-9 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center hover:bg-white/20 transition-colors"
+                              >
+                                <Download className="w-4 h-4 text-white" />
+                              </a>
+                            </div>
+                            <div className="absolute bottom-2 left-2">
+                              <span className="text-[10px] font-semibold text-white/80 bg-black/40 backdrop-blur-sm px-1.5 py-0.5 rounded-md">
+                                Variante {i + 1}
+                              </span>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  {/* Generating spinner */}
+                  {type === "estaticos" && item.status === "generating" && (
+                    <div className="border-t border-border px-4 py-4 flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="w-4 h-4 animate-spin" /> Generando…
                     </div>
                   )}
 
@@ -789,5 +927,6 @@ export function MassCreationModal({ ads, onClose }: Props) {
         </div>
       </div>
     </div>
+    </>
   )
 }
