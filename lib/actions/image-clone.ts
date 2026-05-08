@@ -536,7 +536,7 @@ export async function generateImages(
 
   const prompt = buildGenerationPrompt(
     config.adaptedLines,
-    brain ?? { name: "Marca", industry: null, tone_of_voice: null, usps: [], key_benefits: [], pain_points: [], target_audience: null, ctas: [], brand_colors: [], logo_url: null, logo_square_url: null, logo_horizontal_url: null },
+    brain ?? { name: "Marca", industry: null, language: null, tone_of_voice: null, usps: [], key_benefits: [], pain_points: [], target_audience: null, ctas: [], brand_colors: [], logo_url: null, logo_square_url: null, logo_horizontal_url: null },
     config.brandColor,
     config.additionalContext,
   )
