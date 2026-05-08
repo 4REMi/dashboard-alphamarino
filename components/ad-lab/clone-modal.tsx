@@ -3,10 +3,11 @@
 import { useEffect, useRef, useState, useTransition } from "react"
 import type { AdCloneLine, AdCloneStatus, BrandBrain, MetaAdResult } from "@/lib/types"
 import { startClone, pollClone, updateAdaptedLines } from "@/lib/actions/ad-clone"
+import { checkAnguloCompatibility } from "@/lib/actions/image-clone"
 import { getBrandBrains } from "@/lib/actions/brand-brains"
 import {
   X, Wand2, Loader2, Check, Copy, ChevronRight,
-  ChevronLeft, AlertCircle, Play, Link as LinkIcon,
+  ChevronLeft, AlertCircle, Play, Link as LinkIcon, Compass, CheckCircle2,
 } from "lucide-react"
 
 interface Props {
@@ -36,6 +37,12 @@ export function CloneModal({ ad, onClose }: Props) {
   const [copied, setCopied]                 = useState(false)
   const [isPending, startTransition]        = useTransition()
   const [isSaving, setIsSaving]             = useState(false)
+
+  // Ángulo
+  const [angulo, setAngulo]                         = useState("")
+  const [anguloAdvisory, setAnguloAdvisory]         = useState<{ compatible: boolean; note: string } | null>(null)
+  const [isCheckingAdvisory, setIsCheckingAdvisory] = useState(false)
+
   const videoRef = useRef<HTMLVideoElement>(null)
 
   const card     = ad.snapshot?.cards?.[0]
@@ -49,14 +56,29 @@ export function CloneModal({ ad, onClose }: Props) {
     )
   }, [])
 
+  async function handleCheckAdvisory() {
+    if (!selectedBrainId || !angulo.trim()) return
+    setIsCheckingAdvisory(true)
+    setAnguloAdvisory(null)
+    try {
+      const result = await checkAnguloCompatibility(selectedBrainId, angulo)
+      setAnguloAdvisory(result)
+    } catch {
+      setAnguloAdvisory({ compatible: true, note: "No se pudo evaluar la compatibilidad." })
+    } finally {
+      setIsCheckingAdvisory(false)
+    }
+  }
+
   // Poll while transcribing/adapting
   useEffect(() => {
     if (!cloneId) return
     if (cloneStatus === "ready" || cloneStatus === "error") return
 
+    const anguloSnap = angulo.trim() || undefined
     const interval = setInterval(async () => {
       try {
-        const result = await pollClone(cloneId)
+        const result = await pollClone(cloneId, anguloSnap)
         setCloneStatus(result.status)
         if (result.status === "ready") {
           setAdaptedLines(result.adapted_lines ?? [])
@@ -70,7 +92,7 @@ export function CloneModal({ ad, onClose }: Props) {
     }, 3000)
 
     return () => clearInterval(interval)
-  }, [cloneId, cloneStatus])
+  }, [cloneId, cloneStatus, angulo])
 
   // Transition from step 2 loading → editing once ready
   useEffect(() => {
@@ -210,6 +232,51 @@ export function CloneModal({ ad, onClose }: Props) {
                         )}
                       </button>
                     ))}
+                  </div>
+                )}
+              </div>
+
+              {/* ── Ángulo section ── */}
+              <div className="pt-1 border-t border-border">
+                <div className="flex items-center gap-2 mb-1">
+                  <Compass className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                  <p className="text-sm font-medium">Ángulo <span className="text-xs font-normal text-muted-foreground">(opcional)</span></p>
+                </div>
+                <p className="text-xs text-muted-foreground mb-2 leading-relaxed">
+                  ¿Qué se quiere lograr con este guión? Describe el objetivo, la persona a quien va dirigido, o el insight que lo soporta. Claude incorporará este ángulo al adaptar el copy.
+                </p>
+                <textarea
+                  value={angulo}
+                  onChange={(e) => { setAngulo(e.target.value); setAnguloAdvisory(null) }}
+                  rows={3}
+                  placeholder="Ej: Dirigido a dueños de negocio escépticos que ya probaron otras soluciones. El ángulo es la frustración convertida en certeza con prueba social."
+                  className="w-full text-sm px-3 py-2.5 rounded-xl border border-border bg-background resize-none outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 placeholder:text-muted-foreground/50 transition-all"
+                />
+
+                {angulo.trim() && selectedBrainId && (
+                  <div className="mt-2 flex items-start gap-2">
+                    <button
+                      type="button"
+                      onClick={handleCheckAdvisory}
+                      disabled={isCheckingAdvisory}
+                      className="inline-flex items-center gap-1.5 h-7 px-3 rounded-lg border border-primary/30 text-xs font-medium text-primary hover:bg-primary/5 disabled:opacity-50 transition-colors flex-shrink-0"
+                    >
+                      {isCheckingAdvisory
+                        ? <><Loader2 className="w-3 h-3 animate-spin" /> Revisando…</>
+                        : <><Compass className="w-3 h-3" /> Revisar compatibilidad</>
+                      }
+                    </button>
+
+                    {anguloAdvisory && (
+                      <div className={`flex items-start gap-1.5 text-xs px-2.5 py-1.5 rounded-lg flex-1 ${
+                        anguloAdvisory.compatible
+                          ? "bg-emerald-50 text-emerald-700"
+                          : "bg-amber-50 text-amber-700"
+                      }`}>
+                        <CheckCircle2 className={`w-3.5 h-3.5 flex-shrink-0 mt-0.5 ${anguloAdvisory.compatible ? "text-emerald-500" : "text-amber-500"}`} />
+                        <span>{anguloAdvisory.note}</span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

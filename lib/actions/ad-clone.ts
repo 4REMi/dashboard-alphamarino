@@ -51,7 +51,8 @@ async function aaiGet(path: string) {
 
 async function adaptWithClaude(
   rawText: string,
-  brain: Pick<BrandBrain, "name" | "industry" | "tone_of_voice" | "usps" | "key_benefits" | "pain_points" | "target_audience" | "ctas">
+  brain: Pick<BrandBrain, "name" | "industry" | "tone_of_voice" | "usps" | "key_benefits" | "pain_points" | "target_audience" | "ctas">,
+  angulo?: string,
 ): Promise<AdCloneLine[]> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY no configurado")
@@ -63,12 +64,16 @@ async function adaptWithClaude(
   const pains   = (brain.pain_points   ?? []).join(", ") || "—"
   const ctas    = (brain.ctas          ?? []).join(", ") || "—"
 
+  const anguloBlock = angulo?.trim()
+    ? `\nÁNGULO DEL CREATIVO:\n"${angulo.trim()}"\nTen en cuenta este ángulo al adaptar el guión: el mensaje debe reflejar este objetivo sin perder el tono de voz de la marca ni el ritmo del video.\n`
+    : ""
+
   const prompt = `Eres un redactor creativo experto en publicidad digital. Tu tarea tiene dos pasos:
 
 PASO 1 — DIVIDE el siguiente guión en líneas naturales de longitud similar, como aparecerían en un teleprompter o guión de video. Cada línea debe ser una unidad de sentido completa que se pueda decir de un tirón (entre 10 y 25 palabras aproximadamente). Agrupa frases cortas relacionadas en una misma línea. Separa en líneas distintas los cambios de idea o de gancho.
 
 PASO 2 — ADAPTA cada línea al Brand Brain de la marca destino. Preserva la estructura emocional y el ritmo del original. Mantén cada línea adaptada aproximadamente de la misma extensión que la original para respetar el timing del video. Adapta nombres de producto, beneficios, dolores y tono de voz.
-
+${anguloBlock}
 GUIÓN ORIGINAL (texto continuo):
 ${rawText}
 
@@ -196,7 +201,7 @@ export async function startClone(
  * If completed, runs Claude adaptation and stores results.
  * Returns the updated clone record.
  */
-export async function pollClone(cloneId: string): Promise<AdClone> {
+export async function pollClone(cloneId: string, angulo?: string): Promise<AdClone> {
   const { supabase } = await assertAuth()
 
   const { data: clone, error } = await supabase
@@ -258,7 +263,7 @@ export async function pollClone(cloneId: string): Promise<AdClone> {
   }
 
   try {
-    const adaptedLines = await adaptWithClaude(rawText, brain)
+    const adaptedLines = await adaptWithClaude(rawText, brain, angulo)
     // original_lines mirrors the split Claude produced (for display in the table)
     const originalLines = adaptedLines.map((l) => ({ speaker: l.speaker, original: l.original, adapted: "" }))
     await supabase
