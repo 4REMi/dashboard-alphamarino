@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import {
-  ChevronLeft, ChevronRight, Download, Link2, ArrowRight, X, Maximize2,
+  ChevronLeft, ChevronRight, Download, Link2, ArrowRight, X, Maximize2, Copy,
 } from "lucide-react"
 import type { ImageClone, AdClone, BrandBrainColor } from "@/lib/types"
 
@@ -227,7 +227,8 @@ function CreativeCard({
 // ── Script clone card ─────────────────────────────────────────
 
 function ScriptCard({ clone }: { clone: AdCloneRich }) {
-  const [copied, setCopied] = useState(false)
+  const [copiedShare,  setCopiedShare]  = useState(false)
+  const [copiedScript, setCopiedScript] = useState(false)
   const brain        = clone.brand_brain
   const ad           = clone.saved_ad
   const primaryColor = brain?.brand_colors?.[0]?.hex
@@ -239,8 +240,16 @@ function ScriptCard({ clone }: { clone: AdCloneRich }) {
     e.stopPropagation()
     const url = `${window.location.origin}/share/clone/${clone.share_token}`
     await navigator.clipboard.writeText(url).catch(() => {})
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1500)
+    setCopiedShare(true)
+    setTimeout(() => setCopiedShare(false), 1500)
+  }
+
+  async function copyScript(e: React.MouseEvent) {
+    e.stopPropagation()
+    const text = lines.map((l, i) => `${i + 1}. ${l.adapted}`).join("\n")
+    await navigator.clipboard.writeText(text).catch(() => {})
+    setCopiedScript(true)
+    setTimeout(() => setCopiedScript(false), 1500)
   }
 
   return (
@@ -269,16 +278,29 @@ function ScriptCard({ clone }: { clone: AdCloneRich }) {
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-t border-border bg-muted/30">
+      <div className="flex items-center gap-1.5 px-4 py-2.5 border-t border-border bg-muted/30">
         <span className="text-[11px] text-muted-foreground truncate flex-1 min-w-0">
           {ad?.page_name ?? "Anuncio"}
         </span>
         <button
-          onClick={copyShare}
-          className="inline-flex items-center gap-1 h-6 px-2.5 rounded-lg text-[11px] font-medium border border-border hover:bg-muted transition-colors flex-shrink-0 ml-2"
+          onClick={copyScript}
+          className="inline-flex items-center gap-1 h-6 px-2.5 rounded-lg text-[11px] font-medium border border-border hover:bg-muted transition-colors flex-shrink-0"
         >
-          {copied ? <span className="text-emerald-500">✓</span> : <Link2 className="w-3 h-3" />}
-          {copied ? "Copiado" : "Compartir"}
+          {copiedScript
+            ? <span className="text-emerald-500">✓</span>
+            : <Copy className="w-3 h-3" />
+          }
+          {copiedScript ? "Copiado" : "Copiar guión"}
+        </button>
+        <button
+          onClick={copyShare}
+          className="inline-flex items-center gap-1 h-6 px-2.5 rounded-lg text-[11px] font-medium border border-border hover:bg-muted transition-colors flex-shrink-0"
+        >
+          {copiedShare
+            ? <span className="text-emerald-500">✓</span>
+            : <Link2 className="w-3 h-3" />
+          }
+          {copiedShare ? "Copiado" : "Compartir"}
         </button>
       </div>
     </div>
