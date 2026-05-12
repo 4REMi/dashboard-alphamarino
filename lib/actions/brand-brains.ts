@@ -166,13 +166,26 @@ export async function updateBrandBrain(id: string, formData: FormData): Promise<
 
   if (error) throw error
 
-  const logoUpdates: Record<string, string> = {}
+  const logoUpdates: Record<string, string | null> = {}
+
+  // Clear flags — user explicitly removed a logo
+  const clearMap: Record<string, string> = {
+    logo_cleared:            "logo_url",
+    logo_square_cleared:     "logo_square_url",
+    logo_horizontal_cleared: "logo_horizontal_url",
+  }
+  for (const [key, col] of Object.entries(clearMap)) {
+    if (formData.get(key) === "true") logoUpdates[col] = null
+  }
+
+  // New uploads — override clear if a new file was also provided
   for (const { field, filename, col } of LOGO_FIELDS) {
     const file = formData.get(field) as File | null
     if (!file || file.size === 0) continue
     const url = await uploadLogo(supabase, id, file, filename)
     if (url) logoUpdates[col] = url
   }
+
   if (Object.keys(logoUpdates).length > 0) {
     await supabase.from("brand_brains").update(logoUpdates).eq("id", id)
   }

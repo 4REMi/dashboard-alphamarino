@@ -139,6 +139,7 @@ function LogoSlot({
   aspect,
   fileRef,
   onFile,
+  onClear,
 }: {
   label: string
   hint: string
@@ -146,6 +147,7 @@ function LogoSlot({
   aspect: "square" | "wide"
   fileRef: React.RefObject<HTMLInputElement | null>
   onFile: (url: string) => void
+  onClear: () => void
 }) {
   const previewClass = aspect === "square"
     ? "w-16 h-16 rounded-xl"
@@ -155,12 +157,22 @@ function LogoSlot({
     <div>
       <p className="text-xs font-medium text-muted-foreground mb-2">{label}</p>
       <div className="flex items-center gap-3">
-        <div className={`${previewClass} border-2 border-dashed border-border bg-muted flex items-center justify-center overflow-hidden flex-shrink-0`}>
+        <div className={`${previewClass} border-2 border-dashed border-border bg-muted flex items-center justify-center overflow-hidden flex-shrink-0 relative group`}>
           {preview
             // eslint-disable-next-line @next/next/no-img-element
             ? <img src={preview} alt="" className="w-full h-full object-contain" />
             : <ImageIcon className="w-4 h-4 text-muted-foreground" />
           }
+          {preview && (
+            <button
+              type="button"
+              onClick={onClear}
+              className="absolute inset-0 bg-black/0 group-hover:bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all rounded-xl"
+              title="Quitar logo"
+            >
+              <X className="w-4 h-4 text-white" />
+            </button>
+          )}
         </div>
         <div>
           <button
@@ -169,7 +181,7 @@ function LogoSlot({
             className="h-8 px-3 text-xs rounded-lg border border-border hover:bg-muted transition-colors flex items-center gap-1.5"
           >
             <Upload className="w-3 h-3" />
-            Subir
+            {preview ? "Cambiar" : "Subir"}
           </button>
           <p className="text-[11px] text-muted-foreground mt-1">{hint}</p>
           <input
@@ -197,13 +209,26 @@ export function BrandBrainModal({ brain, initialValues, onClose, onSaved }: Prop
   // `seed` is used only for initial state — `brain` for editing, `initialValues` for imported drafts
   const seed = brain ?? initialValues
 
-  // Logo refs / previews
+  // Logo refs / previews / cleared flags
   const iconFileRef       = useRef<HTMLInputElement>(null)
   const squareFileRef     = useRef<HTMLInputElement>(null)
   const horizontalFileRef = useRef<HTMLInputElement>(null)
   const [iconPreview,       setIconPreview]       = useState<string | null>(seed?.logo_url ?? null)
   const [squarePreview,     setSquarePreview]     = useState<string | null>(seed?.logo_square_url ?? null)
   const [horizontalPreview, setHorizontalPreview] = useState<string | null>(seed?.logo_horizontal_url ?? null)
+  const [iconCleared,       setIconCleared]       = useState(false)
+  const [squareCleared,     setSquareCleared]     = useState(false)
+  const [horizontalCleared, setHorizontalCleared] = useState(false)
+
+  function clearLogo(
+    setPreview: (v: string | null) => void,
+    setCleared: (v: boolean) => void,
+    fileRef: React.RefObject<HTMLInputElement | null>,
+  ) {
+    setPreview(null)
+    setCleared(true)
+    if (fileRef.current) fileRef.current.value = ""
+  }
 
   // Form state
   const [name, setName]               = useState(seed?.name ?? "")
@@ -260,16 +285,22 @@ export function BrandBrainModal({ brain, initialValues, onClose, onSaved }: Prop
       fd.set("additional_context", additionalContext)
       if (iconFileRef.current?.files?.[0]) {
         fd.set("logo", iconFileRef.current.files[0])
+      } else if (iconCleared) {
+        fd.set("logo_cleared", "true")
       } else if (!brain?.id && iconPreview?.startsWith("http")) {
         fd.set("logo_url_remote", iconPreview)
       }
       if (squareFileRef.current?.files?.[0]) {
         fd.set("logo_square", squareFileRef.current.files[0])
+      } else if (squareCleared) {
+        fd.set("logo_square_cleared", "true")
       } else if (!brain?.id && squarePreview?.startsWith("http")) {
         fd.set("logo_square_url_remote", squarePreview)
       }
       if (horizontalFileRef.current?.files?.[0]) {
         fd.set("logo_horizontal", horizontalFileRef.current.files[0])
+      } else if (horizontalCleared) {
+        fd.set("logo_horizontal_cleared", "true")
       } else if (!brain?.id && horizontalPreview?.startsWith("http")) {
         fd.set("logo_horizontal_url_remote", horizontalPreview)
       }
@@ -283,9 +314,9 @@ export function BrandBrainModal({ brain, initialValues, onClose, onSaved }: Prop
             target_audience: clean(targetAudienceList).join("\n") || null,
             key_features: clean(keyFeatures), ctas: clean(ctas),
             tone_of_voice: toneOfVoice, additional_context: additionalContext,
-            logo_url:            iconFileRef.current?.files?.[0]       ? iconPreview       : brain.logo_url,
-            logo_square_url:     squareFileRef.current?.files?.[0]     ? squarePreview     : brain.logo_square_url,
-            logo_horizontal_url: horizontalFileRef.current?.files?.[0] ? horizontalPreview : brain.logo_horizontal_url,
+            logo_url:            iconCleared       ? null : iconFileRef.current?.files?.[0]       ? iconPreview       : brain.logo_url,
+            logo_square_url:     squareCleared     ? null : squareFileRef.current?.files?.[0]     ? squarePreview     : brain.logo_square_url,
+            logo_horizontal_url: horizontalCleared ? null : horizontalFileRef.current?.files?.[0] ? horizontalPreview : brain.logo_horizontal_url,
           }))
         : await createBrandBrain(fd)
 
@@ -342,12 +373,22 @@ export function BrandBrainModal({ brain, initialValues, onClose, onSaved }: Prop
                   </p>
                   <p className="text-[11px] text-muted-foreground mb-2">Avatar cuadrado pequeño que aparece en la tarjeta del grid.</p>
                   <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 rounded-xl border-2 border-dashed border-border bg-muted flex items-center justify-center overflow-hidden flex-shrink-0">
+                    <div className="w-14 h-14 rounded-xl border-2 border-dashed border-border bg-muted flex items-center justify-center overflow-hidden flex-shrink-0 relative group">
                       {iconPreview
                         // eslint-disable-next-line @next/next/no-img-element
                         ? <img src={iconPreview} alt="" className="w-full h-full object-cover" />
                         : <Upload className="w-4 h-4 text-muted-foreground" />
                       }
+                      {iconPreview && (
+                        <button
+                          type="button"
+                          onClick={() => clearLogo(setIconPreview, setIconCleared, iconFileRef)}
+                          className="absolute inset-0 bg-black/0 group-hover:bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all rounded-xl"
+                          title="Quitar ícono"
+                        >
+                          <X className="w-4 h-4 text-white" />
+                        </button>
+                      )}
                     </div>
                     <div>
                       <button
@@ -355,7 +396,7 @@ export function BrandBrainModal({ brain, initialValues, onClose, onSaved }: Prop
                         onClick={() => iconFileRef.current?.click()}
                         className="h-8 px-3 text-xs rounded-lg border border-border hover:bg-muted transition-colors"
                       >
-                        Subir imagen
+                        {iconPreview ? "Cambiar" : "Subir imagen"}
                       </button>
                       <p className="text-[11px] text-muted-foreground mt-1">Cuadrada, mínimo 200×200 px</p>
                       <input
@@ -363,7 +404,7 @@ export function BrandBrainModal({ brain, initialValues, onClose, onSaved }: Prop
                         type="file"
                         accept="image/*"
                         className="hidden"
-                        onChange={(e) => { const f = e.target.files?.[0]; if (f) setIconPreview(URL.createObjectURL(f)) }}
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) { setIconPreview(URL.createObjectURL(f)); setIconCleared(false) } }}
                       />
                     </div>
                   </div>
@@ -445,7 +486,8 @@ export function BrandBrainModal({ brain, initialValues, onClose, onSaved }: Prop
                       preview={squarePreview}
                       aspect="square"
                       fileRef={squareFileRef}
-                      onFile={setSquarePreview}
+                      onFile={(url) => { setSquarePreview(url); setSquareCleared(false) }}
+                      onClear={() => clearLogo(setSquarePreview, setSquareCleared, squareFileRef)}
                     />
                     <LogoSlot
                       label="Logo horizontal"
@@ -453,7 +495,8 @@ export function BrandBrainModal({ brain, initialValues, onClose, onSaved }: Prop
                       preview={horizontalPreview}
                       aspect="wide"
                       fileRef={horizontalFileRef}
-                      onFile={setHorizontalPreview}
+                      onFile={(url) => { setHorizontalPreview(url); setHorizontalCleared(false) }}
+                      onClear={() => clearLogo(setHorizontalPreview, setHorizontalCleared, horizontalFileRef)}
                     />
                   </div>
                 </div>
