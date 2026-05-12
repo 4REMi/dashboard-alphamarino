@@ -59,17 +59,17 @@ export function ImageCloneModal({ ad, onClose }: Props) {
   // Generation result
   const [isGenerating, setIsGenerating]         = useState(false)
   const [generatedUrls, setGeneratedUrls]       = useState<string[]>([])
-  const [lastPrompt, setLastPrompt]             = useState<string | null>(null)
-  const [showPrompt, setShowPrompt]             = useState(false)
   const [copied, setCopied]                     = useState(false)
+  const [showAllColors, setShowAllColors]       = useState(false)
 
   const [isPending, startTransition]            = useTransition()
   const [isSaving, setIsSaving]                 = useState(false)
   const fileInputRef                            = useRef<HTMLInputElement>(null)
   const pollingRef                              = useRef<NodeJS.Timeout | null>(null)
 
-  const card     = ad.snapshot?.cards?.[0]
+  const card       = ad.snapshot?.cards?.[0]
   const adImageUrl = card?.resized_image_url ?? card?.original_image_url ?? null
+  const brainColors = (brains.find((b) => b.id === selectedBrainId)?.brand_colors ?? [])
 
   useEffect(() => {
     getBrandBrains().then((all) =>
@@ -159,14 +159,13 @@ export function ImageCloneModal({ ad, onClose }: Props) {
         await uploadReferenceImages(cloneId, fd)
       }
 
-      const { prompt } = await generateImages(cloneId, {
+      await generateImages(cloneId, {
         adaptedLines,
         brandColor:        useBrandColor ? brandColor : null,
         aspectRatio,
         numImages,
         additionalContext: additionalContext.trim(),
       })
-      setLastPrompt(prompt)
 
       pollingRef.current = setInterval(async () => {
         if (!cloneId) return
@@ -533,21 +532,61 @@ export function ImageCloneModal({ ad, onClose }: Props) {
                 </label>
 
                 {useBrandColor && (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={brandColor}
-                      onChange={(e) => setBrandColor(e.target.value)}
-                      className="w-9 h-9 rounded-lg border border-border cursor-pointer p-0.5 flex-shrink-0"
-                    />
-                    <input
-                      type="text"
-                      value={brandColor}
-                      onChange={(e) => setBrandColor(e.target.value)}
-                      className="w-28 h-9 px-3 rounded-lg border border-border text-sm font-mono bg-background"
-                      placeholder="#000000"
-                      maxLength={7}
-                    />
+                  <div className="space-y-2.5">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={brandColor}
+                        onChange={(e) => setBrandColor(e.target.value)}
+                        className="w-9 h-9 rounded-lg border border-border cursor-pointer p-0.5 flex-shrink-0"
+                      />
+                      <input
+                        type="text"
+                        value={brandColor}
+                        onChange={(e) => setBrandColor(e.target.value)}
+                        className="w-28 h-9 px-3 rounded-lg border border-border text-sm font-mono bg-background"
+                        placeholder="#000000"
+                        maxLength={7}
+                      />
+                    </div>
+
+                    {brainColors.length > 1 && (
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => setShowAllColors((v) => !v)}
+                          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          <ChevronRight className={`w-3 h-3 transition-transform ${showAllColors ? "rotate-90" : ""}`} />
+                          {showAllColors ? "Ocultar paleta" : `Ver todos los colores (${brainColors.length})`}
+                        </button>
+
+                        {showAllColors && (
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {brainColors.map((c) => (
+                              <button
+                                key={c.hex}
+                                type="button"
+                                onClick={() => setBrandColor(c.hex)}
+                                title={c.label ?? c.hex}
+                                className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-xs transition-all ${
+                                  brandColor.toLowerCase() === c.hex.toLowerCase()
+                                    ? "border-violet-500 bg-violet-50 ring-1 ring-violet-400"
+                                    : "border-border hover:border-violet-300 hover:bg-muted/50"
+                                }`}
+                              >
+                                <span
+                                  className="w-3.5 h-3.5 rounded-full border border-black/10 flex-shrink-0"
+                                  style={{ background: c.hex }}
+                                />
+                                <span className="font-mono">{c.hex}</span>
+                                {c.label && <span className="text-muted-foreground">· {c.label}</span>}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -665,24 +704,6 @@ export function ImageCloneModal({ ad, onClose }: Props) {
               </div>
             )}
 
-            {lastPrompt && (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 overflow-hidden">
-                <button
-                  onClick={() => setShowPrompt((v) => !v)}
-                  className="w-full flex items-center justify-between px-4 py-2.5 text-left"
-                >
-                  <span className="text-xs font-semibold text-amber-700 uppercase tracking-wider">
-                    🐛 Debug — Prompt enviado
-                  </span>
-                  <span className="text-xs text-amber-600">{showPrompt ? "Ocultar" : "Ver"}</span>
-                </button>
-                {showPrompt && (
-                  <pre className="px-4 pb-4 text-[11px] text-amber-900 whitespace-pre-wrap break-words font-mono leading-relaxed border-t border-amber-200 pt-3">
-                    {lastPrompt}
-                  </pre>
-                )}
-              </div>
-            )}
           </div>
         )}
 
