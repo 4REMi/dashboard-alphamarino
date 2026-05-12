@@ -132,6 +132,8 @@ function TagListInput({
 
 // ── Logo upload slot ──────────────────────────────────────────
 
+const ACCEPTED_LOGO_TYPES = "image/png,image/jpeg,image/webp,image/gif"
+
 function LogoSlot({
   label,
   hint,
@@ -149,6 +151,7 @@ function LogoSlot({
   onFile: (url: string) => void
   onClear: () => void
 }) {
+  const [svgWarning, setSvgWarning] = useState(false)
   const previewClass = aspect === "square"
     ? "w-16 h-16 rounded-xl"
     : "w-28 h-14 rounded-xl"
@@ -183,15 +186,24 @@ function LogoSlot({
             <Upload className="w-3 h-3" />
             {preview ? "Cambiar" : "Subir"}
           </button>
-          <p className="text-[11px] text-muted-foreground mt-1">{hint}</p>
+          <p className="text-[11px] text-muted-foreground mt-1">{hint} · PNG, JPG o WEBP</p>
+          {svgWarning && (
+            <p className="text-[11px] text-destructive mt-1 font-medium">
+              SVG no compatible. Sube el logo en PNG o JPG.
+            </p>
+          )}
           <input
             ref={fileRef}
             type="file"
-            accept="image/*"
+            accept={ACCEPTED_LOGO_TYPES}
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0]
-              if (f) onFile(URL.createObjectURL(f))
+              if (!f) return
+              const isSvg = f.type === "image/svg+xml" || /\.svg$/i.test(f.name)
+              if (isSvg) { setSvgWarning(true); if (fileRef.current) fileRef.current.value = ""; return }
+              setSvgWarning(false)
+              onFile(URL.createObjectURL(f))
             }}
           />
         </div>
@@ -402,9 +414,17 @@ export function BrandBrainModal({ brain, initialValues, onClose, onSaved }: Prop
                       <input
                         ref={iconFileRef}
                         type="file"
-                        accept="image/*"
+                        accept={ACCEPTED_LOGO_TYPES}
                         className="hidden"
-                        onChange={(e) => { const f = e.target.files?.[0]; if (f) { setIconPreview(URL.createObjectURL(f)); setIconCleared(false) } }}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0]
+                          if (!f) return
+                          if (f.type === "image/svg+xml" || /\.svg$/i.test(f.name)) {
+                            if (iconFileRef.current) iconFileRef.current.value = ""
+                            return
+                          }
+                          setIconPreview(URL.createObjectURL(f)); setIconCleared(false)
+                        }}
                       />
                     </div>
                   </div>
@@ -479,6 +499,14 @@ export function BrandBrainModal({ brain, initialValues, onClose, onSaved }: Prop
                     Logos de marca <span className="normal-case font-normal">(opcional)</span>
                   </p>
                   <p className="text-[11px] text-muted-foreground mb-3">Para usar en creativos y generación de anuncios.</p>
+                  {([brain?.logo_square_url, brain?.logo_horizontal_url, brain?.logo_url].some((u) => u && /\.svg(\?|$)/i.test(u))) && (
+                    <div className="flex items-start gap-2 mb-3 px-3 py-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800">
+                      <span className="text-sm flex-shrink-0">⚠️</span>
+                      <p className="text-[11px] leading-relaxed">
+                        Uno o más logos están guardados como <strong>SVG</strong>, que no es compatible con la generación de imágenes. Por favor <strong>reemplázalos con PNG o JPG</strong> para que aparezcan en los creativos.
+                      </p>
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-5">
                     <LogoSlot
                       label="Logo cuadrado"

@@ -60,13 +60,17 @@ async function mirrorUrlToStorage(
   }
 }
 
-// Upload a single logo file to Storage and return its public URL
+// Upload a single logo file to Storage and return its public URL.
+// SVGs are rejected — they are not supported by Replicate's image pipeline.
 async function uploadLogo(
   supabase: Awaited<ReturnType<typeof createClient>>,
   brainId: string,
   file: File,
   filename: string,
 ): Promise<string | null> {
+  const isSvg = file.type === "image/svg+xml" || /\.svg$/i.test(file.name)
+  if (isSvg) throw new Error("SVG no soportado. Por favor sube el logo en formato PNG o JPG.")
+
   const ext  = file.name.split(".").pop()
   const path = `${brainId}/${filename}.${ext}`
   const { error } = await supabase.storage.from("brand-brains").upload(path, file, { upsert: true })
