@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import type { BrandBrain, BrandBrainAsset } from "@/lib/types"
 
 async function assertAuth() {
@@ -39,7 +40,6 @@ export async function getBrandBrain(id: string): Promise<BrandBrain | null> {
 
 // Download a remote URL and upload it to Storage, return public URL or null
 async function mirrorUrlToStorage(
-  supabase: Awaited<ReturnType<typeof createClient>>,
   brainId: string,
   sourceUrl: string,
   filename: string,
@@ -51,11 +51,13 @@ async function mirrorUrlToStorage(
     const contentType = res.headers.get("content-type") ?? "image/jpeg"
     const ext         = (contentType.split("/")[1]?.split(";")[0] ?? "jpg").slice(0, 4)
     const path        = `${brainId}/${filename}.${ext}`
-    const { error }   = await supabase.storage.from("brand-brains").upload(path, buffer, { contentType, upsert: true })
-    if (error) return null
-    const { data: { publicUrl } } = supabase.storage.from("brand-brains").getPublicUrl(path)
+    const admin       = createAdminClient()
+    const { error }   = await admin.storage.from("brand-brains").upload(path, buffer, { contentType, upsert: true })
+    if (error) { console.error("[brand-brains] mirrorUrlToStorage error:", error.message); return null }
+    const { data: { publicUrl } } = admin.storage.from("brand-brains").getPublicUrl(path)
     return publicUrl
-  } catch {
+  } catch (e) {
+    console.error("[brand-brains] mirrorUrlToStorage exception:", e)
     return null
   }
 }
@@ -63,7 +65,6 @@ async function mirrorUrlToStorage(
 // Upload a single logo file to Storage and return its public URL.
 // SVGs are rejected — they are not supported by Replicate's image pipeline.
 async function uploadLogo(
-  supabase: Awaited<ReturnType<typeof createClient>>,
   brainId: string,
   file: File,
   filename: string,
@@ -71,11 +72,12 @@ async function uploadLogo(
   const isSvg = file.type === "image/svg+xml" || /\.svg$/i.test(file.name)
   if (isSvg) throw new Error("SVG no soportado. Por favor sube el logo en formato PNG o JPG.")
 
-  const ext  = file.name.split(".").pop()
-  const path = `${brainId}/${filename}.${ext}`
-  const { error } = await supabase.storage.from("brand-brains").upload(path, file, { upsert: true })
-  if (error) return null
-  const { data: { publicUrl } } = supabase.storage.from("brand-brains").getPublicUrl(path)
+  const ext   = file.name.split(".").pop()
+  const path  = `${brainId}/${filename}.${ext}`
+  const admin = createAdminClient()
+  const { error } = await admin.storage.from("brand-brains").upload(path, file, { upsert: true })
+  if (error) { console.error("[brand-brains] uploadLogo error:", error.message); return null }
+  const { data: { publicUrl } } = admin.storage.from("brand-brains").getPublicUrl(path)
   return publicUrl
 }
 
@@ -118,7 +120,7 @@ export async function createBrandBrain(formData: FormData): Promise<BrandBrain> 
   for (const { field, filename, col } of LOGO_FIELDS) {
     const file = formData.get(field) as File | null
     if (!file || file.size === 0) continue
-    const url = await uploadLogo(supabase, brain.id, file, filename)
+    const url = await uploadLogo(brain.id, file, filename)
     if (url) { logoUpdates[col] = url; (brain as Record<string, unknown>)[col] = url }
   }
 
@@ -131,7 +133,7 @@ export async function createBrandBrain(formData: FormData): Promise<BrandBrain> 
   for (const { key, col, filename } of remoteFields) {
     const remoteUrl = formData.get(key) as string | null
     if (!remoteUrl || logoUpdates[col]) continue
-    const url = await mirrorUrlToStorage(supabase, brain.id, remoteUrl, filename)
+    const url = await mirrorUrlToStorage(brain.id, remoteUrl, filename)
     if (url) { logoUpdates[col] = url; (brain as Record<string, unknown>)[col] = url }
   }
 
@@ -186,7 +188,7 @@ export async function updateBrandBrain(id: string, formData: FormData): Promise<
   for (const { field, filename, col } of LOGO_FIELDS) {
     const file = formData.get(field) as File | null
     if (!file || file.size === 0) continue
-    const url = await uploadLogo(supabase, id, file, filename)
+    const url = await uploadLogo(id, file, filename)
     if (url) logoUpdates[col] = url
   }
 
