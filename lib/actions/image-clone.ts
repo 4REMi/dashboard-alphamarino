@@ -133,6 +133,23 @@ async function isValidReplicateImageUrl(url: string): Promise<boolean> {
   }
 }
 
+async function validateLogoUrl(url: string): Promise<{ valid: boolean; reason: string }> {
+  if (!url.startsWith("http")) return { valid: false, reason: "URL no comienza con http" }
+  if (/\.svg(\?|$)/i.test(url)) return { valid: false, reason: "SVG no soportado por Replicate" }
+  try {
+    const res = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(6_000) })
+    if (res.status === 405) return { valid: true, reason: "HEAD 405 → asumiendo válida" }
+    if (!res.ok) return { valid: false, reason: `HTTP ${res.status} ${res.statusText}` }
+    const ct = res.headers.get("content-type") ?? ""
+    if (!ct) return { valid: true, reason: "Sin content-type → asumiendo válida" }
+    if (!ct.startsWith("image/")) return { valid: false, reason: `Content-Type no es imagen: "${ct}"` }
+    if (ct.includes("svg")) return { valid: false, reason: `SVG detectado en content-type: "${ct}"` }
+    return { valid: true, reason: `OK — ${ct}` }
+  } catch (e) {
+    return { valid: true, reason: `Timeout/error de red → asumiendo válida: ${e}` }
+  }
+}
+
 // ── Claude Vision helpers ─────────────────────────────────────
 
 type BrainContext = Pick<BrandBrain, "name" | "industry" | "language" | "tone_of_voice" | "usps" | "key_benefits" | "pain_points" | "target_audience" | "ctas" | "brand_colors" | "logo_url" | "logo_square_url" | "logo_horizontal_url">
@@ -525,14 +542,18 @@ export async function generateImages(
   // adImageUrl is always included (it lives in our own Storage).
   // Logo and user uploads are validated with a HEAD request — any URL that
   // returns a non-image or is unreachable (SVG, private bucket, expired CDN)
-  // is silently dropped to avoid Replicate E006 errors.
+  // is dropped to avoid Replicate E006 errors.
   const auxUrls = [...(logoUrl ? [logoUrl] : []), ...userUploads]
-  const validatedAux = (
-    await Promise.all(auxUrls.map(async (url) => ((await isValidReplicateImageUrl(url)) ? url : null)))
-  ).filter(Boolean) as string[]
+  const auxValidations = await Promise.all(auxUrls.map(async (url) => {
+    const result = await validateLogoUrl(url)
+    console.log(`[image-clone] logo URL validation — ${result.valid ? "✓" : "✗"} ${result.reason}\n  URL: ${url}`)
+    return result.valid ? url : null
+  }))
+  const validatedAux = auxValidations.filter(Boolean) as string[]
 
   // Order: original ad → valid logo (if any) → valid user uploads (max 8 total)
   const inputImages = [adImageUrl, ...validatedAux].slice(0, 8)
+  console.log(`[image-clone] images sent to Replicate (${inputImages.length}): ${JSON.stringify(inputImages)}`)
 
   const prompt = buildGenerationPrompt(
     config.adaptedLines,
