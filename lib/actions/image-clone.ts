@@ -517,6 +517,7 @@ export async function generateImages(
     aspectRatio:       string
     numImages:         number
     additionalContext: string
+    sourceImageUrl?:   string   // NEW: overrides saved_ad image for reclones
   },
 ): Promise<{ prompt: string }> {
   const { supabase } = await assertAuth()
@@ -531,7 +532,7 @@ export async function generateImages(
   // Original ad is always the first reference (layout/composition anchor).
   // User-uploaded product images are appended after it.
   const savedAd = clone.saved_ad as { cached_image_url: string | null; image_url: string | null } | null
-  const adImageUrl = savedAd?.cached_image_url ?? savedAd?.image_url ?? null
+  const adImageUrl = config.sourceImageUrl ?? savedAd?.cached_image_url ?? savedAd?.image_url ?? null
   if (!adImageUrl) throw new Error("No se encontró imagen del anuncio original.")
 
   const userUploads: string[] = clone.reference_image_urls ?? []
@@ -716,6 +717,45 @@ export async function getAllImageClones(limit = 12): Promise<ImageClone[]> {
     .order("created_at", { ascending: false })
     .limit(limit)
   return (data ?? []) as ImageClone[]
+}
+
+/**
+ * Creates an image_clone row from a previously generated image URL.
+ * Skips text extraction — copies parent clone's adapted_lines directly.
+ * Returns cloneId, shareToken, and the inherited lines.
+ */
+export async function startImageCloneFromGenerated(params: {
+  sourceImageUrl: string
+  savedAdId:      string
+  brandBrainId:   string
+  parentCloneId:  string
+  angulo?:        string
+}): Promise<{ cloneId: string; shareToken: string; lines: ImageCloneLine[] }> {
+  const { supabase, user } = await assertAuth()
+
+  const { data: parent } = await supabase
+    .from("image_clones")
+    .select("adapted_lines")
+    .eq("id", params.parentCloneId)
+    .single()
+
+  const lines = (parent?.adapted_lines ?? []) as ImageCloneLine[]
+
+  const { data: clone, error } = await supabase
+    .from("image_clones")
+    .insert({
+      saved_ad_id:    params.savedAdId,
+      brand_brain_id: params.brandBrainId,
+      status:         "ready",
+      adapted_lines:  lines,
+      original_lines: lines,
+      created_by:     user.id,
+    })
+    .select("id, share_token")
+    .single()
+
+  if (error) throw error
+  return { cloneId: clone.id, shareToken: clone.share_token, lines }
 }
 
 /**

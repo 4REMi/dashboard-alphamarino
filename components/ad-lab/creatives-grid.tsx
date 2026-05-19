@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useCallback } from "react"
 import {
-  ChevronLeft, ChevronRight, Download, Link2, ArrowRight, X, Maximize2, Copy,
+  ChevronLeft, ChevronRight, Download, Link2, ArrowRight, X, Maximize2, Copy, Repeat2,
 } from "lucide-react"
 import type { ImageClone, AdClone, BrandBrainColor } from "@/lib/types"
+import { ImageCloneModal, type RecloneSource } from "@/components/ad-lab/image-clone-modal"
 
 type BrainMeta = { id: string; name: string; logo_url?: string | null; brand_colors?: BrandBrainColor[] }
 type AdMeta    = { id: string; page_name: string; cached_image_url?: string | null; image_url?: string | null }
@@ -136,8 +137,8 @@ function Lightbox({
 // ── Image clone card ──────────────────────────────────────────
 
 function CreativeCard({
-  clone, onOpen,
-}: { clone: CloneRich; onOpen: (clone: CloneRich, idx: number) => void }) {
+  clone, onOpen, onReclone,
+}: { clone: CloneRich; onOpen: (clone: CloneRich, idx: number) => void; onReclone: (imageUrl: string, clone: CloneRich) => void }) {
   const [idx, setIdx]       = useState(0)
   const [copied, setCopied] = useState(false)
   const images       = clone.generated_image_urls ?? []
@@ -186,6 +187,13 @@ function CreativeCard({
           title="Copiar link"
         >
           {copied ? <span className="text-[9px] font-bold text-green-400">✓</span> : <Link2 className="w-3.5 h-3.5" />}
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); onReclone(current, clone) }}
+          className="w-8 h-8 rounded-full bg-black/60 backdrop-blur-sm text-white flex items-center justify-center hover:bg-black/80 transition-colors"
+          title="Re-clonar esta imagen"
+        >
+          <Repeat2 className="w-3.5 h-3.5" />
         </button>
         <div className="w-8 h-8 rounded-full bg-black/60 backdrop-blur-sm text-white flex items-center justify-center" title="Ver ampliado">
           <Maximize2 className="w-3.5 h-3.5" />
@@ -313,6 +321,17 @@ export function CreativesGrid({ clones, scriptClones }: Props) {
   const [tab, setTab]               = useState<"estaticos" | "guiones">("estaticos")
   const [selectedBrainId, setSelectedBrainId] = useState<string | null>(null)
   const [lightbox, setLightbox]     = useState<{ clone: CloneRich; imgIdx: number } | null>(null)
+  const [recloneSource, setRecloneSource] = useState<RecloneSource | null>(null)
+
+  function handleReclone(imageUrl: string, clone: CloneRich) {
+    if (!clone.saved_ad?.id) return
+    setRecloneSource({
+      imageUrl,
+      pageName:      clone.saved_ad.page_name,
+      savedAdId:     clone.saved_ad.id,
+      parentCloneId: clone.id,
+    })
+  }
 
   const validClones  = clones.filter((c) => (c.generated_image_urls?.length ?? 0) > 0)
   const validScripts = scriptClones.filter((c) => (c.adapted_lines?.length ?? 0) > 0)
@@ -344,6 +363,12 @@ export function CreativesGrid({ clones, scriptClones }: Props) {
     <>
       {lightbox && (
         <Lightbox clone={lightbox.clone} imgIdx={lightbox.imgIdx} onClose={() => setLightbox(null)} />
+      )}
+      {recloneSource && (
+        <ImageCloneModal
+          recloneSource={recloneSource}
+          onClose={() => setRecloneSource(null)}
+        />
       )}
 
       <div className="space-y-5">
@@ -448,6 +473,7 @@ export function CreativesGrid({ clones, scriptClones }: Props) {
                     key={clone.id}
                     clone={clone}
                     onOpen={(c, i) => setLightbox({ clone: c, imgIdx: i })}
+                    onReclone={handleReclone}
                   />
                 ))}
               </div>

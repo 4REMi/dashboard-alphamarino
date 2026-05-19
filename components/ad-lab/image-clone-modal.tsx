@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, useTransition } from "react"
 import type { BrandBrain, ImageCloneLine, MetaAdResult } from "@/lib/types"
 import {
   startImageClone,
+  startImageCloneFromGenerated,
   uploadReferenceImages,
   generateImages,
   pollImageGeneration,
@@ -17,9 +18,17 @@ import {
   AlertCircle, Upload, Trash2, Link as LinkIcon, Copy, Compass, CheckCircle2,
 } from "lucide-react"
 
+export interface RecloneSource {
+  imageUrl:      string
+  pageName:      string
+  savedAdId:     string
+  parentCloneId: string
+}
+
 interface Props {
-  ad: MetaAdResult
-  onClose: () => void
+  ad?:            MetaAdResult
+  recloneSource?: RecloneSource
+  onClose:        () => void
 }
 
 type Step = 1 | 2 | 3
@@ -33,7 +42,7 @@ const RATIO_LABELS: Record<string, string> = {
   "4:5":  "Portrait",
 }
 
-export function ImageCloneModal({ ad, onClose }: Props) {
+export function ImageCloneModal({ ad, recloneSource, onClose }: Props) {
   const [step, setStep]                         = useState<Step>(1)
   const [brains, setBrains]                     = useState<BrainOption[]>([])
   const [selectedBrainId, setSelectedBrainId]   = useState("")
@@ -67,8 +76,9 @@ export function ImageCloneModal({ ad, onClose }: Props) {
   const fileInputRef                            = useRef<HTMLInputElement>(null)
   const pollingRef                              = useRef<NodeJS.Timeout | null>(null)
 
-  const card       = ad.snapshot?.cards?.[0]
-  const adImageUrl = card?.resized_image_url ?? card?.original_image_url ?? null
+  const card            = ad?.snapshot?.cards?.[0]
+  const adImageUrl      = recloneSource?.imageUrl ?? card?.resized_image_url ?? card?.original_image_url ?? null
+  const pageNameDisplay = recloneSource?.pageName ?? ad?.page_name ?? ""
   const brainColors = (brains.find((b) => b.id === selectedBrainId)?.brand_colors ?? [])
 
   useEffect(() => {
@@ -109,14 +119,28 @@ export function ImageCloneModal({ ad, onClose }: Props) {
     if (angulo.trim()) saveAngulo(angulo)
     startTransition(async () => {
       try {
-        const result = await startImageClone(ad, selectedBrainId, angulo.trim() || undefined)
-        setCloneId(result.cloneId)
-        setShareToken(result.shareToken)
-        if (result.lines.length > 0) {
+        if (recloneSource) {
+          const result = await startImageCloneFromGenerated({
+            sourceImageUrl: recloneSource.imageUrl,
+            savedAdId:      recloneSource.savedAdId,
+            parentCloneId:  recloneSource.parentCloneId,
+            brandBrainId:   selectedBrainId,
+            angulo:         angulo.trim() || undefined,
+          })
+          setCloneId(result.cloneId)
+          setShareToken(result.shareToken)
           setAdaptedLines(result.lines)
-          setStep(2)
+          setStep(3)
         } else {
-          setError("No se encontró texto en el anuncio, o ocurrió un error.")
+          const result = await startImageClone(ad!, selectedBrainId, angulo.trim() || undefined)
+          setCloneId(result.cloneId)
+          setShareToken(result.shareToken)
+          if (result.lines.length > 0) {
+            setAdaptedLines(result.lines)
+            setStep(2)
+          } else {
+            setError("No se encontró texto en el anuncio, o ocurrió un error.")
+          }
         }
       } catch (err) {
         setError(String(err))
@@ -165,6 +189,7 @@ export function ImageCloneModal({ ad, onClose }: Props) {
         aspectRatio,
         numImages,
         additionalContext: additionalContext.trim(),
+        sourceImageUrl:    recloneSource?.imageUrl,
       })
 
       pollingRef.current = setInterval(async () => {
@@ -217,25 +242,43 @@ export function ImageCloneModal({ ad, onClose }: Props) {
             </div>
             <div>
               <h2 className="text-base font-semibold">Clonar imagen</h2>
-              <p className="text-xs text-muted-foreground">{ad.page_name}</p>
+              <p className="text-xs text-muted-foreground">{pageNameDisplay}</p>
             </div>
           </div>
 
           <div className="flex items-center gap-1.5 mx-auto">
-            {([1, 2, 3] as Step[]).map((s) => (
-              <div key={s} className="flex items-center gap-1.5">
-                <div className={`w-6 h-6 rounded-full text-[11px] font-bold flex items-center justify-center transition-colors ${
-                  step === s
-                    ? "bg-violet-600 text-white"
-                    : step > s
-                    ? "bg-violet-200 text-violet-700"
-                    : "bg-muted text-muted-foreground"
-                }`}>
-                  {step > s ? <Check className="w-3 h-3" /> : s}
+            {recloneSource ? (
+              // 2-step indicator: step 1 → circle 1, step 3 → circle 2
+              ([{ val: 1 as Step, label: 1 }, { val: 3 as Step, label: 2 }]).map(({ val, label }, i) => (
+                <div key={val} className="flex items-center gap-1.5">
+                  <div className={`w-6 h-6 rounded-full text-[11px] font-bold flex items-center justify-center transition-colors ${
+                    step === val
+                      ? "bg-violet-600 text-white"
+                      : step > val
+                      ? "bg-violet-200 text-violet-700"
+                      : "bg-muted text-muted-foreground"
+                  }`}>
+                    {step > val ? <Check className="w-3 h-3" /> : label}
+                  </div>
+                  {i < 1 && <div className={`w-8 h-px transition-colors ${step > val ? "bg-violet-300" : "bg-border"}`} />}
                 </div>
-                {s < 3 && <div className={`w-8 h-px transition-colors ${step > s ? "bg-violet-300" : "bg-border"}`} />}
-              </div>
-            ))}
+              ))
+            ) : (
+              ([1, 2, 3] as Step[]).map((s) => (
+                <div key={s} className="flex items-center gap-1.5">
+                  <div className={`w-6 h-6 rounded-full text-[11px] font-bold flex items-center justify-center transition-colors ${
+                    step === s
+                      ? "bg-violet-600 text-white"
+                      : step > s
+                      ? "bg-violet-200 text-violet-700"
+                      : "bg-muted text-muted-foreground"
+                  }`}>
+                    {step > s ? <Check className="w-3 h-3" /> : s}
+                  </div>
+                  {s < 3 && <div className={`w-8 h-px transition-colors ${step > s ? "bg-violet-300" : "bg-border"}`} />}
+                </div>
+              ))
+            )}
           </div>
 
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground">
@@ -727,8 +770,10 @@ export function ImageCloneModal({ ad, onClose }: Props) {
               className="inline-flex items-center gap-2 h-9 px-5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 disabled:opacity-50 transition-colors"
             >
               {isPending
-                ? <><Loader2 className="w-4 h-4 animate-spin" /> Analizando…</>
-                : <><ImageIcon className="w-4 h-4" /> Analizar anuncio <ChevronRight className="w-4 h-4" /></>
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> {recloneSource ? "Preparando…" : "Analizando…"}</>
+                : recloneSource
+                  ? <>Continuar <ChevronRight className="w-4 h-4" /></>
+                  : <><ImageIcon className="w-4 h-4" /> Analizar anuncio <ChevronRight className="w-4 h-4" /></>
               }
             </button>
           )}
