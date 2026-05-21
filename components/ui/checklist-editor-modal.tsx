@@ -140,14 +140,13 @@ export function ChecklistEditorModal({
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
     if (!over || active.id === over.id) return
-    setItems((prev) => {
-      const oldIdx   = prev.findIndex((i) => i.id === active.id)
-      const newIdx   = prev.findIndex((i) => i.id === over.id)
-      const reordered = arrayMove(prev, oldIdx, newIdx)
-      startTransition(async () => {
-        try { await onReorder(reordered.map((i) => i.id)) } catch { /* ignore */ }
-      })
-      return reordered
+    const oldIdx = items.findIndex((i) => i.id === active.id)
+    const newIdx = items.findIndex((i) => i.id === over.id)
+    if (oldIdx === -1 || newIdx === -1) return
+    const reordered = arrayMove(items, oldIdx, newIdx)
+    setItems(reordered)
+    startTransition(async () => {
+      try { await onReorder(reordered.map((i) => i.id)) } catch (e) { console.error("[checklist] reorder failed:", e) }
     })
   }
 
