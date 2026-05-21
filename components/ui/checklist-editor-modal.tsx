@@ -48,6 +48,7 @@ function SortableChecklistRow({
   onDelete: (id: string) => void
 }) {
   const [text, setText] = useState(item.text)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: item.id })
 
@@ -55,6 +56,11 @@ function SortableChecklistRow({
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.4 : 1,
+  }
+
+  function autoResize(el: HTMLTextAreaElement) {
+    el.style.height = "auto"
+    el.style.height = el.scrollHeight + "px"
   }
 
   function commitText() {
@@ -67,26 +73,29 @@ function SortableChecklistRow({
     <div
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-2 px-3 py-2 group hover:bg-muted/40 rounded-lg transition-colors"
+      className="flex items-start gap-2 px-3 py-2 group hover:bg-muted/40 rounded-lg transition-colors"
     >
       <button
         {...attributes}
         {...listeners}
         tabIndex={-1}
-        className="flex-shrink-0 p-0.5 text-muted-foreground/25 hover:text-muted-foreground cursor-grab active:cursor-grabbing touch-none transition-colors"
+        className="flex-shrink-0 p-0.5 mt-0.5 text-muted-foreground/25 hover:text-muted-foreground cursor-grab active:cursor-grabbing touch-none transition-colors"
       >
         <GripVertical className="w-4 h-4" />
       </button>
 
-      <input
+      <textarea
+        ref={textareaRef}
         value={text}
-        onChange={(e) => setText(e.target.value)}
+        rows={1}
+        onChange={(e) => { setText(e.target.value); autoResize(e.target) }}
+        onFocus={(e) => autoResize(e.target)}
         onBlur={commitText}
         onKeyDown={(e) => {
-          if (e.key === "Enter") (e.target as HTMLInputElement).blur()
-          if (e.key === "Escape") { setText(item.text); (e.target as HTMLInputElement).blur() }
+          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); (e.target as HTMLTextAreaElement).blur() }
+          if (e.key === "Escape") { setText(item.text); (e.target as HTMLTextAreaElement).blur() }
         }}
-        className="flex-1 min-w-0 text-sm bg-transparent border-0 focus:outline-none focus:ring-0 py-0"
+        className="flex-1 min-w-0 text-sm bg-transparent border-0 focus:outline-none focus:ring-0 py-0.5 resize-none overflow-hidden leading-snug"
       />
 
       <button
@@ -94,7 +103,7 @@ function SortableChecklistRow({
         onClick={() => onUpdate(item.id, text.trim() || item.text, !item.is_blocking)}
         title={item.is_blocking ? "Obligatorio — click para hacer opcional" : "Opcional — click para hacer obligatorio"}
         className={cn(
-          "flex-shrink-0 p-1 rounded transition-all",
+          "flex-shrink-0 p-1 mt-0.5 rounded transition-all",
           item.is_blocking
             ? "text-destructive"
             : "text-muted-foreground/20 opacity-0 group-hover:opacity-100 hover:text-muted-foreground"
@@ -106,7 +115,7 @@ function SortableChecklistRow({
       <button
         type="button"
         onClick={() => onDelete(item.id)}
-        className="flex-shrink-0 p-1 rounded text-muted-foreground/20 opacity-0 group-hover:opacity-100 hover:text-destructive transition-all"
+        className="flex-shrink-0 p-1 mt-0.5 rounded text-muted-foreground/20 opacity-0 group-hover:opacity-100 hover:text-destructive transition-all"
       >
         <X className="w-3.5 h-3.5" />
       </button>
@@ -189,7 +198,7 @@ export function ChecklistEditorModal({
       onClick={onClose}
     >
       <div
-        className="bg-card border border-border rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[80vh] flex flex-col"
+        className="bg-card border border-border rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[88vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
