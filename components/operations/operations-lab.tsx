@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition, useRef } from "react"
-import { ChevronRight, Plus, Trash2, LayoutList, Link2, Pencil, Check, X, Upload, Download, Paperclip, GripVertical, BookOpen, Search, Lock, ListChecks } from "lucide-react"
+import { ChevronRight, Plus, Trash2, LayoutList, Link2, Pencil, Check, X, Upload, Download, Paperclip, GripVertical, BookOpen, Search, Lock, ListChecks, AlertCircle } from "lucide-react"
 import { PanelHeader, EmptyPanel, InlineInput, InlineSelect } from "@/components/lab/shared"
 import type { ProjectType, PhaseSet, PhaseSetPhase, TaskSet, TaskSetTask, TaskSetChecklistItem, Profile, Sop, Position } from "@/lib/types"
 import { PROJECT_TYPE_ICONS, getProjectTypeIcon } from "@/lib/project-type-icons"
@@ -499,6 +499,55 @@ function SortableTaskRow({
   )
 }
 
+// ── Inline checklist add sub-component ───────────────────────────────────────
+function InlineChecklistAdd({ taskSetTaskId, onAdd }: { taskSetTaskId: string; onAdd: (item: ChecklistModalItem) => void }) {
+  const [text, setText] = useState("")
+  const [blocking, setBlocking] = useState(false)
+  const [isAdding, setIsAdding] = useState(false)
+
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault()
+    if (!text.trim()) return
+    setIsAdding(true)
+    try {
+      const created = await addChecklistItemToSetTask(taskSetTaskId, text.trim(), blocking) as ChecklistModalItem
+      onAdd(created)
+      setText("")
+      setBlocking(false)
+    } finally {
+      setIsAdding(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleAdd} className="flex items-center gap-2 px-2 py-1">
+      <Plus className="w-3.5 h-3.5 text-muted-foreground/40 flex-shrink-0" />
+      <input
+        type="text"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder="Nuevo ítem…"
+        className="flex-1 text-sm bg-transparent border-0 focus:outline-none focus:ring-0 placeholder:text-muted-foreground/30 min-w-0"
+      />
+      <button
+        type="button"
+        onClick={() => setBlocking((b) => !b)}
+        title={blocking ? "Obligatorio" : "Opcional"}
+        className={cn("flex-shrink-0 p-1 rounded transition-colors", blocking ? "text-destructive" : "text-muted-foreground/30 hover:text-muted-foreground")}
+      >
+        <Lock className="w-3 h-3" />
+      </button>
+      <button
+        type="submit"
+        disabled={!text.trim() || isAdding}
+        className="flex-shrink-0 text-[11px] px-2.5 py-1 rounded-lg bg-primary text-primary-foreground disabled:opacity-40 hover:bg-primary/90 transition-colors"
+      >
+        Agregar
+      </button>
+    </form>
+  )
+}
+
 // ── Edit task modal ───────────────────────────────────────────────────────────
 function EditTaskModal({
   task,
@@ -507,6 +556,9 @@ function EditTaskModal({
   isPending,
   onClose,
   onSubmit,
+  taskSetTaskId,
+  checklistItems,
+  onChecklistChange,
 }: {
   task: TaskSetTask
   sops: Sop[]
@@ -514,9 +566,13 @@ function EditTaskModal({
   isPending: boolean
   onClose: () => void
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void
+  taskSetTaskId: string
+  checklistItems: ChecklistModalItem[]
+  onChecklistChange: (items: ChecklistModalItem[]) => void
 }) {
   const [sopId, setSopId] = useState(task.sop_id ?? "")
   const [sopSearch, setSopSearch] = useState("")
+  const [showSopPicker, setShowSopPicker] = useState(false)
 
   const filteredSops = sops.filter((s) =>
     s.title.toLowerCase().includes(sopSearch.toLowerCase()) ||
@@ -527,7 +583,7 @@ function EditTaskModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
       <div
-        className="bg-card border border-border rounded-xl shadow-xl w-full max-w-md mx-4 max-h-[90vh] flex flex-col"
+        className="bg-card border border-border rounded-xl shadow-xl w-full max-w-xl mx-4 max-h-[90vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
@@ -538,99 +594,149 @@ function EditTaskModal({
         </div>
 
         <form onSubmit={onSubmit} className="px-5 py-4 space-y-4 overflow-y-auto">
-          <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Título *</label>
-            <InlineInput name="title" required defaultValue={task.title} />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Descripción</label>
-            <AutoTextarea
-              name="description"
-              rows={3}
-              defaultValue={task.description ?? ""}
-              placeholder="Descripción detallada de la tarea…"
-              className="w-full rounded border border-input bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none"
-            />
-          </div>
-          <div className="flex gap-3">
-            <label className="flex items-center gap-2 px-3 py-2 rounded border border-input bg-background text-sm cursor-pointer select-none flex-1">
-              <input type="checkbox" name="is_urgent" value="true" defaultChecked={task.is_urgent} className="accent-destructive" />
-              Urgente
-            </label>
-            <label className="flex items-center gap-2 px-3 py-2 rounded border border-input bg-background text-sm cursor-pointer select-none flex-1">
-              <input type="checkbox" name="requires_deliverable" value="true" defaultChecked={task.requires_deliverable} className="accent-info" />
-              Requiere entregable
-            </label>
-          </div>
-
-          {positions.length > 0 && (
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Puesto responsable</label>
-              <InlineSelect name="default_position_id" defaultValue={task.default_position_id ?? "none"}>
-                <option value="none">Sin puesto asignado</option>
-                {positions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </InlineSelect>
-            </div>
-          )}
-
-          {/* SOP picker */}
-          <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1.5 block">
-              <BookOpen className="w-3.5 h-3.5" />
-              SOP asignado
-            </label>
-            {selectedSop ? (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-md border border-primary/30 bg-primary/5 text-sm">
-                <BookOpen className="w-3.5 h-3.5 text-primary flex-shrink-0" />
-                <span className="flex-1 min-w-0 truncate font-medium text-primary">{selectedSop.title}</span>
-                {selectedSop.category && (
-                  <span className="text-xs text-muted-foreground flex-shrink-0">{selectedSop.category}</span>
-                )}
-                <button
-                  type="button"
-                  onClick={() => { setSopId(""); setSopSearch("") }}
-                  className="p-0.5 rounded text-muted-foreground hover:text-destructive transition-colors flex-shrink-0"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
+          {/* ── Section: Contenido ── */}
+          <div className="border-t border-border/50 pt-4">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 mb-3">Contenido</p>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Título *</label>
+                <InlineInput name="title" required defaultValue={task.title} />
               </div>
-            ) : (
-              <div className="space-y-1.5">
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                  <input
-                    type="text"
-                    value={sopSearch}
-                    onChange={(e) => setSopSearch(e.target.value)}
-                    placeholder="Buscar SOP…"
-                    className="w-full rounded border border-input bg-background pl-8 pr-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                  />
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Descripción</label>
+                <AutoTextarea
+                  name="description"
+                  rows={3}
+                  defaultValue={task.description ?? ""}
+                  placeholder="Descripción detallada de la tarea…"
+                  className="w-full rounded border border-input bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* ── Section: Configuración ── */}
+          <div className="border-t border-border/50 pt-4">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 mb-3">Configuración</p>
+            <div className="space-y-3">
+              {/* Compact pill toggles */}
+              <div className="flex items-center gap-2">
+                <label className="flex items-center gap-1.5 h-7 px-3 rounded-full border cursor-pointer select-none text-xs font-medium transition-colors [&:has(input:checked)]:bg-destructive/10 [&:has(input:checked)]:border-destructive/40 [&:has(input:checked)]:text-destructive hover:bg-muted">
+                  <input type="checkbox" name="is_urgent" value="true" defaultChecked={task.is_urgent} className="sr-only" />
+                  <AlertCircle className="w-3 h-3" />
+                  Urgente
+                </label>
+                <label className="flex items-center gap-1.5 h-7 px-3 rounded-full border cursor-pointer select-none text-xs font-medium transition-colors [&:has(input:checked)]:bg-blue-50 [&:has(input:checked)]:border-blue-300 [&:has(input:checked)]:text-blue-700 hover:bg-muted">
+                  <input type="checkbox" name="requires_deliverable" value="true" defaultChecked={task.requires_deliverable} className="sr-only" />
+                  <Paperclip className="w-3 h-3" />
+                  Requiere entregable
+                </label>
+              </div>
+
+              {positions.length > 0 && (
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Puesto responsable</label>
+                  <InlineSelect name="default_position_id" defaultValue={task.default_position_id ?? "none"}>
+                    <option value="none">Sin puesto asignado</option>
+                    {positions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </InlineSelect>
                 </div>
-                {sops.length === 0 ? (
-                  <p className="text-xs text-muted-foreground px-1 py-1.5">No hay SOPs en el banco aún.</p>
-                ) : filteredSops.length === 0 ? (
-                  <p className="text-xs text-muted-foreground px-1 py-1.5">Sin resultados.</p>
-                ) : (
-                  <div className="max-h-36 overflow-y-auto rounded-md border border-border divide-y divide-border/50">
-                    {filteredSops.map((sop) => (
-                      <button
-                        key={sop.id}
-                        type="button"
-                        onClick={() => { setSopId(sop.id); setSopSearch("") }}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-muted/50 transition-colors"
-                      >
-                        <BookOpen className="w-3.5 h-3.5 text-primary flex-shrink-0" />
-                        <span className="flex-1 min-w-0 text-sm truncate">{sop.title}</span>
-                        {sop.category && (
-                          <span className="text-xs text-muted-foreground flex-shrink-0">{sop.category}</span>
-                        )}
-                      </button>
-                    ))}
+              )}
+
+              {/* SOP picker */}
+              <div className="relative">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <BookOpen className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span className="text-xs font-medium text-muted-foreground">SOP asignado</span>
+                </div>
+                {selectedSop ? (
+                  <div className="flex items-center gap-2 h-8 px-3 rounded-full border border-primary/30 bg-primary/5 text-sm w-fit max-w-full">
+                    <BookOpen className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                    <span className="text-xs font-medium text-primary truncate max-w-xs">{selectedSop.title}</span>
+                    {selectedSop.category && <span className="text-[10px] text-muted-foreground">{selectedSop.category}</span>}
+                    <button type="button" onClick={() => { setSopId(""); setSopSearch("") }} className="text-muted-foreground hover:text-destructive transition-colors flex-shrink-0">
+                      <X className="w-3 h-3" />
+                    </button>
                   </div>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setShowSopPicker((v) => !v)}
+                      className="flex items-center gap-1.5 h-7 px-3 rounded-full border border-dashed border-border text-xs text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors"
+                    >
+                      <Plus className="w-3 h-3" />
+                      Asignar SOP
+                    </button>
+                    {showSopPicker && (
+                      <div className="absolute top-full left-0 mt-1 w-full bg-card border border-border rounded-xl shadow-lg z-10 p-2 space-y-1.5">
+                        <div className="relative">
+                          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                          <input
+                            autoFocus
+                            type="text"
+                            value={sopSearch}
+                            onChange={(e) => setSopSearch(e.target.value)}
+                            placeholder="Buscar SOP…"
+                            className="w-full rounded-lg border border-input bg-background pl-8 pr-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                          />
+                        </div>
+                        {sops.length === 0 ? (
+                          <p className="text-xs text-muted-foreground px-1 py-1.5">No hay SOPs en el banco aún.</p>
+                        ) : filteredSops.length === 0 ? (
+                          <p className="text-xs text-muted-foreground px-1 py-1.5">Sin resultados.</p>
+                        ) : (
+                          <div className="max-h-40 overflow-y-auto rounded-lg border border-border divide-y divide-border/50">
+                            {filteredSops.map((sop) => (
+                              <button
+                                key={sop.id}
+                                type="button"
+                                onClick={() => { setSopId(sop.id); setSopSearch(""); setShowSopPicker(false) }}
+                                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-muted/50 transition-colors"
+                              >
+                                <BookOpen className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                                <span className="flex-1 min-w-0 text-sm truncate">{sop.title}</span>
+                                {sop.category && <span className="text-xs text-muted-foreground flex-shrink-0">{sop.category}</span>}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
                 )}
+                <input type="hidden" name="sop_id" value={sopId} />
+              </div>
+            </div>
+          </div>
+
+          {/* ── Section: Checklist ── */}
+          <div className="border-t border-border/50 pt-4">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 mb-2">Checklist</p>
+            {checklistItems.length > 0 && (
+              <div className="space-y-0.5 mb-2">
+                {checklistItems.map((item) => (
+                  <div key={item.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-muted/40 group">
+                    <span className={cn("flex-1 min-w-0 text-sm truncate", item.is_blocking && "font-medium")}>{item.text}</span>
+                    {item.is_blocking && <Lock className="w-3 h-3 text-destructive flex-shrink-0" />}
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await deleteSetTaskChecklistItem(item.id)
+                        onChecklistChange(checklistItems.filter((i) => i.id !== item.id))
+                      }}
+                      className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-muted-foreground hover:text-destructive transition-all flex-shrink-0"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
-            <input type="hidden" name="sop_id" value={sopId} />
+            <InlineChecklistAdd
+              taskSetTaskId={taskSetTaskId}
+              onAdd={(item) => onChecklistChange([...checklistItems, item])}
+            />
           </div>
 
           <div className="flex gap-2 justify-end pt-1">
@@ -670,6 +776,7 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
   const [showNewTS, setShowNewTS] = useState(false)
   const [showAddTask, setShowAddTask] = useState(false)
   const [editingTask, setEditingTask] = useState<TaskSetTask | null>(null)
+  const [editingTaskChecklist, setEditingTaskChecklist] = useState<ChecklistModalItem[]>([])
   const [showImport, setShowImport] = useState(false)
 
   const [isPending, startTransition] = useTransition()
@@ -884,6 +991,7 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
           : ts
       ))
       setEditingTask(null)
+      setEditingTaskChecklist([])
     })
   }
 
@@ -1285,7 +1393,7 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
                         key={task.id}
                         task={task}
                         index={i}
-                        onEdit={setEditingTask}
+                        onEdit={(t) => { setEditingTask(t); setEditingTaskChecklist((t.checklist_items ?? []) as ChecklistModalItem[]) }}
                         onDelete={handleDeleteTask}
                       />
                     ))}
@@ -1338,8 +1446,11 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
           sops={sops}
           positions={positions}
           isPending={isPending}
-          onClose={() => setEditingTask(null)}
+          onClose={() => { setEditingTask(null); setEditingTaskChecklist([]) }}
           onSubmit={(e) => handleUpdateTask(editingTask.id, linkedTS.id, e)}
+          taskSetTaskId={editingTask.id}
+          checklistItems={editingTaskChecklist}
+          onChecklistChange={setEditingTaskChecklist}
         />
       )}
     </>
