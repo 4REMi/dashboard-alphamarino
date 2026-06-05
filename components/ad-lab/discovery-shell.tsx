@@ -54,6 +54,9 @@ export function DiscoveryShell({ trackedBrands, boards }: Props) {
   const hasMoreRef      = useRef(false)
   const isLoadingRef    = useRef(false)
   const sentinelRef     = useRef<HTMLDivElement>(null)
+  // When true the current search was triggered by a specific pageId — results are
+  // already scoped to that page so the tracked-brands filter must be skipped.
+  const searchByPageIdRef = useRef(false)
 
   // ── Core search flow ───────────────────────────────────────────
 
@@ -95,11 +98,12 @@ export function DiscoveryShell({ trackedBrands, boards }: Props) {
     if (!q && !pageId) return
 
     // Reset state
-    activeRunRef.current  = null
-    datasetIdRef.current  = null
-    offsetRef.current     = 0
-    hasMoreRef.current    = false
-    isLoadingRef.current  = false
+    activeRunRef.current    = null
+    datasetIdRef.current    = null
+    offsetRef.current       = 0
+    hasMoreRef.current      = false
+    isLoadingRef.current    = false
+    searchByPageIdRef.current = !!pageId
     setSearchStatus("starting")
     setResults([])
     setOffset(0)
@@ -214,12 +218,16 @@ export function DiscoveryShell({ trackedBrands, boards }: Props) {
   }
 
   // ── Filtered results ───────────────────────────────────────────
+  // When the search was triggered by a specific pageId the API already scoped
+  // results to that page — applying a brand-matching filter on top would
+  // discard all results when page_id types differ (string vs number from Apify).
 
-  const activeResults = tab === "all"
+  const activeResults = tab === "all" || searchByPageIdRef.current
     ? results
     : results.filter((r) =>
         trackedBrands.some((b) =>
-          b.meta_page_id === r.page_id || b.name.toLowerCase() === (r.page_name ?? "").toLowerCase()
+          String(b.meta_page_id) === String(r.page_id) ||
+          b.name.toLowerCase() === (r.page_name ?? "").toLowerCase()
         )
       )
 
