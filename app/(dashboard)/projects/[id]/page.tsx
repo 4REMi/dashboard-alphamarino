@@ -28,7 +28,6 @@ import { DeliverablesSectionClient } from "@/components/projects/deliverables-se
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { createClient } from "@/lib/supabase/server"
 import { ArrowLeft, CalendarDays, Plus } from "lucide-react"
 import { formatDate, formatCurrency } from "@/lib/utils"
@@ -108,10 +107,6 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const accountsReceivable = projectValue - totalIncome
 
   const memberProfiles = members as Profile[]
-
-  function initials(name: string) {
-    return name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
-  }
 
   const hasContextSection = hasPhases || (isAdminOrSubadmin && phaseSets.length > 0) || isPaidMedia
 
@@ -317,43 +312,12 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                     <span className="text-xs text-muted-foreground">{memberProfiles.length} miembros</span>
                   </div>
 
-                  <div className="space-y-1">
-                    {memberProfiles.map((member) => (
-                      <Link
-                        key={member.id}
-                        href={`/employees/${member.id}`}
-                        className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-muted transition-colors"
-                      >
-                        <Avatar className="h-7 w-7 flex-shrink-0">
-                          {member.avatar_url ? (
-                            <img src={member.avatar_url} alt={member.full_name} className="h-full w-full object-cover" />
-                          ) : (
-                            <AvatarFallback className="text-xs">{initials(member.full_name)}</AvatarFallback>
-                          )}
-                        </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium truncate">{member.full_name}</p>
-                          {member.position && <p className="text-xs text-muted-foreground truncate">{member.position}</p>}
-                        </div>
-                      </Link>
-                    ))}
-
-                    {memberProfiles.length === 0 && (
-                      <p className="text-xs text-muted-foreground py-1 px-2">Sin miembros asignados</p>
-                    )}
-                  </div>
-
-                  {canManageTeam && (
-                    <div className="mt-3 pt-3 border-t border-border">
-                      <TeamManager
-                        projectId={project.id}
-                        members={memberProfiles}
-                        allEmployees={employees as Profile[]}
-                        isAdmin={canManageTeam}
-                        addOnly
-                      />
-                    </div>
-                  )}
+                  <TeamManager
+                    projectId={project.id}
+                    members={memberProfiles}
+                    allEmployees={employees as Profile[]}
+                    isAdmin={canManageTeam}
+                  />
                 </CardContent>
               </Card>
 

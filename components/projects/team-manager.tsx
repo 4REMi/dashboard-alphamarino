@@ -5,8 +5,7 @@ import { useTranslations } from "next-intl"
 import Link from "next/link"
 import { addProjectMember, removeProjectMember } from "@/lib/actions/projects"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Button } from "@/components/ui/button"
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
 import { UserPlus, X } from "lucide-react"
 import type { Profile } from "@/lib/types"
 
@@ -15,11 +14,13 @@ interface TeamManagerProps {
   members: Profile[]
   allEmployees: Profile[]
   isAdmin: boolean
-  /** When true, renders only the add-member control (list rendered externally) */
-  addOnly?: boolean
 }
 
-export function TeamManager({ projectId, members, allEmployees, isAdmin, addOnly }: TeamManagerProps) {
+function initials(name: string) {
+  return name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
+}
+
+export function TeamManager({ projectId, members, allEmployees, isAdmin }: TeamManagerProps) {
   const t = useTranslations("projects.members")
   const [optimisticMembers, setOptimisticMembers] = useState<Profile[]>(members)
   const [isPending, startTransition] = useTransition()
@@ -50,105 +51,67 @@ export function TeamManager({ projectId, members, allEmployees, isAdmin, addOnly
     })
   }
 
-  // addOnly mode: just show the add-member dropdown (list rendered by parent)
-  if (addOnly) {
-    return isAdmin && available.length > 0 ? (
-      <Select value={selectedId} onValueChange={handleAdd}>
-        <SelectTrigger className="w-full h-8 border-dashed text-xs">
-          <div className="flex items-center gap-1.5 text-muted-foreground">
-            <UserPlus className="w-3.5 h-3.5" />
-            <span>{t("add")}</span>
-          </div>
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="none" disabled>{t("selectEmployee")}</SelectItem>
-          {available.map((e) => {
-            const ini = e.full_name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
-            return (
-              <SelectItem key={e.id} value={e.id}>
-                <div className="flex items-center gap-2">
-                  <Avatar className="h-5 w-5"><AvatarFallback className="text-xs">{ini}</AvatarFallback></Avatar>
-                  <span>{e.full_name}</span>
-                </div>
-              </SelectItem>
-            )
-          })}
-        </SelectContent>
-      </Select>
-    ) : null
-  }
-
   return (
-    <div className="flex gap-3 flex-wrap items-center">
-      {optimisticMembers.map((member) => {
-        const initials = member.full_name
-          .split(" ")
-          .map((n) => n[0])
-          .join("")
-          .toUpperCase()
-          .slice(0, 2)
-
-        return (
+    <div>
+      <div className="space-y-1">
+        {optimisticMembers.map((member) => (
           <div key={member.id} className="relative group">
-            <Link href={`/employees/${member.id}`}>
-              <div className="flex items-center gap-2 bg-muted rounded-lg px-3 py-2 hover:bg-accent transition-colors pr-7">
-                <Avatar className="h-7 w-7">
-                  {member.avatar_url ? (
-                    <img src={member.avatar_url} alt={member.full_name} className="aspect-square h-full w-full object-cover" />
-                  ) : (
-                    <AvatarFallback className="text-xs">{initials}</AvatarFallback>
-                  )}
-                </Avatar>
-                <div>
-                  <p className="text-sm font-medium leading-tight">{member.full_name}</p>
-                  {member.position && (
-                    <p className="text-xs text-muted-foreground">{member.position}</p>
-                  )}
-                </div>
+            <Link
+              href={`/employees/${member.id}`}
+              className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-muted transition-colors"
+            >
+              <Avatar className="h-7 w-7 flex-shrink-0">
+                {member.avatar_url ? (
+                  <img src={member.avatar_url} alt={member.full_name} className="h-full w-full object-cover" />
+                ) : (
+                  <AvatarFallback className="text-xs">{initials(member.full_name)}</AvatarFallback>
+                )}
+              </Avatar>
+              <div className="flex-1 min-w-0 pr-5">
+                <p className="text-xs font-medium truncate">{member.full_name}</p>
+                {member.position && <p className="text-xs text-muted-foreground truncate">{member.position}</p>}
               </div>
             </Link>
             {isAdmin && (
               <button
-                onClick={() => handleRemove(member.id)}
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleRemove(member.id) }}
                 disabled={isPending}
-                className="absolute top-1.5 right-1.5 p-0.5 rounded-full bg-background border border-border opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive hover:text-white hover:border-destructive"
+                title={t("remove")}
+                className="absolute top-1/2 -translate-y-1/2 right-1.5 p-1 rounded-full text-muted-foreground/40 opacity-0 group-hover:opacity-100 hover:text-destructive hover:bg-destructive/10 transition-all"
               >
-                <X className="w-3 h-3" />
+                <X className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
-        )
-      })}
+        ))}
+
+        {optimisticMembers.length === 0 && (
+          <p className="text-xs text-muted-foreground py-1 px-2">{t("noMembers")}</p>
+        )}
+      </div>
 
       {isAdmin && available.length > 0 && (
-        <Select value={selectedId} onValueChange={handleAdd}>
-          <SelectTrigger className="w-44 h-9 border-dashed">
-            <div className="flex items-center gap-1.5 text-muted-foreground">
-              <UserPlus className="w-3.5 h-3.5" />
-              <span className="text-sm">Agregar miembro</span>
-            </div>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="none" disabled>{t("selectEmployee")}</SelectItem>
-            {available.map((e) => {
-              const initials = e.full_name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
-              return (
+        <div className={optimisticMembers.length > 0 ? "mt-3 pt-3 border-t border-border" : ""}>
+          <Select value={selectedId} onValueChange={handleAdd}>
+            <SelectTrigger className="w-full h-8 border-dashed text-xs">
+              <div className="flex items-center gap-1.5 text-muted-foreground">
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>{t("add")}</span>
+              </div>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none" disabled>{t("selectEmployee")}</SelectItem>
+              {available.map((e) => (
                 <SelectItem key={e.id} value={e.id}>
                   <div className="flex items-center gap-2">
-                    <Avatar className="h-5 w-5">
-                      <AvatarFallback className="text-xs">{initials}</AvatarFallback>
-                    </Avatar>
+                    <Avatar className="h-5 w-5"><AvatarFallback className="text-xs">{initials(e.full_name)}</AvatarFallback></Avatar>
                     <span>{e.full_name}</span>
                   </div>
                 </SelectItem>
-              )
-            })}
-          </SelectContent>
-        </Select>
-      )}
-
-      {optimisticMembers.length === 0 && !isAdmin && (
-        <p className="text-sm text-muted-foreground">{t("noMembers")}</p>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       )}
     </div>
   )
