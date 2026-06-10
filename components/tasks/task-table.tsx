@@ -72,6 +72,12 @@ function StatusPicker({
   const items = checklistItems ?? task.checklist_items ?? []
   const blockingPending = items.filter((i) => i.is_blocking && !i.is_checked).length
 
+  // Keep the badge in sync when the task's status changes from elsewhere
+  // (e.g. another picker instance for the same task, or the modal).
+  useEffect(() => {
+    setOptimisticStatus(task.status)
+  }, [task.status])
+
   // Mirror checklist completion into the status badge as items are (un)checked:
   // fully checked -> Done, some checked -> In Progress, none -> Todo. Skips the
   // initial mount so it only reacts to in-session checklist edits, not the
@@ -227,6 +233,12 @@ function AssigneePicker({ task, projectId, employees, onAssigneeChange }: { task
   const [isPending, startTransition] = useTransition()
   const buttonRef = useRef<HTMLButtonElement>(null)
   const dropRef = useRef<HTMLDivElement>(null)
+
+  // Keep the badge in sync when the task's assignee changes from elsewhere
+  // (e.g. another picker instance for the same task, or the modal).
+  useEffect(() => {
+    setOptimisticAssignee((task.assignee as Profile | null | undefined) ?? null)
+  }, [task.assignee_id])
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -760,6 +772,7 @@ function TaskDetailModal({
   deliverable,
   onDeliverableClick,
   onClose,
+  onTaskUpdate,
 }: {
   task: Task
   projectId: string
@@ -769,6 +782,7 @@ function TaskDetailModal({
   deliverable: Deliverable | null
   onDeliverableClick: (task: Task) => void
   onClose: () => void
+  onTaskUpdate: (patch: Partial<Task>) => void
 }) {
   const tT = useTranslations("tasks")
   const tC = useTranslations("common")
@@ -821,7 +835,12 @@ function TaskDetailModal({
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div className="flex items-center gap-2 flex-wrap">
             {phase && <PhaseBadge phase={phase} />}
-            <StatusPicker task={task} projectId={projectId} checklistItems={liveChecklistItems} onStatusChange={setCurrentStatus} />
+            <StatusPicker
+              task={task}
+              projectId={projectId}
+              checklistItems={liveChecklistItems}
+              onStatusChange={(status) => { setCurrentStatus(status); onTaskUpdate({ status }) }}
+            />
           </div>
           <button onClick={onClose} className="p-1 rounded text-muted-foreground hover:text-foreground flex-shrink-0">
             <X className="w-4 h-4" />
@@ -859,7 +878,15 @@ function TaskDetailModal({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label>{tT("assignee")}</Label>
-              <AssigneePicker task={task} projectId={projectId} employees={employees} onAssigneeChange={setCurrentAssigneeId} />
+              <AssigneePicker
+                task={task}
+                projectId={projectId}
+                employees={employees}
+                onAssigneeChange={(id) => {
+                  setCurrentAssigneeId(id)
+                  onTaskUpdate({ assignee_id: id, assignee: employees.find((e) => e.id === id) ?? null })
+                }}
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="modal-due">{tT("dueDate")}</Label>
@@ -914,7 +941,7 @@ function TaskDetailModal({
               taskId={task.id}
               projectId={projectId}
               initialItems={task.checklist_items ?? []}
-              onItemsChange={setLiveChecklistItems}
+              onItemsChange={(items) => { setLiveChecklistItems(items); onTaskUpdate({ checklist_items: items }) }}
             />
           </div>
 
@@ -1050,7 +1077,7 @@ function TaskCard({ task, projectId, deliverable, onDeliverableClick, onCardClic
 
 // ─── Task Row ─────────────────────────────────────────────────────────────────
 
-function TaskRow({ task, projectId, employees, isAdmin, deliverable, onDeliverableClick, onRowClick, showPhaseCol = true }: {
+function TaskRow({ task, projectId, employees, isAdmin, deliverable, onDeliverableClick, onRowClick, onTaskUpdate, showPhaseCol = true }: {
   task: Task
   projectId: string
   employees: Profile[]
@@ -1058,6 +1085,7 @@ function TaskRow({ task, projectId, employees, isAdmin, deliverable, onDeliverab
   deliverable: Deliverable | null
   onDeliverableClick: (task: Task) => void
   onRowClick: (task: Task) => void
+  onTaskUpdate: (taskId: string, patch: Partial<Task>) => void
   showPhaseCol?: boolean
 }) {
   const hasDeliverable = !!deliverable
@@ -1141,12 +1169,21 @@ function TaskRow({ task, projectId, employees, isAdmin, deliverable, onDeliverab
 
       {/* Status */}
       <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
-        <StatusPicker task={task} projectId={projectId} />
+        <StatusPicker
+          task={task}
+          projectId={projectId}
+          onStatusChange={(status) => onTaskUpdate(task.id, { status })}
+        />
       </td>
 
       {/* Assignee */}
       <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
-        <AssigneePicker task={task} projectId={projectId} employees={employees} />
+        <AssigneePicker
+          task={task}
+          projectId={projectId}
+          employees={employees}
+          onAssigneeChange={(id) => onTaskUpdate(task.id, { assignee_id: id, assignee: employees.find((e) => e.id === id) ?? null })}
+        />
       </td>
 
       {/* Phase — hidden in phase-grouping mode */}
@@ -1243,19 +1280,31 @@ export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesBy
   const [statusOpen, setStatusOpen] = useState<Record<TaskStatus, boolean>>(initialStatusOpen)
   const [phaseOpen,  setPhaseOpen]  = useState<Record<string, boolean>>({})
   const [drawerTask, setDrawerTask] = useState<Task | null>(null)
-  const [detailTask, setDetailTask] = useState<Task | null>(null)
+  const [detailTaskId, setDetailTaskId] = useState<string | null>(null)
   const [filter,     setFilter]     = useState<TaskFilter>("all")
   const [groupMode,  setGroupMode]  = useState<GroupMode>(() => tasks.some((t) => t.phase) ? "phase" : "status")
 
+  // Local copy of tasks so picker/checklist changes can be reflected
+  // immediately across the row and the detail modal, without waiting
+  // for a server round-trip. Re-synced whenever fresh data arrives.
+  const [localTasks, setLocalTasks] = useState<Task[]>(tasks)
+  useEffect(() => { setLocalTasks(tasks) }, [tasks])
+
+  function patchTask(taskId: string, patch: Partial<Task>) {
+    setLocalTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, ...patch } : t))
+  }
+
   // ── derived ────────────────────────────────────────────────────────────────
   // Detect whether this project has phases
-  const hasPhases = tasks.some((t) => t.phase)
+  const hasPhases = localTasks.some((t) => t.phase)
 
-  const filteredTasks = tasks.filter((t) => {
+  const filteredTasks = localTasks.filter((t) => {
     if (filter === "mine")       return currentUserId && t.assignee_id === currentUserId
     if (filter === "unassigned") return !t.assignee_id
     return true
   })
+
+  const detailTask = localTasks.find((t) => t.id === detailTaskId) ?? null
 
   // ── status grouping ────────────────────────────────────────────────────────
   const statusGroups = STATUS_GROUPS.map((g) => ({
@@ -1330,7 +1379,7 @@ export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesBy
 
   const colSpan = groupMode === "phase" ? 4 : 5
 
-  if (tasks.length === 0) {
+  if (localTasks.length === 0) {
     return (
       <div className="border rounded-lg py-10 text-center text-sm text-muted-foreground bg-card">
         {tT("noTasksYet")}
@@ -1363,7 +1412,7 @@ export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesBy
           ))}
           {filter !== "all" && (
             <span className="ml-2 text-xs text-muted-foreground">
-              {tT("filterCount", { filtered: filteredTasks.length, total: tasks.length })}
+              {tT("filterCount", { filtered: filteredTasks.length, total: localTasks.length })}
             </span>
           )}
         </div>
@@ -1403,7 +1452,7 @@ export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesBy
               projectId={projectId}
               deliverable={deliverablesByTaskId[task.id] ?? null}
               onDeliverableClick={setDrawerTask}
-              onCardClick={setDetailTask}
+              onCardClick={(t) => setDetailTaskId(t.id)}
             />
           ))
         )}
@@ -1456,7 +1505,8 @@ export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesBy
                         isAdmin={isAdmin}
                         deliverable={deliverablesByTaskId[task.id] ?? null}
                         onDeliverableClick={setDrawerTask}
-                        onRowClick={setDetailTask}
+                        onRowClick={(t) => setDetailTaskId(t.id)}
+                        onTaskUpdate={patchTask}
                         showPhaseCol
                       />
                     ))}
@@ -1498,7 +1548,8 @@ export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesBy
                         isAdmin={isAdmin}
                         deliverable={deliverablesByTaskId[task.id] ?? null}
                         onDeliverableClick={setDrawerTask}
-                        onRowClick={setDetailTask}
+                        onRowClick={(t) => setDetailTaskId(t.id)}
+                        onTaskUpdate={patchTask}
                         showPhaseCol={false}
                       />
                     ))}
@@ -1529,7 +1580,8 @@ export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesBy
           sops={sops}
           deliverable={detailDeliverable}
           onDeliverableClick={setDrawerTask}
-          onClose={() => setDetailTask(null)}
+          onClose={() => setDetailTaskId(null)}
+          onTaskUpdate={(patch) => patchTask(detailTask.id, patch)}
         />
       )}
     </>
