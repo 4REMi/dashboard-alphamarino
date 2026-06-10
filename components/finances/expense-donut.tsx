@@ -38,10 +38,13 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: { name
 
 export function ExpenseDonut({ expenses }: ExpenseDonutProps) {
   const activeExpenses = expenses.filter((e) => e.is_active)
+  const currentMonthKey = new Date().toISOString().slice(0, 7)
 
   const byCategory = Object.entries(
     activeExpenses.reduce<Record<string, number>>((acc, e) => {
-      const monthly = normalizeToMonthly(Number(e.amount), e.frequency as ExpenseFrequency)
+      const monthly = e.frequency === "One-time"
+        ? (e.expense_date?.slice(0, 7) === currentMonthKey ? Number(e.amount) : 0)
+        : normalizeToMonthly(Number(e.amount), e.frequency as ExpenseFrequency)
       acc[e.category] = (acc[e.category] ?? 0) + monthly
       return acc
     }, {})

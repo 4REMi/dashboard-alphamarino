@@ -18,12 +18,20 @@ export function IncomeForm({ projects }: IncomeFormProps) {
   const [open, setOpen] = useState(false)
   const [projectId, setProjectId] = useState("none")
   const [loading, setLoading] = useState(false)
+  const [amount, setAmount] = useState("")
+  const [taxRate, setTaxRate] = useState("")
+
+  const taxAmount = amount && taxRate
+    ? (Number(amount) * Number(taxRate)) / 100
+    : 0
+  const total = (Number(amount) || 0) + taxAmount
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setLoading(true)
     const formData = new FormData(e.currentTarget)
     formData.set("project_id", projectId === "none" ? "" : projectId)
+    formData.set("tax_amount", taxRate ? String(taxAmount) : "")
 
     try {
       await createIncome(formData)
@@ -48,12 +56,42 @@ export function IncomeForm({ projects }: IncomeFormProps) {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="amount">Monto (USD) *</Label>
-              <Input id="amount" name="amount" type="number" min="0" step="0.01" required />
+              <Label htmlFor="amount">Monto neto (USD) *</Label>
+              <Input
+                id="amount"
+                name="amount"
+                type="number"
+                min="0"
+                step="0.01"
+                required
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="date">Fecha *</Label>
               <Input id="date" name="date" type="date" required defaultValue={new Date().toISOString().split("T")[0]} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="tax_rate">Impuesto (%)</Label>
+              <Input
+                id="tax_rate"
+                name="tax_rate"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Ej. 21 (IVA)"
+                value={taxRate}
+                onChange={(e) => setTaxRate(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Total facturado</Label>
+              <div className="h-9 flex items-center px-3 rounded-md border bg-muted text-sm text-muted-foreground">
+                {total > 0 ? `$${total.toFixed(2)}` : "—"}
+              </div>
             </div>
           </div>
           <div className="space-y-2">

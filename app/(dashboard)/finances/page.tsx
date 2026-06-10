@@ -95,13 +95,23 @@ export default async function FinancesPage() {
     Other:    t("categories.other"),
   }
 
-  const monthlyRecurringTotal = (recurring as RecurringExpense[])
-    .filter((e) => e.is_active)
-    .reduce((s, e) => s + normalizeToMonthly(Number(e.amount), e.frequency as ExpenseFrequency), 0)
-
   const today    = new Date()
   const in30Days = new Date(today)
   in30Days.setDate(today.getDate() + 30)
+  const currentMonthKey = today.toISOString().slice(0, 7)
+
+  // Para gastos "One-time" usamos expense_date para ubicarlos en el mes correspondiente;
+  // para los demás se normaliza la frecuencia a un equivalente mensual.
+  function monthlyAmount(e: RecurringExpense): number {
+    if (e.frequency === "One-time") {
+      return e.expense_date?.slice(0, 7) === currentMonthKey ? Number(e.amount) : 0
+    }
+    return normalizeToMonthly(Number(e.amount), e.frequency as ExpenseFrequency)
+  }
+
+  const monthlyRecurringTotal = (recurring as RecurringExpense[])
+    .filter((e) => e.is_active)
+    .reduce((s, e) => s + monthlyAmount(e), 0)
 
   const upcomingExpenses = (recurring as RecurringExpense[]).filter((e) => {
     if (!e.next_payment_date || !e.is_active) return false
@@ -345,7 +355,7 @@ export default async function FinancesPage() {
             if (categoryItems.length === 0) return null
             const categoryTotal = categoryItems
               .filter((e) => e.is_active)
-              .reduce((s, e) => s + normalizeToMonthly(Number(e.amount), e.frequency as ExpenseFrequency), 0)
+              .reduce((s, e) => s + monthlyAmount(e), 0)
 
             return (
               <div key={category}>

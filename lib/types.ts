@@ -575,6 +575,8 @@ export interface Income {
   id: string
   project_id: string | null
   amount: number
+  tax_rate: number | null
+  tax_amount: number | null
   date: string
   description: string | null
   invoice_number: string | null
@@ -586,6 +588,8 @@ export interface ProjectExpense {
   id: string
   project_id: string
   amount: number
+  tax_rate: number | null
+  tax_amount: number | null
   date: string
   description: string | null
   category: string | null
@@ -600,6 +604,7 @@ export interface RecurringExpense {
   frequency: ExpenseFrequency
   category: ExpenseCategory
   next_payment_date: string | null
+  expense_date: string | null
   is_active: boolean
   created_at: string
 }

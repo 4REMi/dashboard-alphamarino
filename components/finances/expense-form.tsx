@@ -95,15 +95,27 @@ export function ExpenseForm({ expense, trigger }: ExpenseFormProps) {
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="next_payment_date">Próximo pago</Label>
-            <Input
-              id="next_payment_date"
-              name="next_payment_date"
-              type="date"
-              defaultValue={expense?.next_payment_date ?? ""}
-            />
-          </div>
+          {frequency === "One-time" ? (
+            <div className="space-y-2">
+              <Label htmlFor="expense_date">Fecha del gasto</Label>
+              <Input
+                id="expense_date"
+                name="expense_date"
+                type="date"
+                defaultValue={expense?.expense_date ?? ""}
+              />
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Label htmlFor="next_payment_date">Próximo pago</Label>
+              <Input
+                id="next_payment_date"
+                name="next_payment_date"
+                type="date"
+                defaultValue={expense?.next_payment_date ?? ""}
+              />
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <input
               id="is_active"

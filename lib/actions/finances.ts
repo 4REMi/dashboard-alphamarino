@@ -27,6 +27,7 @@ export async function createRecurringExpense(formData: FormData) {
     frequency: formData.get("frequency") as ExpenseFrequency,
     category: formData.get("category") as ExpenseCategory,
     next_payment_date: (formData.get("next_payment_date") as string) || null,
+    expense_date: (formData.get("expense_date") as string) || null,
     is_active: true,
   })
   if (error) throw error
@@ -44,6 +45,7 @@ export async function updateRecurringExpense(id: string, formData: FormData) {
       frequency: formData.get("frequency") as ExpenseFrequency,
       category: formData.get("category") as ExpenseCategory,
       next_payment_date: (formData.get("next_payment_date") as string) || null,
+      expense_date: (formData.get("expense_date") as string) || null,
       is_active: formData.get("is_active") !== null,
     })
     .eq("id", id)
@@ -77,9 +79,13 @@ export async function getIncome(projectId?: string) {
 
 export async function createIncome(formData: FormData) {
   const supabase = await createClient()
+  const taxRate = formData.get("tax_rate") as string
+  const taxAmount = formData.get("tax_amount") as string
   const { error } = await supabase.from("income").insert({
     project_id: (formData.get("project_id") as string) || null,
     amount: Number(formData.get("amount")),
+    tax_rate: taxRate ? Number(taxRate) : null,
+    tax_amount: taxAmount ? Number(taxAmount) : null,
     date: formData.get("date") as string,
     description: (formData.get("description") as string) || null,
     invoice_number: (formData.get("invoice_number") as string) || null,
@@ -113,9 +119,13 @@ export async function getProjectExpenses(projectId?: string) {
 
 export async function createProjectExpense(formData: FormData) {
   const supabase = await createClient()
+  const taxRate = formData.get("tax_rate") as string
+  const taxAmount = formData.get("tax_amount") as string
   const { error } = await supabase.from("project_expenses").insert({
     project_id: formData.get("project_id") as string,
     amount: Number(formData.get("amount")),
+    tax_rate: taxRate ? Number(taxRate) : null,
+    tax_amount: taxAmount ? Number(taxAmount) : null,
     date: formData.get("date") as string,
     description: (formData.get("description") as string) || null,
     category: (formData.get("category") as string) || null,
@@ -206,22 +216,30 @@ export async function getFinancialSummary() {
          prevIncomeRes, prevExpensesRes] = await Promise.all([
     supabase.from("income").select("amount").gte("date", firstDay).lte("date", lastDay),
     supabase.from("project_expenses").select("amount").gte("date", firstDay).lte("date", lastDay),
-    supabase.from("recurring_expenses").select("amount, frequency").eq("is_active", true),
+    supabase.from("recurring_expenses").select("amount, frequency, expense_date").eq("is_active", true),
     supabase.from("projects").select("monthly_fee").eq("status", "In Progress").not("monthly_fee", "is", null),
     supabase.from("income").select("amount").gte("date", prevFirst).lte("date", prevLast),
     supabase.from("project_expenses").select("amount").gte("date", prevFirst).lte("date", prevLast),
   ])
 
-  const monthlyRecurring = (recurringRes.data ?? []).reduce(
+  const fixedMonthly = (recurringRes.data ?? []).reduce(
     (s, e) => s + normalizeToMonthly(Number(e.amount), e.frequency as ExpenseFrequency), 0
   )
+
+  const oneTimeInRange = (start: string, end: string) =>
+    (recurringRes.data ?? [])
+      .filter((e) => e.frequency === "One-time" && e.expense_date && e.expense_date >= start && e.expense_date <= end)
+      .reduce((s, e) => s + Number(e.amount), 0)
+
+  const monthlyRecurring = fixedMonthly + oneTimeInRange(firstDay, lastDay)
 
   const monthlyIncome          = (incomeRes.data ?? []).reduce((s, i) => s + Number(i.amount), 0)
   const monthlyProjectExpenses = (projectExpensesRes.data ?? []).reduce((s, e) => s + Number(e.amount), 0)
   const mrr                    = (mrrRes.data ?? []).reduce((s, p) => s + Number(p.monthly_fee ?? 0), 0)
 
+  const prevRecurring = fixedMonthly + oneTimeInRange(prevFirst, prevLast)
   const prevIncome   = (prevIncomeRes.data ?? []).reduce((s, i) => s + Number(i.amount), 0)
-  const prevExpenses = (prevExpensesRes.data ?? []).reduce((s, e) => s + Number(e.amount), 0) + monthlyRecurring
+  const prevExpenses = (prevExpensesRes.data ?? []).reduce((s, e) => s + Number(e.amount), 0) + prevRecurring
 
   const monthlyExpenses = monthlyProjectExpenses + monthlyRecurring
   const netMargin       = monthlyIncome - monthlyExpenses
@@ -256,7 +274,7 @@ export async function getMonthlyChartData() {
   const [incomeRes, expensesRes, recurringRes] = await Promise.all([
     supabase.from("income").select("amount, date").gte("date", startDate),
     supabase.from("project_expenses").select("amount, date").gte("date", startDate),
-    supabase.from("recurring_expenses").select("amount, frequency").eq("is_active", true),
+    supabase.from("recurring_expenses").select("amount, frequency, expense_date").eq("is_active", true),
   ])
 
   // Normalized monthly recurring cost (fixed, same every month)
@@ -287,6 +305,12 @@ export async function getMonthlyChartData() {
 
   for (const entry of expensesRes.data ?? []) {
     const key = entry.date.slice(0, 7)
+    if (months[key]) months[key].gastos += Number(entry.amount)
+  }
+
+  for (const entry of recurringRes.data ?? []) {
+    if (entry.frequency !== "One-time" || !entry.expense_date) continue
+    const key = entry.expense_date.slice(0, 7)
     if (months[key]) months[key].gastos += Number(entry.amount)
   }
 
