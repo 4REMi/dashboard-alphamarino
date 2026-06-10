@@ -53,10 +53,12 @@ function StatusPicker({
   task,
   projectId,
   checklistItems,
+  onStatusChange,
 }: {
   task: Task
   projectId: string
   checklistItems?: TaskChecklistItem[]
+  onStatusChange?: (status: TaskStatus) => void
 }) {
   const tTaskStatus = useTranslations("taskStatus")
   const [open, setOpen] = useState(false)
@@ -69,6 +71,20 @@ function StatusPicker({
 
   const items = checklistItems ?? task.checklist_items ?? []
   const blockingPending = items.filter((i) => i.is_blocking && !i.is_checked).length
+
+  // Mirror checklist completion into the status badge as items are (un)checked:
+  // fully checked -> Done, some checked -> In Progress, none -> Todo. Skips the
+  // initial mount so it only reacts to in-session checklist edits, not the
+  // task's saved status.
+  const isFirstChecklistSync = useRef(true)
+  useEffect(() => {
+    if (isFirstChecklistSync.current) { isFirstChecklistSync.current = false; return }
+    if (!checklistItems || checklistItems.length === 0) return
+    const checked = checklistItems.filter((i) => i.is_checked).length
+    const derived: TaskStatus = checked === checklistItems.length ? "Done" : checked > 0 ? "In Progress" : "Todo"
+    setOptimisticStatus(derived)
+    onStatusChange?.(derived)
+  }, [checklistItems])
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -100,9 +116,10 @@ function StatusPicker({
     }
     setBlockError(null)
     setOptimisticStatus(next)
+    onStatusChange?.(next)
     startTransition(async () => {
       try { await updateTaskStatus(task.id, next, projectId) }
-      catch { setOptimisticStatus(task.status) }
+      catch { setOptimisticStatus(task.status); onStatusChange?.(task.status) }
     })
   }
 
@@ -200,7 +217,7 @@ function UrgentFlag({ task, projectId }: { task: Task; projectId: string }) {
 
 // ─── Assignee Picker ──────────────────────────────────────────────────────────
 
-function AssigneePicker({ task, projectId, employees }: { task: Task; projectId: string; employees: Profile[] }) {
+function AssigneePicker({ task, projectId, employees, onAssigneeChange }: { task: Task; projectId: string; employees: Profile[]; onAssigneeChange?: (id: string | null) => void }) {
   const tCommon = useTranslations("common")
   const [open, setOpen] = useState(false)
   const [dropPos, setDropPos] = useState({ top: 0, left: 0 })
@@ -235,9 +252,13 @@ function AssigneePicker({ task, projectId, employees }: { task: Task; projectId:
     setOpen(false)
     if (employee?.id === optimisticAssignee?.id) return
     setOptimisticAssignee(employee)
+    onAssigneeChange?.(employee?.id ?? null)
     startTransition(async () => {
       try { await updateTaskAssignee(task.id, employee?.id ?? null, projectId) }
-      catch { setOptimisticAssignee((task.assignee as Profile | null | undefined) ?? null) }
+      catch {
+        setOptimisticAssignee((task.assignee as Profile | null | undefined) ?? null)
+        onAssigneeChange?.(task.assignee_id ?? null)
+      }
     })
   }
 
@@ -755,6 +776,8 @@ function TaskDetailModal({
   const [liveChecklistItems, setLiveChecklistItems] = useState<TaskChecklistItem[]>(
     [...(task.checklist_items ?? [])].sort((a, b) => a.item_order - b.item_order)
   )
+  const [currentStatus, setCurrentStatus] = useState<TaskStatus>(task.status)
+  const [currentAssigneeId, setCurrentAssigneeId] = useState<string | null>(task.assignee_id)
   const phase = (task.phase as { id: string; name: string; phase_order: number } | null | undefined) ?? null
 
   // Close on Escape
@@ -769,8 +792,8 @@ function TaskDetailModal({
     const fd = new FormData(e.currentTarget)
     fd.set("project_id", projectId)
     // include current status/assignee so they're preserved
-    fd.set("status", task.status)
-    fd.set("assignee_id", task.assignee_id ?? "")
+    fd.set("status", currentStatus)
+    fd.set("assignee_id", currentAssigneeId ?? "")
     startTransition(async () => {
       try {
         await updateTask(task.id, fd)
@@ -798,7 +821,7 @@ function TaskDetailModal({
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div className="flex items-center gap-2 flex-wrap">
             {phase && <PhaseBadge phase={phase} />}
-            <StatusPicker task={task} projectId={projectId} checklistItems={liveChecklistItems} />
+            <StatusPicker task={task} projectId={projectId} checklistItems={liveChecklistItems} onStatusChange={setCurrentStatus} />
           </div>
           <button onClick={onClose} className="p-1 rounded text-muted-foreground hover:text-foreground flex-shrink-0">
             <X className="w-4 h-4" />
@@ -836,7 +859,7 @@ function TaskDetailModal({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label>{tT("assignee")}</Label>
-              <AssigneePicker task={task} projectId={projectId} employees={employees} />
+              <AssigneePicker task={task} projectId={projectId} employees={employees} onAssigneeChange={setCurrentAssigneeId} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="modal-due">{tT("dueDate")}</Label>

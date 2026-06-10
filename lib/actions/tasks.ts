@@ -155,6 +155,21 @@ export async function deleteTask(id: string, projectId: string) {
   revalidatePath("/tasks")
 }
 
+// Keep task status in sync with checklist completion: fully checked -> Done,
+// some checked -> In Progress, none checked -> Todo. No-op for tasks without a checklist.
+async function syncTaskStatusFromChecklist(admin: ReturnType<typeof createAdminClient>, taskId: string) {
+  const { data: items } = await admin
+    .from("task_checklist_items")
+    .select("is_checked")
+    .eq("task_id", taskId)
+  if (!items || items.length === 0) return
+
+  const checked = items.filter((i) => i.is_checked).length
+  const status: TaskStatus = checked === items.length ? "Done" : checked > 0 ? "In Progress" : "Todo"
+
+  await admin.from("tasks").update({ status }).eq("id", taskId)
+}
+
 // ─── Checklist actions ────────────────────────────────────────────────────────
 
 export async function createChecklistItem(
@@ -192,11 +207,16 @@ export async function toggleChecklistItem(
 ) {
   await requireTaskPermission(projectId)
   const admin = createAdminClient()
-  const { error } = await admin
+  const { data, error } = await admin
     .from("task_checklist_items")
     .update({ is_checked: isChecked })
     .eq("id", itemId)
+    .select("task_id")
+    .single()
   if (error) throw error
+
+  await syncTaskStatusFromChecklist(admin, data.task_id)
+
   revalidatePath(`/projects/${projectId}`)
   revalidatePath("/tasks")
 }
