@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { can } from "@/lib/permissions"
-import type { TaskStatus, TaskChecklistItem } from "@/lib/types"
+import type { TaskStatus, TaskChecklistItem, PhaseStatus } from "@/lib/types"
 
 async function requireTaskPermission(projectId: string) {
   const supabase = await createClient()
@@ -121,8 +121,9 @@ export async function updateTaskAssignee(id: string, assigneeId: string | null, 
 export async function updateTaskStatus(id: string, status: TaskStatus, projectId: string) {
   await requireTaskPermission(projectId)
 
+  const admin = createAdminClient()
+
   if (status === "Done") {
-    const admin = createAdminClient()
     const { count } = await admin
       .from("task_checklist_items")
       .select("*", { count: "exact", head: true })
@@ -134,13 +135,19 @@ export async function updateTaskStatus(id: string, status: TaskStatus, projectId
     }
   }
 
-  const admin = createAdminClient()
-  const { error } = await admin
+  const { data, error } = await admin
     .from("tasks")
     .update({ status })
     .eq("id", id)
+    .select("phase_id")
+    .single()
 
   if (error) throw error
+
+  if (data.phase_id) {
+    await syncPhaseStatusFromTasks(admin, data.phase_id)
+  }
+
   revalidatePath(`/projects/${projectId}`)
   revalidatePath("/tasks")
 }
@@ -149,8 +156,15 @@ export async function deleteTask(id: string, projectId: string) {
   await requireTaskPermission(projectId)
 
   const admin = createAdminClient()
+  const { data: task } = await admin.from("tasks").select("phase_id").eq("id", id).single()
+
   const { error } = await admin.from("tasks").delete().eq("id", id)
   if (error) throw error
+
+  if (task?.phase_id) {
+    await syncPhaseStatusFromTasks(admin, task.phase_id)
+  }
+
   revalidatePath(`/projects/${projectId}`)
   revalidatePath("/tasks")
 }
@@ -167,7 +181,68 @@ async function syncTaskStatusFromChecklist(admin: ReturnType<typeof createAdminC
   const checked = items.filter((i) => i.is_checked).length
   const status: TaskStatus = checked === items.length ? "Done" : checked > 0 ? "In Progress" : "Todo"
 
-  await admin.from("tasks").update({ status }).eq("id", taskId)
+  const { data } = await admin
+    .from("tasks")
+    .update({ status })
+    .eq("id", taskId)
+    .select("phase_id")
+    .single()
+
+  if (data?.phase_id) {
+    await syncPhaseStatusFromTasks(admin, data.phase_id)
+  }
+}
+
+// Keep a phase's status in sync with the completion of its tasks: all done ->
+// completed, some started -> in_progress, none started -> pending. Phases
+// manually marked "blocked" are left untouched unless `ignoreBlocked` is set
+// (used by the manual "unblock" action to recompute the natural status).
+async function syncPhaseStatusFromTasks(
+  admin: ReturnType<typeof createAdminClient>,
+  phaseId: string,
+  ignoreBlocked = false
+): Promise<PhaseStatus | null> {
+  const { data: phase } = await admin
+    .from("project_phases")
+    .select("status, started_at, completed_at")
+    .eq("id", phaseId)
+    .single()
+  if (!phase) return null
+  if (phase.status === "blocked" && !ignoreBlocked) return null
+
+  const { data: tasks } = await admin
+    .from("tasks")
+    .select("status")
+    .eq("phase_id", phaseId)
+
+  const total = tasks?.length ?? 0
+  const done = tasks?.filter((t) => t.status === "Done").length ?? 0
+  const started = tasks?.filter((t) => t.status !== "Todo").length ?? 0
+
+  const status: PhaseStatus =
+    total === 0 ? "pending" : done === total ? "completed" : started > 0 ? "in_progress" : "pending"
+
+  if (status === phase.status) return status
+
+  const updates: Record<string, unknown> = { status }
+  if (status === "in_progress" && !phase.started_at) updates.started_at = new Date().toISOString()
+  if (status === "completed" && !phase.completed_at) updates.completed_at = new Date().toISOString()
+  if (status !== "completed") updates.completed_at = null
+  if (status === "pending") updates.started_at = null
+
+  await admin.from("project_phases").update(updates).eq("id", phaseId)
+  return status
+}
+
+// Recompute a phase's status from its current tasks even if it's marked
+// "blocked" — used by the manual "unblock" action.
+export async function recalculatePhaseStatus(phaseId: string, projectId: string) {
+  await requireTaskPermission(projectId)
+  const admin = createAdminClient()
+  const status = await syncPhaseStatusFromTasks(admin, phaseId, true)
+  revalidatePath(`/projects/${projectId}`)
+  revalidatePath("/tasks")
+  return status
 }
 
 // ─── Checklist actions ────────────────────────────────────────────────────────

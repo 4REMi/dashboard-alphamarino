@@ -1,9 +1,10 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useState, useEffect, useTransition } from "react"
 import { useTranslations, useFormatter } from "next-intl"
 import type { ProjectPhase, PhaseStatus } from "@/lib/types"
 import { updateProjectPhaseStatus, updateProjectPhaseNotes } from "@/lib/actions/projects"
+import { recalculatePhaseStatus } from "@/lib/actions/tasks"
 import { phaseColor } from "@/lib/phase-colors"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
 
@@ -37,6 +38,12 @@ export function ProjectPhases({ projectId, initialPhases, canEdit, taskCountByPh
   const [notesValue, setNotesValue] = useState("")
   const [isPending, startTransition] = useTransition()
 
+  // Keep phases in sync with fresh data after a revalidation triggered by
+  // task changes elsewhere (e.g. status/checklist updates auto-syncing phase status).
+  useEffect(() => {
+    setPhases(initialPhases)
+  }, [initialPhases])
+
   const done = phases.filter((p) => p.status === "completed").length
 
   function handleStatusChange(phase: ProjectPhase, status: PhaseStatus) {
@@ -44,6 +51,22 @@ export function ProjectPhases({ projectId, initialPhases, canEdit, taskCountByPh
     startTransition(async () => {
       await updateProjectPhaseStatus(phase.id, status, projectId)
     })
+  }
+
+  // "blocked" is the only manual override now: pending/in_progress/completed
+  // are derived automatically from the phase's task statuses. Unblocking
+  // recomputes the natural status from the current tasks.
+  function handleToggleBlocked(phase: ProjectPhase) {
+    if (phase.status === "blocked") {
+      startTransition(async () => {
+        const status = await recalculatePhaseStatus(phase.id, projectId)
+        if (status) {
+          setPhases((prev) => prev.map((p) => (p.id === phase.id ? { ...p, status } : p)))
+        }
+      })
+    } else {
+      handleStatusChange(phase, "blocked")
+    }
   }
 
   function handleSaveNotes(phaseId: string) {
@@ -141,23 +164,22 @@ export function ProjectPhases({ projectId, initialPhases, canEdit, taskCountByPh
               {/* Phase detail */}
               {isExpanded && (
                 <div className="px-5 pb-4 space-y-3">
-                  {/* Status controls */}
+                  {/* Status controls — pending/in_progress/completed are derived
+                      automatically from the phase's tasks; "blocked" is the
+                      only manual override left. */}
                   {canEdit && (
                     <div className="flex flex-wrap gap-2">
-                      {(["pending", "in_progress", "completed", "blocked"] as PhaseStatus[]).map((s) => (
-                        <button
-                          key={s}
-                          onClick={() => handleStatusChange(phase, s)}
-                          disabled={isPending || phase.status === s}
-                          className={`px-3 py-1 rounded-md text-xs font-medium transition-colors disabled:opacity-50 ${
-                            phase.status === s
-                              ? "bg-primary text-primary-foreground"
-                              : "bg-muted text-muted-foreground hover:bg-muted/80"
-                          }`}
-                        >
-                          {tStatus(s)}
-                        </button>
-                      ))}
+                      <button
+                        onClick={() => handleToggleBlocked(phase)}
+                        disabled={isPending}
+                        className={`px-3 py-1 rounded-md text-xs font-medium transition-colors disabled:opacity-50 ${
+                          phase.status === "blocked"
+                            ? "bg-destructive/10 text-destructive border border-destructive/20 hover:bg-destructive/20"
+                            : "bg-muted text-muted-foreground hover:bg-muted/80"
+                        }`}
+                      >
+                        {phase.status === "blocked" ? t("unblock") : t("markBlocked")}
+                      </button>
                     </div>
                   )}
 
