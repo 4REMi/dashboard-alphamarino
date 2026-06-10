@@ -791,7 +791,7 @@ function TaskDetailModal({
       onClick={onClose}
     >
       <div
-        className="bg-card border border-border rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+        className="bg-card border border-border rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -1222,7 +1222,7 @@ export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesBy
   const [drawerTask, setDrawerTask] = useState<Task | null>(null)
   const [detailTask, setDetailTask] = useState<Task | null>(null)
   const [filter,     setFilter]     = useState<TaskFilter>("all")
-  const [groupMode,  setGroupMode]  = useState<GroupMode>("status")
+  const [groupMode,  setGroupMode]  = useState<GroupMode>(() => tasks.some((t) => t.phase) ? "phase" : "status")
 
   // ── derived ────────────────────────────────────────────────────────────────
   // Detect whether this project has phases
