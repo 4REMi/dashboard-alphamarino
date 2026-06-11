@@ -146,7 +146,11 @@ export async function getPendingMonthlyFees() {
 export async function collectMonthlyFee(formData: FormData) {
   const supabase = await createClient()
   const projectId = formData.get("project_id") as string
+  const projectName = formData.get("project_name") as string
   const amount = Number(formData.get("amount"))
+
+  const today = new Date()
+  const monthLabel = today.toLocaleDateString("es-MX", { month: "long", year: "numeric" })
 
   const { error } = await supabase.from("income").insert({
     project_id: projectId,
@@ -154,8 +158,8 @@ export async function collectMonthlyFee(formData: FormData) {
     currency: "USD",
     original_amount: amount,
     exchange_rate: 1,
-    date: new Date().toISOString().split("T")[0],
-    description: "Cuota mensual",
+    date: today.toISOString().split("T")[0],
+    description: `Cuota mensual - ${projectName} (${monthLabel})`,
   })
   if (error) throw error
   revalidatePath("/finances")

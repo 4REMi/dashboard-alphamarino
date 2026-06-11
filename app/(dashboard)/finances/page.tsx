@@ -312,6 +312,7 @@ export default async function FinancesPage() {
                       await collectMonthlyFee(formData)
                     }}>
                       <input type="hidden" name="project_id" value={p.id} />
+                      <input type="hidden" name="project_name" value={p.name} />
                       <input type="hidden" name="amount" value={p.monthly_fee} />
                       <Button type="submit" variant="outline" size="sm">Marcar como cobrado</Button>
                     </form>
