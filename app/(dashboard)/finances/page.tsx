@@ -354,11 +354,23 @@ export default async function FinancesPage() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <form action={async () => { "use server"; await deleteIncome(item.id) }}>
-                        <Button type="submit" variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                      </form>
+                      <div className="flex items-center justify-end gap-1">
+                        <IncomeForm
+                          projects={projects as Project[]}
+                          income={item}
+                          trigger={
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <span className="sr-only">{tCommon("edit")}</span>
+                              ✏️
+                            </Button>
+                          }
+                        />
+                        <form action={async () => { "use server"; await deleteIncome(item.id) }}>
+                          <Button type="submit" variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </form>
+                      </div>
                     </td>
                   </tr>
                 ))}

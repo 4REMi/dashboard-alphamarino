@@ -1,33 +1,40 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { createIncome, getExchangeRate } from "@/lib/actions/finances"
+import { createIncome, updateIncome, getExchangeRate } from "@/lib/actions/finances"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { Plus } from "lucide-react"
-import type { Project, Currency } from "@/lib/types"
+import type { Project, Currency, Income } from "@/lib/types"
 
 interface IncomeFormProps {
   projects: Project[]
+  income?: Income
+  trigger?: React.ReactNode
 }
 
-export function IncomeForm({ projects }: IncomeFormProps) {
+export function IncomeForm({ projects, income, trigger }: IncomeFormProps) {
   const [open, setOpen] = useState(false)
-  const [projectId, setProjectId] = useState("none")
+  const [projectId, setProjectId] = useState(income?.project_id ?? "none")
   const [loading, setLoading] = useState(false)
-  const [amount, setAmount] = useState("")
-  const [taxRate, setTaxRate] = useState("")
-  const [currency, setCurrency] = useState<Currency>("MXN")
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0])
-  const [exchangeRate, setExchangeRate] = useState("")
+  const [amount, setAmount] = useState(
+    income ? String(income.original_amount ?? income.amount) : ""
+  )
+  const [taxRate, setTaxRate] = useState(income?.tax_rate != null ? String(income.tax_rate) : "")
+  const [currency, setCurrency] = useState<Currency>(income?.currency ?? "MXN")
+  const [date, setDate] = useState(income?.date ?? new Date().toISOString().split("T")[0])
+  const [exchangeRate, setExchangeRate] = useState(
+    income?.exchange_rate != null ? String(income.exchange_rate) : ""
+  )
   const [loadingRate, setLoadingRate] = useState(false)
+  const [rateTouched, setRateTouched] = useState(!!income?.exchange_rate)
 
   // Tipo de cambio automático (USD -> MXN) según la fecha del ingreso
   useEffect(() => {
-    if (currency !== "MXN") return
+    if (currency !== "MXN" || rateTouched) return
     let cancelled = false
     setLoadingRate(true)
     getExchangeRate(date)
@@ -38,7 +45,7 @@ export function IncomeForm({ projects }: IncomeFormProps) {
         if (!cancelled) setLoadingRate(false)
       })
     return () => { cancelled = true }
-  }, [currency, date])
+  }, [currency, date, rateTouched])
 
   const amountUsd = currency === "MXN"
     ? (Number(amount) && Number(exchangeRate) ? Number(amount) / Number(exchangeRate) : 0)
@@ -60,7 +67,11 @@ export function IncomeForm({ projects }: IncomeFormProps) {
     formData.set("tax_amount", taxRate ? String(taxAmount) : "")
 
     try {
-      await createIncome(formData)
+      if (income) {
+        await updateIncome(income.id, formData)
+      } else {
+        await createIncome(formData)
+      }
       setOpen(false)
     } finally {
       setLoading(false)
@@ -70,14 +81,16 @@ export function IncomeForm({ projects }: IncomeFormProps) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm">
-          <Plus className="w-4 h-4" />
-          Registrar Ingreso
-        </Button>
+        {trigger ?? (
+          <Button size="sm">
+            <Plus className="w-4 h-4" />
+            Registrar Ingreso
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Nuevo Ingreso</DialogTitle>
+          <DialogTitle>{income ? "Editar Ingreso" : "Nuevo Ingreso"}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -129,7 +142,7 @@ export function IncomeForm({ projects }: IncomeFormProps) {
                   step="0.0001"
                   placeholder={loadingRate ? "Cargando..." : ""}
                   value={exchangeRate}
-                  onChange={(e) => setExchangeRate(e.target.value)}
+                  onChange={(e) => { setExchangeRate(e.target.value); setRateTouched(true) }}
                 />
               </div>
             )}
@@ -179,16 +192,16 @@ export function IncomeForm({ projects }: IncomeFormProps) {
           </div>
           <div className="space-y-2">
             <Label htmlFor="description">Descripción</Label>
-            <Input id="description" name="description" placeholder="Ej. Pago cuota proyecto X" />
+            <Input id="description" name="description" placeholder="Ej. Pago cuota proyecto X" defaultValue={income?.description ?? ""} />
           </div>
           <div className="space-y-2">
             <Label htmlFor="invoice_number">Número de Factura</Label>
-            <Input id="invoice_number" name="invoice_number" placeholder="INV-001" />
+            <Input id="invoice_number" name="invoice_number" placeholder="INV-001" defaultValue={income?.invoice_number ?? ""} />
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
             <Button type="submit" disabled={loading}>
-              {loading ? "Guardando..." : "Registrar"}
+              {loading ? "Guardando..." : income ? "Actualizar" : "Registrar"}
             </Button>
           </DialogFooter>
         </form>

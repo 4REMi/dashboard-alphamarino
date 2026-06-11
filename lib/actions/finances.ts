@@ -90,8 +90,7 @@ export async function getExchangeRate(date: string): Promise<number | null> {
   }
 }
 
-export async function createIncome(formData: FormData) {
-  const supabase = await createClient()
+function buildIncomePayload(formData: FormData) {
   const taxRate = formData.get("tax_rate") as string
   const taxAmount = formData.get("tax_amount") as string
 
@@ -100,7 +99,7 @@ export async function createIncome(formData: FormData) {
   const exchangeRate = currency === "MXN" ? Number(formData.get("exchange_rate")) : 1
   const amount = currency === "MXN" && exchangeRate ? originalAmount / exchangeRate : originalAmount
 
-  const { error } = await supabase.from("income").insert({
+  return {
     project_id: (formData.get("project_id") as string) || null,
     amount,
     currency,
@@ -111,7 +110,19 @@ export async function createIncome(formData: FormData) {
     date: formData.get("date") as string,
     description: (formData.get("description") as string) || null,
     invoice_number: (formData.get("invoice_number") as string) || null,
-  })
+  }
+}
+
+export async function createIncome(formData: FormData) {
+  const supabase = await createClient()
+  const { error } = await supabase.from("income").insert(buildIncomePayload(formData))
+  if (error) throw error
+  revalidatePath("/finances")
+}
+
+export async function updateIncome(id: string, formData: FormData) {
+  const supabase = await createClient()
+  const { error } = await supabase.from("income").update(buildIncomePayload(formData)).eq("id", id)
   if (error) throw error
   revalidatePath("/finances")
 }
