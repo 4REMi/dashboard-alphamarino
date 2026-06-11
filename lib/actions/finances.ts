@@ -239,7 +239,7 @@ export async function getFinancialSummary() {
     supabase.from("income").select("amount").gte("date", firstDay).lte("date", lastDay),
     supabase.from("project_expenses").select("amount").gte("date", firstDay).lte("date", lastDay),
     supabase.from("recurring_expenses").select("amount, frequency, expense_date").eq("is_active", true),
-    supabase.from("projects").select("monthly_fee").eq("status", "In Progress").not("monthly_fee", "is", null),
+    supabase.from("projects").select("monthly_fee").eq("status", "Active").gt("monthly_fee", 0),
     supabase.from("income").select("amount").gte("date", prevFirst).lte("date", prevLast),
     supabase.from("project_expenses").select("amount").gte("date", prevFirst).lte("date", prevLast),
   ])
