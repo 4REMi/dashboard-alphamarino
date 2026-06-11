@@ -7,6 +7,8 @@ import {
   getRecurringExpenses,
   getMonthlyChartData,
   getTopClients,
+  getPendingMonthlyFees,
+  collectMonthlyFee,
 } from "@/lib/actions/finances"
 import { getProjects } from "@/lib/actions/projects"
 import { YearChart } from "@/components/finances/year-chart"
@@ -69,7 +71,7 @@ export default async function FinancesPage() {
     redirect("/")
   }
 
-  const [summary, income, expenses, recurring, projects, chartData, topClients] = await Promise.all([
+  const [summary, income, expenses, recurring, projects, chartData, topClients, pendingFees] = await Promise.all([
     getFinancialSummary(),
     getIncome(),
     getProjectExpenses(),
@@ -77,6 +79,7 @@ export default async function FinancesPage() {
     getProjects(),
     getMonthlyChartData(),
     getTopClients(),
+    getPendingMonthlyFees(),
   ])
 
   const frequencyLabels: Record<string, string> = {
@@ -292,6 +295,32 @@ export default async function FinancesPage() {
           <div className="flex justify-end">
             <IncomeForm projects={projects as Project[]} />
           </div>
+
+          {pendingFees.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-xs text-muted-foreground">Cuotas mensuales pendientes de cobro</p>
+              {pendingFees.map((p) => (
+                <div
+                  key={p.id}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-dashed px-4 py-2 text-sm text-muted-foreground"
+                >
+                  <span className="truncate">{p.name}</span>
+                  <div className="flex items-center gap-3 flex-shrink-0">
+                    <span>{formatCurrency(p.monthly_fee)}</span>
+                    <form action={async (formData: FormData) => {
+                      "use server"
+                      await collectMonthlyFee(formData)
+                    }}>
+                      <input type="hidden" name="project_id" value={p.id} />
+                      <input type="hidden" name="amount" value={p.monthly_fee} />
+                      <Button type="submit" variant="outline" size="sm">Marcar como cobrado</Button>
+                    </form>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="border rounded-lg overflow-hidden bg-card overflow-x-auto">
             <table className="w-full text-sm min-w-[480px]">
               <thead className="bg-muted/50">

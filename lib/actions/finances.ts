@@ -123,6 +123,44 @@ export async function deleteIncome(id: string) {
   revalidatePath("/finances")
 }
 
+// Proyectos "Active" con monthly_fee que aún no tienen un Income registrado este mes
+export async function getPendingMonthlyFees() {
+  const supabase = await createClient()
+  const now = new Date()
+  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0]
+  const lastDay  = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0]
+
+  const [projectsRes, incomeRes] = await Promise.all([
+    supabase.from("projects").select("id, name, monthly_fee").eq("status", "Active").gt("monthly_fee", 0),
+    supabase.from("income").select("project_id").gte("date", firstDay).lte("date", lastDay).not("project_id", "is", null),
+  ])
+
+  const collectedProjectIds = new Set((incomeRes.data ?? []).map((i) => i.project_id))
+
+  return (projectsRes.data ?? [])
+    .filter((p) => !collectedProjectIds.has(p.id))
+    .map((p) => ({ id: p.id, name: p.name, monthly_fee: Number(p.monthly_fee) }))
+}
+
+// Registra la cuota mensual de un proyecto como Income (USD, fecha de hoy)
+export async function collectMonthlyFee(formData: FormData) {
+  const supabase = await createClient()
+  const projectId = formData.get("project_id") as string
+  const amount = Number(formData.get("amount"))
+
+  const { error } = await supabase.from("income").insert({
+    project_id: projectId,
+    amount,
+    currency: "USD",
+    original_amount: amount,
+    exchange_rate: 1,
+    date: new Date().toISOString().split("T")[0],
+    description: "Cuota mensual",
+  })
+  if (error) throw error
+  revalidatePath("/finances")
+}
+
 // ============================================================
 // PROJECT EXPENSES
 // ============================================================
