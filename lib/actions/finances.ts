@@ -349,15 +349,22 @@ export async function getMonthlyChartData() {
   const [incomeRes, expensesRes, recurringRes] = await Promise.all([
     supabase.from("income").select("amount, date").gte("date", startDate),
     supabase.from("project_expenses").select("amount, date").gte("date", startDate),
-    supabase.from("recurring_expenses").select("amount, frequency, expense_date").eq("is_active", true),
+    supabase.from("recurring_expenses").select("amount, frequency, category, expense_date").eq("is_active", true),
   ])
 
-  // Normalized monthly recurring cost (fixed, same every month)
-  const fixedMonthly = (recurringRes.data ?? []).reduce(
-    (s, e) => s + normalizeToMonthly(Number(e.amount), e.frequency as ExpenseFrequency), 0
-  )
+  // Normalized monthly recurring cost (fixed, same every month), por categoría
+  const fixedByCategory: Record<string, number> = {}
+  for (const e of recurringRes.data ?? []) {
+    const monthly = normalizeToMonthly(Number(e.amount), e.frequency as ExpenseFrequency)
+    if (monthly === 0) continue
+    fixedByCategory[e.category] = (fixedByCategory[e.category] ?? 0) + monthly
+  }
+  const fixedMonthly = Object.values(fixedByCategory).reduce((s, v) => s + v, 0)
 
-  const months: Record<string, { month: string; label: string; ingresos: number; gastos: number; margen: number }> = {}
+  const months: Record<string, {
+    month: string; label: string; ingresos: number; gastos: number; margen: number
+    gastosBreakdown: Record<string, number>
+  }> = {}
 
   for (let i = 11; i >= 0; i--) {
     const d = new Date()
@@ -370,6 +377,7 @@ export async function getMonthlyChartData() {
       ingresos: 0,
       gastos: fixedMonthly,  // base: recurring expenses normalized
       margen: 0,
+      gastosBreakdown: { ...fixedByCategory },
     }
   }
 
@@ -380,13 +388,19 @@ export async function getMonthlyChartData() {
 
   for (const entry of expensesRes.data ?? []) {
     const key = entry.date.slice(0, 7)
-    if (months[key]) months[key].gastos += Number(entry.amount)
+    if (months[key]) {
+      months[key].gastos += Number(entry.amount)
+      months[key].gastosBreakdown.Proyectos = (months[key].gastosBreakdown.Proyectos ?? 0) + Number(entry.amount)
+    }
   }
 
   for (const entry of recurringRes.data ?? []) {
     if (entry.frequency !== "One-time" || !entry.expense_date) continue
     const key = entry.expense_date.slice(0, 7)
-    if (months[key]) months[key].gastos += Number(entry.amount)
+    if (months[key]) {
+      months[key].gastos += Number(entry.amount)
+      months[key].gastosBreakdown[entry.category] = (months[key].gastosBreakdown[entry.category] ?? 0) + Number(entry.amount)
+    }
   }
 
   return Object.values(months).map((m) => ({
@@ -394,6 +408,9 @@ export async function getMonthlyChartData() {
     ingresos: Math.round(m.ingresos),
     gastos: Math.round(m.gastos),
     margen: Math.round(m.ingresos - m.gastos),
+    gastosBreakdown: Object.fromEntries(
+      Object.entries(m.gastosBreakdown).map(([k, v]) => [k, Math.round(v)])
+    ),
   }))
 }
 
