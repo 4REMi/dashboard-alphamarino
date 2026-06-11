@@ -314,7 +314,15 @@ export default async function FinancesPage() {
                     <td className="px-4 py-3 text-muted-foreground">{formatDate(item.date)}</td>
                     <td className="px-4 py-3">{item.description ?? "—"}</td>
                     <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">{item.invoice_number ?? "—"}</td>
-                    <td className="px-4 py-3 text-right font-semibold text-green-600">{formatCurrency(item.amount)}</td>
+                    <td className="px-4 py-3 text-right font-semibold text-green-600">
+                      {formatCurrency(item.amount)}
+                      {item.currency === "MXN" && item.original_amount != null && (
+                        <div className="text-xs font-normal text-muted-foreground">
+                          ${item.original_amount.toLocaleString("es-MX", { minimumFractionDigits: 2 })} MXN
+                          {item.exchange_rate ? ` @ ${item.exchange_rate}` : ""}
+                        </div>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-right">
                       <form action={async () => { "use server"; await deleteIncome(item.id) }}>
                         <Button type="submit" variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">

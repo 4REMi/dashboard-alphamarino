@@ -77,13 +77,35 @@ export async function getIncome(projectId?: string) {
   return data
 }
 
+// Tipo de cambio histórico USD -> MXN (Frankfurter, datos del Banco Central Europeo, sin API key)
+export async function getExchangeRate(date: string): Promise<number | null> {
+  try {
+    const res = await fetch(`https://api.frankfurter.app/${date}?from=USD&to=MXN`, { cache: "no-store" })
+    if (!res.ok) return null
+    const data = await res.json()
+    const rate = data?.rates?.MXN
+    return typeof rate === "number" ? rate : null
+  } catch {
+    return null
+  }
+}
+
 export async function createIncome(formData: FormData) {
   const supabase = await createClient()
   const taxRate = formData.get("tax_rate") as string
   const taxAmount = formData.get("tax_amount") as string
+
+  const currency = ((formData.get("currency") as string) || "USD") as "USD" | "MXN"
+  const originalAmount = Number(formData.get("original_amount"))
+  const exchangeRate = currency === "MXN" ? Number(formData.get("exchange_rate")) : 1
+  const amount = currency === "MXN" && exchangeRate ? originalAmount / exchangeRate : originalAmount
+
   const { error } = await supabase.from("income").insert({
     project_id: (formData.get("project_id") as string) || null,
-    amount: Number(formData.get("amount")),
+    amount,
+    currency,
+    original_amount: originalAmount,
+    exchange_rate: exchangeRate || null,
     tax_rate: taxRate ? Number(taxRate) : null,
     tax_amount: taxAmount ? Number(taxAmount) : null,
     date: formData.get("date") as string,

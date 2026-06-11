@@ -571,10 +571,15 @@ export interface ProjectLogEntry {
 // FINANCES
 // ============================================================
 
+export type Currency = "USD" | "MXN"
+
 export interface Income {
   id: string
   project_id: string | null
   amount: number
+  currency: Currency
+  original_amount: number | null
+  exchange_rate: number | null
   tax_rate: number | null
   tax_amount: number | null
   date: string
