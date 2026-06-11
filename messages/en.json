@@ -157,7 +157,9 @@
       "notesPlaceholder": "Phase notes…",
       "started": "Started {date}",
       "startLabel": "Start: {date}",
-      "completedLabel": "Completed: {date}"
+      "completedLabel": "Completed: {date}",
+      "markBlocked": "Mark as blocked",
+      "unblock": "Unblock"
     },
     "members": {
       "title": "Team",

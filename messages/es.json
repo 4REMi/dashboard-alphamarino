@@ -157,7 +157,9 @@
       "notesPlaceholder": "Notas de la fase…",
       "started": "Iniciada {date}",
       "startLabel": "Inicio: {date}",
-      "completedLabel": "Completada: {date}"
+      "completedLabel": "Completada: {date}",
+      "markBlocked": "Marcar como bloqueada",
+      "unblock": "Quitar bloqueo"
     },
     "members": {
       "title": "Equipo",
