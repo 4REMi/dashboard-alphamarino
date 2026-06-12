@@ -108,6 +108,10 @@ export function MonthlyBreakdown({ data, income, projectExpenses, recurring }: M
     (e) => e.frequency === "One-time" && e.expense_date?.slice(0, 7) === selected.month
   )
 
+  const recurringFixedTotal = recurringFixedItems.reduce((s, e) => s + normalizeToMonthly(Number(e.amount), e.frequency), 0)
+  const recurringOneTimeTotal = recurringOneTimeItems.reduce((s, e) => s + Number(e.amount), 0)
+  const projectExpenseTotal = projectExpenseItems.reduce((s, e) => s + Number(e.amount), 0)
+
   // Tipo de cambio del mes para el toggle MXN
   useEffect(() => {
     if (displayCurrency !== "MXN" || !modalOpen) return
@@ -276,7 +280,7 @@ export function MonthlyBreakdown({ data, income, projectExpenses, recurring }: M
             {recurringFixedItems.length > 0 && (
               <CollapsibleSection
                 title="Gastos recurrentes (normalizados a mensual)"
-                total={display(recurringFixedItems.reduce((s, e) => s + normalizeToMonthly(Number(e.amount), e.frequency), 0))}
+                total={display(recurringFixedTotal)}
                 totalColor="text-red-500"
                 defaultOpen={false}
               >
@@ -299,7 +303,7 @@ export function MonthlyBreakdown({ data, income, projectExpenses, recurring }: M
             {recurringOneTimeItems.length > 0 && (
               <CollapsibleSection
                 title="Gastos únicos (one-time)"
-                total={display(recurringOneTimeItems.reduce((s, e) => s + Number(e.amount), 0))}
+                total={display(recurringOneTimeTotal)}
                 totalColor="text-red-500"
                 defaultOpen
               >
@@ -321,7 +325,7 @@ export function MonthlyBreakdown({ data, income, projectExpenses, recurring }: M
             {projectExpenseItems.length > 0 && (
               <CollapsibleSection
                 title="Gastos de proyecto"
-                total={display(projectExpenseItems.reduce((s, e) => s + Number(e.amount), 0))}
+                total={display(projectExpenseTotal)}
                 totalColor="text-red-500"
                 defaultOpen
               >
@@ -343,6 +347,42 @@ export function MonthlyBreakdown({ data, income, projectExpenses, recurring }: M
             {recurringFixedItems.length === 0 && recurringOneTimeItems.length === 0 && projectExpenseItems.length === 0 && (
               <p className="text-xs text-muted-foreground">Sin gastos registrados este mes</p>
             )}
+
+            {/* Resumen de totales */}
+            <div className="border-t pt-3 space-y-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Ingresos</span>
+                <span className="font-medium text-green-600">{display(selected.ingresos)}</span>
+              </div>
+              {recurringFixedTotal > 0 && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Gastos recurrentes (mensualizados)</span>
+                  <span className="font-medium text-red-500">{display(recurringFixedTotal)}</span>
+                </div>
+              )}
+              {recurringOneTimeTotal > 0 && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Gastos únicos</span>
+                  <span className="font-medium text-red-500">{display(recurringOneTimeTotal)}</span>
+                </div>
+              )}
+              {projectExpenseTotal > 0 && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Gastos de proyecto</span>
+                  <span className="font-medium text-red-500">{display(projectExpenseTotal)}</span>
+                </div>
+              )}
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground font-medium">Total gastos</span>
+                <span className="font-semibold text-red-500">{display(selected.gastos)}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm pt-1 border-t">
+                <span className="font-semibold">Margen neto</span>
+                <span className={cn("font-bold", selected.margen >= 0 ? "text-blue-600" : "text-red-600")}>
+                  {display(selected.margen)}
+                </span>
+              </div>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
