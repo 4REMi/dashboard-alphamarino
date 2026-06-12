@@ -62,7 +62,7 @@ async function parseMessage(text: string, projectNames: string[], today: string)
   const client = new Anthropic({ apiKey })
 
   const response = await client.messages.create({
-    model: "claude-sonnet-4-6",
+    model: "claude-haiku-4-5",
     max_tokens: 512,
     tools: [REGISTRAR_MOVIMIENTO_TOOL],
     tool_choice: { type: "tool", name: "registrar_movimiento" },
