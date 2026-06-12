@@ -1,8 +1,11 @@
 "use client"
 
 import { useState } from "react"
-import { formatCurrency } from "@/lib/utils"
-import { cn } from "@/lib/utils"
+import { formatCurrency, formatDate, cn } from "@/lib/utils"
+import { normalizeToMonthly } from "@/lib/types"
+import type { Income, ProjectExpense, RecurringExpense, ExpenseFrequency } from "@/lib/types"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
 
 interface ChartEntry {
   month: string
@@ -15,6 +18,9 @@ interface ChartEntry {
 
 interface MonthlyBreakdownProps {
   data: ChartEntry[]
+  income: Income[]
+  projectExpenses: ProjectExpense[]
+  recurring: RecurringExpense[]
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -35,10 +41,19 @@ const CATEGORY_COLORS: Record<string, string> = {
   Proyectos: "bg-pink-500",
 }
 
-export function MonthlyBreakdown({ data }: MonthlyBreakdownProps) {
+const FREQUENCY_LABELS: Record<ExpenseFrequency, string> = {
+  Monthly:    "Mensual",
+  Weekly:     "Semanal",
+  Annual:     "Anual",
+  Semestral:  "Semestral",
+  "One-time": "Único",
+}
+
+export function MonthlyBreakdown({ data, income, projectExpenses, recurring }: MonthlyBreakdownProps) {
   // Show most recent months first
   const reversed = [...data].reverse()
   const [selectedMonth, setSelectedMonth] = useState<string | null>(reversed[0]?.month ?? null)
+  const [modalOpen, setModalOpen] = useState(false)
 
   if (!data.length) {
     return <p className="text-center text-sm text-muted-foreground py-8">Sin datos</p>
@@ -54,6 +69,14 @@ export function MonthlyBreakdown({ data }: MonthlyBreakdownProps) {
   const breakdown = Object.entries(selected.gastosBreakdown)
     .filter(([, v]) => v > 0)
     .sort((a, b) => b[1] - a[1])
+
+  // Items para el modal de detalle completo
+  const incomeItems = income.filter((i) => i.date.slice(0, 7) === selected.month)
+  const projectExpenseItems = projectExpenses.filter((e) => e.date.slice(0, 7) === selected.month)
+  const recurringFixedItems = recurring.filter((e) => e.is_active && e.frequency !== "One-time")
+  const recurringOneTimeItems = recurring.filter(
+    (e) => e.frequency === "One-time" && e.expense_date?.slice(0, 7) === selected.month
+  )
 
   return (
     <div className="space-y-4">
@@ -105,7 +128,10 @@ export function MonthlyBreakdown({ data }: MonthlyBreakdownProps) {
 
       {/* Selected month detail */}
       <div className="border rounded-lg p-4 bg-muted/20">
-        <p className="text-sm font-semibold capitalize mb-3">{selected.label}</p>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-semibold capitalize">{selected.label}</p>
+          <Button variant="outline" size="sm" onClick={() => setModalOpen(true)}>Ver detalle completo</Button>
+        </div>
         <div className="grid grid-cols-3 gap-3 text-xs mb-4">
           <div className="space-y-0.5">
             <p className="text-muted-foreground">Ingresos</p>
@@ -141,6 +167,106 @@ export function MonthlyBreakdown({ data }: MonthlyBreakdownProps) {
           <p className="text-xs text-muted-foreground">Sin gastos registrados este mes</p>
         )}
       </div>
+
+      {/* Modal: detalle completo del mes */}
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="capitalize">{selected.label} — Detalle completo</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-6">
+            {/* Ingresos */}
+            <div>
+              <h4 className="text-sm font-semibold text-green-600 mb-2">
+                Ingresos ({formatCurrency(selected.ingresos)})
+              </h4>
+              {incomeItems.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Sin ingresos registrados este mes</p>
+              ) : (
+                <div className="space-y-1">
+                  {incomeItems.map((item) => (
+                    <div key={item.id} className="flex items-center justify-between text-xs gap-2 py-1 border-b last:border-0">
+                      <span className="text-muted-foreground w-20 flex-shrink-0">{formatDate(item.date)}</span>
+                      <span className="flex-1 truncate">
+                        {item.description ?? "—"}
+                        {item.project?.name && <span className="text-muted-foreground"> · {item.project.name}</span>}
+                      </span>
+                      <span className="font-medium text-green-600 flex-shrink-0">{formatCurrency(item.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Gastos */}
+            <div>
+              <h4 className="text-sm font-semibold text-red-500 mb-2">
+                Gastos ({formatCurrency(selected.gastos)})
+              </h4>
+
+              {recurringFixedItems.length > 0 && (
+                <div className="mb-3">
+                  <p className="text-xs text-muted-foreground mb-1">Gastos recurrentes (normalizados a mensual)</p>
+                  <div className="space-y-1">
+                    {recurringFixedItems.map((e) => (
+                      <div key={e.id} className="flex items-center justify-between text-xs gap-2 py-1 border-b last:border-0">
+                        <span className="flex-1 truncate">
+                          {e.name}
+                          <span className="text-muted-foreground"> · {CATEGORY_LABELS[e.category] ?? e.category} · {FREQUENCY_LABELS[e.frequency]}</span>
+                        </span>
+                        <span className="font-medium text-red-500 flex-shrink-0">
+                          {formatCurrency(normalizeToMonthly(Number(e.amount), e.frequency))}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {recurringOneTimeItems.length > 0 && (
+                <div className="mb-3">
+                  <p className="text-xs text-muted-foreground mb-1">Gastos únicos (one-time)</p>
+                  <div className="space-y-1">
+                    {recurringOneTimeItems.map((e) => (
+                      <div key={e.id} className="flex items-center justify-between text-xs gap-2 py-1 border-b last:border-0">
+                        <span className="text-muted-foreground w-20 flex-shrink-0">{e.expense_date ? formatDate(e.expense_date) : "—"}</span>
+                        <span className="flex-1 truncate">
+                          {e.name}
+                          <span className="text-muted-foreground"> · {CATEGORY_LABELS[e.category] ?? e.category}</span>
+                        </span>
+                        <span className="font-medium text-red-500 flex-shrink-0">{formatCurrency(Number(e.amount))}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {projectExpenseItems.length > 0 && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Gastos de proyecto</p>
+                  <div className="space-y-1">
+                    {projectExpenseItems.map((e) => (
+                      <div key={e.id} className="flex items-center justify-between text-xs gap-2 py-1 border-b last:border-0">
+                        <span className="text-muted-foreground w-20 flex-shrink-0">{formatDate(e.date)}</span>
+                        <span className="flex-1 truncate">
+                          {e.description ?? "—"}
+                          {e.project?.name && <span className="text-muted-foreground"> · {e.project.name}</span>}
+                        </span>
+                        <span className="font-medium text-red-500 flex-shrink-0">{formatCurrency(Number(e.amount))}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {recurringFixedItems.length === 0 && recurringOneTimeItems.length === 0 && projectExpenseItems.length === 0 && (
+                <p className="text-xs text-muted-foreground">Sin gastos registrados este mes</p>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

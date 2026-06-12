@@ -262,7 +262,7 @@ export default async function FinancesPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                <MonthlyBreakdown data={chartData} />
+                <MonthlyBreakdown data={chartData} income={income as Income[]} projectExpenses={expenses as ProjectExpense[]} recurring={recurring as RecurringExpense[]} />
               </CardContent>
             </Card>
 
