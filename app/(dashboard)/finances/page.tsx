@@ -14,6 +14,7 @@ import { getProjects } from "@/lib/actions/projects"
 import { YearChart } from "@/components/finances/year-chart"
 import { ExpenseDonut } from "@/components/finances/expense-donut"
 import { MonthlyBreakdown } from "@/components/finances/monthly-breakdown"
+import { KpiCards } from "@/components/finances/kpi-cards"
 import { TopClients } from "@/components/finances/top-clients"
 import { IncomeForm } from "@/components/finances/income-form"
 import { ExpenseForm } from "@/components/finances/expense-form"
@@ -22,10 +23,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { deleteRecurringExpense, deleteIncome } from "@/lib/actions/finances"
-import {
-  Trash2, TrendingUp, TrendingDown, DollarSign, Repeat,
-  AlertCircle, ArrowUp, ArrowDown, Minus, Percent,
-} from "lucide-react"
+import { Trash2, AlertCircle } from "lucide-react"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { normalizeToMonthly } from "@/lib/types"
 import type { Income, RecurringExpense, ProjectExpense, Project, ExpenseFrequency } from "@/lib/types"
@@ -38,26 +36,6 @@ const categoryColors: Record<string, string> = {
   Rent:     "bg-yellow-100 text-yellow-700",
   Services: "bg-orange-100 text-orange-700",
   Other:    "bg-gray-100 text-gray-700",
-}
-
-function TrendBadge({ current, prev }: { current: number; prev: number }) {
-  if (prev === 0) return null
-  const pct = ((current - prev) / Math.abs(prev)) * 100
-  const up  = pct > 0
-  const flat = Math.abs(pct) < 0.5
-
-  if (flat) return (
-    <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
-      <Minus className="w-3 h-3" /> Sin cambio
-    </span>
-  )
-
-  return (
-    <span className={`flex items-center gap-0.5 text-xs font-medium ${up ? "text-green-600" : "text-red-500"}`}>
-      {up ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
-      {Math.abs(pct).toFixed(1)}% vs mes ant.
-    </span>
-  )
 }
 
 export default async function FinancesPage() {
@@ -136,70 +114,17 @@ export default async function FinancesPage() {
       </div>
 
       {/* ── KPI Cards ────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <Card>
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm font-medium text-muted-foreground">{t("income")}</p>
-              <div className="p-2 bg-green-50 rounded-lg"><TrendingUp className="w-4 h-4 text-green-600" /></div>
-            </div>
-            <p className="text-2xl font-bold text-green-700">{formatCurrency(summary.monthlyIncome)}</p>
-            <div className="mt-1"><TrendBadge current={summary.monthlyIncome} prev={summary.prevIncome} /></div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm font-medium text-muted-foreground">{t("expenses")}</p>
-              <div className="p-2 bg-red-50 rounded-lg"><TrendingDown className="w-4 h-4 text-red-600" /></div>
-            </div>
-            <p className="text-2xl font-bold text-red-700">{formatCurrency(summary.monthlyExpenses)}</p>
-            <div className="mt-1"><TrendBadge current={summary.monthlyExpenses} prev={summary.prevExpenses} /></div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm font-medium text-muted-foreground">{t("balance")}</p>
-              <div className={`p-2 rounded-lg ${summary.netMargin >= 0 ? "bg-blue-50" : "bg-red-50"}`}>
-                <DollarSign className={`w-4 h-4 ${summary.netMargin >= 0 ? "text-blue-600" : "text-red-600"}`} />
-              </div>
-            </div>
-            <p className={`text-2xl font-bold ${summary.netMargin >= 0 ? "text-blue-700" : "text-red-700"}`}>
-              {formatCurrency(summary.netMargin)}
-            </p>
-            <div className="mt-1"><TrendBadge current={summary.netMargin} prev={summary.prevNetMargin} /></div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm font-medium text-muted-foreground">{t("mrr")}</p>
-              <div className="p-2 bg-purple-50 rounded-lg"><Repeat className="w-4 h-4 text-purple-600" /></div>
-            </div>
-            <p className="text-2xl font-bold text-purple-700">{formatCurrency(summary.mrr)}</p>
-            <p className="text-xs text-muted-foreground mt-1">≈ {formatCurrency(summary.mrr * 12)}/año</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm font-medium text-muted-foreground">Margen</p>
-              <div className={`p-2 rounded-lg ${summary.marginPct >= 0 ? "bg-emerald-50" : "bg-red-50"}`}>
-                <Percent className={`w-4 h-4 ${summary.marginPct >= 0 ? "text-emerald-600" : "text-red-600"}`} />
-              </div>
-            </div>
-            <p className={`text-2xl font-bold ${summary.marginPct >= 20 ? "text-emerald-600" : summary.marginPct >= 0 ? "text-yellow-600" : "text-red-600"}`}>
-              {summary.marginPct.toFixed(1)}%
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">sobre ingresos del mes</p>
-          </CardContent>
-        </Card>
-      </div>
+      <KpiCards
+        monthlyIncome={summary.monthlyIncome}
+        prevIncome={summary.prevIncome}
+        monthlyExpenses={summary.monthlyExpenses}
+        prevExpenses={summary.prevExpenses}
+        netMargin={summary.netMargin}
+        prevNetMargin={summary.prevNetMargin}
+        mrr={summary.mrr}
+        marginPct={summary.marginPct}
+        labels={{ income: t("income"), expenses: t("expenses"), balance: t("balance"), mrr: t("mrr") }}
+      />
 
       {/* ── Upcoming payments alert ───────────────────────────────── */}
       {upcomingExpenses.length > 0 && (
