@@ -1,11 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { formatCurrency, formatDate, cn } from "@/lib/utils"
 import { normalizeToMonthly } from "@/lib/types"
 import type { Income, ProjectExpense, RecurringExpense, ExpenseFrequency } from "@/lib/types"
+import { getExchangeRate } from "@/lib/actions/finances"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import { ChevronDown, ChevronRight } from "lucide-react"
 
 interface ChartEntry {
   month: string
@@ -49,11 +51,39 @@ const FREQUENCY_LABELS: Record<ExpenseFrequency, string> = {
   "One-time": "Único",
 }
 
+function CollapsibleSection({
+  title, total, totalColor, defaultOpen, children,
+}: {
+  title: string
+  total: string
+  totalColor: string
+  defaultOpen: boolean
+  children: React.ReactNode
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center gap-2 text-left mb-2"
+      >
+        {open ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+        <h4 className={cn("text-sm font-semibold flex-1", totalColor)}>{title}</h4>
+        <span className={cn("text-sm font-semibold", totalColor)}>{total}</span>
+      </button>
+      {open && <div className="pl-6">{children}</div>}
+    </div>
+  )
+}
+
 export function MonthlyBreakdown({ data, income, projectExpenses, recurring }: MonthlyBreakdownProps) {
   // Show most recent months first
   const reversed = [...data].reverse()
   const [selectedMonth, setSelectedMonth] = useState<string | null>(reversed[0]?.month ?? null)
   const [modalOpen, setModalOpen] = useState(false)
+  const [displayCurrency, setDisplayCurrency] = useState<"USD" | "MXN">("USD")
+  const [mxnRate, setMxnRate] = useState<number | null>(null)
+  const [loadingRate, setLoadingRate] = useState(false)
 
   if (!data.length) {
     return <p className="text-center text-sm text-muted-foreground py-8">Sin datos</p>
@@ -77,6 +107,26 @@ export function MonthlyBreakdown({ data, income, projectExpenses, recurring }: M
   const recurringOneTimeItems = recurring.filter(
     (e) => e.frequency === "One-time" && e.expense_date?.slice(0, 7) === selected.month
   )
+
+  // Tipo de cambio del mes para el toggle MXN
+  useEffect(() => {
+    if (displayCurrency !== "MXN" || !modalOpen) return
+    let cancelled = false
+    setLoadingRate(true)
+    getExchangeRate(`${selected.month}-01`)
+      .then((rate) => { if (!cancelled) setMxnRate(rate) })
+      .finally(() => { if (!cancelled) setLoadingRate(false) })
+    return () => { cancelled = true }
+  }, [displayCurrency, modalOpen, selected.month])
+
+  // Convierte un monto en USD a la moneda de visualización seleccionada
+  function display(amountUsd: number, originalAmount?: number | null, originalCurrency?: "USD" | "MXN" | null) {
+    if (displayCurrency === "USD") return formatCurrency(amountUsd)
+    // Si el ingreso ya estaba en MXN, usamos el monto original (más preciso)
+    if (originalCurrency === "MXN" && originalAmount != null) return formatCurrency(originalAmount, "MXN")
+    if (!mxnRate) return "—"
+    return formatCurrency(amountUsd * mxnRate, "MXN")
+  }
 
   return (
     <div className="space-y-4">
@@ -172,15 +222,37 @@ export function MonthlyBreakdown({ data, income, projectExpenses, recurring }: M
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="capitalize">{selected.label} — Detalle completo</DialogTitle>
+            <div className="flex items-center justify-between gap-4 pr-6">
+              <DialogTitle className="capitalize">{selected.label} — Detalle completo</DialogTitle>
+              <div className="flex items-center gap-1 text-xs border rounded-full p-0.5 flex-shrink-0">
+                <button
+                  onClick={() => setDisplayCurrency("USD")}
+                  className={cn("px-2.5 py-1 rounded-full transition-colors", displayCurrency === "USD" ? "bg-primary text-primary-foreground" : "text-muted-foreground")}
+                >
+                  USD
+                </button>
+                <button
+                  onClick={() => setDisplayCurrency("MXN")}
+                  className={cn("px-2.5 py-1 rounded-full transition-colors", displayCurrency === "MXN" ? "bg-primary text-primary-foreground" : "text-muted-foreground")}
+                >
+                  MXN
+                </button>
+              </div>
+            </div>
+            {displayCurrency === "MXN" && (
+              <p className="text-xs text-muted-foreground">
+                {loadingRate ? "Cargando tipo de cambio..." : mxnRate ? `Tipo de cambio usado: ${mxnRate} MXN/USD (1 de ${selected.label})` : "No se pudo obtener el tipo de cambio"}
+              </p>
+            )}
           </DialogHeader>
 
-          <div className="space-y-6">
-            {/* Ingresos */}
-            <div>
-              <h4 className="text-sm font-semibold text-green-600 mb-2">
-                Ingresos ({formatCurrency(selected.ingresos)})
-              </h4>
+          <div className="space-y-4">
+            <CollapsibleSection
+              title="Ingresos"
+              total={display(selected.ingresos)}
+              totalColor="text-green-600"
+              defaultOpen
+            >
               {incomeItems.length === 0 ? (
                 <p className="text-xs text-muted-foreground">Sin ingresos registrados este mes</p>
               ) : (
@@ -192,78 +264,85 @@ export function MonthlyBreakdown({ data, income, projectExpenses, recurring }: M
                         {item.description ?? "—"}
                         {item.project?.name && <span className="text-muted-foreground"> · {item.project.name}</span>}
                       </span>
-                      <span className="font-medium text-green-600 flex-shrink-0">{formatCurrency(item.amount)}</span>
+                      <span className="font-medium text-green-600 flex-shrink-0">
+                        {display(item.amount, item.original_amount, item.currency)}
+                      </span>
                     </div>
                   ))}
                 </div>
               )}
-            </div>
+            </CollapsibleSection>
 
-            {/* Gastos */}
-            <div>
-              <h4 className="text-sm font-semibold text-red-500 mb-2">
-                Gastos ({formatCurrency(selected.gastos)})
-              </h4>
-
-              {recurringFixedItems.length > 0 && (
-                <div className="mb-3">
-                  <p className="text-xs text-muted-foreground mb-1">Gastos recurrentes (normalizados a mensual)</p>
-                  <div className="space-y-1">
-                    {recurringFixedItems.map((e) => (
-                      <div key={e.id} className="flex items-center justify-between text-xs gap-2 py-1 border-b last:border-0">
-                        <span className="flex-1 truncate">
-                          {e.name}
-                          <span className="text-muted-foreground"> · {CATEGORY_LABELS[e.category] ?? e.category} · {FREQUENCY_LABELS[e.frequency]}</span>
-                        </span>
-                        <span className="font-medium text-red-500 flex-shrink-0">
-                          {formatCurrency(normalizeToMonthly(Number(e.amount), e.frequency))}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+            {recurringFixedItems.length > 0 && (
+              <CollapsibleSection
+                title="Gastos recurrentes (normalizados a mensual)"
+                total={display(recurringFixedItems.reduce((s, e) => s + normalizeToMonthly(Number(e.amount), e.frequency), 0))}
+                totalColor="text-red-500"
+                defaultOpen={false}
+              >
+                <div className="space-y-1">
+                  {recurringFixedItems.map((e) => (
+                    <div key={e.id} className="flex items-center justify-between text-xs gap-2 py-1 border-b last:border-0">
+                      <span className="flex-1 truncate">
+                        {e.name}
+                        <span className="text-muted-foreground"> · {CATEGORY_LABELS[e.category] ?? e.category} · {FREQUENCY_LABELS[e.frequency]}</span>
+                      </span>
+                      <span className="font-medium text-red-500 flex-shrink-0">
+                        {display(normalizeToMonthly(Number(e.amount), e.frequency))}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              )}
+              </CollapsibleSection>
+            )}
 
-              {recurringOneTimeItems.length > 0 && (
-                <div className="mb-3">
-                  <p className="text-xs text-muted-foreground mb-1">Gastos únicos (one-time)</p>
-                  <div className="space-y-1">
-                    {recurringOneTimeItems.map((e) => (
-                      <div key={e.id} className="flex items-center justify-between text-xs gap-2 py-1 border-b last:border-0">
-                        <span className="text-muted-foreground w-20 flex-shrink-0">{e.expense_date ? formatDate(e.expense_date) : "—"}</span>
-                        <span className="flex-1 truncate">
-                          {e.name}
-                          <span className="text-muted-foreground"> · {CATEGORY_LABELS[e.category] ?? e.category}</span>
-                        </span>
-                        <span className="font-medium text-red-500 flex-shrink-0">{formatCurrency(Number(e.amount))}</span>
-                      </div>
-                    ))}
-                  </div>
+            {recurringOneTimeItems.length > 0 && (
+              <CollapsibleSection
+                title="Gastos únicos (one-time)"
+                total={display(recurringOneTimeItems.reduce((s, e) => s + Number(e.amount), 0))}
+                totalColor="text-red-500"
+                defaultOpen
+              >
+                <div className="space-y-1">
+                  {recurringOneTimeItems.map((e) => (
+                    <div key={e.id} className="flex items-center justify-between text-xs gap-2 py-1 border-b last:border-0">
+                      <span className="text-muted-foreground w-20 flex-shrink-0">{e.expense_date ? formatDate(e.expense_date) : "—"}</span>
+                      <span className="flex-1 truncate">
+                        {e.name}
+                        <span className="text-muted-foreground"> · {CATEGORY_LABELS[e.category] ?? e.category}</span>
+                      </span>
+                      <span className="font-medium text-red-500 flex-shrink-0">{display(Number(e.amount))}</span>
+                    </div>
+                  ))}
                 </div>
-              )}
+              </CollapsibleSection>
+            )}
 
-              {projectExpenseItems.length > 0 && (
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">Gastos de proyecto</p>
-                  <div className="space-y-1">
-                    {projectExpenseItems.map((e) => (
-                      <div key={e.id} className="flex items-center justify-between text-xs gap-2 py-1 border-b last:border-0">
-                        <span className="text-muted-foreground w-20 flex-shrink-0">{formatDate(e.date)}</span>
-                        <span className="flex-1 truncate">
-                          {e.description ?? "—"}
-                          {e.project?.name && <span className="text-muted-foreground"> · {e.project.name}</span>}
-                        </span>
-                        <span className="font-medium text-red-500 flex-shrink-0">{formatCurrency(Number(e.amount))}</span>
-                      </div>
-                    ))}
-                  </div>
+            {projectExpenseItems.length > 0 && (
+              <CollapsibleSection
+                title="Gastos de proyecto"
+                total={display(projectExpenseItems.reduce((s, e) => s + Number(e.amount), 0))}
+                totalColor="text-red-500"
+                defaultOpen
+              >
+                <div className="space-y-1">
+                  {projectExpenseItems.map((e) => (
+                    <div key={e.id} className="flex items-center justify-between text-xs gap-2 py-1 border-b last:border-0">
+                      <span className="text-muted-foreground w-20 flex-shrink-0">{formatDate(e.date)}</span>
+                      <span className="flex-1 truncate">
+                        {e.description ?? "—"}
+                        {e.project?.name && <span className="text-muted-foreground"> · {e.project.name}</span>}
+                      </span>
+                      <span className="font-medium text-red-500 flex-shrink-0">{display(Number(e.amount))}</span>
+                    </div>
+                  ))}
                 </div>
-              )}
+              </CollapsibleSection>
+            )}
 
-              {recurringFixedItems.length === 0 && recurringOneTimeItems.length === 0 && projectExpenseItems.length === 0 && (
-                <p className="text-xs text-muted-foreground">Sin gastos registrados este mes</p>
-              )}
-            </div>
+            {recurringFixedItems.length === 0 && recurringOneTimeItems.length === 0 && projectExpenseItems.length === 0 && (
+              <p className="text-xs text-muted-foreground">Sin gastos registrados este mes</p>
+            )}
           </div>
         </DialogContent>
       </Dialog>
