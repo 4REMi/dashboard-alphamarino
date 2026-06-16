@@ -61,7 +61,7 @@ async function copyTaskSetsToProject(
     const tasksToInsert = taskSetsRes.data.flatMap((ts) =>
       ((ts.tasks ?? []) as Array<{
         id: string; title: string; description: string | null; priority: string
-        task_order: number; is_urgent: boolean; requires_deliverable: boolean
+        task_order: number; is_urgent: boolean; requires_deliverable: boolean; deliverable_instructions: string | null
         default_position_id: string | null
         checklist_items: Array<{ id: string; text: string; is_blocking: boolean; item_order: number }> | null
       }>)
@@ -74,6 +74,7 @@ async function copyTaskSetsToProject(
           status: "Todo",
           is_urgent: t.is_urgent ?? false,
           requires_deliverable: t.requires_deliverable ?? false,
+          deliverable_instructions: t.deliverable_instructions ?? null,
           task_order: j,
           phase_id: phaseIdByTaskSetId[ts.id] ?? null,
           task_set_task_id: t.id,

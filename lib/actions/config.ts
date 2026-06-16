@@ -315,6 +315,7 @@ export async function addTaskToSet(taskSetId: string, formData: FormData) {
     description: (formData.get("description") as string) || null,
     is_urgent: formData.get("is_urgent") === "true",
     requires_deliverable: formData.get("requires_deliverable") === "true",
+    deliverable_instructions: (formData.get("deliverable_instructions") as string) || null,
     default_position_id: positionIdRaw && positionIdRaw !== "none" ? positionIdRaw : null,
     task_order: nextOrder,
   }).select("*, default_position:positions(id, name)").single()
@@ -335,6 +336,7 @@ export async function updateTaskInSet(taskId: string, formData: FormData) {
       description: (formData.get("description") as string) || null,
       is_urgent: formData.get("is_urgent") === "true",
       requires_deliverable: formData.get("requires_deliverable") === "true",
+      deliverable_instructions: (formData.get("deliverable_instructions") as string) || null,
       sop_id: sopIdRaw || null,
       default_position_id: positionIdRaw && positionIdRaw !== "none" ? positionIdRaw : null,
     })

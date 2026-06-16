@@ -10,7 +10,7 @@ export async function getProjectDeliverables(projectId: string) {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("deliverables")
-    .select("*, task:tasks(title, phase:project_phases(id, name, phase_order)), uploader:profiles(id, full_name, avatar_url)")
+    .select("*, task:tasks(title, deliverable_instructions, phase:project_phases(id, name, phase_order)), uploader:profiles(id, full_name, avatar_url)")
     .eq("project_id", projectId)
     .order("created_at", { ascending: false })
 

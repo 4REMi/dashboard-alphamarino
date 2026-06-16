@@ -107,6 +107,7 @@ export interface TaskSetTask {
   priority: TaskPriority // kept for DB compat
   is_urgent: boolean
   requires_deliverable: boolean
+  deliverable_instructions: string | null
   task_order: number
   sop_id: string | null
   default_position_id: string | null
@@ -215,6 +216,7 @@ export interface Task {
   priority: TaskPriority // kept for DB compat, use is_urgent in UI
   is_urgent: boolean
   requires_deliverable: boolean
+  deliverable_instructions: string | null
   task_order: number
   phase_id: string | null
   due_date: string | null

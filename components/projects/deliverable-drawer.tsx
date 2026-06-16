@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { X, FileText, Image, Link2, Pencil, Trash2, Plus, Paperclip, ExternalLink } from "lucide-react"
+import { X, FileText, Image, Link2, Pencil, Trash2, Plus, Paperclip, ExternalLink, Info } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { formatDate } from "@/lib/utils"
 import type { Task, Deliverable, DeliverableType } from "@/lib/types"
@@ -146,6 +146,19 @@ export function DeliverableDrawer({
             <X className="w-4 h-4" />
           </button>
         </div>
+
+        {/* Instructions callout */}
+        {task?.deliverable_instructions && (
+          <div className="mx-5 mt-4 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/40 px-4 py-3">
+            <div className="flex items-start gap-2">
+              <Info className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-amber-800 dark:text-amber-300 mb-1">¿Qué se necesita?</p>
+                <p className="text-sm text-amber-700 dark:text-amber-400 whitespace-pre-wrap">{task.deliverable_instructions}</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-5">

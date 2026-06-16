@@ -650,11 +650,25 @@ function EditTaskModal({
                   Urgente
                 </label>
                 <label className="flex items-center gap-1.5 h-7 px-3 rounded-full border cursor-pointer select-none text-xs font-medium transition-colors [&:has(input:checked)]:bg-blue-50 [&:has(input:checked)]:border-blue-300 [&:has(input:checked)]:text-blue-700 hover:bg-muted">
-                  <input type="checkbox" name="requires_deliverable" value="true" defaultChecked={task.requires_deliverable} className="sr-only" />
+                  <input type="checkbox" name="requires_deliverable" value="true" defaultChecked={task.requires_deliverable} className="sr-only peer" />
                   <Paperclip className="w-3 h-3" />
                   Requiere entregable
                 </label>
               </div>
+
+              {/* Deliverable instructions — shown when requires_deliverable is checked */}
+              {task.requires_deliverable && (
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Instrucciones del entregable</label>
+                  <AutoTextarea
+                    name="deliverable_instructions"
+                    rows={2}
+                    defaultValue={(task as TaskSetTask & { deliverable_instructions?: string | null }).deliverable_instructions ?? ""}
+                    placeholder="Ej. Compartir link al Google Drive con los accesos del dominio y hosting…"
+                    className="w-full rounded border border-input bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+                  />
+                </div>
+              )}
 
               {positions.length > 0 && (
                 <div>

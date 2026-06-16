@@ -36,6 +36,7 @@ export function DeliverablesSectionClient({
         requires_deliverable: true,
         project_id: projectId,
         description: null,
+        deliverable_instructions: (drawerDeliverable.task as any)?.deliverable_instructions ?? null,
         status: "Done" as const,
         priority: "Low" as const,
         is_urgent: false,
