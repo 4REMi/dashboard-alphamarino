@@ -75,7 +75,7 @@ export function ApplyPhasesButton({ projectId, phaseSets, defaultPhaseSetId }: P
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="max-w-2xl overflow-hidden">
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Aplicar fases al proyecto</DialogTitle>
         </DialogHeader>
@@ -153,13 +153,13 @@ export function ApplyPhasesButton({ projectId, phaseSets, defaultPhaseSetId }: P
                     {selectedSet.phases.length} fase{selectedSet.phases.length !== 1 ? "s" : ""} que se crearán
                   </p>
                 </div>
-                <div className="divide-y divide-border/50">
+                <div className="divide-y divide-border/50 overflow-hidden">
                   {selectedSet.phases.map((phase, i) => (
-                    <div key={phase.id} className="flex items-center gap-3 px-4 py-2.5 overflow-hidden">
+                    <div key={phase.id} className="flex items-center gap-3 px-4 py-2.5">
                       <span className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary flex-shrink-0">
                         {i + 1}
                       </span>
-                      <div className="flex-1 min-w-0 overflow-hidden">
+                      <div className="min-w-0" style={{ flex: "1 1 0", width: 0 }}>
                         <p className="text-sm font-medium truncate">{phase.name}</p>
                         {phase.description && (
                           <p className="text-xs text-muted-foreground truncate mt-0.5">{phase.description}</p>
