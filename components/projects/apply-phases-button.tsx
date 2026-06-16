@@ -75,7 +75,7 @@ export function ApplyPhasesButton({ projectId, phaseSets, defaultPhaseSetId }: P
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl overflow-hidden">
         <DialogHeader>
           <DialogTitle>Aplicar fases al proyecto</DialogTitle>
         </DialogHeader>
