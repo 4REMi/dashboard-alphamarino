@@ -1274,15 +1274,6 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
 
             {selectedType && !linkedPS && (
               <div className="p-4 space-y-3">
-                {phaseSets.length > 0 && (
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground mb-1.5">Vincular existente</p>
-                    <InlineSelect defaultValue="none" onChange={(e) => e.target.value !== "none" && handleLinkPS(e.target.value)}>
-                      <option value="none">Seleccionar phase set…</option>
-                      {phaseSets.map((ps) => <option key={ps.id} value={ps.id}>{ps.name}</option>)}
-                    </InlineSelect>
-                  </div>
-                )}
                 {showNewPS ? (
                   <form onSubmit={handleCreatePS} className="space-y-2">
                     <InlineInput name="name" required autoFocus placeholder="Nombre del phase set…" />
@@ -1301,12 +1292,6 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
 
             {selectedType && linkedPS && (
               <>
-                <div className="px-3 py-2 border-b border-border/50 bg-muted/20">
-                  <InlineSelect value={linkedPS.id} onChange={(e) => handleLinkPS(e.target.value)} className="text-xs text-muted-foreground">
-                    {phaseSets.map((ps) => <option key={ps.id} value={ps.id}>{ps.name}</option>)}
-                  </InlineSelect>
-                </div>
-
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handlePhaseDragEnd}>
                   <SortableContext items={phases.map((p) => p.id)} strategy={verticalListSortingStrategy}>
                     {phases.map((phase, i) => (
@@ -1352,6 +1337,15 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
             subtitle={!selectedPhase ? "Selecciona una fase" : linkedTS ? `${tasks.length} tareas plantilla` : "Sin task set vinculado"}
             onAdd={linkedTS && !editingTS ? () => setShowAddTask(true) : undefined}
             onDelete={linkedTS && !editingTS ? () => handleDeleteTS(linkedTS.id) : undefined}
+            extraActions={linkedTS && !editingTS ? (
+              <button
+                onClick={() => setEditingTS(true)}
+                title="Editar nombre del task set"
+                className="p-1 rounded text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+            ) : undefined}
           />
 
           <div className="flex-1 overflow-y-auto">
@@ -1359,15 +1353,6 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
 
             {selectedPhase && !linkedTS && (
               <div className="p-4 space-y-3">
-                {taskSets.length > 0 && (
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground mb-1.5">Vincular existente</p>
-                    <InlineSelect defaultValue="none" onChange={(e) => e.target.value !== "none" && handleLinkTS(e.target.value)}>
-                      <option value="none">Seleccionar task set…</option>
-                      {taskSets.map((ts) => <option key={ts.id} value={ts.id}>{ts.name}</option>)}
-                    </InlineSelect>
-                  </div>
-                )}
                 {showNewTS ? (
                   <form onSubmit={handleCreateTS} className="space-y-2">
                     <InlineInput name="name" required autoFocus placeholder="Nombre del task set…" />
@@ -1386,19 +1371,6 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
 
             {selectedPhase && linkedTS && (
               <>
-                {/* Task set switcher + edit toggle */}
-                <div className="px-3 py-2 border-b border-border/50 bg-muted/20 flex items-center gap-2">
-                  <InlineSelect value={linkedTS.id} onChange={(e) => { handleLinkTS(e.target.value); setEditingTS(false) }} className="text-xs text-muted-foreground flex-1">
-                    {taskSets.map((ts) => <option key={ts.id} value={ts.id}>{ts.name}</option>)}
-                  </InlineSelect>
-                  <button
-                    onClick={() => setEditingTS(!editingTS)}
-                    title="Editar nombre del task set"
-                    className={`p-1 rounded transition-colors flex-shrink-0 ${editingTS ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
-                  >
-                    <Pencil className="w-3.5 h-3.5" />
-                  </button>
-                </div>
 
                 {/* Edit task set form */}
                 {editingTS && (
