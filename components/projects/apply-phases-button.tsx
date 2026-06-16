@@ -155,7 +155,7 @@ export function ApplyPhasesButton({ projectId, phaseSets, defaultPhaseSetId }: P
                 </div>
                 <div className="divide-y divide-border/50">
                   {selectedSet.phases.map((phase, i) => (
-                    <div key={phase.id} className="flex items-center gap-3 px-4 py-2.5">
+                    <div key={phase.id} className="flex items-center gap-3 px-4 py-2.5 overflow-hidden">
                       <span className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary flex-shrink-0">
                         {i + 1}
                       </span>

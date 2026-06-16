@@ -25,7 +25,7 @@ import { AutoTextarea } from "@/components/ui/auto-textarea"
 // TaskPriority intentionally removed — tasks now use is_urgent boolean
 import {
   createProjectType, updateProjectType, deleteProjectType,
-  createPhaseSet, deletePhaseSet, addPhaseToSet, updatePhaseInSet, deletePhaseFromSet,
+  createPhaseSet, updatePhaseSet, deletePhaseSet, addPhaseToSet, updatePhaseInSet, deletePhaseFromSet,
   linkPhaseSetToProjectType, linkTaskSetToPhase, clonePhaseSet, clonePhaseIntoPhaseSet,
   createTaskSet, updateTaskSet, deleteTaskSet, addTaskToSet, updateTaskInSet, deleteTaskFromSet,
   reorderTasksInSet, reorderPhaseInSet,
@@ -794,6 +794,8 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
   const [newTypeIcon, setNewTypeIcon] = useState("")
   const [editTypeIcon, setEditTypeIcon] = useState("")
   const [showNewPS, setShowNewPS] = useState(false)
+  const [renamingPS, setRenamingPS] = useState(false)
+  const [renamePSValue, setRenamePSValue] = useState("")
   const [showAddPhase, setShowAddPhase] = useState(false)
   const [editingTS, setEditingTS] = useState(false)
   const [showNewTS, setShowNewTS] = useState(false)
@@ -1195,6 +1197,16 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
     setShowExportMenu(false)
   }
 
+  // ── Phase set rename ─────────────────────────────────────────────────────────
+  async function handleRenamePS(name: string) {
+    if (!linkedPS || !name.trim()) return
+    const fd = new FormData()
+    fd.set("name", name.trim())
+    await updatePhaseSet(linkedPS.id, fd)
+    setPhaseSets((prev) => prev.map((ps) => ps.id === linkedPS.id ? { ...ps, name: name.trim() } : ps))
+    setRenamingPS(false)
+  }
+
   // ── render ───────────────────────────────────────────────────────────────────
   return (
     <>
@@ -1317,22 +1329,48 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
 
         {/* ── PANEL 2: Phase Set ─────────────────────────────────────── */}
         <div className="w-72 flex-shrink-0 flex flex-col border-r border-border">
+          {renamingPS && linkedPS ? (
+            <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2 flex-shrink-0">
+              <input
+                autoFocus
+                value={renamePSValue}
+                onChange={(e) => setRenamePSValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") { e.preventDefault(); handleRenamePS(renamePSValue) }
+                  if (e.key === "Escape") setRenamingPS(false)
+                }}
+                className="flex-1 min-w-0 text-sm font-semibold rounded border border-input bg-background px-2 py-1 focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+              <button onClick={() => handleRenamePS(renamePSValue)} className="p-1 rounded text-primary hover:text-primary/80"><Check className="w-3.5 h-3.5" /></button>
+              <button onClick={() => setRenamingPS(false)} className="p-1 rounded text-muted-foreground hover:text-foreground"><X className="w-3.5 h-3.5" /></button>
+            </div>
+          ) : (
           <PanelHeader
             title={linkedPS ? linkedPS.name : "Phase Set"}
             subtitle={!selectedType ? "Selecciona un tipo" : linkedPS ? `${phases.length} fases` : "Sin phase set asignado"}
             onAdd={linkedPS ? () => setShowAddPhase(true) : undefined}
             onDelete={linkedPS ? () => handleDeletePS(linkedPS.id) : undefined}
             extraActions={linkedPS ? (
-              <button
-                onClick={handleClonePS}
-                disabled={isPending}
-                title="Clonar phase set completo (copia independiente)"
-                className="p-1 rounded text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <Copy className="w-3.5 h-3.5" />
-              </button>
+              <>
+                <button
+                  onClick={() => { setRenamePSValue(linkedPS.name); setRenamingPS(true) }}
+                  title="Renombrar phase set"
+                  className="p-1 rounded text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={handleClonePS}
+                  disabled={isPending}
+                  title="Clonar phase set completo (copia independiente)"
+                  className="p-1 rounded text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                </button>
+              </>
             ) : undefined}
           />
+          )}
           <div className="flex-1 overflow-y-auto">
             {!selectedType && <EmptyPanel icon={LayoutList} text="Selecciona un tipo de proyecto" />}
 
