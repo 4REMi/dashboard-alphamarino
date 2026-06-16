@@ -780,6 +780,7 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
   const [editingTask, setEditingTask] = useState<TaskSetTask | null>(null)
   const [editingTaskChecklist, setEditingTaskChecklist] = useState<ChecklistModalItem[]>([])
   const [showImport, setShowImport] = useState(false)
+  const [copiedPhaseId, setCopiedPhaseId] = useState<string | null>(null)
 
   const [isPending, startTransition] = useTransition()
 
@@ -873,9 +874,10 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
     })
   }
 
-  function handleClonePhaseInto(phaseId: string, targetPhaseSetId: string) {
+  function handleClonePhaseInto(phaseId: string, targetPhaseSetId: string, afterPhaseId?: string | null) {
     run(async () => {
-      await clonePhaseIntoPhaseSet(phaseId, targetPhaseSetId)
+      await clonePhaseIntoPhaseSet(phaseId, targetPhaseSetId, afterPhaseId)
+      setCopiedPhaseId(null)
       router.refresh()
     })
   }
@@ -1292,21 +1294,36 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
 
             {selectedType && linkedPS && (
               <>
+                {copiedPhaseId && (
+                  <div className="px-3 py-1.5 border-b border-border bg-emerald-50/50 dark:bg-emerald-950/20 flex items-center justify-between">
+                    <span className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">Fase copiada — haz clic en "Pegar" para insertarla</span>
+                    <button onClick={() => setCopiedPhaseId(null)} className="text-xs text-muted-foreground hover:text-foreground transition-colors"><X className="w-3 h-3" /></button>
+                  </div>
+                )}
+
+                {copiedPhaseId && (
+                  <PasteZone onClick={() => handleClonePhaseInto(copiedPhaseId, linkedPS.id, null)} label="Pegar al inicio" />
+                )}
+
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handlePhaseDragEnd}>
                   <SortableContext items={phases.map((p) => p.id)} strategy={verticalListSortingStrategy}>
                     {phases.map((phase, i) => (
-                      <SortablePhaseRow
-                        key={phase.id}
-                        phase={phase}
-                        index={i}
-                        isSelected={phase.id === selectedPhaseId}
-                        tsName={phase.default_task_set_id ? (taskSets.find((ts) => ts.id === phase.default_task_set_id)?.name ?? null) : null}
-                        onSelect={() => { setSelectedPhaseId(phase.id === selectedPhaseId ? null : phase.id); setEditingTS(false) }}
-                        onDelete={() => handleDeletePhase(phase.id)}
-                        onUpdate={(name, desc) => handleUpdatePhase(phase.id, name, desc)}
-                        onCloneInto={(targetPsId) => handleClonePhaseInto(phase.id, targetPsId)}
-                        otherPhaseSets={phaseSets.filter((ps) => ps.id !== linkedPS?.id)}
-                      />
+                      <div key={phase.id}>
+                        <SortablePhaseRow
+                          phase={phase}
+                          index={i}
+                          isSelected={phase.id === selectedPhaseId}
+                          isCopied={copiedPhaseId === phase.id}
+                          tsName={phase.default_task_set_id ? (taskSets.find((ts) => ts.id === phase.default_task_set_id)?.name ?? null) : null}
+                          onSelect={() => { if (!copiedPhaseId) { setSelectedPhaseId(phase.id === selectedPhaseId ? null : phase.id); setEditingTS(false) } }}
+                          onDelete={() => handleDeletePhase(phase.id)}
+                          onUpdate={(name, desc) => handleUpdatePhase(phase.id, name, desc)}
+                          onCopy={() => setCopiedPhaseId(copiedPhaseId === phase.id ? null : phase.id)}
+                        />
+                        {copiedPhaseId && copiedPhaseId !== phase.id && (
+                          <PasteZone onClick={() => handleClonePhaseInto(copiedPhaseId, linkedPS.id, phase.id)} />
+                        )}
+                      </div>
                     ))}
                   </SortableContext>
                 </DndContext>
@@ -1458,22 +1475,35 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
   )
 }
 
+// ── Paste zone ────────────────────────────────────────────────────────────────
+
+function PasteZone({ onClick, label = "Pegar aquí" }: { onClick: () => void; label?: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full flex items-center justify-center gap-1.5 py-1 text-[11px] text-emerald-600 dark:text-emerald-400 bg-emerald-50/60 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 border-y border-emerald-200 dark:border-emerald-800 transition-colors"
+    >
+      <Copy className="w-3 h-3" />
+      {label}
+    </button>
+  )
+}
+
 // ── Sortable phase row ────────────────────────────────────────────────────────
 
 interface SortablePhaseRowProps {
   phase: PhaseSetPhase
   index: number
   isSelected: boolean
+  isCopied: boolean
   tsName: string | null
   onSelect: () => void
   onDelete: () => void
   onUpdate: (name: string, description: string) => void
-  onCloneInto?: (targetPsId: string) => void
-  otherPhaseSets?: { id: string; name: string }[]
+  onCopy: () => void
 }
 
-function SortablePhaseRow({ phase, index, isSelected, tsName, onSelect, onDelete, onUpdate, onCloneInto, otherPhaseSets }: SortablePhaseRowProps) {
-  const [showCloneSelect, setShowCloneSelect] = useState(false)
+function SortablePhaseRow({ phase, index, isSelected, isCopied, tsName, onSelect, onDelete, onUpdate, onCopy }: SortablePhaseRowProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: phase.id })
   const [editing, setEditing] = useState(false)
   const [nameVal, setNameVal] = useState(phase.name)
@@ -1504,9 +1534,12 @@ function SortablePhaseRow({ phase, index, isSelected, tsName, onSelect, onDelete
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       onClick={editing ? undefined : onSelect}
-      className={`group flex items-center gap-2 px-3 py-3 border-b border-border/50 transition-colors
-        ${editing ? "bg-muted/30" : isSelected ? "bg-primary/10 border-l-2 border-l-primary cursor-pointer" : "hover:bg-muted/40 cursor-pointer"}
-        ${isDragging ? "opacity-70 shadow-md z-10 relative bg-card" : ""}`}
+      className={cn(
+        "group flex items-center gap-2 px-3 py-3 border-b border-border/50 transition-colors",
+        editing ? "bg-muted/30" : isSelected ? "bg-primary/10 border-l-2 border-l-primary cursor-pointer" : "hover:bg-muted/40 cursor-pointer",
+        isCopied && "ring-2 ring-inset ring-emerald-400 bg-emerald-50/40 dark:bg-emerald-950/20",
+        isDragging && "opacity-70 shadow-md z-10 relative bg-card",
+      )}
     >
       <button
         type="button"
@@ -1555,31 +1588,18 @@ function SortablePhaseRow({ phase, index, isSelected, tsName, onSelect, onDelete
           >
             <Pencil className="w-3 h-3" />
           </button>
-          {onCloneInto && otherPhaseSets && otherPhaseSets.length > 0 && (
-            showCloneSelect ? (
-              <select
-                autoFocus
-                className="text-xs border border-border rounded px-1 py-0.5 bg-background max-w-[120px]"
-                defaultValue=""
-                onClick={(e) => e.stopPropagation()}
-                onBlur={() => setShowCloneSelect(false)}
-                onChange={(e) => {
-                  if (e.target.value) { onCloneInto(e.target.value); setShowCloneSelect(false) }
-                }}
-              >
-                <option value="" disabled>Clonar a…</option>
-                {otherPhaseSets.map((ps) => <option key={ps.id} value={ps.id}>{ps.name}</option>)}
-              </select>
-            ) : (
-              <button
-                onClick={(e) => { e.stopPropagation(); setShowCloneSelect(true) }}
-                title="Clonar fase a otro phase set"
-                className="opacity-0 group-hover:opacity-100 p-1 rounded text-muted-foreground hover:text-foreground transition-all flex-shrink-0"
-              >
-                <Copy className="w-3 h-3" />
-              </button>
-            )
-          )}
+          <button
+            onClick={(e) => { e.stopPropagation(); onCopy() }}
+            title={isCopied ? "Cancelar copia" : "Copiar fase"}
+            className={cn(
+              "p-1 rounded transition-all flex-shrink-0",
+              isCopied
+                ? "text-emerald-600 dark:text-emerald-400"
+                : "opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-emerald-600 dark:hover:text-emerald-400"
+            )}
+          >
+            <Copy className="w-3 h-3" />
+          </button>
           <button
             onClick={(e) => { e.stopPropagation(); onDelete() }}
             className="opacity-0 group-hover:opacity-100 p-1 rounded text-muted-foreground hover:text-destructive transition-all flex-shrink-0"
