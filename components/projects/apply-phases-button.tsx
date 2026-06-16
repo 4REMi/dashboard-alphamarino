@@ -159,7 +159,7 @@ export function ApplyPhasesButton({ projectId, phaseSets, defaultPhaseSetId }: P
                       <span className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary flex-shrink-0">
                         {i + 1}
                       </span>
-                      <div className="flex-1 min-w-0">
+                      <div className="flex-1 min-w-0 overflow-hidden">
                         <p className="text-sm font-medium truncate">{phase.name}</p>
                         {phase.description && (
                           <p className="text-xs text-muted-foreground truncate mt-0.5">{phase.description}</p>
