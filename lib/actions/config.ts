@@ -733,18 +733,43 @@ export async function clonePhaseSet(phaseSetId: string) {
 }
 
 /** Deep-copies a single phase (+ its task set) into a target PhaseSet. */
-export async function clonePhaseIntoPhaseSet(phaseId: string, targetPhaseSetId: string) {
+export async function clonePhaseIntoPhaseSet(phaseId: string, targetPhaseSetId: string, afterPhaseId?: string | null) {
   const supabase = await createClient()
 
   const { data: source } = await supabase
     .from("phase_set_phases").select("*").eq("id", phaseId).single()
   if (!source) throw new Error("Fase no encontrada")
 
-  const { data: existing } = await supabase
-    .from("phase_set_phases").select("phase_order")
-    .eq("phase_set_id", targetPhaseSetId)
-    .order("phase_order", { ascending: false }).limit(1)
-  const nextOrder = existing?.[0] ? (existing[0] as { phase_order: number }).phase_order + 1 : 0
+  let insertOrder: number
+  if (afterPhaseId) {
+    const { data: anchor } = await supabase
+      .from("phase_set_phases").select("phase_order").eq("id", afterPhaseId).single()
+    if (anchor) {
+      // Shift phases that come after the anchor point
+      const { data: toShift } = await supabase
+        .from("phase_set_phases").select("id, phase_order")
+        .eq("phase_set_id", targetPhaseSetId)
+        .gt("phase_order", (anchor as { phase_order: number }).phase_order)
+      if (toShift?.length) {
+        await Promise.all(toShift.map((p: { id: string; phase_order: number }) =>
+          supabase.from("phase_set_phases").update({ phase_order: p.phase_order + 1 }).eq("id", p.id)
+        ))
+      }
+      insertOrder = (anchor as { phase_order: number }).phase_order + 1
+    } else {
+      const { data: last } = await supabase
+        .from("phase_set_phases").select("phase_order")
+        .eq("phase_set_id", targetPhaseSetId)
+        .order("phase_order", { ascending: false }).limit(1)
+      insertOrder = last?.[0] ? (last[0] as { phase_order: number }).phase_order + 1 : 0
+    }
+  } else {
+    const { data: last } = await supabase
+      .from("phase_set_phases").select("phase_order")
+      .eq("phase_set_id", targetPhaseSetId)
+      .order("phase_order", { ascending: false }).limit(1)
+    insertOrder = last?.[0] ? (last[0] as { phase_order: number }).phase_order + 1 : 0
+  }
 
   const newTaskSetId = source.default_task_set_id
     ? await deepCloneTaskSet(supabase, source.default_task_set_id, source.name)
@@ -754,7 +779,7 @@ export async function clonePhaseIntoPhaseSet(phaseId: string, targetPhaseSetId: 
     phase_set_id:        targetPhaseSetId,
     name:                source.name,
     description:         source.description,
-    phase_order:         nextOrder,
+    phase_order:         insertOrder,
     default_task_set_id: newTaskSetId,
   }).select().single()
   if (!newPhase) throw new Error("Error al clonar fase")
