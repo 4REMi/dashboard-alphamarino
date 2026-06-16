@@ -4,13 +4,14 @@ import { useState, useTransition } from "react"
 import type { LabPhase, LabPhaseTask, Sop, Position } from "@/lib/types"
 import {
   createPhase, updatePhase, deletePhase, submitPhase, retractPhase,
-  addPhaseTask, deletePhaseTask, reorderPhaseTasks,
+  addPhaseTask, deletePhaseTask, reorderPhaseTasks, reorderLabPhases,
 } from "@/lib/actions/lab"
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent,
 } from "@dnd-kit/core"
-import { SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable"
-import { Check, X, LayoutList, Link2, ChevronRight, Send, RotateCcw, Pencil, CheckCircle2, XCircle, MessageSquare } from "lucide-react"
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
+import { Check, X, LayoutList, Link2, ChevronRight, Send, RotateCcw, Pencil, CheckCircle2, XCircle, MessageSquare, GripVertical } from "lucide-react"
 import { PanelHeader, EmptyPanel, InlineInput } from "@/components/lab/shared"
 import { LabSortableTaskRow, LabEditTaskModal } from "@/components/lab/task-editor"
 
@@ -141,6 +142,18 @@ export function PhaseEditor({ initialPhases, sops, positions }: Props) {
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
+  function handlePhaseDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    setPhases((prev) => {
+      const oldIndex = prev.findIndex((p) => p.id === active.id)
+      const newIndex = prev.findIndex((p) => p.id === over.id)
+      const reordered = arrayMove(prev, oldIndex, newIndex)
+      startTransition(async () => { await reorderLabPhases(reordered.map((p) => p.id)) })
+      return reordered
+    })
+  }
+
   function handleTaskDragEnd(event: DragEndEvent) {
     const { active, over } = event
     if (!over || active.id === over.id || !selected) return
@@ -191,56 +204,35 @@ export function PhaseEditor({ initialPhases, sops, positions }: Props) {
               <EmptyPanel icon={LayoutList} text="Usa + para crear tu primera fase" />
             )}
 
-            {phases.map((phase) => {
-              const isSelected = phase.id === selectedId
-              if (editingPhaseId === phase.id) {
-                return (
-                  <form key={phase.id} onSubmit={(e) => handleUpdatePhase(phase.id, e)} className="p-3 space-y-2 border-b border-border bg-muted/30">
-                    <InlineInput name="name" defaultValue={phase.name} required autoFocus />
-                    <InlineInput name="description" defaultValue={phase.description ?? ""} placeholder="Descripción" />
-                    <div className="flex gap-2 justify-end">
-                      <button type="button" onClick={() => setEditingPhaseId(null)} className="p-1 rounded text-muted-foreground hover:text-foreground"><X className="w-3.5 h-3.5" /></button>
-                      <button type="submit" disabled={isPending} className="p-1 rounded text-primary disabled:opacity-50"><Check className="w-3.5 h-3.5" /></button>
-                    </div>
-                  </form>
-                )
-              }
-
-              return (
-                <div
-                  key={phase.id}
-                  onClick={() => { setSelectedId(phase.id); setShowNewPhase(false); setShowAddTask(false) }}
-                  className={`group flex items-center gap-2 px-3 py-3 cursor-pointer border-b border-border/50 transition-colors ${isSelected ? "bg-primary/10 border-l-2 border-l-primary" : "hover:bg-muted/40"}`}
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{phase.name}</p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <p className="text-xs text-muted-foreground">{(phase.tasks ?? []).length} tareas</p>
-                      <span className={`text-[10px] font-semibold ${STATUS_COLOR[phase.status]}`}>
-                        {STATUS_LABEL[phase.status]}
-                      </span>
-                    </div>
-                  </div>
-                  {(phase.status === "draft" || phase.status === "rejected") && (
-                    <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setEditingPhaseId(phase.id); setShowNewPhase(false) }}
-                        className="p-1 rounded text-muted-foreground hover:text-foreground"
-                      >
-                        <Pencil className="w-3 h-3" />
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleDeletePhase(phase.id) }}
-                        className="p-1 rounded text-muted-foreground hover:text-destructive"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                  )}
-                  {isSelected && <ChevronRight className="w-3.5 h-3.5 text-primary flex-shrink-0" />}
-                </div>
-              )
-            })}
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handlePhaseDragEnd}>
+              <SortableContext items={phases.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+                {phases.map((phase) => {
+                  const isSelected = phase.id === selectedId
+                  if (editingPhaseId === phase.id) {
+                    return (
+                      <form key={phase.id} onSubmit={(e) => handleUpdatePhase(phase.id, e)} className="p-3 space-y-2 border-b border-border bg-muted/30">
+                        <InlineInput name="name" defaultValue={phase.name} required autoFocus />
+                        <InlineInput name="description" defaultValue={phase.description ?? ""} placeholder="Descripción" />
+                        <div className="flex gap-2 justify-end">
+                          <button type="button" onClick={() => setEditingPhaseId(null)} className="p-1 rounded text-muted-foreground hover:text-foreground"><X className="w-3.5 h-3.5" /></button>
+                          <button type="submit" disabled={isPending} className="p-1 rounded text-primary disabled:opacity-50"><Check className="w-3.5 h-3.5" /></button>
+                        </div>
+                      </form>
+                    )
+                  }
+                  return (
+                    <SortablePhaseItem
+                      key={phase.id}
+                      phase={phase}
+                      isSelected={isSelected}
+                      onSelect={() => { setSelectedId(phase.id); setShowNewPhase(false); setShowAddTask(false) }}
+                      onEdit={() => { setEditingPhaseId(phase.id); setShowNewPhase(false) }}
+                      onDelete={() => handleDeletePhase(phase.id)}
+                    />
+                  )
+                })}
+              </SortableContext>
+            </DndContext>
           </div>
         </div>
 
@@ -355,5 +347,58 @@ export function PhaseEditor({ initialPhases, sops, positions }: Props) {
         />
       )}
     </>
+  )
+}
+
+// ── Sortable phase list item ──────────────────────────────────────────────────
+
+function SortablePhaseItem({ phase, isSelected, onSelect, onEdit, onDelete }: {
+  phase: LabPhase
+  isSelected: boolean
+  onSelect: () => void
+  onEdit: () => void
+  onDelete: () => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: phase.id })
+  const canEdit = phase.status === "draft" || phase.status === "rejected"
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }}
+      onClick={onSelect}
+      className={`group flex items-center gap-2 px-3 py-3 cursor-pointer border-b border-border/50 transition-colors ${isSelected ? "bg-primary/10 border-l-2 border-l-primary" : "hover:bg-muted/40"}`}
+    >
+      <button
+        type="button"
+        onClick={(e) => e.stopPropagation()}
+        className="text-muted-foreground/30 hover:text-muted-foreground cursor-grab active:cursor-grabbing flex-shrink-0 touch-none"
+        {...attributes}
+        {...listeners}
+        tabIndex={-1}
+      >
+        <GripVertical className="w-3.5 h-3.5" />
+      </button>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium truncate">{phase.name}</p>
+        <div className="flex items-center gap-2 mt-0.5">
+          <p className="text-xs text-muted-foreground">{(phase.tasks ?? []).length} tareas</p>
+          <span className={`text-[10px] font-semibold ${STATUS_COLOR[phase.status]}`}>
+            {STATUS_LABEL[phase.status]}
+          </span>
+        </div>
+      </div>
+      {canEdit && (
+        <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+          <button onClick={(e) => { e.stopPropagation(); onEdit() }} className="p-1 rounded text-muted-foreground hover:text-foreground">
+            <Pencil className="w-3 h-3" />
+          </button>
+          <button onClick={(e) => { e.stopPropagation(); onDelete() }} className="p-1 rounded text-muted-foreground hover:text-destructive">
+            <X className="w-3 h-3" />
+          </button>
+        </div>
+      )}
+      {isSelected && <ChevronRight className="w-3.5 h-3.5 text-primary flex-shrink-0" />}
+    </div>
   )
 }

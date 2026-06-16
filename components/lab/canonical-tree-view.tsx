@@ -11,6 +11,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { submitProposedTask, retractProposedTask, deleteProposedTask, forkCanonicalPhase } from "@/lib/actions/lab"
+import { useToast } from "@/components/ui/toast"
 import { ProposedTaskModal } from "@/components/lab/proposed-task-modal"
 import { ProposedChecklistModal } from "@/components/lab/proposed-checklist-modal"
 import { ProposedPhaseModal } from "@/components/lab/proposed-phase-modal"
@@ -70,20 +71,21 @@ export function CanonicalTreeView({
   const [localProposedChecklists, setLocalProposedChecklists] = useState<LabProposedChecklistAddition[]>(myProposedChecklists)
   const [forking, setForking] = useState<string | null>(null)
   const [, startFork] = useTransition()
+  const toast = useToast()
 
   const handleFork = useCallback((phaseId: string) => {
     setForking(phaseId)
     startFork(async () => {
       try {
         await forkCanonicalPhase(phaseId)
-        alert("Fase copiada a Mis Fases como borrador ✓")
+        toast("Fase copiada a Mis Fases — ábrela en la pestaña para editarla y enviarla a revisión", "success")
       } catch {
-        alert("Error al copiar la fase")
+        toast("Error al copiar la fase", "error")
       } finally {
         setForking(null)
       }
     })
-  }, [])
+  }, [toast])
 
   const selectedPs = phaseSets.find((ps) => ps.id === selectedPsId) ?? null
   const phases = selectedPs?.phases ?? []
@@ -200,11 +202,11 @@ export function CanonicalTreeView({
                     <button
                       onClick={(e) => { e.stopPropagation(); handleFork(phase.id) }}
                       disabled={forking === phase.id}
-                      title="Copiar a Mis Fases como borrador"
+                      title="Copiar a Mis Fases para editar y proponer"
                       className="opacity-0 group-hover:opacity-100 flex items-center gap-1 text-[11px] text-emerald-600 hover:text-emerald-700 transition-all px-1.5 py-0.5 rounded hover:bg-emerald-50 disabled:opacity-50"
                     >
                       <GitFork className="w-3 h-3" />
-                      {forking === phase.id ? "Copiando…" : "Forkear"}
+                      {forking === phase.id ? "Copiando…" : "Copiar a Mis Fases"}
                     </button>
                     {isSelected && <ChevronRight className="w-3.5 h-3.5 text-primary" />}
                   </div>

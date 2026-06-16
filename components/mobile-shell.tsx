@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { Menu, Anchor } from "lucide-react"
 import { Sidebar } from "@/components/sidebar"
+import { ToastProvider } from "@/components/ui/toast"
 import type { Profile } from "@/lib/types"
 import Image from "next/image"
 
@@ -68,7 +69,9 @@ export function MobileShell({ profile, logoUrl, children }: MobileShellProps) {
 
         {/* Main content */}
         <main className="flex-1 overflow-auto">
-          {children}
+          <ToastProvider>
+            {children}
+          </ToastProvider>
         </main>
       </div>
     </div>

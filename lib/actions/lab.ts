@@ -56,7 +56,7 @@ export async function getMyPhases(): Promise<LabPhase[]> {
     .from("lab_phases")
     .select(PHASE_SELECT)
     .eq("author_id", user.id)
-    .order("updated_at", { ascending: false })
+    .order("phase_order", { ascending: true })
   if (error) return []
   return (data ?? []).map(normalizePhase)
 }
@@ -76,10 +76,13 @@ export async function getAllSubmittedPhases(): Promise<LabPhase[]> {
 
 export async function createPhase(formData: FormData): Promise<LabPhase> {
   const { supabase, user } = await assertAuth()
+  // Place new phase at the end
+  const { count } = await supabase.from("lab_phases").select("*", { count: "exact", head: true }).eq("author_id", user.id)
   const { data, error } = await supabase.from("lab_phases").insert({
     author_id:   user.id,
     name:        formData.get("name") as string,
     description: (formData.get("description") as string) || null,
+    phase_order: count ?? 0,
   }).select().single()
   if (error) throw error
   revalidate()
@@ -115,6 +118,14 @@ export async function reorderPhaseTasks(orderedIds: string[]): Promise<void> {
   const { supabase } = await assertAuth()
   await Promise.all(orderedIds.map((id, i) =>
     supabase.from("lab_phase_tasks").update({ task_order: i }).eq("id", id)
+  ))
+  revalidate()
+}
+
+export async function reorderLabPhases(orderedIds: string[]): Promise<void> {
+  const { supabase } = await assertAuth()
+  await Promise.all(orderedIds.map((id, i) =>
+    supabase.from("lab_phases").update({ phase_order: i }).eq("id", id)
   ))
   revalidate()
 }
@@ -978,11 +989,13 @@ export async function forkCanonicalPhase(phaseSetPhaseId: string): Promise<LabPh
     .single()
   if (!phase) throw new Error("Fase canónica no encontrada")
 
+  const { count } = await supabase.from("lab_phases").select("*", { count: "exact", head: true }).eq("author_id", user.id)
   const { data: labPhase, error } = await supabase.from("lab_phases").insert({
     author_id:   user.id,
     name:        phase.name,
     description: phase.description ?? null,
     status:      "draft",
+    phase_order: count ?? 0,
   }).select().single()
   if (error || !labPhase) throw new Error("Error al crear fase en lab")
 
