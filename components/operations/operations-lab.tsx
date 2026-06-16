@@ -1377,7 +1377,7 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
                           isSelected={phase.id === selectedPhaseId}
                           isCopied={copiedPhaseId === phase.id}
                           tsName={phase.default_task_set_id ? (taskSets.find((ts) => ts.id === phase.default_task_set_id)?.name ?? null) : null}
-                          onSelect={() => { if (!copiedPhaseId) { setSelectedPhaseId(phase.id === selectedPhaseId ? null : phase.id); setEditingTS(false); setCopiedTaskId(null) } }}
+                          onSelect={() => { if (!copiedPhaseId) { setSelectedPhaseId(phase.id === selectedPhaseId ? null : phase.id); setEditingTS(false) } }}
                           onDelete={() => handleDeletePhase(phase.id)}
                           onUpdate={(name, desc) => handleUpdatePhase(phase.id, name, desc)}
                           onCopy={() => setCopiedPhaseId(copiedPhaseId === phase.id ? null : phase.id)}
@@ -1428,6 +1428,15 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
           />
 
           <div className="flex-1 overflow-y-auto">
+            {copiedTaskId && (
+              <div className="px-3 py-1.5 border-b border-border bg-emerald-50/50 dark:bg-emerald-950/20 flex items-center justify-between flex-shrink-0">
+                <span className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">
+                  Tarea copiada — navega a cualquier fase y haz clic en "Pegar"
+                </span>
+                <button onClick={() => setCopiedTaskId(null)} className="text-xs text-muted-foreground hover:text-foreground transition-colors"><X className="w-3 h-3" /></button>
+              </div>
+            )}
+
             {!selectedPhase && <EmptyPanel icon={Link2} text="Selecciona una fase" />}
 
             {selectedPhase && !linkedTS && (
@@ -1450,13 +1459,6 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
 
             {selectedPhase && linkedTS && (
               <>
-                {copiedTaskId && (
-                  <div className="px-3 py-1.5 border-b border-border bg-emerald-50/50 dark:bg-emerald-950/20 flex items-center justify-between flex-shrink-0">
-                    <span className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">Tarea copiada — haz clic en "Pegar" para insertarla</span>
-                    <button onClick={() => setCopiedTaskId(null)} className="text-xs text-muted-foreground hover:text-foreground transition-colors"><X className="w-3 h-3" /></button>
-                  </div>
-                )}
-
                 {/* Edit task set form */}
                 {editingTS && (
                   <form onSubmit={handleUpdateTS} className="px-4 py-3 space-y-2 bg-muted/20 border-b border-border">
@@ -1495,8 +1497,11 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
                   </SortableContext>
                 </DndContext>
 
-                {tasks.length === 0 && !showAddTask && (
+                {tasks.length === 0 && !showAddTask && !copiedTaskId && (
                   <p className="text-xs text-muted-foreground text-center py-6">Sin tareas. Usa + para agregar.</p>
+                )}
+                {tasks.length === 0 && copiedTaskId && (
+                  <PasteZone onClick={() => handleCloneTaskInto(copiedTaskId, linkedTS.id, null)} label="Pegar tarea aquí" />
                 )}
 
                 {showAddTask && (
