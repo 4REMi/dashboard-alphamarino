@@ -92,7 +92,7 @@ export async function getPhaseSets() {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("phase_sets")
-    .select("*, phases:phase_set_phases(*)")
+    .select("*, phases:phase_set_phases(id, name, description, phase_order, default_task_set_id)")
     .order("name")
   if (error) return []
   return (data ?? []).map((ps) => ({
