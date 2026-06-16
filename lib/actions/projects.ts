@@ -357,6 +357,80 @@ export async function createProject(
   return project
 }
 
+export async function importPhasesToProject(
+  projectId: string,
+  phaseSetPhaseIds: string[],
+  afterPhaseId: string | null   // null = prepend, "end" = append, else insert after that phase
+) {
+  const supabase = createAdminClient()
+
+  // Fetch selected template phases
+  const { data: templatePhases, error } = await supabase
+    .from("phase_set_phases")
+    .select("*")
+    .in("id", phaseSetPhaseIds)
+    .order("phase_order")
+  if (error) throw error
+  if (!templatePhases || templatePhases.length === 0) throw new Error("No se encontraron las fases seleccionadas")
+
+  // Fetch current project phases to determine insertion point & reorder
+  const { data: existing } = await supabase
+    .from("project_phases")
+    .select("id, phase_order")
+    .eq("project_id", projectId)
+    .order("phase_order")
+  const existingPhases = existing ?? []
+
+  // Determine insertion index in the existing list
+  let insertAfterIndex = existingPhases.length - 1 // default: end
+  if (afterPhaseId === null) {
+    insertAfterIndex = -1 // prepend
+  } else if (afterPhaseId !== "end") {
+    const idx = existingPhases.findIndex((p) => p.id === afterPhaseId)
+    if (idx !== -1) insertAfterIndex = idx
+  }
+
+  // Build new ordered list of IDs: existing ids with new ones spliced in
+  const existingIds = existingPhases.map((p) => p.id)
+  const newPhaseInserts = templatePhases.map((tp) => ({
+    project_id: projectId,
+    name: tp.name,
+    description: tp.description,
+    phase_order: 0, // will be set after
+    default_task_set_id: tp.default_task_set_id, // temp for task copy
+  }))
+
+  // Insert new project_phases
+  const { data: createdPhases, error: insertErr } = await supabase
+    .from("project_phases")
+    .insert(newPhaseInserts.map(({ default_task_set_id: _dt, ...rest }) => rest))
+    .select()
+  if (insertErr) throw insertErr
+
+  // Splice new phase IDs into the ordered list and reassign phase_order
+  const newIds = (createdPhases ?? []).map((p: { id: string }) => p.id)
+  const merged = [
+    ...existingIds.slice(0, insertAfterIndex + 1),
+    ...newIds,
+    ...existingIds.slice(insertAfterIndex + 1),
+  ]
+  await Promise.all(
+    merged.map((id, i) => supabase.from("project_phases").update({ phase_order: i }).eq("id", id))
+  )
+
+  // Copy task sets for inserted phases
+  const phaseIdByTaskSetId: Record<string, string> = {}
+  templatePhases.forEach((tp, i) => {
+    const created = createdPhases?.[i]
+    if (tp.default_task_set_id && created) {
+      phaseIdByTaskSetId[tp.default_task_set_id] = created.id
+    }
+  })
+  await copyTaskSetsToProject(supabase, templatePhases, projectId, phaseIdByTaskSetId)
+
+  revalidatePath(`/projects/${projectId}`)
+}
+
 export async function applyPhaseSetToProject(projectId: string, phaseSetId: string) {
   const supabase = createAdminClient()
 

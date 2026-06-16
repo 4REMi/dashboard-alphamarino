@@ -14,6 +14,7 @@ import { IntegrationsCard } from "@/components/projects/hub/integrations-card"
 import { CreativesHub } from "@/components/projects/hub/creatives/creatives-hub"
 import { ProjectActions } from "@/components/projects/project-actions"
 import { ApplyPhasesButton } from "@/components/projects/apply-phases-button"
+import { AddPhasesButton } from "@/components/projects/add-phases-button"
 import { TaskForm } from "@/components/tasks/task-form"
 import { TaskTable } from "@/components/tasks/task-table"
 import { TeamManager } from "@/components/projects/team-manager"
@@ -211,11 +212,19 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-semibold">Fases del Proyecto</h2>
               {isAdminOrSubadmin && phaseSets.length > 0 && (
-                <ApplyPhasesButton
-                  projectId={project.id}
-                  phaseSets={phaseSets as Parameters<typeof ApplyPhasesButton>[0]["phaseSets"]}
-                  defaultPhaseSetId={(project.project_type as { default_phase_set_id?: string } | null)?.default_phase_set_id ?? null}
-                />
+                <div className="flex items-center gap-2">
+                  <AddPhasesButton
+                    projectId={project.id}
+                    phaseSets={phaseSets as Parameters<typeof ApplyPhasesButton>[0]["phaseSets"]}
+                    defaultPhaseSetId={(project.project_type as { default_phase_set_id?: string } | null)?.default_phase_set_id ?? null}
+                    existingPhases={phases.map((p) => ({ id: p.id, name: p.name, phase_order: p.phase_order }))}
+                  />
+                  <ApplyPhasesButton
+                    projectId={project.id}
+                    phaseSets={phaseSets as Parameters<typeof ApplyPhasesButton>[0]["phaseSets"]}
+                    defaultPhaseSetId={(project.project_type as { default_phase_set_id?: string } | null)?.default_phase_set_id ?? null}
+                  />
+                </div>
               )}
             </div>
             <ProjectPhases
