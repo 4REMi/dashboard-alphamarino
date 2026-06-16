@@ -53,18 +53,23 @@ export function PhaseReviewPanel({
   const [selectedChecklistId, setSelectedChecklistId] = useState<string | null>(proposedChecklists[0]?.id ?? null)
   const [selectedNewPhaseId, setSelectedNewPhaseId] = useState<string | null>(proposedPhases[0]?.id ?? null)
   const [showPromote, setShowPromote] = useState(false)
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set())
   const toast = useToast()
+
+  function handleDismiss(id: string) {
+    setDismissedIds((prev) => new Set([...prev, id]))
+  }
 
   function showSuccess(msg: string) { toast(msg, "success") }
 
   const pendingPhases    = phases.filter((p) => p.status === "submitted")
-  const reviewedPhases   = phases.filter((p) => p.status === "approved" || p.status === "rejected")
+  const reviewedPhases   = phases.filter((p) => (p.status === "approved" || p.status === "rejected") && !dismissedIds.has(p.id))
   const pendingTasks     = proposedTasks.filter((t) => t.status === "submitted")
-  const reviewedTasks    = proposedTasks.filter((t) => t.status === "approved" || t.status === "rejected")
+  const reviewedTasks    = proposedTasks.filter((t) => (t.status === "approved" || t.status === "rejected") && !dismissedIds.has(t.id))
   const pendingChecklists  = proposedChecklists.filter((c) => c.status === "submitted")
-  const reviewedChecklists = proposedChecklists.filter((c) => c.status === "approved" || c.status === "rejected")
+  const reviewedChecklists = proposedChecklists.filter((c) => (c.status === "approved" || c.status === "rejected") && !dismissedIds.has(c.id))
   const pendingNewPhases   = proposedPhases.filter((p) => p.status === "submitted")
-  const reviewedNewPhases  = proposedPhases.filter((p) => p.status === "approved" || p.status === "rejected")
+  const reviewedNewPhases  = proposedPhases.filter((p) => (p.status === "approved" || p.status === "rejected") && !dismissedIds.has(p.id))
 
   const tabBadge = (count: number) => count > 0 ? (
     <span className="ml-1.5 text-[10px] font-semibold bg-amber-500/15 text-amber-600 rounded-full px-1.5 py-0.5">{count}</span>
@@ -296,7 +301,8 @@ export function PhaseReviewPanel({
           ) : (
             <PhaseDetail phase={selectedPhase}
               onReviewed={(action, comment) => onPhaseReviewed(selectedPhase.id, action, comment)}
-              onPromote={() => setShowPromote(true)} />
+              onPromote={() => setShowPromote(true)}
+              onDismiss={() => handleDismiss(selectedPhase.id)} />
           )
         )}
 
@@ -309,7 +315,8 @@ export function PhaseReviewPanel({
           ) : (
             <ProposedTaskDetail task={selectedTask}
               onReviewed={(action) => onTaskReviewed(selectedTask.id, action)}
-              onInjected={() => onTaskInjected(selectedTask.id)} />
+              onInjected={() => onTaskInjected(selectedTask.id)}
+              onDismiss={() => handleDismiss(selectedTask.id)} />
           )
         )}
 
@@ -322,7 +329,8 @@ export function PhaseReviewPanel({
           ) : (
             <ProposedChecklistDetail addition={selectedChecklist}
               onReviewed={(action) => onChecklistReviewed(selectedChecklist.id, action)}
-              onInjected={() => onChecklistInjected(selectedChecklist.id)} />
+              onInjected={() => onChecklistInjected(selectedChecklist.id)}
+              onDismiss={() => handleDismiss(selectedChecklist.id)} />
           )
         )}
 
@@ -335,7 +343,8 @@ export function PhaseReviewPanel({
           ) : (
             <ProposedNewPhaseDetail phase={selectedNewPhase}
               onReviewed={(action) => onNewPhaseReviewed(selectedNewPhase.id, action)}
-              onInjected={() => onNewPhaseInjected(selectedNewPhase.id)} />
+              onInjected={() => onNewPhaseInjected(selectedNewPhase.id)}
+              onDismiss={() => handleDismiss(selectedNewPhase.id)} />
           )
         )}
       </div>
@@ -422,13 +431,15 @@ function ProposedChecklistListRow({ addition, isSelected, onSelect }: {
 
 // ── Phase detail (existing logic) ─────────────────────────────────────────────
 
-function PhaseDetail({ phase, onReviewed, onPromote }: {
+function PhaseDetail({ phase, onReviewed, onPromote, onDismiss }: {
   phase: LabPhase
   onReviewed: (action: string, comment: string) => void
   onPromote: () => void
+  onDismiss: () => void
 }) {
   const [comment, setComment] = useState("")
   const [isPending, startTransition] = useTransition()
+  const toast = useToast()
 
   const author = (phase.author as { full_name?: string } | null)?.full_name ?? "Empleado"
   const tasks = [...(phase.tasks ?? [])].sort((a, b) => a.task_order - b.task_order) as LabPhaseTask[]
@@ -438,7 +449,7 @@ function PhaseDetail({ phase, onReviewed, onPromote }: {
 
   function handleReview(action: "comment" | "approve" | "reject") {
     if (action === "reject" && !comment.trim()) {
-      alert("Por favor agrega un comentario al rechazar.")
+      toast("Agrega un comentario al rechazar.", "error")
       return
     }
     startTransition(async () => {
@@ -507,7 +518,14 @@ function PhaseDetail({ phase, onReviewed, onPromote }: {
             </div>
           </>
         ) : (
-          <p className={`text-xs font-medium ${STATUS_COLOR[phase.status]}`}>{STATUS_LABEL[phase.status]}</p>
+          <div className="flex items-center gap-3">
+            <p className={`text-xs font-medium ${STATUS_COLOR[phase.status]}`}>{STATUS_LABEL[phase.status]}</p>
+            {phase.status === "rejected" && (
+              <button onClick={onDismiss} className="text-xs text-muted-foreground hover:text-foreground underline">
+                Archivar
+              </button>
+            )}
+          </div>
         )}
       </div>
     </>
@@ -516,13 +534,15 @@ function PhaseDetail({ phase, onReviewed, onPromote }: {
 
 // ── Proposed task detail ──────────────────────────────────────────────────────
 
-function ProposedTaskDetail({ task, onReviewed, onInjected }: {
+function ProposedTaskDetail({ task, onReviewed, onInjected, onDismiss }: {
   task: LabProposedTask
   onReviewed: (action: string) => void
   onInjected: () => void
+  onDismiss: () => void
 }) {
   const [comment, setComment] = useState("")
   const [isPending, startTransition] = useTransition()
+  const toast = useToast()
 
   const author = (task.author as { full_name?: string } | null)?.full_name ?? "Empleado"
   const phaseName = (task.anchor_phase as { name?: string } | null)?.name ?? "Fase desconocida"
@@ -531,7 +551,7 @@ function ProposedTaskDetail({ task, onReviewed, onInjected }: {
 
   function handleReview(action: "comment" | "approve" | "reject") {
     if (action === "reject" && !comment.trim()) {
-      alert("Por favor agrega un comentario al rechazar.")
+      toast("Agrega un comentario al rechazar.", "error")
       return
     }
     startTransition(async () => {
@@ -636,7 +656,14 @@ function ProposedTaskDetail({ task, onReviewed, onInjected }: {
             </div>
           </>
         ) : (
-          <p className={`text-xs font-medium ${STATUS_COLOR[task.status]}`}>{STATUS_LABEL[task.status]}</p>
+          <div className="flex items-center gap-3">
+            <p className={`text-xs font-medium ${STATUS_COLOR[task.status]}`}>{STATUS_LABEL[task.status]}</p>
+            {task.status === "rejected" && (
+              <button onClick={onDismiss} className="text-xs text-muted-foreground hover:text-foreground underline">
+                Archivar
+              </button>
+            )}
+          </div>
         )}
       </div>
     </>
@@ -645,13 +672,15 @@ function ProposedTaskDetail({ task, onReviewed, onInjected }: {
 
 // ── Proposed checklist detail ─────────────────────────────────────────────────
 
-function ProposedChecklistDetail({ addition, onReviewed, onInjected }: {
+function ProposedChecklistDetail({ addition, onReviewed, onInjected, onDismiss }: {
   addition: LabProposedChecklistAddition
   onReviewed: (action: string) => void
   onInjected: () => void
+  onDismiss: () => void
 }) {
   const [comment, setComment] = useState("")
   const [isPending, startTransition] = useTransition()
+  const toast = useToast()
 
   const author = (addition.author as { full_name?: string } | null)?.full_name ?? "Empleado"
   const taskTitle = (addition.anchor_task as { title?: string } | null)?.title ?? "Tarea desconocida"
@@ -659,7 +688,7 @@ function ProposedChecklistDetail({ addition, onReviewed, onInjected }: {
 
   function handleReview(action: "comment" | "approve" | "reject") {
     if (action === "reject" && !comment.trim()) {
-      alert("Por favor agrega un comentario al rechazar.")
+      toast("Agrega un comentario al rechazar.", "error")
       return
     }
     startTransition(async () => {
@@ -745,7 +774,14 @@ function ProposedChecklistDetail({ addition, onReviewed, onInjected }: {
             </div>
           </>
         ) : (
-          <p className={`text-xs font-medium ${STATUS_COLOR[addition.status]}`}>{STATUS_LABEL[addition.status]}</p>
+          <div className="flex items-center gap-3">
+            <p className={`text-xs font-medium ${STATUS_COLOR[addition.status]}`}>{STATUS_LABEL[addition.status]}</p>
+            {addition.status === "rejected" && (
+              <button onClick={onDismiss} className="text-xs text-muted-foreground hover:text-foreground underline">
+                Archivar
+              </button>
+            )}
+          </div>
         )}
       </div>
     </>
@@ -775,13 +811,14 @@ function ProposedPhaseListRow({ phase, isSelected, onSelect }: { phase: LabPropo
 
 // ── Proposed new phase detail ─────────────────────────────────────────────────
 
-function ProposedNewPhaseDetail({ phase, onReviewed, onInjected }: { phase: LabProposedPhase; onReviewed: (action: string) => void; onInjected: () => void }) {
+function ProposedNewPhaseDetail({ phase, onReviewed, onInjected, onDismiss }: { phase: LabProposedPhase; onReviewed: (action: string) => void; onInjected: () => void; onDismiss: () => void }) {
   const [comment, setComment] = useState("")
   const [isPending, startTransition] = useTransition()
+  const toast = useToast()
   const author = (phase.author as { full_name?: string } | null)?.full_name ?? "Empleado"
 
-  function handleReview(action: "approve" | "reject") {
-    if (action === "reject" && !comment.trim()) { alert("Por favor agrega un comentario al rechazar."); return }
+  function handleReview(action: "comment" | "approve" | "reject") {
+    if (action === "reject" && !comment.trim()) { toast("Agrega un comentario al rechazar.", "error"); return }
     startTransition(async () => {
       await reviewProposedPhase(phase.id, action, comment)
       onReviewed(action)
@@ -817,6 +854,10 @@ function ProposedNewPhaseDetail({ phase, onReviewed, onInjected }: { phase: LabP
               placeholder="Comentario (obligatorio al rechazar)…" rows={2}
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none" />
             <div className="flex gap-2">
+              <button onClick={() => handleReview("comment")} disabled={isPending || !comment.trim()}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-border hover:bg-muted disabled:opacity-50">
+                <MessageSquare className="w-3 h-3" /> Comentar
+              </button>
               <button onClick={() => handleReview("approve")} disabled={isPending}
                 className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50">
                 <CheckCircle2 className="w-3 h-3" /> Aprobar
@@ -828,7 +869,14 @@ function ProposedNewPhaseDetail({ phase, onReviewed, onInjected }: { phase: LabP
             </div>
           </>
         ) : (
-          <p className={`text-xs font-medium ${STATUS_COLOR[phase.status]}`}>{STATUS_LABEL[phase.status]}</p>
+          <div className="flex items-center gap-3">
+            <p className={`text-xs font-medium ${STATUS_COLOR[phase.status]}`}>{STATUS_LABEL[phase.status]}</p>
+            {phase.status === "rejected" && (
+              <button onClick={onDismiss} className="text-xs text-muted-foreground hover:text-foreground underline">
+                Archivar
+              </button>
+            )}
+          </div>
         )}
       </div>
     </>

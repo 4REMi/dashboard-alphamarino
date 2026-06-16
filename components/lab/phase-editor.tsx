@@ -316,7 +316,7 @@ export function PhaseEditor({ initialPhases, sops, positions }: Props) {
                         disabled={isPending}
                         className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-border hover:bg-muted disabled:opacity-50 transition-colors"
                       >
-                        <RotateCcw className="w-3 h-3" /> Retirar
+                        <RotateCcw className="w-3 h-3" /> Retirar para editar
                       </button>
                     </div>
                   ) : selected.status === "approved" ? (

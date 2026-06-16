@@ -537,6 +537,18 @@ export async function createProposedTask(
     default_position_id:        (formData.get("default_position_id") as string) || null,
   }).select(PROPOSED_TASK_SELECT).single()
   if (error) throw error
+  const checklistRaw = (formData.get("checklist_items_json") as string) || "[]"
+  const checklistItems = JSON.parse(checklistRaw) as { text: string; is_blocking: boolean }[]
+  if (checklistItems.length > 0) {
+    await supabase.from("lab_proposed_task_checklist_items").insert(
+      checklistItems.map((item, i) => ({
+        proposed_task_id: (data as { id: string }).id,
+        text: item.text,
+        is_blocking: item.is_blocking,
+        item_order: i,
+      }))
+    )
+  }
   revalidate()
   return data as unknown as LabProposedTask
 }

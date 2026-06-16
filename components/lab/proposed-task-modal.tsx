@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react"
 import type { CanonicalPhase, CanonicalTask, LabProposedTask, Position, Sop } from "@/lib/types"
 import { createProposedTask } from "@/lib/actions/lab"
-import { X, BookOpen, Search, UserCircle, Pencil } from "lucide-react"
+import { X, BookOpen, Search, UserCircle, Pencil, ListChecks, Lock, Plus, Trash2 } from "lucide-react"
 import { InlineInput } from "@/components/lab/shared"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
 
@@ -30,6 +30,9 @@ export function ProposedTaskModal({
   const [positionId, setPositionId] = useState(existingTask?.default_position_id ?? "")
   const [positionSearch, setPositionSearch] = useState("")
   const [positionAfterTaskId, setPositionAfterTaskId] = useState(defaultAfterTaskId ?? "")
+  const [checklistItems, setChecklistItems] = useState<{ text: string; is_blocking: boolean }[]>([])
+  const [newItemText, setNewItemText] = useState("")
+  const [newItemBlocking, setNewItemBlocking] = useState(false)
   const [isPending, startTransition] = useTransition()
 
   const filteredSops = sops.filter((s) =>
@@ -50,6 +53,7 @@ export function ProposedTaskModal({
     fd.set("default_position_id", positionId)
     fd.set("position_after_task_id", isEditMode ? "" : positionAfterTaskId)
     if (isEditMode && existingTask) fd.set("anchor_task_set_task_id", existingTask.id)
+    fd.set("checklist_items_json", JSON.stringify(checklistItems))
     startTransition(async () => {
       const task = await createProposedTask(phase.id, phase.task_set_id, fd)
       onCreated(task)
@@ -232,6 +236,64 @@ export function ProposedTaskModal({
               </div>
             )}
             <input type="hidden" name="sop_id" value={sopId} />
+          </div>
+
+          {/* Checklist items */}
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1.5 block">
+              <ListChecks className="w-3.5 h-3.5" />
+              Checklist
+            </label>
+            {checklistItems.length > 0 && (
+              <div className="rounded-md border border-border/50 divide-y divide-border/30 mb-2">
+                {checklistItems.map((item, i) => (
+                  <div key={i} className="flex items-center gap-2 px-3 py-2 text-sm">
+                    {item.is_blocking && <Lock className="w-3 h-3 text-destructive flex-shrink-0" />}
+                    <span className="flex-1 min-w-0 truncate">{item.text}</span>
+                    <button type="button" onClick={() => setChecklistItems((prev) => prev.filter((_, j) => j !== i))}
+                      className="p-0.5 text-muted-foreground hover:text-destructive">
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-1.5">
+              <input
+                type="text"
+                value={newItemText}
+                onChange={(e) => setNewItemText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault()
+                    if (newItemText.trim()) {
+                      setChecklistItems((prev) => [...prev, { text: newItemText.trim(), is_blocking: newItemBlocking }])
+                      setNewItemText("")
+                      setNewItemBlocking(false)
+                    }
+                  }
+                }}
+                placeholder="Agregar ítem…"
+                className="flex-1 rounded border border-input bg-background px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+              <label className="flex items-center gap-1 px-2 text-xs text-muted-foreground cursor-pointer select-none">
+                <input type="checkbox" checked={newItemBlocking} onChange={(e) => setNewItemBlocking(e.target.checked)} className="accent-destructive" />
+                <Lock className="w-3 h-3" />
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  if (newItemText.trim()) {
+                    setChecklistItems((prev) => [...prev, { text: newItemText.trim(), is_blocking: newItemBlocking }])
+                    setNewItemText("")
+                    setNewItemBlocking(false)
+                  }
+                }}
+                className="p-1.5 rounded border border-border hover:bg-muted text-muted-foreground"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
 
           <div className="flex gap-2 justify-end pt-1">
