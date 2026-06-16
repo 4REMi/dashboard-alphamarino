@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { ChevronRight, Plus, Trash2, LayoutList, Link2, Pencil, Check, X, Upload, Download, Paperclip, GripVertical, BookOpen, Search, Lock, ListChecks, AlertCircle, Copy } from "lucide-react"
+import { ChevronRight, Plus, Trash2, LayoutList, Link2, Pencil, Check, X, Upload, Download, Paperclip, GripVertical, BookOpen, Search, Lock, ListChecks, AlertCircle, Copy, Sparkles } from "lucide-react"
 import { PanelHeader, EmptyPanel, InlineInput, InlineSelect } from "@/components/lab/shared"
 import type { ProjectType, PhaseSet, PhaseSetPhase, TaskSet, TaskSetTask, TaskSetChecklistItem, Profile, Sop, Position } from "@/lib/types"
 import { PROJECT_TYPE_ICONS, getProjectTypeIcon } from "@/lib/project-type-icons"
@@ -22,6 +22,7 @@ import {
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
+import { AiTaskSuggester } from "@/components/operations/ai-task-suggester"
 // TaskPriority intentionally removed — tasks now use is_urgent boolean
 import {
   createProjectType, updateProjectType, deleteProjectType,
@@ -793,6 +794,7 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
   const [editTypeColor, setEditTypeColor] = useState("")
   const [newTypeIcon, setNewTypeIcon] = useState("")
   const [editTypeIcon, setEditTypeIcon] = useState("")
+  const [showAI, setShowAI] = useState(false)
   const [showNewPS, setShowNewPS] = useState(false)
   const [renamingPS, setRenamingPS] = useState(false)
   const [renamePSValue, setRenamePSValue] = useState("")
@@ -1452,16 +1454,25 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
           <PanelHeader
             title={linkedTS ? linkedTS.name : "Task Set"}
             subtitle={!selectedPhase ? "Selecciona una fase" : linkedTS ? `${tasks.length} tareas plantilla` : "Sin task set vinculado"}
-            onAdd={linkedTS && !editingTS ? () => setShowAddTask(true) : undefined}
+            onAdd={linkedTS && !editingTS ? () => { setShowAddTask(true); setShowAI(false) } : undefined}
             onDelete={linkedTS && !editingTS ? () => handleDeleteTS(linkedTS.id) : undefined}
             extraActions={linkedTS && !editingTS ? (
-              <button
-                onClick={() => setEditingTS(true)}
-                title="Editar nombre del task set"
-                className="p-1 rounded text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <Pencil className="w-3.5 h-3.5" />
-              </button>
+              <>
+                <button
+                  onClick={() => { setShowAI((v) => !v); setShowAddTask(false) }}
+                  title="Sugerir tarea con IA"
+                  className={cn("p-1 rounded transition-colors", showAI ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground")}
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => setEditingTS(true)}
+                  title="Editar nombre del task set"
+                  className="p-1 rounded text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+              </>
             ) : undefined}
           />
 
@@ -1571,6 +1582,55 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
               </>
             )}
           </div>
+
+          {/* ── AI Task Suggester ── */}
+          {showAI && linkedTS && selectedPhase && (
+            <AiTaskSuggester
+              context={{
+                projectTypeName: selectedType?.name ?? null,
+                phaseSetName: linkedPS?.name ?? "",
+                allPhases: phases.map((p) => p.name),
+                currentPhaseName: selectedPhase.name,
+                currentPhaseIndex: phases.findIndex((p) => p.id === selectedPhase.id),
+                existingTasks: tasks.map((t) => t.title),
+                availablePositions: positions.map((p) => p.name),
+              }}
+              positions={positions}
+              onAccept={async (proposal) => {
+                startTransition(async () => {
+                  const fd = new FormData()
+                  fd.set("title", proposal.title)
+                  fd.set("description", proposal.description)
+                  if (proposal.is_urgent) fd.set("is_urgent", "true")
+                  if (proposal.requires_deliverable) fd.set("requires_deliverable", "true")
+                  if (proposal.default_position_id) fd.set("default_position_id", proposal.default_position_id)
+                  const task = await addTaskToSet(linkedTS.id, fd) as TaskSetTask
+                  // Add checklist items sequentially
+                  for (const item of proposal.checklist) {
+                    if (item.text.trim()) {
+                      await addChecklistItemToSetTask(task.id, item.text, item.is_blocking)
+                    }
+                  }
+                  setPhaseSets((prev) => prev.map((ps) =>
+                    ps.id !== linkedPS!.id ? ps : {
+                      ...ps,
+                      phases: (ps.phases ?? []).map((ph) =>
+                        ph.id !== selectedPhase.id ? ph : ph
+                      ),
+                    }
+                  ))
+                  setTaskSets((prev) => prev.map((ts) =>
+                    ts.id !== linkedTS.id ? ts : {
+                      ...ts,
+                      tasks: [...(ts.tasks ?? []), { ...task, checklist_items: proposal.checklist.map((c, i) => ({ id: crypto.randomUUID(), task_set_task_id: task.id, text: c.text, is_blocking: c.is_blocking, item_order: i, created_at: "" })) }],
+                    }
+                  ))
+                  setShowAI(false)
+                })
+              }}
+              onClose={() => setShowAI(false)}
+            />
+          )}
         </div>
       </div>
 
