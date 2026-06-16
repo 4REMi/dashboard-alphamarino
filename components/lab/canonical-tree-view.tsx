@@ -1,16 +1,16 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useState, useTransition, useCallback } from "react"
 import type {
   CanonicalPhaseSet, CanonicalPhase, CanonicalTask,
   LabProposedTask, LabProposedChecklistAddition, Position, Sop,
 } from "@/lib/types"
 import {
   FolderKanban, ListChecks, Lock, Paperclip, BookOpen,
-  Plus, UserCircle, ChevronRight, Pencil, Layers, Send, RotateCcw, Trash2,
+  Plus, UserCircle, ChevronRight, Pencil, Layers, Send, RotateCcw, Trash2, GitFork,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { submitProposedTask, retractProposedTask, deleteProposedTask } from "@/lib/actions/lab"
+import { submitProposedTask, retractProposedTask, deleteProposedTask, forkCanonicalPhase } from "@/lib/actions/lab"
 import { ProposedTaskModal } from "@/components/lab/proposed-task-modal"
 import { ProposedChecklistModal } from "@/components/lab/proposed-checklist-modal"
 import { ProposedPhaseModal } from "@/components/lab/proposed-phase-modal"
@@ -68,6 +68,22 @@ export function CanonicalTreeView({
   } | null>(null)
   const [localProposedTasks, setLocalProposedTasks] = useState<LabProposedTask[]>(myProposedTasks)
   const [localProposedChecklists, setLocalProposedChecklists] = useState<LabProposedChecklistAddition[]>(myProposedChecklists)
+  const [forking, setForking] = useState<string | null>(null)
+  const [, startFork] = useTransition()
+
+  const handleFork = useCallback((phaseId: string) => {
+    setForking(phaseId)
+    startFork(async () => {
+      try {
+        await forkCanonicalPhase(phaseId)
+        alert("Fase copiada a Mis Fases como borrador ✓")
+      } catch {
+        alert("Error al copiar la fase")
+      } finally {
+        setForking(null)
+      }
+    })
+  }, [])
 
   const selectedPs = phaseSets.find((ps) => ps.id === selectedPsId) ?? null
   const phases = selectedPs?.phases ?? []
@@ -180,6 +196,15 @@ export function CanonicalTreeView({
                     >
                       <Layers className="w-3 h-3" />
                       Nueva fase
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleFork(phase.id) }}
+                      disabled={forking === phase.id}
+                      title="Copiar a Mis Fases como borrador"
+                      className="opacity-0 group-hover:opacity-100 flex items-center gap-1 text-[11px] text-emerald-600 hover:text-emerald-700 transition-all px-1.5 py-0.5 rounded hover:bg-emerald-50 disabled:opacity-50"
+                    >
+                      <GitFork className="w-3 h-3" />
+                      {forking === phase.id ? "Copiando…" : "Forkear"}
                     </button>
                     {isSelected && <ChevronRight className="w-3.5 h-3.5 text-primary" />}
                   </div>

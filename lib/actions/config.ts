@@ -644,3 +644,121 @@ export async function importOperationsTemplate(jsonStr: string, mode: "default" 
     taskSets: createdTaskSets,
   }
 }
+
+// ============================================================
+// CLONE HELPERS
+// ============================================================
+
+async function deepCloneTaskSet(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  sourceTaskSetId: string,
+  newName: string,
+): Promise<string> {
+  const { data: newTS } = await supabase.from("task_sets").insert({ name: newName }).select().single()
+  if (!newTS) throw new Error("Error al clonar task set")
+
+  const { data: tasks } = await supabase
+    .from("task_set_tasks")
+    .select("*, checklist_items:task_set_checklist_items(*)")
+    .eq("task_set_id", sourceTaskSetId)
+    .order("task_order")
+
+  for (const task of tasks ?? []) {
+    const { data: newTask } = await supabase.from("task_set_tasks").insert({
+      task_set_id:          newTS.id,
+      title:                task.title,
+      description:          task.description,
+      task_order:           task.task_order,
+      is_urgent:            task.is_urgent ?? false,
+      requires_deliverable: task.requires_deliverable ?? false,
+      sop_id:               task.sop_id ?? null,
+      default_position_id:  task.default_position_id ?? null,
+    }).select().single()
+
+    if (newTask && task.checklist_items?.length) {
+      await supabase.from("task_set_checklist_items").insert(
+        (task.checklist_items as { text: string; is_blocking: boolean; item_order: number }[]).map((ci) => ({
+          task_set_task_id: newTask.id,
+          text:             ci.text,
+          is_blocking:      ci.is_blocking,
+          item_order:       ci.item_order,
+        }))
+      )
+    }
+  }
+
+  return newTS.id
+}
+
+/** Deep-copies a PhaseSet (all phases + task sets + tasks + checklist items).
+ *  The copy is not linked to any ProjectType — link it manually afterward. */
+export async function clonePhaseSet(phaseSetId: string) {
+  const supabase = await createClient()
+
+  const { data: source } = await supabase
+    .from("phase_sets")
+    .select("*, phases:phase_set_phases(*)")
+    .eq("id", phaseSetId)
+    .single()
+  if (!source) throw new Error("Phase set no encontrado")
+
+  const { data: newPS } = await supabase
+    .from("phase_sets")
+    .insert({ name: `${source.name} (copia)` })
+    .select().single()
+  if (!newPS) throw new Error("Error al crear phase set")
+
+  const sortedPhases = ((source.phases ?? []) as { id: string; name: string; description: string | null; phase_order: number; default_task_set_id: string | null }[])
+    .sort((a, b) => a.phase_order - b.phase_order)
+
+  const newPhases = []
+  for (const phase of sortedPhases) {
+    const newTaskSetId = phase.default_task_set_id
+      ? await deepCloneTaskSet(supabase, phase.default_task_set_id, phase.name)
+      : null
+
+    const { data: newPhase } = await supabase.from("phase_set_phases").insert({
+      phase_set_id:        newPS.id,
+      name:                phase.name,
+      description:         phase.description,
+      phase_order:         phase.phase_order,
+      default_task_set_id: newTaskSetId,
+    }).select().single()
+
+    if (newPhase) newPhases.push({ ...newPhase, default_task_set_id: newTaskSetId })
+  }
+
+  revalidatePath("/operations")
+  return { ...newPS, phases: newPhases }
+}
+
+/** Deep-copies a single phase (+ its task set) into a target PhaseSet. */
+export async function clonePhaseIntoPhaseSet(phaseId: string, targetPhaseSetId: string) {
+  const supabase = await createClient()
+
+  const { data: source } = await supabase
+    .from("phase_set_phases").select("*").eq("id", phaseId).single()
+  if (!source) throw new Error("Fase no encontrada")
+
+  const { data: existing } = await supabase
+    .from("phase_set_phases").select("phase_order")
+    .eq("phase_set_id", targetPhaseSetId)
+    .order("phase_order", { ascending: false }).limit(1)
+  const nextOrder = existing?.[0] ? (existing[0] as { phase_order: number }).phase_order + 1 : 0
+
+  const newTaskSetId = source.default_task_set_id
+    ? await deepCloneTaskSet(supabase, source.default_task_set_id, source.name)
+    : null
+
+  const { data: newPhase } = await supabase.from("phase_set_phases").insert({
+    phase_set_id:        targetPhaseSetId,
+    name:                source.name,
+    description:         source.description,
+    phase_order:         nextOrder,
+    default_task_set_id: newTaskSetId,
+  }).select().single()
+  if (!newPhase) throw new Error("Error al clonar fase")
+
+  revalidatePath("/operations")
+  return { ...newPhase, default_task_set_id: newTaskSetId }
+}

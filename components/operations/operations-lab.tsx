@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useTransition, useRef } from "react"
-import { ChevronRight, Plus, Trash2, LayoutList, Link2, Pencil, Check, X, Upload, Download, Paperclip, GripVertical, BookOpen, Search, Lock, ListChecks, AlertCircle } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { ChevronRight, Plus, Trash2, LayoutList, Link2, Pencil, Check, X, Upload, Download, Paperclip, GripVertical, BookOpen, Search, Lock, ListChecks, AlertCircle, Copy } from "lucide-react"
 import { PanelHeader, EmptyPanel, InlineInput, InlineSelect } from "@/components/lab/shared"
 import type { ProjectType, PhaseSet, PhaseSetPhase, TaskSet, TaskSetTask, TaskSetChecklistItem, Profile, Sop, Position } from "@/lib/types"
 import { PROJECT_TYPE_ICONS, getProjectTypeIcon } from "@/lib/project-type-icons"
@@ -25,7 +26,7 @@ import { AutoTextarea } from "@/components/ui/auto-textarea"
 import {
   createProjectType, updateProjectType, deleteProjectType,
   createPhaseSet, deletePhaseSet, addPhaseToSet, updatePhaseInSet, deletePhaseFromSet,
-  linkPhaseSetToProjectType, linkTaskSetToPhase,
+  linkPhaseSetToProjectType, linkTaskSetToPhase, clonePhaseSet, clonePhaseIntoPhaseSet,
   createTaskSet, updateTaskSet, deleteTaskSet, addTaskToSet, updateTaskInSet, deleteTaskFromSet,
   reorderTasksInSet, reorderPhaseInSet,
   importOperationsTemplate,
@@ -757,6 +758,7 @@ function EditTaskModal({
 
 // ── main component ────────────────────────────────────────────────────────────
 export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets: initTS, employees, positions, sops }: Props) {
+  const router = useRouter()
   const [types, setTypes] = useState<ProjectType[]>(init)
   const [phaseSets, setPhaseSets] = useState<PhaseSet[]>(initPS)
   const [taskSets, setTaskSets] = useState<TaskSet[]>(initTS)
@@ -860,6 +862,21 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
       setPhaseSets((prev) => prev.filter((ps) => ps.id !== id))
       setTypes((prev) => prev.map((t) => t.default_phase_set_id === id ? { ...t, default_phase_set_id: null } : t))
       setSelectedPhaseId(null)
+    })
+  }
+
+  function handleClonePS() {
+    if (!linkedPS) return
+    run(async () => {
+      await clonePhaseSet(linkedPS.id)
+      router.refresh()
+    })
+  }
+
+  function handleClonePhaseInto(phaseId: string, targetPhaseSetId: string) {
+    run(async () => {
+      await clonePhaseIntoPhaseSet(phaseId, targetPhaseSetId)
+      router.refresh()
     })
   }
 
@@ -1241,6 +1258,16 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
             subtitle={!selectedType ? "Selecciona un tipo" : linkedPS ? `${phases.length} fases` : "Sin phase set asignado"}
             onAdd={linkedPS ? () => setShowAddPhase(true) : undefined}
             onDelete={linkedPS ? () => handleDeletePS(linkedPS.id) : undefined}
+            extraActions={linkedPS ? (
+              <button
+                onClick={handleClonePS}
+                disabled={isPending}
+                title="Clonar phase set completo (copia independiente)"
+                className="p-1 rounded text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Copy className="w-3.5 h-3.5" />
+              </button>
+            ) : undefined}
           />
           <div className="flex-1 overflow-y-auto">
             {!selectedType && <EmptyPanel icon={LayoutList} text="Selecciona un tipo de proyecto" />}
@@ -1292,6 +1319,8 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
                         onSelect={() => { setSelectedPhaseId(phase.id === selectedPhaseId ? null : phase.id); setEditingTS(false) }}
                         onDelete={() => handleDeletePhase(phase.id)}
                         onUpdate={(name, desc) => handleUpdatePhase(phase.id, name, desc)}
+                        onCloneInto={(targetPsId) => handleClonePhaseInto(phase.id, targetPsId)}
+                        otherPhaseSets={phaseSets.filter((ps) => ps.id !== linkedPS?.id)}
                       />
                     ))}
                   </SortableContext>
@@ -1467,9 +1496,12 @@ interface SortablePhaseRowProps {
   onSelect: () => void
   onDelete: () => void
   onUpdate: (name: string, description: string) => void
+  onCloneInto?: (targetPsId: string) => void
+  otherPhaseSets?: { id: string; name: string }[]
 }
 
-function SortablePhaseRow({ phase, index, isSelected, tsName, onSelect, onDelete, onUpdate }: SortablePhaseRowProps) {
+function SortablePhaseRow({ phase, index, isSelected, tsName, onSelect, onDelete, onUpdate, onCloneInto, otherPhaseSets }: SortablePhaseRowProps) {
+  const [showCloneSelect, setShowCloneSelect] = useState(false)
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: phase.id })
   const [editing, setEditing] = useState(false)
   const [nameVal, setNameVal] = useState(phase.name)
@@ -1551,6 +1583,31 @@ function SortablePhaseRow({ phase, index, isSelected, tsName, onSelect, onDelete
           >
             <Pencil className="w-3 h-3" />
           </button>
+          {onCloneInto && otherPhaseSets && otherPhaseSets.length > 0 && (
+            showCloneSelect ? (
+              <select
+                autoFocus
+                className="text-xs border border-border rounded px-1 py-0.5 bg-background max-w-[120px]"
+                defaultValue=""
+                onClick={(e) => e.stopPropagation()}
+                onBlur={() => setShowCloneSelect(false)}
+                onChange={(e) => {
+                  if (e.target.value) { onCloneInto(e.target.value); setShowCloneSelect(false) }
+                }}
+              >
+                <option value="" disabled>Clonar a…</option>
+                {otherPhaseSets.map((ps) => <option key={ps.id} value={ps.id}>{ps.name}</option>)}
+              </select>
+            ) : (
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowCloneSelect(true) }}
+                title="Clonar fase a otro phase set"
+                className="opacity-0 group-hover:opacity-100 p-1 rounded text-muted-foreground hover:text-foreground transition-all flex-shrink-0"
+              >
+                <Copy className="w-3 h-3" />
+              </button>
+            )
+          )}
           <button
             onClick={(e) => { e.stopPropagation(); onDelete() }}
             className="opacity-0 group-hover:opacity-100 p-1 rounded text-muted-foreground hover:text-destructive transition-all flex-shrink-0"

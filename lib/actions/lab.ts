@@ -952,3 +952,66 @@ export async function injectProposedChecklistAddition(id: string): Promise<void>
   revalidatePath("/operations")
   revalidate()
 }
+
+// ============================================================
+// FORK CANONICAL PHASE → Lab draft
+// ============================================================
+
+/** Copies a canonical phase (+ its task set tasks + checklist items) into
+ *  the current user's Mi Ops Lab as a new draft LabPhase. */
+export async function forkCanonicalPhase(phaseSetPhaseId: string): Promise<LabPhase> {
+  const { supabase, user } = await assertAuth()
+
+  const { data: phase } = await supabase
+    .from("phase_set_phases")
+    .select(`
+      id, name, description,
+      task_set:task_sets(
+        id, name,
+        tasks:task_set_tasks(
+          id, title, description, task_order, requires_deliverable, sop_id, default_position_id,
+          checklist_items:task_set_checklist_items(id, text, is_blocking, item_order)
+        )
+      )
+    `)
+    .eq("id", phaseSetPhaseId)
+    .single()
+  if (!phase) throw new Error("Fase canónica no encontrada")
+
+  const { data: labPhase, error } = await supabase.from("lab_phases").insert({
+    author_id:   user.id,
+    name:        phase.name,
+    description: phase.description ?? null,
+    status:      "draft",
+  }).select().single()
+  if (error || !labPhase) throw new Error("Error al crear fase en lab")
+
+  const taskSet = phase.task_set as { tasks?: { title: string; description: string | null; task_order: number; requires_deliverable: boolean; sop_id: string | null; default_position_id: string | null; checklist_items?: { text: string; is_blocking: boolean; item_order: number }[] }[] } | null
+  const tasks = (taskSet?.tasks ?? []).sort((a, b) => a.task_order - b.task_order)
+
+  for (const [i, task] of tasks.entries()) {
+    const { data: labTask } = await supabase.from("lab_phase_tasks").insert({
+      phase_id:             labPhase.id,
+      title:                task.title,
+      description:          task.description ?? null,
+      task_order:           i,
+      requires_deliverable: task.requires_deliverable ?? false,
+      sop_id:               task.sop_id ?? null,
+      default_position_id:  task.default_position_id ?? null,
+    }).select().single()
+
+    if (labTask && task.checklist_items?.length) {
+      await supabase.from("lab_phase_task_checklist_items").insert(
+        task.checklist_items.map((ci) => ({
+          task_id:    labTask.id,
+          text:       ci.text,
+          is_blocking: ci.is_blocking,
+          item_order:  ci.item_order,
+        }))
+      )
+    }
+  }
+
+  revalidatePath("/my-lab")
+  return labPhase as LabPhase
+}

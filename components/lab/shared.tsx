@@ -34,12 +34,13 @@ export function InlineSelect(
 }
 
 export function PanelHeader({
-  title, subtitle, onAdd, onDelete,
+  title, subtitle, onAdd, onDelete, extraActions,
 }: {
   title: string
   subtitle?: string
   onAdd?: () => void
   onDelete?: () => void
+  extraActions?: React.ReactNode
 }) {
   return (
     <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-start justify-between gap-2 flex-shrink-0">
@@ -48,6 +49,7 @@ export function PanelHeader({
         {subtitle && <p className="text-xs text-muted-foreground mt-0.5 truncate">{subtitle}</p>}
       </div>
       <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
+        {extraActions}
         {onDelete && (
           <button
             onClick={onDelete}
