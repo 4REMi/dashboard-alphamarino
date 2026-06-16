@@ -31,7 +31,7 @@ import {
   reorderTasksInSet, reorderPhaseInSet,
   importOperationsTemplate,
   addChecklistItemToSetTask, updateSetTaskChecklistItem, deleteSetTaskChecklistItem,
-  reorderSetTaskChecklistItems,
+  reorderSetTaskChecklistItems, cloneTaskInTaskSet,
 } from "@/lib/actions/config"
 import { cn } from "@/lib/utils"
 import { exportToXlsx } from "@/lib/utils/export-xlsx"
@@ -394,13 +394,17 @@ function TemplateChecklistTrigger({
 function SortableTaskRow({
   task,
   index,
+  isCopied,
   onEdit,
   onDelete,
+  onCopy,
 }: {
   task: TaskSetTask
   index: number
+  isCopied?: boolean
   onEdit: (task: TaskSetTask) => void
   onDelete: (id: string) => void
+  onCopy?: () => void
   sops?: Sop[]
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id })
@@ -419,7 +423,10 @@ function SortableTaskRow({
     <div
       ref={setNodeRef}
       style={style}
-      className="group border-b border-border/50 hover:bg-muted/30 transition-colors bg-card"
+      className={cn(
+        "group border-b border-border/50 hover:bg-muted/30 transition-colors bg-card",
+        isCopied && "ring-2 ring-inset ring-emerald-400 bg-emerald-50/40 dark:bg-emerald-950/20",
+      )}
     >
       <div className="flex items-center gap-2 px-3 py-3">
         <button
@@ -480,6 +487,20 @@ function SortableTaskRow({
         >
           <Pencil className="w-3 h-3" />
         </button>
+        {onCopy && (
+          <button
+            onClick={onCopy}
+            title={isCopied ? "Cancelar copia" : "Copiar tarea"}
+            className={cn(
+              "p-1 rounded transition-all flex-shrink-0",
+              isCopied
+                ? "text-emerald-600 dark:text-emerald-400"
+                : "opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-emerald-600 dark:hover:text-emerald-400"
+            )}
+          >
+            <Copy className="w-3 h-3" />
+          </button>
+        )}
         <button
           onClick={() => onDelete(task.id)}
           className="opacity-0 group-hover:opacity-100 p-1 rounded text-muted-foreground hover:text-destructive transition-all flex-shrink-0"
@@ -781,6 +802,7 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
   const [editingTaskChecklist, setEditingTaskChecklist] = useState<ChecklistModalItem[]>([])
   const [showImport, setShowImport] = useState(false)
   const [copiedPhaseId, setCopiedPhaseId] = useState<string | null>(null)
+  const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null)
 
   const [isPending, startTransition] = useTransition()
 
@@ -876,9 +898,49 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
 
   function handleClonePhaseInto(phaseId: string, targetPhaseSetId: string, afterPhaseId?: string | null) {
     run(async () => {
-      await clonePhaseIntoPhaseSet(phaseId, targetPhaseSetId, afterPhaseId)
+      const result = await clonePhaseIntoPhaseSet(phaseId, targetPhaseSetId, afterPhaseId) as { phase: PhaseSetPhase; taskSet: TaskSet | null }
+      // Update phaseSets state: insert new phase at correct position
+      setPhaseSets((prev) => prev.map((ps) => {
+        if (ps.id !== targetPhaseSetId) return ps
+        const existing = (ps.phases ?? []) as PhaseSetPhase[]
+        let updated: PhaseSetPhase[]
+        if (afterPhaseId) {
+          const anchorIdx = existing.findIndex((p) => p.id === afterPhaseId)
+          updated = anchorIdx >= 0
+            ? [...existing.slice(0, anchorIdx + 1), result.phase, ...existing.slice(anchorIdx + 1)]
+            : [...existing, result.phase]
+        } else {
+          // prepend (paste at inicio)
+          updated = [result.phase, ...existing]
+        }
+        return { ...ps, phases: updated }
+      }))
+      // Update taskSets state with the new task set
+      if (result.taskSet) {
+        setTaskSets((prev) => [...prev, result.taskSet as TaskSet])
+      }
       setCopiedPhaseId(null)
-      router.refresh()
+    })
+  }
+
+  function handleCloneTaskInto(taskId: string, targetTaskSetId: string, afterTaskId?: string | null) {
+    run(async () => {
+      const newTask = await cloneTaskInTaskSet(taskId, targetTaskSetId, afterTaskId) as TaskSetTask
+      setTaskSets((prev) => prev.map((ts) => {
+        if (ts.id !== targetTaskSetId) return ts
+        const existing = (ts.tasks ?? []) as TaskSetTask[]
+        let updated: TaskSetTask[]
+        if (afterTaskId) {
+          const anchorIdx = existing.findIndex((t) => t.id === afterTaskId)
+          updated = anchorIdx >= 0
+            ? [...existing.slice(0, anchorIdx + 1), newTask, ...existing.slice(anchorIdx + 1)]
+            : [...existing, newTask]
+        } else {
+          updated = [newTask, ...existing]
+        }
+        return { ...ts, tasks: updated }
+      }))
+      setCopiedTaskId(null)
     })
   }
 
@@ -1315,7 +1377,7 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
                           isSelected={phase.id === selectedPhaseId}
                           isCopied={copiedPhaseId === phase.id}
                           tsName={phase.default_task_set_id ? (taskSets.find((ts) => ts.id === phase.default_task_set_id)?.name ?? null) : null}
-                          onSelect={() => { if (!copiedPhaseId) { setSelectedPhaseId(phase.id === selectedPhaseId ? null : phase.id); setEditingTS(false) } }}
+                          onSelect={() => { if (!copiedPhaseId) { setSelectedPhaseId(phase.id === selectedPhaseId ? null : phase.id); setEditingTS(false); setCopiedTaskId(null) } }}
                           onDelete={() => handleDeletePhase(phase.id)}
                           onUpdate={(name, desc) => handleUpdatePhase(phase.id, name, desc)}
                           onCopy={() => setCopiedPhaseId(copiedPhaseId === phase.id ? null : phase.id)}
@@ -1388,6 +1450,12 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
 
             {selectedPhase && linkedTS && (
               <>
+                {copiedTaskId && (
+                  <div className="px-3 py-1.5 border-b border-border bg-emerald-50/50 dark:bg-emerald-950/20 flex items-center justify-between flex-shrink-0">
+                    <span className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">Tarea copiada — haz clic en "Pegar" para insertarla</span>
+                    <button onClick={() => setCopiedTaskId(null)} className="text-xs text-muted-foreground hover:text-foreground transition-colors"><X className="w-3 h-3" /></button>
+                  </div>
+                )}
 
                 {/* Edit task set form */}
                 {editingTS && (
@@ -1404,16 +1472,25 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
                 )}
 
                 {/* Tasks list — sortable */}
+                {copiedTaskId && (
+                  <PasteZone onClick={() => handleCloneTaskInto(copiedTaskId, linkedTS.id, null)} label="Pegar al inicio" />
+                )}
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                   <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
                     {tasks.map((task, i) => (
-                      <SortableTaskRow
-                        key={task.id}
-                        task={task}
-                        index={i}
-                        onEdit={(t) => { setEditingTask(t); setEditingTaskChecklist((t.checklist_items ?? []) as ChecklistModalItem[]) }}
-                        onDelete={handleDeleteTask}
-                      />
+                      <div key={task.id}>
+                        <SortableTaskRow
+                          task={task}
+                          index={i}
+                          isCopied={copiedTaskId === task.id}
+                          onEdit={(t) => { setEditingTask(t); setEditingTaskChecklist((t.checklist_items ?? []) as ChecklistModalItem[]) }}
+                          onDelete={handleDeleteTask}
+                          onCopy={() => setCopiedTaskId(copiedTaskId === task.id ? null : task.id)}
+                        />
+                        {copiedTaskId && copiedTaskId !== task.id && (
+                          <PasteZone onClick={() => handleCloneTaskInto(copiedTaskId, linkedTS.id, task.id)} />
+                        )}
+                      </div>
                     ))}
                   </SortableContext>
                 </DndContext>

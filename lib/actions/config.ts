@@ -784,6 +784,83 @@ export async function clonePhaseIntoPhaseSet(phaseId: string, targetPhaseSetId: 
   }).select().single()
   if (!newPhase) throw new Error("Error al clonar fase")
 
+  // Fetch the full task set (with tasks + checklist) so the caller can update UI state directly
+  let taskSet = null
+  if (newTaskSetId) {
+    const { data: ts } = await supabase
+      .from("task_sets")
+      .select("*, tasks:task_set_tasks(*, checklist_items:task_set_checklist_items(*), sop:sops(*), default_position:positions(*))")
+      .eq("id", newTaskSetId).single()
+    if (ts) taskSet = ts
+  }
+
   revalidatePath("/operations")
-  return { ...newPhase, default_task_set_id: newTaskSetId }
+  return { phase: { ...newPhase, default_task_set_id: newTaskSetId }, taskSet }
+}
+
+/** Deep-copies a single task (+ its checklist) into a target TaskSet, optionally after a given task. */
+export async function cloneTaskInTaskSet(taskId: string, targetTaskSetId: string, afterTaskId?: string | null) {
+  const supabase = await createClient()
+
+  const { data: source } = await supabase
+    .from("task_set_tasks")
+    .select("*, checklist_items:task_set_checklist_items(*)")
+    .eq("id", taskId).single()
+  if (!source) throw new Error("Tarea no encontrada")
+
+  let insertOrder: number
+  if (afterTaskId) {
+    const { data: anchor } = await supabase
+      .from("task_set_tasks").select("task_order").eq("id", afterTaskId).single()
+    if (anchor) {
+      const { data: toShift } = await supabase
+        .from("task_set_tasks").select("id, task_order")
+        .eq("task_set_id", targetTaskSetId)
+        .gt("task_order", (anchor as { task_order: number }).task_order)
+      if (toShift?.length) {
+        await Promise.all(toShift.map((t: { id: string; task_order: number }) =>
+          supabase.from("task_set_tasks").update({ task_order: t.task_order + 1 }).eq("id", t.id)
+        ))
+      }
+      insertOrder = (anchor as { task_order: number }).task_order + 1
+    } else {
+      const { data: last } = await supabase
+        .from("task_set_tasks").select("task_order").eq("task_set_id", targetTaskSetId)
+        .order("task_order", { ascending: false }).limit(1)
+      insertOrder = last?.[0] ? (last[0] as { task_order: number }).task_order + 1 : 0
+    }
+  } else {
+    const { data: last } = await supabase
+      .from("task_set_tasks").select("task_order").eq("task_set_id", targetTaskSetId)
+      .order("task_order", { ascending: false }).limit(1)
+    insertOrder = last?.[0] ? (last[0] as { task_order: number }).task_order + 1 : 0
+  }
+
+  const { data: newTask } = await supabase.from("task_set_tasks").insert({
+    task_set_id:          targetTaskSetId,
+    title:                source.title,
+    description:          source.description,
+    task_order:           insertOrder,
+    is_urgent:            source.is_urgent ?? false,
+    requires_deliverable: source.requires_deliverable ?? false,
+    sop_id:               source.sop_id ?? null,
+    default_position_id:  source.default_position_id ?? null,
+  }).select("*, sop:sops(*), default_position:positions(*)").single()
+  if (!newTask) throw new Error("Error al clonar tarea")
+
+  const checklistItems: unknown[] = []
+  if ((source.checklist_items as unknown[])?.length) {
+    const { data: inserted } = await supabase.from("task_set_checklist_items").insert(
+      (source.checklist_items as { text: string; is_blocking: boolean; item_order: number }[]).map((ci) => ({
+        task_set_task_id: newTask.id,
+        text:             ci.text,
+        is_blocking:      ci.is_blocking,
+        item_order:       ci.item_order,
+      }))
+    ).select()
+    if (inserted) checklistItems.push(...inserted)
+  }
+
+  revalidatePath("/operations")
+  return { ...newTask, checklist_items: checklistItems }
 }
