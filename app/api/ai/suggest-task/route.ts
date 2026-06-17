@@ -31,12 +31,12 @@ const SUGGEST_TASK_TOOL: Anthropic.Tool = {
       },
       checklist: {
         type: "array",
-        description: "Lista de pasos o verificaciones para completar la tarea. Entre 2 y 6 ítems, ordenados lógicamente.",
+        description: "Lista de verificación tipo QA (quality assurance) para validar que la tarea se completó correctamente. NO son pasos de ejecución ni procedimientos — son puntos de control y criterios de aceptación. Cada ítem debe ser una pregunta implícita de '¿se cumplió esto?' Entre 2 y 6 ítems.",
         items: {
           type: "object",
           properties: {
-            text: { type: "string", description: "Descripción del ítem de checklist. Concisa y verificable." },
-            is_blocking: { type: "boolean", description: "true si este ítem debe completarse antes de poder marcar la tarea como hecha." },
+            text: { type: "string", description: "Criterio de verificación conciso. Debe poderse responder con sí/no. Ej: 'Enlace funciona correctamente', 'Diseño aprobado por cliente', 'Sin errores en consola'." },
+            is_blocking: { type: "boolean", description: "true si este criterio DEBE cumplirse antes de poder marcar la tarea como completada." },
           },
           required: ["text", "is_blocking"],
         },
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
 
 ## Instrucciones
 - Las tareas deben ser accionables, específicas y coherentes con la fase y el tipo de proyecto
-- El checklist debe reflejar los pasos reales de ejecución, no replicar el título
+- El checklist NO es un SOP ni pasos de ejecución — es una lista de verificación tipo QA: criterios de aceptación y puntos de control para validar que la tarea se hizo bien. Piensa en "¿se revisó X?", "¿cumple con Y?", "¿funciona Z?"
 - Considera qué tareas ya existen para no duplicar
 - Adapta el lenguaje al contexto de agencia digital latinoamericana
 - Si el usuario pide ajustes a una propuesta anterior, refínala manteniendo coherencia`
