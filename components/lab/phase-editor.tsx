@@ -11,8 +11,9 @@ import {
 } from "@dnd-kit/core"
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import { Check, X, LayoutList, Link2, ChevronRight, Send, RotateCcw, Pencil, CheckCircle2, XCircle, MessageSquare, GripVertical } from "lucide-react"
-import { PanelHeader, EmptyPanel, InlineInput } from "@/components/lab/shared"
+import { Check, X, LayoutList, Link2, ChevronRight, Send, RotateCcw, Pencil, CheckCircle2, XCircle, MessageSquare, GripVertical, Plus } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
 import { LabSortableTaskRow, LabEditTaskModal } from "@/components/lab/task-editor"
 
 interface Props {
@@ -178,44 +179,64 @@ export function PhaseEditor({ initialPhases, sops, positions }: Props) {
   return (
     <>
       <div
-        className="flex border border-border rounded-xl overflow-hidden bg-card"
+        className="flex rounded-xl border border-border bg-card shadow-sm overflow-hidden"
         style={{ height: "calc(100vh - 220px)", minHeight: 480 }}
       >
         {/* ── PANEL 1: Mis fases ─────────────────────────────────────────── */}
         <div className="w-72 flex-shrink-0 flex flex-col border-r border-border">
-          <PanelHeader
-            title="Mis fases"
-            subtitle={`${phases.length} fase${phases.length !== 1 ? "s" : ""}`}
-            onAdd={() => { setShowNewPhase(true); setEditingPhaseId(null) }}
-          />
+          <div className="px-5 py-4 border-b flex items-center justify-between">
+            <div>
+              <h3 className="font-semibold text-sm">Mis fases</h3>
+              <p className="text-xs text-muted-foreground">{phases.length} fase{phases.length !== 1 ? "s" : ""}</p>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => { setShowNewPhase(true); setEditingPhaseId(null) }}
+            >
+              <Plus className="w-4 h-4" />
+            </Button>
+          </div>
+
           <div className="flex-1 overflow-y-auto">
             {showNewPhase && (
               <form onSubmit={handleCreatePhase} className="p-3 space-y-2 border-b border-border bg-primary/5">
-                <InlineInput name="name" required autoFocus placeholder="Nombre de la fase…" />
-                <InlineInput name="description" placeholder="Descripción (opcional)" />
+                <Input name="name" required autoFocus placeholder="Nombre de la fase..." />
+                <Input name="description" placeholder="Descripción (opcional)" />
                 <div className="flex gap-2 justify-end">
-                  <button type="button" onClick={() => setShowNewPhase(false)} className="p-1 rounded text-muted-foreground hover:text-foreground"><X className="w-3.5 h-3.5" /></button>
-                  <button type="submit" disabled={isPending} className="p-1 rounded text-primary hover:text-primary/80 disabled:opacity-50"><Check className="w-3.5 h-3.5" /></button>
+                  <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowNewPhase(false)}>
+                    <X className="w-3.5 h-3.5" />
+                  </Button>
+                  <Button type="submit" variant="ghost" size="icon" className="h-7 w-7 text-primary" disabled={isPending}>
+                    <Check className="w-3.5 h-3.5" />
+                  </Button>
                 </div>
               </form>
             )}
 
             {phases.length === 0 && !showNewPhase && (
-              <EmptyPanel icon={LayoutList} text="Usa + para crear tu primera fase" />
+              <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+                <LayoutList className="w-8 h-8 mb-2 opacity-40" />
+                <p className="text-sm">Usa + para crear tu primera fase</p>
+              </div>
             )}
 
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handlePhaseDragEnd}>
               <SortableContext items={phases.map((p) => p.id)} strategy={verticalListSortingStrategy}>
                 {phases.map((phase) => {
-                  const isSelected = phase.id === selectedId
                   if (editingPhaseId === phase.id) {
                     return (
                       <form key={phase.id} onSubmit={(e) => handleUpdatePhase(phase.id, e)} className="p-3 space-y-2 border-b border-border bg-muted/30">
-                        <InlineInput name="name" defaultValue={phase.name} required autoFocus />
-                        <InlineInput name="description" defaultValue={phase.description ?? ""} placeholder="Descripción" />
+                        <Input name="name" defaultValue={phase.name} required autoFocus />
+                        <Input name="description" defaultValue={phase.description ?? ""} placeholder="Descripción" />
                         <div className="flex gap-2 justify-end">
-                          <button type="button" onClick={() => setEditingPhaseId(null)} className="p-1 rounded text-muted-foreground hover:text-foreground"><X className="w-3.5 h-3.5" /></button>
-                          <button type="submit" disabled={isPending} className="p-1 rounded text-primary disabled:opacity-50"><Check className="w-3.5 h-3.5" /></button>
+                          <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditingPhaseId(null)}>
+                            <X className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button type="submit" variant="ghost" size="icon" className="h-7 w-7 text-primary" disabled={isPending}>
+                            <Check className="w-3.5 h-3.5" />
+                          </Button>
                         </div>
                       </form>
                     )
@@ -224,7 +245,7 @@ export function PhaseEditor({ initialPhases, sops, positions }: Props) {
                     <SortablePhaseItem
                       key={phase.id}
                       phase={phase}
-                      isSelected={isSelected}
+                      isSelected={phase.id === selectedId}
                       onSelect={() => { setSelectedId(phase.id); setShowNewPhase(false); setShowAddTask(false) }}
                       onEdit={() => { setEditingPhaseId(phase.id); setShowNewPhase(false) }}
                       onDelete={() => handleDeletePhase(phase.id)}
@@ -238,20 +259,38 @@ export function PhaseEditor({ initialPhases, sops, positions }: Props) {
 
         {/* ── PANEL 2: Tareas ──────────────────────────────────────────────── */}
         <div className="flex-1 flex flex-col min-w-0">
-          <PanelHeader
-            title={selected ? selected.name : "Tareas"}
-            subtitle={!selected ? "Selecciona una fase" : `${tasks.length} tarea${tasks.length !== 1 ? "s" : ""}`}
-            onAdd={selected && isEditable && !showAddTask ? () => setShowAddTask(true) : undefined}
-          />
+          <div className="px-5 py-4 border-b flex items-center justify-between">
+            <div>
+              <h3 className="font-semibold text-sm">{selected ? selected.name : "Tareas"}</h3>
+              <p className="text-xs text-muted-foreground">
+                {!selected ? "Selecciona una fase" : `${tasks.length} tarea${tasks.length !== 1 ? "s" : ""}`}
+              </p>
+            </div>
+            {selected && isEditable && !showAddTask && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => setShowAddTask(true)}
+              >
+                <Plus className="w-4 h-4" />
+              </Button>
+            )}
+          </div>
 
           <div className="flex-1 overflow-y-auto">
-            {!selected && <EmptyPanel icon={Link2} text="Selecciona una fase" />}
+            {!selected && (
+              <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+                <Link2 className="w-8 h-8 mb-2 opacity-40" />
+                <p className="text-sm">Selecciona una fase</p>
+              </div>
+            )}
 
             {selected && (
               <>
                 {/* Review feedback banner */}
                 {lastReview && (
-                  <div className={`px-4 py-2.5 flex items-start gap-2 text-sm border-b border-border/50 ${lastReview.action === "approve" ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-800"}`}>
+                  <div className={`mx-4 mt-3 px-4 py-3 rounded-lg flex items-start gap-2 text-sm ${lastReview.action === "approve" ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-800 border border-red-200"}`}>
                     {lastReview.action === "approve"
                       ? <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5" />
                       : <XCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />}
@@ -264,7 +303,10 @@ export function PhaseEditor({ initialPhases, sops, positions }: Props) {
 
                 {/* Task list */}
                 {tasks.length === 0 && !showAddTask && (
-                  <EmptyPanel icon={LayoutList} text={isEditable ? "Usa + para agregar tareas" : "Sin tareas"} />
+                  <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+                    <LayoutList className="w-8 h-8 mb-2 opacity-40" />
+                    <p className="text-sm">{isEditable ? "Usa + para agregar tareas" : "Sin tareas"}</p>
+                  </div>
                 )}
 
                 {tasks.length > 0 && (
@@ -285,39 +327,44 @@ export function PhaseEditor({ initialPhases, sops, positions }: Props) {
 
                 {/* Add task form */}
                 {showAddTask && (
-                  <form onSubmit={handleAddTask} className="px-3 py-3 space-y-2 bg-muted/20 border-t border-border">
-                    <InlineInput name="title" required autoFocus placeholder="Título de la tarea…" />
-                    <InlineInput name="description" placeholder="Descripción (opcional)" />
+                  <form onSubmit={handleAddTask} className="px-5 py-4 space-y-2 bg-muted/20 border-t border-border">
+                    <Input name="title" required autoFocus placeholder="Título de la tarea..." />
+                    <Input name="description" placeholder="Descripción (opcional)" />
                     <div className="flex gap-2 justify-end">
-                      <button type="button" onClick={() => setShowAddTask(false)} className="text-xs text-muted-foreground">Cancelar</button>
-                      <button type="submit" disabled={isPending} className="text-xs px-2.5 py-1 rounded bg-primary text-primary-foreground disabled:opacity-50">Agregar</button>
+                      <Button type="button" variant="ghost" size="sm" onClick={() => setShowAddTask(false)}>
+                        Cancelar
+                      </Button>
+                      <Button type="submit" size="sm" disabled={isPending}>
+                        Agregar
+                      </Button>
                     </div>
                   </form>
                 )}
 
                 {/* Submit / retract footer */}
-                <div className="border-t border-border px-4 py-3 flex items-center justify-between gap-3 bg-muted/10 flex-shrink-0 mt-auto">
+                <div className="px-5 py-4 border-t flex items-center justify-between gap-3 flex-shrink-0 mt-auto">
                   {isEditable ? (
-                    <button
+                    <Button
                       onClick={() => handleSubmitPhase(selected.id)}
                       disabled={isPending || tasks.length === 0}
-                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                      size="sm"
                     >
-                      <Send className="w-3.5 h-3.5" />
+                      <Send className="w-3.5 h-3.5 mr-1.5" />
                       {selected.status === "rejected" ? "Reenviar a revisión" : "Enviar a revisión"}
-                    </button>
+                    </Button>
                   ) : selected.status === "submitted" ? (
                     <div className="flex items-center gap-3">
                       <span className="text-xs text-amber-600 font-medium flex items-center gap-1">
                         <MessageSquare className="w-3.5 h-3.5" /> Pendiente de revisión
                       </span>
-                      <button
+                      <Button
+                        variant="outline"
+                        size="sm"
                         onClick={() => handleRetractPhase(selected.id)}
                         disabled={isPending}
-                        className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-border hover:bg-muted disabled:opacity-50 transition-colors"
                       >
-                        <RotateCcw className="w-3 h-3" /> Retirar para editar
-                      </button>
+                        <RotateCcw className="w-3 h-3 mr-1.5" /> Retirar para editar
+                      </Button>
                     </div>
                   ) : selected.status === "approved" ? (
                     <span className="text-xs text-emerald-600 font-medium flex items-center gap-1">
@@ -367,7 +414,7 @@ function SortablePhaseItem({ phase, isSelected, onSelect, onEdit, onDelete }: {
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }}
       onClick={onSelect}
-      className={`group flex items-center gap-2 px-3 py-3 cursor-pointer border-b border-border/50 transition-colors ${isSelected ? "bg-primary/10 border-l-2 border-l-primary" : "hover:bg-muted/40"}`}
+      className={`group flex items-center gap-2 px-5 py-3 cursor-pointer transition-colors border-b border-border ${isSelected ? "bg-primary/5 border-l-2 border-l-primary" : "hover:bg-muted/40"}`}
     >
       <button
         type="button"
