@@ -17,7 +17,7 @@ import {
   ChevronLeft, ChevronRight, LayoutList, Link2, Lock, Paperclip, BookOpen,
   ListChecks, UserCircle,
 } from "lucide-react"
-import { PanelHeader, EmptyPanel } from "@/components/lab/shared"
+import { Button } from "@/components/ui/button"
 import { useToast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils"
 
@@ -34,9 +34,11 @@ interface Props {
 const STATUS_LABEL: Record<string, string> = {
   draft: "Borrador", submitted: "Pendiente", approved: "Aprobada", rejected: "Rechazada",
 }
-const STATUS_COLOR: Record<string, string> = {
-  draft: "text-muted-foreground", submitted: "text-amber-600",
-  approved: "text-emerald-600", rejected: "text-destructive",
+const STATUS_STYLE: Record<string, string> = {
+  draft: "text-muted-foreground bg-muted border-border",
+  submitted: "text-amber-700 bg-amber-50 border-amber-200",
+  approved: "text-emerald-700 bg-emerald-50 border-emerald-200",
+  rejected: "text-destructive bg-destructive/10 border-destructive/20",
 }
 
 export function PhaseReviewPanel({
@@ -72,7 +74,7 @@ export function PhaseReviewPanel({
   const reviewedNewPhases  = proposedPhases.filter((p) => (p.status === "approved" || p.status === "rejected") && !dismissedIds.has(p.id))
 
   const tabBadge = (count: number) => count > 0 ? (
-    <span className="ml-1.5 text-[10px] font-semibold bg-amber-500/15 text-amber-600 rounded-full px-1.5 py-0.5">{count}</span>
+    <span className="ml-1.5 inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">{count}</span>
   ) : null
 
   const selectedPhase    = phases.find((p) => p.id === selectedPhaseId) ?? null
@@ -136,16 +138,19 @@ export function PhaseReviewPanel({
 
   if (emptyAll) {
     return (
-      <div className="flex border border-border rounded-xl overflow-hidden bg-card items-center justify-center"
+      <div className="flex rounded-xl border border-border bg-card shadow-sm items-center justify-center"
         style={{ height: "calc(100vh - 220px)", minHeight: 480 }}>
-        <EmptyPanel icon={LayoutList} text="Sin propuestas enviadas por el equipo aún." />
+        <div className="flex flex-col items-center justify-center py-16 px-6">
+          <LayoutList className="w-10 h-10 text-muted-foreground/30 mb-3" />
+          <p className="text-sm text-muted-foreground">Sin propuestas enviadas por el equipo aún.</p>
+        </div>
       </div>
     )
   }
 
   return (
     <div className="space-y-2">
-    <div className="flex border border-border rounded-xl overflow-hidden bg-card"
+    <div className="flex rounded-xl border border-border bg-card shadow-sm overflow-hidden"
       style={{ height: "calc(100vh - 220px)", minHeight: 480 }}>
 
       {/* ── Panel 1: proposal list ─────────────────────────────────── */}
@@ -179,9 +184,11 @@ export function PhaseReviewPanel({
                 <>
                   <SectionHeader label="Pendientes" />
                   {pendingPhases.map((p) => (
-                    <PhaseListRow key={p.id} phase={p}
-                      isSelected={selectedPhaseId === p.id}
-                      onSelect={() => { setSelectedPhaseId(p.id); setShowPromote(false) }} />
+                    <ListRow key={p.id} isSelected={selectedPhaseId === p.id}
+                      onSelect={() => { setSelectedPhaseId(p.id); setShowPromote(false) }}
+                      title={p.name}
+                      subtitle={(p.author as { full_name?: string } | null)?.full_name ?? "Empleado"}
+                      status={p.status} />
                   ))}
                 </>
               )}
@@ -189,9 +196,11 @@ export function PhaseReviewPanel({
                 <>
                   <SectionHeader label="Revisadas" />
                   {reviewedPhases.map((p) => (
-                    <PhaseListRow key={p.id} phase={p}
-                      isSelected={selectedPhaseId === p.id}
-                      onSelect={() => { setSelectedPhaseId(p.id); setShowPromote(false) }} />
+                    <ListRow key={p.id} isSelected={selectedPhaseId === p.id}
+                      onSelect={() => { setSelectedPhaseId(p.id); setShowPromote(false) }}
+                      title={p.name}
+                      subtitle={(p.author as { full_name?: string } | null)?.full_name ?? "Empleado"}
+                      status={p.status} />
                   ))}
                 </>
               )}
@@ -207,9 +216,12 @@ export function PhaseReviewPanel({
                 <>
                   <SectionHeader label="Pendientes" />
                   {pendingTasks.map((t) => (
-                    <ProposedTaskListRow key={t.id} task={t}
-                      isSelected={selectedTaskId === t.id}
-                      onSelect={() => setSelectedTaskId(t.id)} />
+                    <ListRow key={t.id} isSelected={selectedTaskId === t.id}
+                      onSelect={() => setSelectedTaskId(t.id)}
+                      title={t.title}
+                      subtitle={`${(t.author as { full_name?: string } | null)?.full_name ?? "Empleado"} · ${(t.anchor_phase as { name?: string } | null)?.name ?? "Fase"}`}
+                      status={t.status}
+                      badge={t.anchor_task_set_task_id ? "Edición" : undefined} />
                   ))}
                 </>
               )}
@@ -217,9 +229,12 @@ export function PhaseReviewPanel({
                 <>
                   <SectionHeader label="Revisadas" />
                   {reviewedTasks.map((t) => (
-                    <ProposedTaskListRow key={t.id} task={t}
-                      isSelected={selectedTaskId === t.id}
-                      onSelect={() => setSelectedTaskId(t.id)} />
+                    <ListRow key={t.id} isSelected={selectedTaskId === t.id}
+                      onSelect={() => setSelectedTaskId(t.id)}
+                      title={t.title}
+                      subtitle={`${(t.author as { full_name?: string } | null)?.full_name ?? "Empleado"} · ${(t.anchor_phase as { name?: string } | null)?.name ?? "Fase"}`}
+                      status={t.status}
+                      badge={t.anchor_task_set_task_id ? "Edición" : undefined} />
                   ))}
                 </>
               )}
@@ -235,9 +250,11 @@ export function PhaseReviewPanel({
                 <>
                   <SectionHeader label="Pendientes" />
                   {pendingChecklists.map((c) => (
-                    <ProposedChecklistListRow key={c.id} addition={c}
-                      isSelected={selectedChecklistId === c.id}
-                      onSelect={() => setSelectedChecklistId(c.id)} />
+                    <ListRow key={c.id} isSelected={selectedChecklistId === c.id}
+                      onSelect={() => setSelectedChecklistId(c.id)}
+                      title={(c.anchor_task as { title?: string } | null)?.title ?? "Tarea desconocida"}
+                      subtitle={`${(c.author as { full_name?: string } | null)?.full_name ?? "Empleado"} · ${(c.items ?? []).length} ítem${(c.items ?? []).length !== 1 ? "s" : ""}`}
+                      status={c.status} />
                   ))}
                 </>
               )}
@@ -245,9 +262,11 @@ export function PhaseReviewPanel({
                 <>
                   <SectionHeader label="Revisadas" />
                   {reviewedChecklists.map((c) => (
-                    <ProposedChecklistListRow key={c.id} addition={c}
-                      isSelected={selectedChecklistId === c.id}
-                      onSelect={() => setSelectedChecklistId(c.id)} />
+                    <ListRow key={c.id} isSelected={selectedChecklistId === c.id}
+                      onSelect={() => setSelectedChecklistId(c.id)}
+                      title={(c.anchor_task as { title?: string } | null)?.title ?? "Tarea desconocida"}
+                      subtitle={`${(c.author as { full_name?: string } | null)?.full_name ?? "Empleado"} · ${(c.items ?? []).length} ítem${(c.items ?? []).length !== 1 ? "s" : ""}`}
+                      status={c.status} />
                   ))}
                 </>
               )}
@@ -263,9 +282,11 @@ export function PhaseReviewPanel({
                 <>
                   <SectionHeader label="Pendientes" />
                   {pendingNewPhases.map((p) => (
-                    <ProposedPhaseListRow key={p.id} phase={p}
-                      isSelected={selectedNewPhaseId === p.id}
-                      onSelect={() => setSelectedNewPhaseId(p.id)} />
+                    <ListRow key={p.id} isSelected={selectedNewPhaseId === p.id}
+                      onSelect={() => setSelectedNewPhaseId(p.id)}
+                      title={p.name}
+                      subtitle={(p.author as { full_name?: string } | null)?.full_name ?? "Empleado"}
+                      status={p.status} />
                   ))}
                 </>
               )}
@@ -273,9 +294,11 @@ export function PhaseReviewPanel({
                 <>
                   <SectionHeader label="Revisadas" />
                   {reviewedNewPhases.map((p) => (
-                    <ProposedPhaseListRow key={p.id} phase={p}
-                      isSelected={selectedNewPhaseId === p.id}
-                      onSelect={() => setSelectedNewPhaseId(p.id)} />
+                    <ListRow key={p.id} isSelected={selectedNewPhaseId === p.id}
+                      onSelect={() => setSelectedNewPhaseId(p.id)}
+                      title={p.name}
+                      subtitle={(p.author as { full_name?: string } | null)?.full_name ?? "Empleado"}
+                      status={p.status} />
                   ))}
                 </>
               )}
@@ -291,10 +314,7 @@ export function PhaseReviewPanel({
       <div className="flex-1 flex flex-col min-w-0">
         {tab === "phases" && (
           !selectedPhase ? (
-            <>
-              <PanelHeader title="Detalle" subtitle="Selecciona una fase" />
-              <EmptyPanel icon={Link2} text="Selecciona una fase para revisarla" />
-            </>
+            <EmptyDetail text="Selecciona una fase para revisarla" />
           ) : showPromote ? (
             <PhaseSetPicker phaseSets={phaseSets} phase={selectedPhase}
               onPromoted={() => setShowPromote(false)} onCancel={() => setShowPromote(false)} />
@@ -308,10 +328,7 @@ export function PhaseReviewPanel({
 
         {tab === "tasks" && (
           !selectedTask ? (
-            <>
-              <PanelHeader title="Tarea propuesta" subtitle="Selecciona una propuesta" />
-              <EmptyPanel icon={Link2} text="Selecciona una tarea propuesta" />
-            </>
+            <EmptyDetail text="Selecciona una tarea propuesta" />
           ) : (
             <ProposedTaskDetail task={selectedTask}
               onReviewed={(action) => onTaskReviewed(selectedTask.id, action)}
@@ -322,10 +339,7 @@ export function PhaseReviewPanel({
 
         {tab === "checklists" && (
           !selectedChecklist ? (
-            <>
-              <PanelHeader title="Checklist propuesto" subtitle="Selecciona una propuesta" />
-              <EmptyPanel icon={Link2} text="Selecciona una propuesta de checklist" />
-            </>
+            <EmptyDetail text="Selecciona una propuesta de checklist" />
           ) : (
             <ProposedChecklistDetail addition={selectedChecklist}
               onReviewed={(action) => onChecklistReviewed(selectedChecklist.id, action)}
@@ -336,10 +350,7 @@ export function PhaseReviewPanel({
 
         {tab === "new_phases" && (
           !selectedNewPhase ? (
-            <>
-              <PanelHeader title="Nueva fase propuesta" subtitle="Selecciona una propuesta" />
-              <EmptyPanel icon={Link2} text="Selecciona una nueva fase propuesta" />
-            </>
+            <EmptyDetail text="Selecciona una nueva fase propuesta" />
           ) : (
             <ProposedNewPhaseDetail phase={selectedNewPhase}
               onReviewed={(action) => onNewPhaseReviewed(selectedNewPhase.id, action)}
@@ -353,52 +364,48 @@ export function PhaseReviewPanel({
   )
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Shared UI helpers ───────────────────────────────────────────────────────
 
 function SectionHeader({ label }: { label: string }) {
   return (
-    <div className="px-3 py-1.5 bg-muted/30 border-b border-border/50">
+    <div className="px-5 py-2 bg-muted/30 border-b border-border">
       <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</p>
     </div>
   )
 }
 
-function PhaseListRow({ phase, isSelected, onSelect }: { phase: LabPhase; isSelected: boolean; onSelect: () => void }) {
-  const author = (phase.author as { full_name?: string } | null)?.full_name ?? "Empleado"
+function EmptyDetail({ text }: { text: string }) {
   return (
-    <div onClick={onSelect}
-      className={`flex items-center gap-2 px-3 py-3 cursor-pointer border-b border-border/50 transition-colors ${isSelected ? "bg-primary/10 border-l-2 border-l-primary" : "hover:bg-muted/40"}`}>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{phase.name}</p>
-        <div className="flex items-center gap-2 mt-0.5">
-          <p className="text-xs text-muted-foreground truncate">{author}</p>
-          <span className={`text-[10px] font-semibold flex-shrink-0 ${STATUS_COLOR[phase.status]}`}>
-            {STATUS_LABEL[phase.status]}
-          </span>
-        </div>
-      </div>
-      {isSelected && <ChevronRight className="w-3.5 h-3.5 text-primary flex-shrink-0" />}
+    <div className="flex flex-col items-center justify-center h-full py-16 px-6">
+      <Link2 className="w-10 h-10 text-muted-foreground/30 mb-3" />
+      <p className="text-sm text-muted-foreground">{text}</p>
     </div>
   )
 }
 
-function ProposedTaskListRow({ task, isSelected, onSelect }: { task: LabProposedTask; isSelected: boolean; onSelect: () => void }) {
-  const author = (task.author as { full_name?: string } | null)?.full_name ?? "Empleado"
-  const phaseName = (task.anchor_phase as { name?: string } | null)?.name ?? "Fase desconocida"
+function ListRow({ isSelected, onSelect, title, subtitle, status, badge }: {
+  isSelected: boolean; onSelect: () => void; title: string; subtitle: string; status: string; badge?: string
+}) {
   return (
     <div onClick={onSelect}
-      className={`flex items-center gap-2 px-3 py-3 cursor-pointer border-b border-border/50 transition-colors ${isSelected ? "bg-primary/10 border-l-2 border-l-primary" : "hover:bg-muted/40"}`}>
+      className={cn(
+        "flex items-center gap-2 px-5 py-3 cursor-pointer border-b border-border transition-colors",
+        isSelected ? "bg-primary/5 border-l-2 border-l-primary" : "hover:bg-muted/40"
+      )}>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
-          <p className="text-sm font-medium truncate">{task.title}</p>
-          {task.anchor_task_set_task_id && (
-            <span className="text-[10px] px-1 py-0.5 rounded bg-blue-500/10 text-blue-600 flex-shrink-0">Edición</span>
+          <p className="text-sm font-medium truncate">{title}</p>
+          {badge && (
+            <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 flex-shrink-0">{badge}</span>
           )}
         </div>
         <div className="flex items-center gap-2 mt-0.5">
-          <p className="text-xs text-muted-foreground truncate">{author} · {phaseName}</p>
-          <span className={`text-[10px] font-semibold flex-shrink-0 ${STATUS_COLOR[task.status]}`}>
-            {STATUS_LABEL[task.status]}
+          <p className="text-xs text-muted-foreground truncate">{subtitle}</p>
+          <span className={cn(
+            "inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold flex-shrink-0",
+            STATUS_STYLE[status] ?? STATUS_STYLE.draft
+          )}>
+            {STATUS_LABEL[status] ?? status}
           </span>
         </div>
       </div>
@@ -407,29 +414,97 @@ function ProposedTaskListRow({ task, isSelected, onSelect }: { task: LabProposed
   )
 }
 
-function ProposedChecklistListRow({ addition, isSelected, onSelect }: {
-  addition: LabProposedChecklistAddition; isSelected: boolean; onSelect: () => void
-}) {
-  const author = (addition.author as { full_name?: string } | null)?.full_name ?? "Empleado"
-  const taskTitle = (addition.anchor_task as { title?: string } | null)?.title ?? "Tarea desconocida"
+function DetailHeader({ title, subtitle }: { title: string; subtitle: string }) {
   return (
-    <div onClick={onSelect}
-      className={`flex items-center gap-2 px-3 py-3 cursor-pointer border-b border-border/50 transition-colors ${isSelected ? "bg-primary/10 border-l-2 border-l-primary" : "hover:bg-muted/40"}`}>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{taskTitle}</p>
-        <div className="flex items-center gap-2 mt-0.5">
-          <p className="text-xs text-muted-foreground truncate">{author} · {(addition.items ?? []).length} ítem{(addition.items ?? []).length !== 1 ? "s" : ""}</p>
-          <span className={`text-[10px] font-semibold flex-shrink-0 ${STATUS_COLOR[addition.status]}`}>
-            {STATUS_LABEL[addition.status]}
-          </span>
-        </div>
-      </div>
-      {isSelected && <ChevronRight className="w-3.5 h-3.5 text-primary flex-shrink-0" />}
+    <div className="px-5 py-4 border-b border-border flex-shrink-0">
+      <h3 className="font-semibold text-sm truncate">{title}</h3>
+      <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>
     </div>
   )
 }
 
-// ── Phase detail (existing logic) ─────────────────────────────────────────────
+function ReviewHistory({ reviews }: { reviews: Array<{ id: string; action: string; comment: string | null; created_at: string; reviewer: unknown }> }) {
+  if (reviews.length === 0) return null
+  const sorted = [...reviews].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+  return (
+    <div className="border-t border-border pt-3 space-y-2">
+      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Historial</p>
+      {sorted.map((r) => (
+        <div key={r.id} className={cn("flex gap-2.5 text-sm",
+          r.action === "approve" ? "text-emerald-700" : r.action === "reject" ? "text-destructive" : "text-foreground"
+        )}>
+          {r.action === "approve" ? <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5" /> :
+           r.action === "reject"  ? <XCircle className="w-4 h-4 flex-shrink-0 mt-0.5" /> :
+           <MessageSquare className="w-4 h-4 flex-shrink-0 mt-0.5 text-muted-foreground" />}
+          <div>
+            <span className="font-medium">{(r.reviewer as { full_name?: string } | null)?.full_name ?? "Admin"}</span>
+            {r.comment && <span className="text-muted-foreground"> — {r.comment}</span>}
+            <span className="text-xs text-muted-foreground ml-1">
+              {new Date(r.created_at).toLocaleDateString("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+            </span>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function ReviewActions({ status, onReview, onInject, onDismiss, isPending, comment, setComment, injectLabel }: {
+  status: string
+  onReview: (action: "comment" | "approve" | "reject") => void
+  onInject?: () => void
+  onDismiss: () => void
+  isPending: boolean
+  comment: string
+  setComment: (v: string) => void
+  injectLabel: string
+}) {
+  return (
+    <div className="border-t border-border px-5 py-4 bg-muted/10 flex-shrink-0 space-y-3">
+      {status === "approved" && onInject ? (
+        <Button onClick={onInject} disabled={isPending} size="sm"
+          className="bg-emerald-600 hover:bg-emerald-700 text-white">
+          <ArrowUpRight className="w-3.5 h-3.5 mr-1.5" />
+          {isPending ? "Publicando…" : injectLabel}
+        </Button>
+      ) : status === "submitted" ? (
+        <>
+          <textarea value={comment} onChange={(e) => setComment(e.target.value)}
+            placeholder="Comentario (obligatorio al rechazar)…" rows={2}
+            className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none" />
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => onReview("comment")} disabled={isPending || !comment.trim()}>
+              <MessageSquare className="w-3 h-3 mr-1.5" /> Comentar
+            </Button>
+            <Button size="sm" onClick={() => onReview("approve")} disabled={isPending}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white">
+              <CheckCircle2 className="w-3 h-3 mr-1.5" /> Aprobar
+            </Button>
+            <Button variant="destructive" size="sm" onClick={() => onReview("reject")} disabled={isPending || !comment.trim()}>
+              <XCircle className="w-3 h-3 mr-1.5" /> Rechazar
+            </Button>
+          </div>
+        </>
+      ) : (
+        <div className="flex items-center gap-3">
+          <span className={cn(
+            "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold",
+            STATUS_STYLE[status] ?? STATUS_STYLE.draft
+          )}>
+            {STATUS_LABEL[status] ?? status}
+          </span>
+          {status === "rejected" && (
+            <button onClick={onDismiss} className="text-xs text-muted-foreground hover:text-foreground underline">
+              Archivar
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Phase detail ─────────────────────────────────────────────────────────────
 
 function PhaseDetail({ phase, onReviewed, onPromote, onDismiss }: {
   phase: LabPhase
@@ -443,9 +518,7 @@ function PhaseDetail({ phase, onReviewed, onPromote, onDismiss }: {
 
   const author = (phase.author as { full_name?: string } | null)?.full_name ?? "Empleado"
   const tasks = [...(phase.tasks ?? [])].sort((a, b) => a.task_order - b.task_order) as LabPhaseTask[]
-  const reviews = [...(phase.reviews ?? [])].sort((a, b) =>
-    new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-  )
+  const reviews = phase.reviews ?? []
 
   function handleReview(action: "comment" | "approve" | "reject") {
     if (action === "reject" && !comment.trim()) {
@@ -461,78 +534,40 @@ function PhaseDetail({ phase, onReviewed, onPromote, onDismiss }: {
 
   return (
     <>
-      <PanelHeader
+      <DetailHeader
         title={phase.name}
         subtitle={`Por ${author} · ${new Date(phase.created_at).toLocaleDateString("es-MX", { day: "numeric", month: "long" })}`}
       />
       <div className="flex-1 overflow-y-auto">
         {tasks.length === 0 ? (
-          <EmptyPanel icon={LayoutList} text="Sin tareas" />
+          <div className="flex flex-col items-center justify-center py-16 px-6">
+            <LayoutList className="w-10 h-10 text-muted-foreground/30 mb-3" />
+            <p className="text-sm text-muted-foreground">Sin tareas</p>
+          </div>
         ) : (
           tasks.map((task, i) => <TaskPreviewRow key={task.id} task={task} index={i} />)
         )}
         {reviews.length > 0 && (
-          <div className="border-t border-border px-4 py-3 space-y-2">
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Historial</p>
-            {reviews.map((r) => (
-              <div key={r.id} className={`flex gap-2.5 text-sm ${r.action === "approve" ? "text-emerald-700" : r.action === "reject" ? "text-destructive" : "text-foreground"}`}>
-                {r.action === "approve" ? <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5" /> :
-                 r.action === "reject"  ? <XCircle className="w-4 h-4 flex-shrink-0 mt-0.5" /> :
-                 <MessageSquare className="w-4 h-4 flex-shrink-0 mt-0.5 text-muted-foreground" />}
-                <div>
-                  <span className="font-medium">{(r.reviewer as { full_name?: string } | null)?.full_name ?? "Admin"}</span>
-                  {r.comment && <span className="text-muted-foreground"> — {r.comment}</span>}
-                  <span className="text-xs text-muted-foreground ml-1">
-                    {new Date(r.created_at).toLocaleDateString("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
-                  </span>
-                </div>
-              </div>
-            ))}
+          <div className="px-5 py-3">
+            <ReviewHistory reviews={reviews} />
           </div>
         )}
       </div>
-      <div className="border-t border-border px-4 py-3 bg-muted/10 flex-shrink-0 space-y-2">
-        {phase.status === "approved" ? (
-          <button onClick={onPromote}
-            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 transition-colors">
-            <ArrowUpRight className="w-3.5 h-3.5" /> Publicar en árbol canónico
-          </button>
-        ) : phase.status === "submitted" ? (
-          <>
-            <textarea value={comment} onChange={(e) => setComment(e.target.value)}
-              placeholder="Comentario (obligatorio al rechazar)…" rows={2}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none" />
-            <div className="flex gap-2">
-              <button onClick={() => handleReview("comment")} disabled={isPending || !comment.trim()}
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-border hover:bg-muted disabled:opacity-50">
-                <MessageSquare className="w-3 h-3" /> Comentar
-              </button>
-              <button onClick={() => handleReview("approve")} disabled={isPending}
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50">
-                <CheckCircle2 className="w-3 h-3" /> Aprobar
-              </button>
-              <button onClick={() => handleReview("reject")} disabled={isPending || !comment.trim()}
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50">
-                <XCircle className="w-3 h-3" /> Rechazar
-              </button>
-            </div>
-          </>
-        ) : (
-          <div className="flex items-center gap-3">
-            <p className={`text-xs font-medium ${STATUS_COLOR[phase.status]}`}>{STATUS_LABEL[phase.status]}</p>
-            {phase.status === "rejected" && (
-              <button onClick={onDismiss} className="text-xs text-muted-foreground hover:text-foreground underline">
-                Archivar
-              </button>
-            )}
-          </div>
-        )}
-      </div>
+      <ReviewActions
+        status={phase.status}
+        onReview={handleReview}
+        onInject={phase.status === "approved" ? onPromote : undefined}
+        onDismiss={onDismiss}
+        isPending={isPending}
+        comment={comment}
+        setComment={setComment}
+        injectLabel="Publicar en árbol canónico"
+      />
     </>
   )
 }
 
-// ── Proposed task detail ──────────────────────────────────────────────────────
+// ── Proposed task detail ─────────────────────────────────────────────────────
 
 function ProposedTaskDetail({ task, onReviewed, onInjected, onDismiss }: {
   task: LabProposedTask
@@ -572,27 +607,27 @@ function ProposedTaskDetail({ task, onReviewed, onInjected, onDismiss }: {
 
   return (
     <>
-      <PanelHeader
+      <DetailHeader
         title={task.title}
         subtitle={task.anchor_task_set_task_id ? `Por ${author} · Fase: ${phaseName} · (Edición de tarea)` : `Por ${author} · Fase: ${phaseName}`}
       />
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
         {task.description && (
           <p className="text-sm text-muted-foreground">{task.description}</p>
         )}
         <div className="flex flex-wrap gap-2">
           {positionName && (
-            <span className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-muted text-muted-foreground">
+            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
               <UserCircle className="w-3 h-3" /> {positionName}
             </span>
           )}
           {task.requires_deliverable && (
-            <span className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-info/10 text-info">
+            <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs text-blue-700">
               <Paperclip className="w-3 h-3" /> Requiere entregable
             </span>
           )}
           {sopTitle && (
-            <span className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-primary/10 text-primary">
+            <span className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/5 px-2.5 py-0.5 text-xs text-primary">
               <BookOpen className="w-3 h-3" /> {sopTitle}
             </span>
           )}
@@ -602,7 +637,7 @@ function ProposedTaskDetail({ task, onReviewed, onInjected, onDismiss }: {
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
               <ListChecks className="w-3.5 h-3.5" /> Checklist propuesto
             </p>
-            <div className="rounded-lg border border-border/50 divide-y divide-border/30">
+            <div className="rounded-lg border border-border divide-y divide-border">
               {items.map((item) => (
                 <div key={item.id} className="flex items-center gap-2 px-3 py-2 text-xs">
                   <span className={cn("flex-1 min-w-0 truncate", item.is_blocking && "font-medium")}>{item.text}</span>
@@ -612,65 +647,23 @@ function ProposedTaskDetail({ task, onReviewed, onInjected, onDismiss }: {
             </div>
           </div>
         )}
-        {(task.reviews ?? []).length > 0 && (
-          <div className="border-t border-border pt-3 space-y-2">
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Historial</p>
-            {[...(task.reviews ?? [])].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()).map((r) => (
-              <div key={r.id} className={`flex gap-2 text-sm ${r.action === "approve" ? "text-emerald-700" : r.action === "reject" ? "text-destructive" : "text-foreground"}`}>
-                {r.action === "approve" ? <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" /> :
-                 r.action === "reject"  ? <XCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" /> :
-                 <MessageSquare className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-muted-foreground" />}
-                <div>
-                  <span className="font-medium">{(r.reviewer as { full_name?: string } | null)?.full_name ?? "Admin"}</span>
-                  {r.comment && <span className="text-muted-foreground"> — {r.comment}</span>}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        <ReviewHistory reviews={task.reviews ?? []} />
       </div>
-      <div className="border-t border-border px-4 py-3 bg-muted/10 flex-shrink-0 space-y-2">
-        {task.status === "approved" ? (
-          <button onClick={handleInject} disabled={isPending}
-            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors">
-            <ArrowUpRight className="w-3.5 h-3.5" /> {isPending ? "Publicando…" : "Publicar en árbol"}
-          </button>
-        ) : task.status === "submitted" ? (
-          <>
-            <textarea value={comment} onChange={(e) => setComment(e.target.value)}
-              placeholder="Comentario (obligatorio al rechazar)…" rows={2}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none" />
-            <div className="flex gap-2">
-              <button onClick={() => handleReview("comment")} disabled={isPending || !comment.trim()}
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-border hover:bg-muted disabled:opacity-50">
-                <MessageSquare className="w-3 h-3" /> Comentar
-              </button>
-              <button onClick={() => handleReview("approve")} disabled={isPending}
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50">
-                <CheckCircle2 className="w-3 h-3" /> Aprobar
-              </button>
-              <button onClick={() => handleReview("reject")} disabled={isPending || !comment.trim()}
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50">
-                <XCircle className="w-3 h-3" /> Rechazar
-              </button>
-            </div>
-          </>
-        ) : (
-          <div className="flex items-center gap-3">
-            <p className={`text-xs font-medium ${STATUS_COLOR[task.status]}`}>{STATUS_LABEL[task.status]}</p>
-            {task.status === "rejected" && (
-              <button onClick={onDismiss} className="text-xs text-muted-foreground hover:text-foreground underline">
-                Archivar
-              </button>
-            )}
-          </div>
-        )}
-      </div>
+      <ReviewActions
+        status={task.status}
+        onReview={handleReview}
+        onInject={task.status === "approved" ? handleInject : undefined}
+        onDismiss={onDismiss}
+        isPending={isPending}
+        comment={comment}
+        setComment={setComment}
+        injectLabel="Publicar en árbol"
+      />
     </>
   )
 }
 
-// ── Proposed checklist detail ─────────────────────────────────────────────────
+// ── Proposed checklist detail ────────────────────────────────────────────────
 
 function ProposedChecklistDetail({ addition, onReviewed, onInjected, onDismiss }: {
   addition: LabProposedChecklistAddition
@@ -707,8 +700,8 @@ function ProposedChecklistDetail({ addition, onReviewed, onInjected, onDismiss }
 
   return (
     <>
-      <PanelHeader title={taskTitle} subtitle={`Checklist por ${author}`} />
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+      <DetailHeader title={taskTitle} subtitle={`Checklist por ${author}`} />
+      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
         <div>
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
             <ListChecks className="w-3.5 h-3.5" /> Ítems propuestos
@@ -716,12 +709,12 @@ function ProposedChecklistDetail({ addition, onReviewed, onInjected, onDismiss }
           {items.length === 0 ? (
             <p className="text-xs text-muted-foreground italic">Sin ítems.</p>
           ) : (
-            <div className="rounded-lg border border-border/50 divide-y divide-border/30">
+            <div className="rounded-lg border border-border divide-y divide-border">
               {items.sort((a, b) => a.item_order - b.item_order).map((item) => (
                 <div key={item.id} className="flex items-center gap-2 px-3 py-2 text-sm">
                   <span className={cn("flex-1 min-w-0 truncate", item.is_blocking && "font-medium")}>{item.text}</span>
                   {item.is_blocking && (
-                    <span className="flex items-center gap-0.5 text-[10px] text-destructive">
+                    <span className="inline-flex items-center gap-0.5 text-[10px] text-destructive">
                       <Lock className="w-2.5 h-2.5" /> Bloquea
                     </span>
                   )}
@@ -730,88 +723,27 @@ function ProposedChecklistDetail({ addition, onReviewed, onInjected, onDismiss }
             </div>
           )}
         </div>
-        {(addition.reviews ?? []).length > 0 && (
-          <div className="border-t border-border pt-3 space-y-2">
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Historial</p>
-            {[...(addition.reviews ?? [])].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()).map((r) => (
-              <div key={r.id} className={`flex gap-2 text-sm ${r.action === "approve" ? "text-emerald-700" : r.action === "reject" ? "text-destructive" : "text-foreground"}`}>
-                {r.action === "approve" ? <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" /> :
-                 r.action === "reject"  ? <XCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" /> :
-                 <MessageSquare className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-muted-foreground" />}
-                <div>
-                  <span className="font-medium">{(r.reviewer as { full_name?: string } | null)?.full_name ?? "Admin"}</span>
-                  {r.comment && <span className="text-muted-foreground"> — {r.comment}</span>}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        <ReviewHistory reviews={addition.reviews ?? []} />
       </div>
-      <div className="border-t border-border px-4 py-3 bg-muted/10 flex-shrink-0 space-y-2">
-        {addition.status === "approved" ? (
-          <button onClick={handleInject} disabled={isPending}
-            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors">
-            <ArrowUpRight className="w-3.5 h-3.5" /> {isPending ? "Publicando…" : "Agregar a checklist canónico"}
-          </button>
-        ) : addition.status === "submitted" ? (
-          <>
-            <textarea value={comment} onChange={(e) => setComment(e.target.value)}
-              placeholder="Comentario (obligatorio al rechazar)…" rows={2}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none" />
-            <div className="flex gap-2">
-              <button onClick={() => handleReview("comment")} disabled={isPending || !comment.trim()}
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-border hover:bg-muted disabled:opacity-50">
-                <MessageSquare className="w-3 h-3" /> Comentar
-              </button>
-              <button onClick={() => handleReview("approve")} disabled={isPending}
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50">
-                <CheckCircle2 className="w-3 h-3" /> Aprobar
-              </button>
-              <button onClick={() => handleReview("reject")} disabled={isPending || !comment.trim()}
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50">
-                <XCircle className="w-3 h-3" /> Rechazar
-              </button>
-            </div>
-          </>
-        ) : (
-          <div className="flex items-center gap-3">
-            <p className={`text-xs font-medium ${STATUS_COLOR[addition.status]}`}>{STATUS_LABEL[addition.status]}</p>
-            {addition.status === "rejected" && (
-              <button onClick={onDismiss} className="text-xs text-muted-foreground hover:text-foreground underline">
-                Archivar
-              </button>
-            )}
-          </div>
-        )}
-      </div>
+      <ReviewActions
+        status={addition.status}
+        onReview={handleReview}
+        onInject={addition.status === "approved" ? handleInject : undefined}
+        onDismiss={onDismiss}
+        isPending={isPending}
+        comment={comment}
+        setComment={setComment}
+        injectLabel="Agregar a checklist canónico"
+      />
     </>
   )
 }
 
-// ── Proposed phase list row ───────────────────────────────────────────────────
+// ── Proposed new phase detail ────────────────────────────────────────────────
 
-function ProposedPhaseListRow({ phase, isSelected, onSelect }: { phase: LabProposedPhase; isSelected: boolean; onSelect: () => void }) {
-  const author = (phase.author as { full_name?: string } | null)?.full_name ?? "Empleado"
-  return (
-    <div onClick={onSelect}
-      className={`flex items-center gap-2 px-3 py-3 cursor-pointer border-b border-border/50 transition-colors ${isSelected ? "bg-primary/10 border-l-2 border-l-primary" : "hover:bg-muted/40"}`}>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{phase.name}</p>
-        <div className="flex items-center gap-2 mt-0.5">
-          <p className="text-xs text-muted-foreground truncate">{author}</p>
-          <span className={`text-[10px] font-semibold flex-shrink-0 ${STATUS_COLOR[phase.status]}`}>
-            {STATUS_LABEL[phase.status]}
-          </span>
-        </div>
-      </div>
-      {isSelected && <ChevronRight className="w-3.5 h-3.5 text-primary flex-shrink-0" />}
-    </div>
-  )
-}
-
-// ── Proposed new phase detail ─────────────────────────────────────────────────
-
-function ProposedNewPhaseDetail({ phase, onReviewed, onInjected, onDismiss }: { phase: LabProposedPhase; onReviewed: (action: string) => void; onInjected: () => void; onDismiss: () => void }) {
+function ProposedNewPhaseDetail({ phase, onReviewed, onInjected, onDismiss }: {
+  phase: LabProposedPhase; onReviewed: (action: string) => void; onInjected: () => void; onDismiss: () => void
+}) {
   const [comment, setComment] = useState("")
   const [isPending, startTransition] = useTransition()
   const toast = useToast()
@@ -835,55 +767,28 @@ function ProposedNewPhaseDetail({ phase, onReviewed, onInjected, onDismiss }: { 
 
   return (
     <>
-      <PanelHeader title={phase.name} subtitle={`Por ${author} · Nueva fase para el árbol canónico`} />
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+      <DetailHeader title={phase.name} subtitle={`Por ${author} · Nueva fase para el árbol canónico`} />
+      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
         {phase.description && <p className="text-sm text-muted-foreground">{phase.description}</p>}
         {phase.position_after_phase_id && (
           <p className="text-xs text-muted-foreground">Insertar después de la fase seleccionada.</p>
         )}
       </div>
-      <div className="border-t border-border px-4 py-3 bg-muted/10 flex-shrink-0 space-y-2">
-        {phase.status === "approved" ? (
-          <button onClick={handleInject} disabled={isPending}
-            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors">
-            <ArrowUpRight className="w-3.5 h-3.5" /> {isPending ? "Publicando…" : "Publicar en árbol canónico"}
-          </button>
-        ) : phase.status === "submitted" ? (
-          <>
-            <textarea value={comment} onChange={(e) => setComment(e.target.value)}
-              placeholder="Comentario (obligatorio al rechazar)…" rows={2}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none" />
-            <div className="flex gap-2">
-              <button onClick={() => handleReview("comment")} disabled={isPending || !comment.trim()}
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-border hover:bg-muted disabled:opacity-50">
-                <MessageSquare className="w-3 h-3" /> Comentar
-              </button>
-              <button onClick={() => handleReview("approve")} disabled={isPending}
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50">
-                <CheckCircle2 className="w-3 h-3" /> Aprobar
-              </button>
-              <button onClick={() => handleReview("reject")} disabled={isPending || !comment.trim()}
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50">
-                <XCircle className="w-3 h-3" /> Rechazar
-              </button>
-            </div>
-          </>
-        ) : (
-          <div className="flex items-center gap-3">
-            <p className={`text-xs font-medium ${STATUS_COLOR[phase.status]}`}>{STATUS_LABEL[phase.status]}</p>
-            {phase.status === "rejected" && (
-              <button onClick={onDismiss} className="text-xs text-muted-foreground hover:text-foreground underline">
-                Archivar
-              </button>
-            )}
-          </div>
-        )}
-      </div>
+      <ReviewActions
+        status={phase.status}
+        onReview={handleReview}
+        onInject={phase.status === "approved" ? handleInject : undefined}
+        onDismiss={onDismiss}
+        isPending={isPending}
+        comment={comment}
+        setComment={setComment}
+        injectLabel="Publicar en árbol canónico"
+      />
     </>
   )
 }
 
-// ── Task preview row (read-only) ──────────────────────────────────────────────
+// ── Task preview row (read-only) ─────────────────────────────────────────────
 
 function TaskPreviewRow({ task, index }: { task: LabPhaseTask; index: number }) {
   const checklistItems = task.checklist_items ?? []
@@ -891,8 +796,8 @@ function TaskPreviewRow({ task, index }: { task: LabPhaseTask; index: number }) 
   const positionName = (task.default_position as { name?: string } | null)?.name ?? null
 
   return (
-    <div className="group border-b border-border/50 hover:bg-muted/30 transition-colors bg-card">
-      <div className="flex items-center gap-2 px-3 py-3">
+    <div className="border-b border-border hover:bg-muted/40 transition-colors">
+      <div className="flex items-center gap-2 px-5 py-3">
         <span className="w-5 h-5 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground flex-shrink-0">
           {index + 1}
         </span>
@@ -901,14 +806,14 @@ function TaskPreviewRow({ task, index }: { task: LabPhaseTask; index: number }) 
           {task.description && <p className="text-xs text-muted-foreground truncate mt-0.5">{task.description}</p>}
         </div>
         {positionName && (
-          <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded flex-shrink-0">
+          <span className="inline-flex items-center gap-0.5 rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground flex-shrink-0">
             <UserCircle className="w-2.5 h-2.5" />{positionName}
           </span>
         )}
         {checklistItems.length > 0 && (
           <span className={cn(
-            "flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full flex-shrink-0",
-            checklistItems.some((i) => i.is_blocking) ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"
+            "inline-flex items-center gap-0.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold flex-shrink-0",
+            checklistItems.some((i) => i.is_blocking) ? "border-destructive/20 bg-destructive/10 text-destructive" : "border-border bg-muted text-muted-foreground"
           )}>
             {checklistItems.some((i) => i.is_blocking) && <Lock className="w-2.5 h-2.5" />}
             {checklistItems.length}
@@ -916,7 +821,7 @@ function TaskPreviewRow({ task, index }: { task: LabPhaseTask; index: number }) 
         )}
         {task.requires_deliverable && <Paperclip className="w-3.5 h-3.5 text-info flex-shrink-0" />}
         {sopName && (
-          <span title={sopName} className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded font-medium flex-shrink-0 bg-primary/10 text-primary">
+          <span title={sopName} className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/5 px-2 py-0.5 text-[10px] font-semibold text-primary flex-shrink-0">
             <BookOpen className="w-3 h-3" />
             <span className="hidden sm:inline max-w-[80px] truncate">{sopName}</span>
           </span>
@@ -926,7 +831,7 @@ function TaskPreviewRow({ task, index }: { task: LabPhaseTask; index: number }) 
   )
 }
 
-// ── Phase Set card picker ─────────────────────────────────────────────────────
+// ── Phase Set card picker ────────────────────────────────────────────────────
 
 function PhaseSetPicker({ phaseSets, phase, onPromoted, onCancel }: {
   phaseSets: PhaseSet[]
@@ -947,10 +852,10 @@ function PhaseSetPicker({ phaseSets, phase, onPromoted, onCancel }: {
 
   return (
     <>
-      <PanelHeader title="Publicar en árbol canónico" subtitle={`Fase: ${phase.name}`} />
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <DetailHeader title="Publicar en árbol canónico" subtitle={`Fase: ${phase.name}`} />
+      <div className="flex-1 overflow-y-auto p-5 space-y-4">
         <div className="flex items-center gap-2 mb-1">
-          <button onClick={onCancel} className="p-1 rounded text-muted-foreground hover:text-foreground">
+          <button onClick={onCancel} className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
             <ChevronLeft className="w-4 h-4" />
           </button>
           <p className="text-xs text-muted-foreground">La fase se agregará al final del Phase Set seleccionado.</p>
@@ -961,7 +866,12 @@ function PhaseSetPicker({ phaseSets, phase, onPromoted, onCancel }: {
             const isSelected = selectedId === ps.id
             return (
               <button key={ps.id} onClick={() => setSelectedId(ps.id)}
-                className={`text-left rounded-xl border p-3 transition-all ${isSelected ? "border-emerald-500 bg-emerald-50 ring-1 ring-emerald-400" : "border-border hover:border-primary/40 hover:bg-muted/50"}`}>
+                className={cn(
+                  "text-left rounded-xl border p-4 transition-all shadow-sm",
+                  isSelected
+                    ? "border-emerald-400 bg-emerald-50 ring-1 ring-emerald-400 shadow-md"
+                    : "border-border hover:border-primary/40 hover:bg-muted/50 hover:shadow-md"
+                )}>
                 <p className="text-sm font-semibold truncate">{ps.name}</p>
                 <div className="mt-2 space-y-0.5 min-h-[2rem]">
                   {psPhases.length === 0 ? (
@@ -984,14 +894,14 @@ function PhaseSetPicker({ phaseSets, phase, onPromoted, onCancel }: {
           )}
         </div>
       </div>
-      <div className="border-t border-border px-4 py-3 bg-muted/10 flex-shrink-0 flex gap-2">
-        <button onClick={handleConfirm} disabled={isPending || !selectedId}
-          className="text-sm px-4 py-2 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors">
+      <div className="border-t border-border px-5 py-4 bg-muted/10 flex-shrink-0 flex gap-2">
+        <Button onClick={handleConfirm} disabled={isPending || !selectedId}
+          className="bg-emerald-600 hover:bg-emerald-700 text-white">
           {isPending ? "Publicando…" : "Confirmar publicación"}
-        </button>
-        <button onClick={onCancel} className="text-sm px-3 py-2 text-muted-foreground hover:text-foreground">
+        </Button>
+        <Button variant="outline" onClick={onCancel}>
           Cancelar
-        </button>
+        </Button>
       </div>
     </>
   )
