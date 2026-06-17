@@ -355,16 +355,16 @@ export async function getCanonicalTree(): Promise<CanonicalPhaseSet[]> {
   // NOT phase_sets.project_type_id (which is optional and often null).
   const [{ data: allPhaseSets, error: psError }, { data: projectTypes }] = await Promise.all([
     supabase.from("phase_sets").select("id, name, project_type_id").order("name"),
-    supabase.from("project_types").select("id, name, default_phase_set_id"),
+    supabase.from("project_types").select("id, name, default_phase_set_id, color, icon"),
   ])
   if (psError || !allPhaseSets?.length) return []
 
   // Build lookup: phase_set_id → project_type_name (via default_phase_set_id)
-  const psToProjectTypeName: Record<string, string> = {}
+  const psToProjectType: Record<string, { name: string; color: string | null; icon: string | null }> = {}
   const validPhaseSetIds = new Set<string>()
   for (const pt of projectTypes ?? []) {
     if (pt.default_phase_set_id) {
-      psToProjectTypeName[pt.default_phase_set_id] = pt.name
+      psToProjectType[pt.default_phase_set_id] = { name: pt.name, color: pt.color ?? null, icon: pt.icon ?? null }
       validPhaseSetIds.add(pt.default_phase_set_id)
     }
   }
@@ -449,7 +449,9 @@ export async function getCanonicalTree(): Promise<CanonicalPhaseSet[]> {
     return {
       id: ps.id,
       name: ps.name,
-      project_type_name: psToProjectTypeName[ps.id] ?? null,
+      project_type_name: psToProjectType[ps.id]?.name ?? null,
+      project_type_color: psToProjectType[ps.id]?.color ?? null,
+      project_type_icon: psToProjectType[ps.id]?.icon ?? null,
       phases: psPhases,
     }
   })

@@ -427,6 +427,8 @@ export interface CanonicalPhaseSet {
   id: string
   name: string
   project_type_name: string | null
+  project_type_color: string | null
+  project_type_icon: string | null
   phases: CanonicalPhase[]
 }
 
