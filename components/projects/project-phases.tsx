@@ -3,7 +3,7 @@
 import { useState, useEffect, useTransition } from "react"
 import { useTranslations, useFormatter } from "next-intl"
 import type { ProjectPhase, PhaseStatus } from "@/lib/types"
-import { updateProjectPhaseStatus, updateProjectPhaseNotes } from "@/lib/actions/projects"
+import { updateProjectPhaseStatus, updateProjectPhaseNotes, deleteProjectPhase } from "@/lib/actions/projects"
 import { recalculatePhaseStatus } from "@/lib/actions/tasks"
 import { phaseColor } from "@/lib/phase-colors"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
@@ -74,6 +74,19 @@ export function ProjectPhases({ projectId, initialPhases, canEdit, taskCountByPh
     setEditingNotesId(null)
     startTransition(async () => {
       await updateProjectPhaseNotes(phaseId, notesValue, projectId)
+    })
+  }
+
+  function handleDeletePhase(phase: ProjectPhase) {
+    const tc = taskCountByPhaseId[phase.id]
+    const taskCount = tc?.total ?? 0
+    const msg = taskCount > 0
+      ? `¿Eliminar la fase "${phase.name}" y sus ${taskCount} tarea${taskCount === 1 ? "" : "s"}? Esta acción no se puede deshacer.`
+      : `¿Eliminar la fase "${phase.name}"? Esta acción no se puede deshacer.`
+    if (!confirm(msg)) return
+    setPhases((prev) => prev.filter((p) => p.id !== phase.id))
+    startTransition(async () => {
+      await deleteProjectPhase(phase.id, projectId)
     })
   }
 
@@ -179,6 +192,13 @@ export function ProjectPhases({ projectId, initialPhases, canEdit, taskCountByPh
                         }`}
                       >
                         {phase.status === "blocked" ? t("unblock") : t("markBlocked")}
+                      </button>
+                      <button
+                        onClick={() => handleDeletePhase(phase)}
+                        disabled={isPending}
+                        className="px-3 py-1 rounded-md text-xs font-medium text-destructive bg-muted hover:bg-destructive/10 transition-colors disabled:opacity-50 ml-auto"
+                      >
+                        Eliminar fase
                       </button>
                     </div>
                   )}

@@ -597,6 +597,17 @@ export async function updateProjectPhaseStatus(
   revalidatePath(`/projects/${projectId}`)
 }
 
+export async function deleteProjectPhase(phaseId: string, projectId: string) {
+  const supabase = await createClient()
+  // Tasks in this phase are deleted via ON DELETE CASCADE on phase_id,
+  // or we can reassign them. Since project_phases FK on tasks is nullable
+  // let's delete the tasks explicitly first, then the phase.
+  await supabase.from("tasks").delete().eq("phase_id", phaseId)
+  const { error } = await supabase.from("project_phases").delete().eq("id", phaseId)
+  if (error) throw error
+  revalidatePath(`/projects/${projectId}`)
+}
+
 export async function updateProjectPhaseNotes(phaseId: string, notes: string, projectId: string) {
   const supabase = await createClient()
   const { error } = await supabase
