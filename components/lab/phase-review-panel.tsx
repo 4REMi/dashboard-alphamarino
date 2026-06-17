@@ -423,7 +423,7 @@ function DetailHeader({ title, subtitle }: { title: string; subtitle: string }) 
   )
 }
 
-function ReviewHistory({ reviews }: { reviews: Array<{ id: string; action: string; comment: string | null; created_at: string; reviewer: unknown }> }) {
+function ReviewHistory({ reviews }: { reviews: Array<{ id: string; action: string; comment: string | null; created_at: string; reviewer?: unknown }> }) {
   if (reviews.length === 0) return null
   const sorted = [...reviews].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
   return (
