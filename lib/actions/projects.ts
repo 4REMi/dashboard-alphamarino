@@ -132,7 +132,7 @@ export async function getProjects(includeArchived = false) {
       customer:customers(id, name, company),
       project_type:project_types(id, name, color, icon),
       members:project_members(profile:profiles(id, full_name, avatar_url)),
-      tasks(id, status, due_date),
+      tasks(id, title, status, due_date, phase_id, task_order),
       phases:project_phases(id, name, status, phase_order),
       income(amount)
     `)

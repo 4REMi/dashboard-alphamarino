@@ -15,6 +15,7 @@ import { phaseColor } from "@/lib/phase-colors"
 
 interface Member { id: string; full_name: string; avatar_url: string | null }
 interface Phase  { id: string; name: string; status: string; phase_order: number }
+interface TaskSummary { id: string; title: string; status: string; phase_id: string | null; task_order: number | null }
 
 interface ProjectCardProps {
   project: Project & {
@@ -22,6 +23,7 @@ interface ProjectCardProps {
     project_type?: { name: string; color?: string | null; icon?: string | null } | null
     members?: Member[]
     phases?: Phase[]
+    tasks?: TaskSummary[]
     income?: { amount: number }[]
     attention?: {
       hasOverdueTasks: boolean
@@ -72,8 +74,15 @@ export function ProjectCard({ project, canViewFinancials = false }: ProjectCardP
   const shown    = members.slice(0, 3)
   const overflow = members.length > 3 ? members.length - 3 : 0
 
-  // Current phase
+  // Current phase & active task
   const phase = currentPhase(project.phases)
+  const activeTask = (() => {
+    if (!phase || !project.tasks) return null
+    const phaseTasks = project.tasks
+      .filter((t) => t.phase_id === phase.id && t.status === "In Progress")
+      .sort((a, b) => (a.task_order ?? 0) - (b.task_order ?? 0))
+    return phaseTasks[0] ?? null
+  })()
 
   // Financials
   const totalIncome     = (project.income ?? []).reduce((s, i) => s + (i.amount ?? 0), 0)
@@ -133,17 +142,31 @@ export function ProjectCard({ project, canViewFinancials = false }: ProjectCardP
             <Progress value={project.progress} className="h-1.5" />
           </div>
 
-          {/* ── Current phase ───────────────────────────────────── */}
+          {/* ── Current phase & active task ─────────────────────── */}
           {phase && (() => {
             const pc = phaseColor(phase.phase_order)
+            const isLive = phase.status === "in_progress"
             return (
-              <div className="flex items-center gap-1.5">
-                <span className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", pc.bg)} />
-                <span className={cn("text-xs truncate", pc.text)}>
-                  {phase.name}
-                </span>
-                {phase.status === "blocked" && (
-                  <span className="text-xs text-destructive flex-shrink-0">· {t("blockedLabel")}</span>
+              <div className="space-y-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="relative flex-shrink-0 w-2 h-2">
+                    <span className={cn("absolute inset-0 rounded-full", pc.bg)} />
+                    {isLive && <span className={cn("absolute inset-0 rounded-full animate-ping opacity-50", pc.bg)} />}
+                  </span>
+                  <span className={cn("text-xs font-medium truncate", pc.text)}>
+                    {phase.name}
+                  </span>
+                  {phase.status === "blocked" && (
+                    <span className="text-xs text-destructive flex-shrink-0">· {t("blockedLabel")}</span>
+                  )}
+                </div>
+                {activeTask && (
+                  <div className="flex items-center gap-1.5 pl-3.5">
+                    <span className="text-muted-foreground text-[10px]">→</span>
+                    <span className="text-[11px] text-muted-foreground truncate animate-pulse-subtle">
+                      {activeTask.title}
+                    </span>
+                  </div>
                 )}
               </div>
             )
