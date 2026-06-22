@@ -132,8 +132,8 @@ export async function getProjects(includeArchived = false) {
       customer:customers(id, name, company),
       project_type:project_types(id, name, color, icon),
       members:project_members(profile:profiles(id, full_name, avatar_url)),
-      tasks(id, status, due_date, updated_at, completed_at),
-      phases:project_phases(id, name, status, phase_order, updated_at, started_at, completed_at),
+      tasks(id, status, due_date),
+      phases:project_phases(id, name, status, phase_order),
       income(amount)
     `)
     .order("created_at", { ascending: false })
@@ -154,7 +154,7 @@ export async function getProjects(includeArchived = false) {
         *,
         customer:customers(id, name, company),
         members:project_members(profile:profiles(id, full_name, avatar_url)),
-        tasks(id, status, due_date, updated_at, completed_at)
+        tasks(id, status, due_date)
       `)
       .order("created_at", { ascending: false })
     if (!includeArchived) {
@@ -165,7 +165,7 @@ export async function getProjects(includeArchived = false) {
     rawData = (minimal ?? []).map((p) => ({ ...p, project_type: null, phases: [] }))
   }
 
-  // Try to fetch log entries separately
+  // Fetch latest activity dates from logs, tasks, and phases (each wrapped in try/catch)
   let logMap: Record<string, string> = {}
   try {
     const { data: logs } = await supabase
@@ -179,27 +179,50 @@ export async function getProjects(includeArchived = false) {
     }
   } catch { /* table may not exist yet */ }
 
+  let taskActivityMap: Record<string, string> = {}
+  try {
+    const { data: taskDates } = await supabase
+      .from("tasks")
+      .select("project_id, updated_at")
+      .order("updated_at", { ascending: false })
+    if (taskDates) {
+      for (const t of taskDates) {
+        const pid = t.project_id as string
+        const d = t.updated_at as string
+        if (d && (!taskActivityMap[pid] || d > taskActivityMap[pid])) taskActivityMap[pid] = d
+      }
+    }
+  } catch { /* column may not exist */ }
+
+  let phaseActivityMap: Record<string, string> = {}
+  try {
+    const { data: phaseDates } = await supabase
+      .from("project_phases")
+      .select("project_id, updated_at")
+      .order("updated_at", { ascending: false })
+    if (phaseDates) {
+      for (const ph of phaseDates) {
+        const pid = ph.project_id as string
+        const d = ph.updated_at as string
+        if (d && (!phaseActivityMap[pid] || d > phaseActivityMap[pid])) phaseActivityMap[pid] = d
+      }
+    }
+  } catch { /* column may not exist */ }
+
   return rawData.map((p) => {
-    const tasks = (p.tasks ?? []) as Array<{ status: string; due_date: string | null; updated_at: string | null; completed_at: string | null }>
-    const phases = (p.phases ?? []) as Array<{ status: string; updated_at: string | null; started_at: string | null; completed_at: string | null }>
+    const tasks = (p.tasks ?? []) as Array<{ status: string; due_date: string | null }>
+    const phases = (p.phases ?? []) as Array<{ status: string }>
 
     const hasOverdueTasks = tasks.some(
       (t) => t.status !== "Done" && t.due_date && (t.due_date as string) < now
     )
     const hasBlockedPhase = phases.some((ph) => ph.status === "blocked")
 
+    const pid = p.id as string
     const activityDates: string[] = [p.created_at as string]
-    const logDate = logMap[p.id as string]
-    if (logDate) activityDates.push(logDate)
-    for (const t of tasks) {
-      if (t.updated_at) activityDates.push(t.updated_at)
-      if (t.completed_at) activityDates.push(t.completed_at)
-    }
-    for (const ph of phases) {
-      if (ph.updated_at) activityDates.push(ph.updated_at)
-      if (ph.started_at) activityDates.push(ph.started_at)
-      if (ph.completed_at) activityDates.push(ph.completed_at)
-    }
+    if (logMap[pid]) activityDates.push(logMap[pid])
+    if (taskActivityMap[pid]) activityDates.push(taskActivityMap[pid])
+    if (phaseActivityMap[pid]) activityDates.push(phaseActivityMap[pid])
     const lastActivity = activityDates.reduce((a, b) => (a > b ? a : b))
     const inactiveForDays = Math.floor(
       (Date.now() - new Date(lastActivity).getTime()) / (1000 * 60 * 60 * 24)
