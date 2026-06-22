@@ -132,8 +132,8 @@ export async function getProjects(includeArchived = false) {
       customer:customers(id, name, company),
       project_type:project_types(id, name, color, icon),
       members:project_members(profile:profiles(id, full_name, avatar_url)),
-      tasks(id, status, due_date),
-      phases:project_phases(id, name, status, phase_order),
+      tasks(id, status, due_date, updated_at, completed_at),
+      phases:project_phases(id, name, status, phase_order, updated_at, started_at, completed_at),
       income(amount)
     `)
     .order("created_at", { ascending: false })
@@ -154,7 +154,7 @@ export async function getProjects(includeArchived = false) {
         *,
         customer:customers(id, name, company),
         members:project_members(profile:profiles(id, full_name, avatar_url)),
-        tasks(id, status, due_date)
+        tasks(id, status, due_date, updated_at, completed_at)
       `)
       .order("created_at", { ascending: false })
     if (!includeArchived) {
@@ -180,15 +180,27 @@ export async function getProjects(includeArchived = false) {
   } catch { /* table may not exist yet */ }
 
   return rawData.map((p) => {
-    const tasks = (p.tasks ?? []) as Array<{ status: string; due_date: string | null }>
-    const phases = (p.phases ?? []) as Array<{ status: string }>
+    const tasks = (p.tasks ?? []) as Array<{ status: string; due_date: string | null; updated_at: string | null; completed_at: string | null }>
+    const phases = (p.phases ?? []) as Array<{ status: string; updated_at: string | null; started_at: string | null; completed_at: string | null }>
 
     const hasOverdueTasks = tasks.some(
       (t) => t.status !== "Done" && t.due_date && (t.due_date as string) < now
     )
     const hasBlockedPhase = phases.some((ph) => ph.status === "blocked")
 
-    const lastActivity = logMap[p.id as string] ?? (p.created_at as string)
+    const activityDates: string[] = [p.created_at as string]
+    const logDate = logMap[p.id as string]
+    if (logDate) activityDates.push(logDate)
+    for (const t of tasks) {
+      if (t.updated_at) activityDates.push(t.updated_at)
+      if (t.completed_at) activityDates.push(t.completed_at)
+    }
+    for (const ph of phases) {
+      if (ph.updated_at) activityDates.push(ph.updated_at)
+      if (ph.started_at) activityDates.push(ph.started_at)
+      if (ph.completed_at) activityDates.push(ph.completed_at)
+    }
+    const lastActivity = activityDates.reduce((a, b) => (a > b ? a : b))
     const inactiveForDays = Math.floor(
       (Date.now() - new Date(lastActivity).getTime()) / (1000 * 60 * 60 * 24)
     )
