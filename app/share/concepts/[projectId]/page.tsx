@@ -39,8 +39,7 @@ export default async function ShareConceptsPage({ params }: Props) {
       .order("created_at", { ascending: false }),
     supabase
       .from("creative_assets")
-      .select(`id, format, platform, variant, iteration,
-               hook, copy, cta, asset_url, format_meta,
+      .select(`id, format, platform, asset_url,
                client_status, client_feedback, concept_id,
                concept:creative_concepts!concept_id(name, angle_type)`)
       .eq("project_id", projectId)
@@ -473,14 +472,7 @@ function AssetReviewWrap({ asset: a }: { asset: any }) {
         id:              a.id,
         format:          a.format,
         platform:        a.platform,
-        variant:         a.variant,
-        iteration:       a.iteration,
-        hook:            a.hook,
-        copy:            a.copy,
-        cta:             a.cta,
         asset_url:       a.asset_url,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        format_meta:     a.format_meta as any,
         client_status:   a.client_status as any,
         client_feedback: a.client_feedback,
         concept_name:    concept?.name ?? null,
