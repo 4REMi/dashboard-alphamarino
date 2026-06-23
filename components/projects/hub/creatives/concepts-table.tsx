@@ -38,20 +38,24 @@ interface ConceptsTableProps {
 function ConceptDetailModal({
   concept,
   conceptAssets,
+  conceptBriefs,
   projectId,
   isAdminOrSubadmin,
   onEdit,
   onClose,
   onNewAsset,
+  onNewBrief,
   onRefresh,
 }: {
   concept: CreativeConcept
   conceptAssets: CreativeAsset[]
+  conceptBriefs: CreativeBrief[]
   projectId: string
   isAdminOrSubadmin: boolean
   onEdit: () => void
   onClose: () => void
   onNewAsset: () => void
+  onNewBrief: () => void
   onRefresh: () => void
 }) {
   const [isPending, startTransition] = useTransition()
@@ -200,6 +204,52 @@ function ConceptDetailModal({
           </div>
         </div>
 
+        {/* ── Briefs ── */}
+        {(conceptBriefs.length > 0 || isAdminOrSubadmin) && (
+          <div className="border rounded-xl px-5 py-4">
+            <div className="flex items-center justify-between mb-2">
+              <p className={grpLabel + " mb-0"}>
+                <FileText className="w-3 h-3 inline mr-1" />
+                Briefs {conceptBriefs.length > 0 && `(${conceptBriefs.length})`}
+              </p>
+              {isAdminOrSubadmin && (
+                <button type="button" onClick={onNewBrief} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                  <Plus className="w-3 h-3" />
+                  Nuevo brief
+                </button>
+              )}
+            </div>
+            {conceptBriefs.length > 0 ? (
+              <div className="space-y-1.5">
+                {conceptBriefs.map((b) => (
+                  <a
+                    key={b.id}
+                    href={`/share/brief/${b.share_token}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between text-xs py-2 px-3 rounded-lg bg-violet-50/60 border border-violet-100 hover:bg-violet-50 transition-colors group"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <FileText className="w-3.5 h-3.5 text-violet-500 flex-shrink-0" />
+                      <span className="font-medium text-violet-900 truncate">
+                        {b.brand_brain?.name ?? "Brief"}
+                      </span>
+                      <span className="text-violet-500">
+                        {new Date(b.created_at).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}
+                      </span>
+                    </div>
+                    <span className="text-violet-400 group-hover:text-violet-600 transition-colors text-[10px] font-medium">
+                      Abrir ↗
+                    </span>
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <p className={fEmpty}>Sin briefs — crea uno para compartir con tu editor</p>
+            )}
+          </div>
+        )}
+
         {/* ── Bottom strip: refs + insight + assets ── */}
         {(concept.ref_links || (isAdminOrSubadmin && concept.insight) || conceptAssets.length > 0 || isAdminOrSubadmin) && (
           <div className="grid grid-cols-2 gap-4 border rounded-xl px-5 py-4">
@@ -230,18 +280,8 @@ function ConceptDetailModal({
                   {conceptAssets.map((a) => (
                     <div key={a.id} className="flex items-center justify-between text-xs py-1.5 px-2 rounded bg-muted/40">
                       <span className="text-muted-foreground truncate mr-2">
-                        {[a.format, a.platform, [a.variant, a.iteration].filter(Boolean).join("/")].filter(Boolean).join(" · ") || "Sin detalle"}
+                        {[a.format, a.platform].filter(Boolean).join(" · ") || "Sin detalle"}
                       </span>
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        <Badge className={cn("text-xs border-0 h-4 px-1.5", PRODUCTION_STATUS_COLORS[a.production_status] ?? "bg-gray-100 text-gray-600")}>
-                          {a.production_status}
-                        </Badge>
-                        {a.verdict && (
-                          <Badge className={cn("text-xs border-0 h-4 px-1.5", VERDICT_COLORS[a.verdict] ?? "")}>
-                            {a.verdict}
-                          </Badge>
-                        )}
-                      </div>
                     </div>
                   ))}
                 </div>
@@ -765,11 +805,13 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
         <ConceptDetailModal
           concept={detailConcept}
           conceptAssets={assets.filter((a) => a.concept_id === detailConcept.id)}
+          conceptBriefs={briefs.filter((b) => b.concept_id === detailConcept.id)}
           projectId={projectId}
           isAdminOrSubadmin={isAdminOrSubadmin}
           onEdit={openEditFromDetail}
           onClose={() => setDetailConcept(null)}
           onNewAsset={openDetailAsNewAsset}
+          onNewBrief={() => { const c = detailConcept; setDetailConcept(null); setBriefForConcept(c) }}
           onRefresh={onRefresh}
         />
       )}

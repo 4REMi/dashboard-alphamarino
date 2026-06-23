@@ -3,14 +3,12 @@
 import { useState, useTransition } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
 import {
-  Brain, Image, Layers, Sparkles, Link2, Copy, Check,
-  ChevronRight, ChevronLeft, Loader2, ExternalLink,
+  Brain, Sparkles, Link2, Copy, Check,
+  Loader2, ExternalLink, Play, Image as ImageIcon,
 } from "lucide-react"
-import type { CreativeConcept, BrandBrain, CreativeBrief, BriefContent } from "@/lib/types"
+import type { CreativeConcept, BrandBrain, CreativeBrief } from "@/lib/types"
 import { createBrief, generateBriefContent } from "@/lib/actions/creatives"
 
 interface SavedAdRef {
@@ -19,6 +17,8 @@ interface SavedAdRef {
   body: string | null
   cached_image_url: string | null
   image_url: string | null
+  cached_video_url: string | null
+  video_url: string | null
   format: string | null
 }
 
@@ -39,36 +39,32 @@ interface Props {
   onCreated: (brief: CreativeBrief) => void
 }
 
-const STEPS = ["Brand Brain", "Referencias", "Generar Brief"] as const
+function isVideoAd(ad: SavedAdRef) {
+  return ad.format === "video" || !!ad.video_url || !!ad.cached_video_url
+}
+
+function getThumb(ad: SavedAdRef) {
+  return ad.cached_image_url || ad.image_url || null
+}
 
 export function BriefCreator({
   concept, projectId, brandBrains, savedAds, boards, onClose, onCreated,
 }: Props) {
-  const [step, setStep] = useState(0)
   const [selectedBrainId, setSelectedBrainId] = useState("")
   const [selectedAdIds, setSelectedAdIds] = useState<string[]>([])
   const [selectedBoardIds, setSelectedBoardIds] = useState<string[]>([])
   const [generatedBrief, setGeneratedBrief] = useState<CreativeBrief | null>(null)
-  const [briefContent, setBriefContent] = useState<BriefContent | null>(null)
   const [copied, setCopied] = useState(false)
   const [isPending, startTransition] = useTransition()
 
-  const canProceed = step === 0 ? !!selectedBrainId : true
-
-  function handleNext() {
-    if (step < STEPS.length - 1) {
-      setStep(step + 1)
-    } else {
-      handleGenerate()
-    }
-  }
+  const selectedBrain = brandBrains.find((b) => b.id === selectedBrainId)
 
   function handleGenerate() {
+    if (!selectedBrainId) return
     startTransition(async () => {
       const brief = await createBrief(projectId, concept.id, selectedBrainId, selectedAdIds, selectedBoardIds)
       setGeneratedBrief(brief)
-      const content = await generateBriefContent(brief.id)
-      setBriefContent(content)
+      await generateBriefContent(brief.id)
     })
   }
 
@@ -87,270 +83,236 @@ export function BriefCreator({
     setSelectedBoardIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
   }
 
-  const selectedBrain = brandBrains.find((b) => b.id === selectedBrainId)
+  const videoAds = savedAds.filter(isVideoAd)
+  const imageAds = savedAds.filter((a) => !isVideoAd(a))
+
+  if (generatedBrief) {
+    const shareUrl = `${window.location.origin}/share/brief/${generatedBrief.share_token}`
+    return (
+      <Dialog open onOpenChange={onClose}>
+        <DialogContent className="max-w-sm">
+          <div className="flex flex-col items-center gap-4 py-6">
+            <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center">
+              <Check className="w-6 h-6 text-emerald-600" />
+            </div>
+            <div className="text-center space-y-1">
+              <p className="text-sm font-semibold">Brief creado</p>
+              <p className="text-xs text-muted-foreground">Comparte el link con tu editor o diseñador</p>
+            </div>
+            <div className="w-full flex items-center gap-1.5 p-2 rounded-lg bg-muted/50 border">
+              <input
+                readOnly
+                value={shareUrl}
+                className="flex-1 text-xs bg-transparent border-0 outline-none truncate"
+              />
+              <Button size="sm" variant="ghost" onClick={handleCopyLink} className="h-7 px-2 flex-shrink-0">
+                {copied ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+              </Button>
+              <a href={`/share/brief/${generatedBrief.share_token}`} target="_blank" rel="noopener noreferrer">
+                <Button size="sm" variant="ghost" className="h-7 px-2">
+                  <ExternalLink className="w-3 h-3" />
+                </Button>
+              </a>
+            </div>
+            <Button className="w-full" onClick={() => { onCreated(generatedBrief); onClose() }}>
+              Listo
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    )
+  }
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
+        <DialogHeader className="pb-0">
+          <DialogTitle className="flex items-center gap-2 text-base">
             <Sparkles className="w-4 h-4 text-primary" />
-            Crear Brief — {concept.name ?? concept.angle_type ?? "Concepto"}
+            Brief — {concept.name ?? concept.angle_type ?? "Concepto"}
           </DialogTitle>
-          {/* Step indicators */}
-          {!briefContent && (
-            <div className="flex items-center gap-2 pt-2">
-              {STEPS.map((label, i) => (
-                <div key={label} className="flex items-center gap-1.5">
-                  {i > 0 && <ChevronRight className="w-3 h-3 text-muted-foreground/40" />}
-                  <span className={cn(
-                    "text-xs px-2 py-0.5 rounded-full transition-colors",
-                    i === step ? "bg-primary text-primary-foreground font-medium" :
-                    i < step ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
-                  )}>
-                    {label}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto py-4 space-y-4">
-          {/* STEP 0: Select Brand Brain */}
-          {step === 0 && !briefContent && (
-            <div className="space-y-3">
-              <Label>Selecciona el Brand Brain de la marca</Label>
-              <div className="grid gap-2 max-h-[400px] overflow-y-auto">
-                {brandBrains.length === 0 && (
-                  <p className="text-sm text-muted-foreground py-8 text-center">
-                    No hay Brand Brains creados. Crea uno en Ad Lab primero.
-                  </p>
-                )}
+        <div className="flex-1 overflow-y-auto py-4 space-y-6">
+
+          {/* ── Brand Brain selector ── */}
+          <section>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Brand Brain</p>
+            {brandBrains.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center border rounded-lg">
+                No hay Brand Brains. Crea uno en Ad Lab.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
                 {brandBrains.map((brain) => (
                   <button
                     key={brain.id}
                     type="button"
                     onClick={() => setSelectedBrainId(brain.id)}
                     className={cn(
-                      "flex items-center gap-3 p-3 rounded-lg border text-left transition-all",
+                      "flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all",
                       selectedBrainId === brain.id
-                        ? "border-primary bg-primary/5 ring-1 ring-primary"
-                        : "border-border hover:border-primary/30 hover:bg-muted/30"
+                        ? "border-primary bg-primary/5 ring-1 ring-primary font-medium"
+                        : "border-border hover:border-primary/30"
                     )}
                   >
-                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                      <Brain className="w-4 h-4 text-primary" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{brain.name}</p>
-                      {brain.industry && (
-                        <p className="text-xs text-muted-foreground truncate">{brain.industry}</p>
-                      )}
-                    </div>
-                    {selectedBrainId === brain.id && (
-                      <Check className="w-4 h-4 text-primary flex-shrink-0" />
-                    )}
+                    <Brain className="w-3.5 h-3.5 text-primary/60" />
+                    {brain.name}
+                    {brain.industry && <span className="text-xs text-muted-foreground">· {brain.industry}</span>}
                   </button>
                 ))}
               </div>
-            </div>
-          )}
+            )}
+          </section>
 
-          {/* STEP 1: Attach References */}
-          {step === 1 && !briefContent && (
-            <div className="space-y-4">
-              <div>
-                <Label className="flex items-center gap-1.5 mb-2">
-                  <Image className="w-3.5 h-3.5" />
-                  Creativos guardados (opcional)
-                </Label>
-                <div className="grid grid-cols-2 gap-2 max-h-[200px] overflow-y-auto">
-                  {savedAds.length === 0 && (
-                    <p className="text-xs text-muted-foreground col-span-2 py-4 text-center">Sin creativos guardados</p>
-                  )}
-                  {savedAds.map((ad) => (
+          {/* ── Video references ── */}
+          {videoAds.length > 0 && (
+            <section>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                Videos de referencia <span className="font-normal">(opcional — se tropicalizará el guión)</span>
+              </p>
+              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2">
+                {videoAds.map((ad) => {
+                  const thumb = getThumb(ad)
+                  const selected = selectedAdIds.includes(ad.id)
+                  return (
                     <button
                       key={ad.id}
                       type="button"
                       onClick={() => toggleAd(ad.id)}
                       className={cn(
-                        "flex items-center gap-2 p-2 rounded-lg border text-left text-xs transition-all",
-                        selectedAdIds.includes(ad.id)
-                          ? "border-primary bg-primary/5"
-                          : "border-border hover:border-primary/30"
+                        "group relative rounded-xl overflow-hidden border-2 transition-all aspect-[9/16]",
+                        selected ? "border-primary ring-1 ring-primary" : "border-transparent hover:border-primary/30"
                       )}
                     >
-                      {(ad.cached_image_url || ad.image_url) && (
-                        <img src={ad.cached_image_url || ad.image_url!} alt="" className="w-8 h-8 rounded object-cover flex-shrink-0" />
+                      {thumb ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={thumb} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full bg-muted flex items-center justify-center">
+                          <Play className="w-5 h-5 text-muted-foreground" />
+                        </div>
                       )}
-                      <span className="truncate flex-1">{ad.page_name ?? "Ad"}</span>
-                      {selectedAdIds.includes(ad.id) && <Check className="w-3 h-3 text-primary flex-shrink-0" />}
+                      <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-end p-2">
+                        <Play className="w-4 h-4 text-white/80 mb-auto mt-auto" />
+                        <p className="text-[10px] text-white/90 truncate w-full text-center font-medium">
+                          {ad.page_name ?? "Video"}
+                        </p>
+                      </div>
+                      {selected && (
+                        <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                          <Check className="w-3 h-3 text-primary-foreground" />
+                        </div>
+                      )}
                     </button>
-                  ))}
-                </div>
+                  )
+                })}
               </div>
+            </section>
+          )}
 
-              <div>
-                <Label className="flex items-center gap-1.5 mb-2">
-                  <Layers className="w-3.5 h-3.5" />
-                  Boards (opcional)
-                </Label>
-                <div className="grid grid-cols-2 gap-2 max-h-[200px] overflow-y-auto">
-                  {boards.length === 0 && (
-                    <p className="text-xs text-muted-foreground col-span-2 py-4 text-center">Sin boards</p>
-                  )}
-                  {boards.map((board) => (
+          {/* ── Image references ── */}
+          {imageAds.length > 0 && (
+            <section>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                Imágenes de referencia <span className="font-normal">(opcional)</span>
+              </p>
+              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2">
+                {imageAds.map((ad) => {
+                  const thumb = getThumb(ad)
+                  const selected = selectedAdIds.includes(ad.id)
+                  return (
+                    <button
+                      key={ad.id}
+                      type="button"
+                      onClick={() => toggleAd(ad.id)}
+                      className={cn(
+                        "group relative rounded-xl overflow-hidden border-2 transition-all aspect-square",
+                        selected ? "border-primary ring-1 ring-primary" : "border-transparent hover:border-primary/30"
+                      )}
+                    >
+                      {thumb ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={thumb} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full bg-muted flex items-center justify-center">
+                          <ImageIcon className="w-5 h-5 text-muted-foreground" />
+                        </div>
+                      )}
+                      <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/60 to-transparent p-2 pt-6">
+                        <p className="text-[10px] text-white/90 truncate font-medium">
+                          {ad.page_name ?? "Imagen"}
+                        </p>
+                      </div>
+                      {selected && (
+                        <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                          <Check className="w-3 h-3 text-primary-foreground" />
+                        </div>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            </section>
+          )}
+
+          {/* ── Boards ── */}
+          {boards.length > 0 && (
+            <section>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                Boards <span className="font-normal">(opcional)</span>
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {boards.map((board) => {
+                  const selected = selectedBoardIds.includes(board.id)
+                  const previews = board.preview_ads?.slice(0, 3) ?? []
+                  return (
                     <button
                       key={board.id}
                       type="button"
                       onClick={() => toggleBoard(board.id)}
                       className={cn(
-                        "flex items-center gap-2 p-2 rounded-lg border text-left text-xs transition-all",
-                        selectedBoardIds.includes(board.id)
-                          ? "border-primary bg-primary/5"
-                          : "border-border hover:border-primary/30"
+                        "rounded-xl border-2 p-3 text-left transition-all",
+                        selected ? "border-primary bg-primary/5" : "border-border hover:border-primary/30"
                       )}
                     >
-                      <span className="truncate flex-1">{board.name}</span>
-                      <span className="text-muted-foreground">{board.ad_count}</span>
-                      {selectedBoardIds.includes(board.id) && <Check className="w-3 h-3 text-primary flex-shrink-0" />}
+                      {previews.length > 0 && (
+                        <div className="flex gap-1 mb-2">
+                          {previews.map((p, i) => {
+                            const src = p.cached_image_url || p.image_url
+                            return src ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img key={i} src={src} alt="" className="w-8 h-8 rounded object-cover" />
+                            ) : null
+                          })}
+                        </div>
+                      )}
+                      <p className="text-sm font-medium truncate">{board.name}</p>
+                      <p className="text-xs text-muted-foreground">{board.ad_count} ads</p>
                     </button>
-                  ))}
-                </div>
+                  )
+                })}
               </div>
-            </div>
-          )}
-
-          {/* STEP 2: Generate / Loading */}
-          {step === 2 && !briefContent && (
-            <div className="flex flex-col items-center justify-center py-8 gap-4">
-              {isPending ? (
-                <>
-                  <Loader2 className="w-8 h-8 text-primary animate-spin" />
-                  <p className="text-sm text-muted-foreground">Generando brief enriquecido...</p>
-                  <p className="text-xs text-muted-foreground/60">Combinando concepto + Brand Brain + referencias</p>
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-8 h-8 text-primary/30" />
-                  <div className="text-center space-y-1">
-                    <p className="text-sm font-medium">Listo para generar</p>
-                    <p className="text-xs text-muted-foreground">
-                      Concepto: <strong>{concept.name ?? concept.angle_type}</strong>
-                      {selectedBrain && <> + Brain: <strong>{selectedBrain.name}</strong></>}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {selectedAdIds.length > 0 && `${selectedAdIds.length} referencia(s) `}
-                      {selectedBoardIds.length > 0 && `${selectedBoardIds.length} board(s)`}
-                      {selectedAdIds.length === 0 && selectedBoardIds.length === 0 && "Sin referencias adicionales"}
-                    </p>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* RESULT: Brief generated */}
-          {briefContent && (
-            <div className="space-y-4">
-              {/* Share link */}
-              <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
-                <Link2 className="w-4 h-4 text-primary flex-shrink-0" />
-                <Input
-                  readOnly
-                  value={generatedBrief ? `${window.location.origin}/share/brief/${generatedBrief.share_token}` : ""}
-                  className="flex-1 text-xs bg-transparent border-0 focus-visible:ring-0 p-0 h-auto"
-                />
-                <Button size="sm" variant="ghost" onClick={handleCopyLink} className="h-7 px-2">
-                  {copied ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
-                </Button>
-                {generatedBrief && (
-                  <a href={`/share/brief/${generatedBrief.share_token}`} target="_blank" rel="noopener noreferrer">
-                    <Button size="sm" variant="ghost" className="h-7 px-2">
-                      <ExternalLink className="w-3 h-3" />
-                    </Button>
-                  </a>
-                )}
-              </div>
-
-              {/* Brief content */}
-              <div className="space-y-3">
-                <BriefSection title="Resumen" content={briefContent.summary} />
-                <BriefSection title="Racional estratégico" content={briefContent.strategy_rationale} />
-                <BriefSection title="Mensajes clave" list={briefContent.key_messages} />
-                <BriefSection title="Dirección de tono" content={briefContent.tone_direction} />
-                <BriefSection title="Dirección visual" content={briefContent.visual_direction} />
-                {briefContent.reference_insights && (
-                  <BriefSection title="Insights de referencias" content={briefContent.reference_insights} />
-                )}
-                <div className="grid grid-cols-2 gap-3">
-                  <BriefSection title="Hacer" list={briefContent.do_list} variant="success" />
-                  <BriefSection title="No hacer" list={briefContent.dont_list} variant="destructive" />
-                </div>
-                <BriefSection title="Formatos sugeridos" list={briefContent.suggested_formats} />
-              </div>
-            </div>
+            </section>
           )}
         </div>
 
-        <DialogFooter className="gap-2">
-          {!briefContent && step > 0 && (
-            <Button variant="outline" onClick={() => setStep(step - 1)} disabled={isPending}>
-              <ChevronLeft className="w-3.5 h-3.5 mr-1" />
-              Atrás
-            </Button>
-          )}
-          {!briefContent && (
-            <Button
-              onClick={handleNext}
-              disabled={!canProceed || isPending}
-            >
-              {isPending ? (
-                <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
-              ) : step === STEPS.length - 1 ? (
-                <Sparkles className="w-3.5 h-3.5 mr-1" />
-              ) : null}
-              {step === STEPS.length - 1 ? "Generar Brief" : "Siguiente"}
-            </Button>
-          )}
-          {briefContent && generatedBrief && (
-            <Button onClick={() => { onCreated(generatedBrief); onClose() }}>
-              Listo
-            </Button>
-          )}
+        <DialogFooter className="gap-2 pt-2 border-t">
+          <div className="flex items-center gap-2 mr-auto text-xs text-muted-foreground">
+            {selectedBrain && <span className="font-medium text-foreground">{selectedBrain.name}</span>}
+            {selectedAdIds.length > 0 && <span>· {selectedAdIds.length} ref</span>}
+            {selectedBoardIds.length > 0 && <span>· {selectedBoardIds.length} board{selectedBoardIds.length !== 1 ? "s" : ""}</span>}
+          </div>
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button onClick={handleGenerate} disabled={!selectedBrainId || isPending}>
+            {isPending ? (
+              <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Generando…</>
+            ) : (
+              <><Sparkles className="w-3.5 h-3.5 mr-1.5" />Generar Brief</>
+            )}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  )
-}
-
-function BriefSection({
-  title, content, list, variant,
-}: {
-  title: string
-  content?: string
-  list?: string[]
-  variant?: "success" | "destructive"
-}) {
-  return (
-    <div className="space-y-1">
-      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{title}</p>
-      {content && <p className="text-sm">{content}</p>}
-      {list && list.length > 0 && (
-        <ul className="space-y-0.5">
-          {list.map((item, i) => (
-            <li key={i} className="flex items-start gap-1.5 text-sm">
-              <span className={cn(
-                "mt-1.5 w-1.5 h-1.5 rounded-full flex-shrink-0",
-                variant === "success" ? "bg-emerald-500" :
-                variant === "destructive" ? "bg-destructive" : "bg-primary"
-              )} />
-              {item}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
   )
 }

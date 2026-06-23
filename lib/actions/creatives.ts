@@ -416,7 +416,7 @@ export async function getBriefsForProject(projectId: string): Promise<CreativeBr
   return (data ?? []) as CreativeBrief[]
 }
 
-export async function getBriefByToken(token: string): Promise<CreativeBrief | null> {
+export async function getBriefByToken(token: string): Promise<(CreativeBrief & { attached_ads?: any[] }) | null> {
   const supabase = createAdminClient()
   const { data } = await supabase
     .from("creative_briefs")
@@ -427,7 +427,19 @@ export async function getBriefByToken(token: string): Promise<CreativeBrief | nu
     `)
     .eq("share_token", token)
     .single()
-  return (data as CreativeBrief) ?? null
+  if (!data) return null
+
+  const brief = data as CreativeBrief & { attached_ads?: any[] }
+
+  if (brief.attached_ad_ids && brief.attached_ad_ids.length > 0) {
+    const { data: ads } = await supabase
+      .from("saved_ads")
+      .select("id, page_name, cached_image_url, image_url, cached_video_url, video_url, format, body")
+      .in("id", brief.attached_ad_ids)
+    brief.attached_ads = ads ?? []
+  }
+
+  return brief
 }
 
 export async function deleteBrief(id: string, projectId: string): Promise<void> {
