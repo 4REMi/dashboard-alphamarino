@@ -1,13 +1,10 @@
 "use client"
 
 import { useState, useEffect, useTransition } from "react"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ConceptsTable } from "./concepts-table"
-import { AssetsTable } from "./assets-table"
-import { getCreativeConcepts, getCreativeAssets } from "@/lib/actions/creatives"
-import type { CreativeConcept, CreativeAsset, PaidMediaCycle } from "@/lib/types"
+import { getCreativeConcepts, getCreativeAssets, getBriefsForProject } from "@/lib/actions/creatives"
+import type { CreativeConcept, CreativeAsset, CreativeBrief, PaidMediaCycle } from "@/lib/types"
 import { Loader2, ChevronDown } from "lucide-react"
-import { cn } from "@/lib/utils"
 
 interface CreativesHubProps {
   projectId: string
@@ -15,6 +12,9 @@ interface CreativesHubProps {
   initialConcepts: CreativeConcept[]
   initialAssets: CreativeAsset[]
   isAdminOrSubadmin: boolean
+  brandBrains?: any[]
+  savedAds?: any[]
+  boards?: any[]
 }
 
 export function CreativesHub({
@@ -23,11 +23,15 @@ export function CreativesHub({
   initialConcepts,
   initialAssets,
   isAdminOrSubadmin,
+  brandBrains = [],
+  savedAds = [],
+  boards = [],
 }: CreativesHubProps) {
   const activeCycle = cycles.find((c) => c.is_active) ?? cycles[0] ?? null
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(activeCycle?.id ?? null)
   const [concepts, setConcepts] = useState<CreativeConcept[]>(initialConcepts)
   const [assets, setAssets]     = useState<CreativeAsset[]>(initialAssets)
+  const [briefs, setBriefs]     = useState<CreativeBrief[]>([])
   const [isLoading, startLoad]  = useTransition()
 
   const selectedCycle = cycles.find((c) => c.id === selectedCycleId) ?? null
@@ -37,16 +41,17 @@ export function CreativesHub({
   function reload() {
     if (!selectedCycleId) return
     startLoad(async () => {
-      const [c, a] = await Promise.all([
+      const [c, a, b] = await Promise.all([
         getCreativeConcepts(projectId, selectedCycleId),
         getCreativeAssets(projectId, selectedCycleId),
+        getBriefsForProject(projectId),
       ])
       setConcepts(c)
       setAssets(a)
+      setBriefs(b)
     })
   }
 
-  // Reload when cycle changes
   useEffect(() => {
     reload()
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -100,49 +105,18 @@ export function CreativesHub({
         )}
       </div>
 
-      {/* Sub-tabs */}
-      <Tabs defaultValue="concepts">
-        <TabsList className="h-8">
-          <TabsTrigger value="concepts" className="text-xs h-7">
-            Conceptos
-            {concepts.length > 0 && (
-              <span className="ml-1.5 text-xs bg-muted rounded-full px-1.5 py-0.5 text-muted-foreground">
-                {concepts.length}
-              </span>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="assets" className="text-xs h-7">
-            Assets
-            {assets.length > 0 && (
-              <span className="ml-1.5 text-xs bg-muted rounded-full px-1.5 py-0.5 text-muted-foreground">
-                {assets.length}
-              </span>
-            )}
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="concepts" className="mt-4">
-          <ConceptsTable
-            concepts={concepts}
-            assets={assets}
-            projectId={projectId}
-            cycleId={selectedCycleId}
-            isAdminOrSubadmin={canEdit}
-            onRefresh={reload}
-          />
-        </TabsContent>
-
-        <TabsContent value="assets" className="mt-4">
-          <AssetsTable
-            assets={assets}
-            concepts={concepts}
-            projectId={projectId}
-            cycleId={selectedCycleId}
-            isAdminOrSubadmin={canEdit}
-            onRefresh={reload}
-          />
-        </TabsContent>
-      </Tabs>
+      <ConceptsTable
+        concepts={concepts}
+        assets={assets}
+        briefs={briefs}
+        projectId={projectId}
+        cycleId={selectedCycleId}
+        isAdminOrSubadmin={canEdit}
+        onRefresh={reload}
+        brandBrains={brandBrains}
+        savedAds={savedAds}
+        boards={boards}
+      />
     </div>
   )
 }

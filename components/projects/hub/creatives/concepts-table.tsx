@@ -8,9 +8,10 @@ import { ConceptModal } from "./concept-modal"
 import { AssetModal } from "./asset-modal"
 import { generateCreativeConcepts, confirmAIDrafts, promoteConcept, demoteConcept, deleteConcept } from "@/lib/actions/creatives"
 import { CONCEPT_STATUS_COLORS, AWARENESS_LABELS, ANGLE_GUIDE, PRODUCTION_STATUS_COLORS, VERDICT_COLORS } from "@/lib/constants/creatives"
-import type { CreativeConcept, CreativeAsset } from "@/lib/types"
+import type { CreativeConcept, CreativeAsset, CreativeBrief } from "@/lib/types"
 import type { AIDraftConcept } from "@/lib/actions/creatives"
-import { Plus, Sparkles, Check, X, Loader2, Star, ArrowUpRight, Pencil, Trash2, Link2 } from "lucide-react"
+import { BriefCreator } from "./brief-creator"
+import { Plus, Sparkles, Check, X, Loader2, Star, ArrowUpRight, Pencil, Trash2, Link2, FileText, Upload } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const FUNNEL_COLORS: Record<string, string> = {
@@ -22,10 +23,14 @@ const FUNNEL_COLORS: Record<string, string> = {
 interface ConceptsTableProps {
   concepts: CreativeConcept[]
   assets: CreativeAsset[]
+  briefs?: CreativeBrief[]
   projectId: string
   cycleId: string | null
   isAdminOrSubadmin: boolean
   onRefresh: () => void
+  brandBrains?: any[]
+  savedAds?: any[]
+  boards?: any[]
 }
 
 // ── Concept detail modal (read-only) ─────────────────────────────────────────
@@ -544,13 +549,14 @@ function MecanismoCell({
 
 // ── Main table ───────────────────────────────────────────────────────────────
 
-export function ConceptsTable({ concepts, assets, projectId, cycleId, isAdminOrSubadmin, onRefresh }: ConceptsTableProps) {
+export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleId, isAdminOrSubadmin, onRefresh, brandBrains = [], savedAds = [], boards = [] }: ConceptsTableProps) {
   const [detailConcept, setDetailConcept]   = useState<CreativeConcept | null>(null)
   const [editConcept,   setEditConcept]     = useState<CreativeConcept | null>(null)
   const [showCreate,    setShowCreate]      = useState(false)
   const [aiDrafts,      setAiDrafts]        = useState<AIDraftConcept[]>([])
   const [previewIdx,    setPreviewIdx]      = useState<number | null>(null)
   const [newAssetForConceptId, setNewAssetForConceptId] = useState<string | null>(null)
+  const [briefForConcept, setBriefForConcept] = useState<CreativeConcept | null>(null)
   const [copied,        setCopied]          = useState(false)
   const [isGenerating, startGenerate] = useTransition()
   const [isConfirming, startConfirm]  = useTransition()
@@ -702,7 +708,11 @@ export function ConceptsTable({ concepts, assets, projectId, cycleId, isAdminOrS
                 key={c.id}
                 concept={c}
                 conceptAssets={assets.filter((a) => a.concept_id === c.id)}
+                conceptBriefs={briefs.filter((b) => b.concept_id === c.id)}
+                isAdminOrSubadmin={isAdminOrSubadmin}
                 onClick={() => setDetailConcept(c)}
+                onNewBrief={() => setBriefForConcept(c)}
+                onNewAsset={() => setNewAssetForConceptId(c.id)}
               />
             ))}
 
@@ -718,7 +728,11 @@ export function ConceptsTable({ concepts, assets, projectId, cycleId, isAdminOrS
                 key={c.id}
                 concept={c}
                 conceptAssets={assets.filter((a) => a.concept_id === c.id)}
+                conceptBriefs={briefs.filter((b) => b.concept_id === c.id)}
+                isAdminOrSubadmin={isAdminOrSubadmin}
                 onClick={() => setDetailConcept(c)}
+                onNewBrief={() => setBriefForConcept(c)}
+                onNewAsset={() => setNewAssetForConceptId(c.id)}
               />
             ))}
 
@@ -797,11 +811,25 @@ export function ConceptsTable({ concepts, assets, projectId, cycleId, isAdminOrS
           projectId={projectId}
           cycleId={cycleId}
           concepts={concepts}
+          briefs={briefs}
           defaultConceptId={newAssetForConceptId}
           isAdminOrSubadmin={isAdminOrSubadmin}
           open={!!newAssetForConceptId}
           onRefresh={onRefresh}
           onClose={() => setNewAssetForConceptId(null)}
+        />
+      )}
+
+      {/* Brief creator */}
+      {briefForConcept && (
+        <BriefCreator
+          concept={briefForConcept}
+          projectId={projectId}
+          brandBrains={brandBrains}
+          savedAds={savedAds}
+          boards={boards}
+          onClose={() => setBriefForConcept(null)}
+          onCreated={() => { setBriefForConcept(null); onRefresh(); }}
         />
       )}
     </div>
@@ -813,13 +841,20 @@ export function ConceptsTable({ concepts, assets, projectId, cycleId, isAdminOrS
 function ConceptRow({
   concept,
   conceptAssets,
+  conceptBriefs,
+  isAdminOrSubadmin,
   onClick,
+  onNewBrief,
+  onNewAsset,
 }: {
   concept: CreativeConcept
   conceptAssets: CreativeAsset[]
+  conceptBriefs: CreativeBrief[]
+  isAdminOrSubadmin: boolean
   onClick: () => void
+  onNewBrief: () => void
+  onNewAsset: () => void
 }) {
-  const publishedCount = conceptAssets.filter((a) => a.production_status === "Published").length
   const angleEntry = ANGLE_GUIDE.find((a) => a.name === concept.angle_type)
 
   return (
@@ -877,17 +912,42 @@ function ConceptRow({
       <td className="px-3 py-3 max-w-[12rem]">
         <p className="text-xs text-muted-foreground line-clamp-2" title={concept.transformation ?? ""}>{concept.transformation || "—"}</p>
       </td>
-      <td className="px-3 py-3 text-right">
-        {conceptAssets.length > 0 ? (
-          <div className="flex flex-col items-end gap-0.5">
-            <span className="text-xs font-medium">{conceptAssets.length} asset{conceptAssets.length !== 1 ? "s" : ""}</span>
-            {publishedCount > 0 && (
-              <span className="text-xs text-emerald-600">{publishedCount} pub.</span>
-            )}
-          </div>
-        ) : (
-          <span className="text-xs text-muted-foreground">Ver →</span>
-        )}
+      <td className="px-3 py-3">
+        <div className="flex items-center justify-end gap-1.5">
+          {conceptBriefs.length > 0 && (
+            <span className="inline-flex items-center gap-0.5 text-xs text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded-full" title={`${conceptBriefs.length} brief${conceptBriefs.length !== 1 ? "s" : ""}`}>
+              <FileText className="w-3 h-3" />
+              {conceptBriefs.length}
+            </span>
+          )}
+          {conceptAssets.length > 0 && (
+            <span className="inline-flex items-center gap-0.5 text-xs text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-full" title={`${conceptAssets.length} asset${conceptAssets.length !== 1 ? "s" : ""}`}>
+              <Upload className="w-3 h-3" />
+              {conceptAssets.length}
+            </span>
+          )}
+          {isAdminOrSubadmin && (
+            <div className="flex gap-0.5 ml-1" onClick={(e) => e.stopPropagation()}>
+              <button
+                onClick={onNewBrief}
+                className="p-1 rounded hover:bg-violet-100 text-muted-foreground hover:text-violet-600 transition-colors"
+                title="Crear brief"
+              >
+                <FileText className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={onNewAsset}
+                className="p-1 rounded hover:bg-blue-100 text-muted-foreground hover:text-blue-600 transition-colors"
+                title="Subir asset"
+              >
+                <Upload className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+          {!isAdminOrSubadmin && conceptBriefs.length === 0 && conceptAssets.length === 0 && (
+            <span className="text-xs text-muted-foreground">Ver →</span>
+          )}
+        </div>
       </td>
     </tr>
   )
