@@ -663,11 +663,42 @@ export interface CreativeConcept {
   creator?: Pick<Profile, "id" | "full_name"> | null
 }
 
+export interface BriefContent {
+  summary: string
+  strategy_rationale: string
+  key_messages: string[]
+  tone_direction: string
+  visual_direction: string
+  reference_insights: string
+  do_list: string[]
+  dont_list: string[]
+  suggested_formats: string[]
+}
+
+export interface CreativeBrief {
+  id: string
+  project_id: string
+  concept_id: string
+  brand_brain_id: string | null
+  brief_content: BriefContent
+  attached_ad_ids: string[]
+  attached_board_ids: string[]
+  adapted_script: AdCloneLine[] | null
+  share_token: string
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  // relations
+  concept?: Pick<CreativeConcept, "id" | "name" | "angle_type" | "target_persona"> | null
+  brand_brain?: Pick<BrandBrain, "id" | "name" | "industry"> | null
+}
+
 export interface CreativeAsset {
   id: string
   project_id: string
   cycle_id: string | null
   concept_id: string | null
+  brief_id: string | null
   format: string | null
   platform: string | null
   variant: string | null

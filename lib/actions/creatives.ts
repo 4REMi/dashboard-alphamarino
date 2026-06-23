@@ -2,7 +2,11 @@
 
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
-import type { CreativeConcept, CreativeAsset, ConceptStatus, ProductionStatus, AssetVerdict } from "@/lib/types"
+import { createAdminClient } from "@/lib/supabase/admin"
+import type {
+  CreativeConcept, CreativeAsset, CreativeBrief, BriefContent,
+  ConceptStatus, ProductionStatus, AssetVerdict, BrandBrain, AdCloneLine,
+} from "@/lib/types"
 
 // ── helpers ──────────────────────────────────────────────────
 
@@ -287,6 +291,189 @@ export async function toggleClientVisible(
     client_status:  visible ? "pending_review" : null,
     client_feedback: null,
   }).eq("id", assetId)
+  if (error) throw error
+  revalidatePath(`/projects/${projectId}`)
+}
+
+// ── BRIEFS ──────────────────────────────────────────────────
+
+export async function createBrief(
+  projectId: string,
+  conceptId: string,
+  brandBrainId: string,
+  attachedAdIds: string[] = [],
+  attachedBoardIds: string[] = [],
+): Promise<CreativeBrief> {
+  const supabase = await createClient()
+  const { userId, role } = await getRole()
+  if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
+
+  const { data, error } = await supabase.from("creative_briefs").insert({
+    project_id: projectId,
+    concept_id: conceptId,
+    brand_brain_id: brandBrainId,
+    attached_ad_ids: attachedAdIds,
+    attached_board_ids: attachedBoardIds,
+    created_by: userId,
+  }).select("*").single()
+  if (error) throw error
+  revalidatePath(`/projects/${projectId}`)
+  return data as CreativeBrief
+}
+
+export async function generateBriefContent(briefId: string): Promise<BriefContent> {
+  const supabase = await createClient()
+  const { role } = await getRole()
+  if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
+
+  const { data: brief } = await supabase
+    .from("creative_briefs")
+    .select("*, concept:creative_concepts!concept_id(*)")
+    .eq("id", briefId)
+    .single()
+  if (!brief) throw new Error("Brief not found")
+
+  const { data: brain } = await supabase
+    .from("brand_brains")
+    .select("name, industry, language, tone_of_voice, usps, key_benefits, pain_points, target_audience, ctas, description")
+    .eq("id", brief.brand_brain_id)
+    .single()
+  if (!brain) throw new Error("Brand Brain not found")
+
+  let referenceSummary = ""
+  if (brief.attached_ad_ids?.length > 0) {
+    const { data: ads } = await supabase
+      .from("saved_ads")
+      .select("page_name, body, format, hook")
+      .in("id", brief.attached_ad_ids)
+    if (ads?.length) {
+      referenceSummary += "\nReferencias de ads guardados:\n" + ads.map((a, i) =>
+        `${i + 1}. ${a.page_name ?? "Ad"}: ${a.body?.slice(0, 200) ?? "sin copy"}${a.format ? ` [${a.format}]` : ""}`
+      ).join("\n")
+    }
+  }
+
+  const c = brief.concept as Record<string, unknown>
+
+  const Anthropic = (await import("@anthropic-ai/sdk")).default
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+  const usps = (brain.usps ?? []).join(", ") || "—"
+  const benefits = (brain.key_benefits ?? []).join(", ") || "—"
+  const pains = (brain.pain_points ?? []).join(", ") || "—"
+  const ctas = (brain.ctas ?? []).join(", ") || "—"
+
+  const message = await client.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 2048,
+    system: `Eres un director creativo senior especializado en performance marketing. Tu trabajo es crear briefs creativos enriquecidos que un editor de video, diseñador gráfico o creator pueda usar directamente para producir un asset publicitario.
+
+Responde ÚNICAMENTE con un JSON válido con estos campos exactos. Sin markdown ni texto extra:
+{
+  "summary": "Resumen del brief en 2-3 oraciones",
+  "strategy_rationale": "Por qué esta combinación de concepto + marca funciona",
+  "key_messages": ["3-5 mensajes clave que el asset debe comunicar"],
+  "tone_direction": "Dirección de tono y voz específica para esta pieza",
+  "visual_direction": "Dirección visual: estilo, colores, mood, referencias",
+  "reference_insights": "Qué tomar de las referencias adjuntas (si las hay)",
+  "do_list": ["3-5 cosas que SÍ hacer"],
+  "dont_list": ["3-5 cosas que NO hacer"],
+  "suggested_formats": ["Formatos de ad recomendados para este concepto"]
+}`,
+    messages: [{
+      role: "user",
+      content: `Genera un brief creativo enriquecido combinando este concepto con el Brand Brain.
+
+CONCEPTO CREATIVO:
+- Nombre: ${c.name ?? "—"}
+- Ángulo: ${c.angle_type ?? "—"} (${c.organizing_principle ?? "—"})
+- Persona objetivo: ${c.target_persona ?? "—"}
+- Producto/Servicio: ${c.product_service ?? "—"}
+- Pain Point: ${c.pain_point ?? "—"}
+- Por qué funciona: ${c.why_it_works ?? "—"}
+- Objeción a superar: ${c.objection ?? "—"}
+- Transformación: ${c.transformation ?? "—"}
+- Funnel Stage: ${c.funnel_stage ?? "—"}
+- Awareness Stage: ${c.awareness_stage ?? "—"}/5
+
+BRAND BRAIN:
+- Marca: ${brain.name}
+- Industria: ${brain.industry ?? "—"}
+- Idioma: ${brain.language ?? "español"}
+- Tono de voz: ${brain.tone_of_voice ?? "—"}
+- USPs: ${usps}
+- Beneficios clave: ${benefits}
+- Dolores del cliente: ${pains}
+- Audiencia objetivo: ${brain.target_audience ?? "—"}
+- CTAs: ${ctas}
+- Descripción: ${brain.description ?? "—"}
+${referenceSummary}
+
+El brief debe ser accionable: un editor o diseñador que lo lea debe poder empezar a producir sin preguntar nada.`,
+    }],
+  })
+
+  const text = message.content[0].type === "text" ? message.content[0].text : ""
+  let parsed: BriefContent
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    const match = text.match(/\{[\s\S]*\}/)
+    if (match) parsed = JSON.parse(match[0])
+    else throw new Error("AI returned invalid JSON")
+  }
+
+  await supabase.from("creative_briefs").update({
+    brief_content: parsed,
+    updated_at: new Date().toISOString(),
+  }).eq("id", briefId)
+
+  revalidatePath(`/projects/${brief.project_id}`)
+  return parsed
+}
+
+export async function getBriefsForConcept(conceptId: string): Promise<CreativeBrief[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from("creative_briefs")
+    .select("*, brand_brain:brand_brains!brand_brain_id(id, name, industry)")
+    .eq("concept_id", conceptId)
+    .order("created_at", { ascending: false })
+  if (error) throw error
+  return (data ?? []) as CreativeBrief[]
+}
+
+export async function getBriefsForProject(projectId: string): Promise<CreativeBrief[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from("creative_briefs")
+    .select("*, concept:creative_concepts!concept_id(id, name, angle_type, target_persona), brand_brain:brand_brains!brand_brain_id(id, name, industry)")
+    .eq("project_id", projectId)
+    .order("created_at", { ascending: false })
+  if (error) throw error
+  return (data ?? []) as CreativeBrief[]
+}
+
+export async function getBriefByToken(token: string): Promise<CreativeBrief | null> {
+  const supabase = createAdminClient()
+  const { data } = await supabase
+    .from("creative_briefs")
+    .select(`
+      *,
+      concept:creative_concepts!concept_id(id, name, angle_type, organizing_principle, target_persona, pain_point, why_it_works, objection, transformation, funnel_stage, awareness_stage, product_service),
+      brand_brain:brand_brains!brand_brain_id(id, name, industry, language, logo_url, tone_of_voice, usps, key_benefits, pain_points, target_audience, ctas)
+    `)
+    .eq("share_token", token)
+    .single()
+  return (data as CreativeBrief) ?? null
+}
+
+export async function deleteBrief(id: string, projectId: string): Promise<void> {
+  const supabase = await createClient()
+  const { role } = await getRole()
+  if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
+
+  const { error } = await supabase.from("creative_briefs").delete().eq("id", id)
   if (error) throw error
   revalidatePath(`/projects/${projectId}`)
 }
