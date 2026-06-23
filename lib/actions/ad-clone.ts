@@ -17,7 +17,7 @@ async function assertAuth() {
 
 // ── AssemblyAI helpers ────────────────────────────────────────
 
-async function aaiPost(path: string, body: unknown) {
+export async function aaiPost(path: string, body: unknown) {
   const token = process.env.ASSEMBLYAI_API_KEY
   if (!token) throw new Error("ASSEMBLYAI_API_KEY no configurado")
   const res = await fetch(`${ASSEMBLYAI_BASE}${path}`, {
@@ -33,7 +33,7 @@ async function aaiPost(path: string, body: unknown) {
   return res.json()
 }
 
-async function aaiGet(path: string) {
+export async function aaiGet(path: string) {
   const token = process.env.ASSEMBLYAI_API_KEY
   if (!token) throw new Error("ASSEMBLYAI_API_KEY no configurado")
   const res = await fetch(`${ASSEMBLYAI_BASE}${path}`, {
@@ -59,7 +59,7 @@ function langInstruction(lang: string | null | undefined): string {
   return `CRITICAL — OUTPUT LANGUAGE: Write ALL adapted text in this language: ${lang}.`
 }
 
-async function adaptWithClaude(
+export async function adaptWithClaude(
   rawText: string,
   brain: Pick<BrandBrain, "name" | "industry" | "language" | "tone_of_voice" | "usps" | "key_benefits" | "pain_points" | "target_audience" | "ctas">,
   angulo?: string,

@@ -306,7 +306,7 @@ export function BriefCreator({
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
           <Button onClick={handleGenerate} disabled={!selectedBrainId || isPending}>
             {isPending ? (
-              <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Generando…</>
+              <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />{selectedAdIds.some(id => videoAds.find(a => a.id === id)) ? "Generando y tropicalizando…" : "Generando…"}</>
             ) : (
               <><Sparkles className="w-3.5 h-3.5 mr-1.5" />Generar Brief</>
             )}
