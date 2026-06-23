@@ -196,33 +196,14 @@ export async function createAsset(projectId: string, formData: FormData): Promis
   const { role } = await getRole()
   if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
 
-  const fmStr = formData.get("format_meta") as string | null
   const { error } = await supabase.from("creative_assets").insert({
-    project_id:        projectId,
-    cycle_id:          (formData.get("cycle_id") as string) || null,
-    concept_id:        (formData.get("concept_id") as string) || null,
-    format:            (formData.get("format") as string) || null,
-    platform:          (formData.get("platform") as string) || null,
-    variant:           (formData.get("variant") as string) || null,
-    iteration:         (formData.get("iteration") as string) || null,
-    hook:              (formData.get("hook") as string) || null,
-    copy:              (formData.get("copy") as string) || null,
-    cta:               (formData.get("cta") as string) || null,
-    mechanic_primary:  (formData.get("mechanic_primary") as string) || null,
-    mechanic_secondary:(formData.get("mechanic_secondary") as string) || null,
-    format_meta:       fmStr ? JSON.parse(fmStr) : null,
-    asset_url:         (formData.get("asset_url") as string) || null,
-    production_status: (formData.get("production_status") as ProductionStatus) ?? "Pending",
-    ctr:          formData.get("ctr")   ? Number(formData.get("ctr"))   : null,
-    cpc:          formData.get("cpc")   ? Number(formData.get("cpc"))   : null,
-    cpm:          formData.get("cpm")   ? Number(formData.get("cpm"))   : null,
-    roas:         formData.get("roas")  ? Number(formData.get("roas"))  : null,
-    cpa:          formData.get("cpa")   ? Number(formData.get("cpa"))   : null,
-    spend:        formData.get("spend") ? Number(formData.get("spend")) : null,
-    results:      formData.get("results") ? Number(formData.get("results")) : null,
-    results_type: (formData.get("results_type") as string) || null,
-    verdict:      (formData.get("verdict") as AssetVerdict) || null,
-    verdict_notes:(formData.get("verdict_notes") as string) || null,
+    project_id: projectId,
+    cycle_id:   (formData.get("cycle_id") as string) || null,
+    concept_id: (formData.get("concept_id") as string) || null,
+    brief_id:   (formData.get("brief_id") as string) || null,
+    asset_url:  (formData.get("asset_url") as string) || null,
+    format:     (formData.get("format") as string) || null,
+    platform:   (formData.get("platform") as string) || null,
   })
   if (error) throw error
   revalidatePath(`/projects/${projectId}`)
@@ -237,31 +218,12 @@ export async function updateAsset(
   const { role } = await getRole()
   if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
 
-  const fmStrU = formData.get("format_meta") as string | null
   const { error } = await supabase.from("creative_assets").update({
-    concept_id:        (formData.get("concept_id") as string) || null,
-    format:            (formData.get("format") as string) || null,
-    platform:          (formData.get("platform") as string) || null,
-    variant:           (formData.get("variant") as string) || null,
-    iteration:         (formData.get("iteration") as string) || null,
-    hook:              (formData.get("hook") as string) || null,
-    copy:              (formData.get("copy") as string) || null,
-    cta:               (formData.get("cta") as string) || null,
-    mechanic_primary:  (formData.get("mechanic_primary") as string) || null,
-    mechanic_secondary:(formData.get("mechanic_secondary") as string) || null,
-    format_meta:       fmStrU ? JSON.parse(fmStrU) : null,
-    asset_url:         (formData.get("asset_url") as string) || null,
-    production_status: (formData.get("production_status") as ProductionStatus) ?? "Pending",
-    ctr:          formData.get("ctr")   ? Number(formData.get("ctr"))   : null,
-    cpc:          formData.get("cpc")   ? Number(formData.get("cpc"))   : null,
-    cpm:          formData.get("cpm")   ? Number(formData.get("cpm"))   : null,
-    roas:         formData.get("roas")  ? Number(formData.get("roas"))  : null,
-    cpa:          formData.get("cpa")   ? Number(formData.get("cpa"))   : null,
-    spend:        formData.get("spend") ? Number(formData.get("spend")) : null,
-    results:      formData.get("results") ? Number(formData.get("results")) : null,
-    results_type: (formData.get("results_type") as string) || null,
-    verdict:      (formData.get("verdict") as AssetVerdict) || null,
-    verdict_notes:(formData.get("verdict_notes") as string) || null,
+    concept_id: (formData.get("concept_id") as string) || null,
+    brief_id:   (formData.get("brief_id") as string) || null,
+    asset_url:  (formData.get("asset_url") as string) || null,
+    format:     (formData.get("format") as string) || null,
+    platform:   (formData.get("platform") as string) || null,
   }).eq("id", id)
   if (error) throw error
   revalidatePath(`/projects/${projectId}`)
