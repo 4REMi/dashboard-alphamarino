@@ -627,15 +627,15 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
     setShowBrainPicker(true)
   }
 
-  function handleGenerate(brainId?: string) {
+  function handleGenerate(brainId?: string, lineId?: string) {
     if (!cycleId) return
-    const lineId = generateForLineId
+    const resolvedLineId = lineId ?? generateForLineId
     setShowBrainPicker(false)
     setGenerateForLineId(null)
     startGenerate(async () => {
-      const drafts = await generateCreativeConcepts(projectId, cycleId, brainId, lineId ?? undefined)
+      const drafts = await generateCreativeConcepts(projectId, cycleId, brainId, resolvedLineId ?? undefined)
       setAiDrafts(drafts)
-      setAiDraftsLineId(lineId)
+      setAiDraftsLineId(resolvedLineId)
     })
   }
 
@@ -870,7 +870,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
       {/* Grouped concept tables */}
       {groups.map(({ line, concepts: groupConcepts, groupId }) => {
         const isCollapsed = collapsedGroups.has(groupId)
-        const showDraftsHere = aiDraftsLineId === (line?.id ?? null) || (!line && !aiDraftsLineId)
+        const showDraftsHere = (aiDraftsLineId ?? null) === (line?.id ?? null)
         const count = groupConcepts.length
 
         return (
@@ -898,8 +898,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
                     if (line) {
                       const brain = brandBrains.find((b: any) => b.id === line.brand_brain_id)
                       if (brain) {
-                        setGenerateForLineId(line.id)
-                        handleGenerate(brain.id)
+                        handleGenerate(brain.id, line.id)
                       } else {
                         openBrainPicker(line.id)
                       }
@@ -953,8 +952,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
                                 onClick={() => {
                                   const brain = brandBrains.find((b: any) => b.id === line.brand_brain_id)
                                   if (brain) {
-                                    setGenerateForLineId(line.id)
-                                    handleGenerate(brain.id)
+                                    handleGenerate(brain.id, line.id)
                                   } else {
                                     openBrainPicker(line.id)
                                   }
