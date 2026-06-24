@@ -61,7 +61,6 @@ export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSub
     pain_point:           concept?.pain_point ?? "",
     objection:            concept?.objection ?? "",
     transformation:       concept?.transformation ?? "",
-    ref_links:            concept?.ref_links ?? "",
     status:               concept?.status ?? "Active",
     insight:              concept?.insight ?? "",
   })
@@ -235,10 +234,6 @@ export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSub
               </div>
             </div>
 
-            <div className="space-y-1">
-              <FieldLabel label="Referencias / Inspiración" tooltip="Links o descripciones de ads de referencia." />
-              <input value={form.ref_links} onChange={(e) => set("ref_links", e.target.value)} placeholder="Links o descripciones de referencia" className={fieldCls} />
-            </div>
           </div>
 
           {/* ── Edit-only fields ── */}
@@ -250,13 +245,12 @@ export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSub
                   {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
-            </div>
-          )}
-
-          {isAdminOrSubadmin && (
-            <div className="space-y-1 border-t pt-4">
-              <FieldLabel label="Insight estratégico" tooltip="Qué funcionó, qué no. Solo visible para admin/subadmin." />
-              <AutoTextarea value={form.insight} onChange={(e) => set("insight", e.target.value)} rows={2} placeholder="Aprendizajes del ciclo" className={fieldCls} />
+              {isAdminOrSubadmin && (
+                <div className="space-y-1">
+                  <FieldLabel label="Insight estratégico" tooltip="Qué funcionó, qué no. Solo visible para admin/subadmin." />
+                  <AutoTextarea value={form.insight} onChange={(e) => set("insight", e.target.value)} rows={2} placeholder="Aprendizajes del ciclo" className={fieldCls} />
+                </div>
+              )}
             </div>
           )}
 
