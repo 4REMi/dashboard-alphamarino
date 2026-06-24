@@ -820,3 +820,86 @@ export async function confirmAIDrafts(
   if (error) throw error
   revalidatePath(`/projects/${projectId}`)
 }
+
+// ── AI AUTOFILL ─────────────────────────────────────────────
+
+export async function autofillConcept(
+  idea: string,
+  brandBrainId?: string,
+  brandLineId?: string,
+): Promise<Record<string, string>> {
+  const supabase = await createClient()
+  const { role } = await getRole()
+  if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
+
+  const [brainRes, lineRes] = await Promise.all([
+    brandBrainId
+      ? supabase.from("brand_brains").select("name, industry, language, tone_of_voice, usps, key_benefits, pain_points, target_audience, description").eq("id", brandBrainId).single()
+      : Promise.resolve({ data: null }),
+    brandLineId
+      ? supabase.from("brand_lines").select("name, description, usps, pain_points, keywords").eq("id", brandLineId).single()
+      : Promise.resolve({ data: null }),
+  ])
+
+  const brain = brainRes.data as Record<string, any> | null
+  const line = lineRes.data as Record<string, any> | null
+
+  const systemPrompt = `Eres un estratega de publicidad digital. A partir de una idea escrita en lenguaje natural, rellena los campos de un concepto creativo para performance marketing.
+
+Devuelve ÚNICAMENTE un objeto JSON válido con estos campos (todos strings):
+- name: nombre corto del concepto (3-6 palabras)
+- organizing_principle: "Pain-First" o "Desire-First"
+- target_persona: descripción del buyer persona
+- angle_type: EXACTAMENTE uno de: Desired Outcome, Objection, Feature / Benefit, Use Case, Consequence, Misconception, Education, Acceptance, Failed Solutions, Identity
+- awareness_stage: número del 1 al 5 (como string)
+- funnel_stage: "TOF", "MOF" o "BOF"
+- pain_point: el dolor concreto
+- objection: la objeción principal
+- why_it_works: por qué resuena
+- transformation: el cambio prometido
+
+Sin markdown, sin texto extra. Solo el JSON.`
+
+  let context = ""
+  if (brain) {
+    context += `MARCA: ${brain.name}
+- Industria: ${brain.industry ?? "—"}
+- Tono: ${brain.tone_of_voice ?? "—"}
+- USPs: ${(brain.usps ?? []).join(", ") || "—"}
+- Dolores: ${(brain.pain_points ?? []).join(", ") || "—"}
+- Audiencia: ${brain.target_audience ?? "—"}
+- Descripción: ${brain.description ?? "—"}\n`
+  }
+  if (line) {
+    context += `LÍNEA DE PRODUCTO/SERVICIO: ${line.name}
+- Descripción: ${line.description ?? "—"}
+- USPs: ${(line.usps ?? []).join(", ") || "—"}
+- Dolores: ${(line.pain_points ?? []).join(", ") || "—"}
+- Keywords: ${(line.keywords ?? []).join(", ") || "—"}\n`
+  }
+
+  const userPrompt = `${context ? context + "\n" : ""}IDEA DEL USUARIO: "${idea}"
+
+Genera el concepto creativo basado en esta idea.`
+
+  const Anthropic = (await import("@anthropic-ai/sdk")).default
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+  const message = await client.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 1024,
+    messages: [{ role: "user", content: userPrompt }],
+    system: systemPrompt,
+  })
+
+  const text = message.content[0].type === "text" ? message.content[0].text : ""
+
+  try {
+    const parsed = JSON.parse(text)
+    return parsed as Record<string, string>
+  } catch {
+    const match = text.match(/\{[\s\S]*\}/)
+    if (match) return JSON.parse(match[0]) as Record<string, string>
+    throw new Error("AI returned invalid JSON")
+  }
+}

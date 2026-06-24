@@ -1035,6 +1035,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
           cycleId={cycleId}
           isAdminOrSubadmin={isAdminOrSubadmin}
           brandLineId={createForLineId}
+          brandBrainId={createForLineId ? brandLines.find((l: any) => l.id === createForLineId)?.brand_brain_id : brandBrains[0]?.id}
           open={createForLineId !== undefined}
           onRefresh={onRefresh}
           onClose={() => setCreateForLineId(undefined)}

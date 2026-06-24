@@ -5,10 +5,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
-import { createConcept, updateConcept, promoteConcept, deleteConcept } from "@/lib/actions/creatives"
+import { createConcept, updateConcept, promoteConcept, deleteConcept, autofillConcept } from "@/lib/actions/creatives"
 import { ANGLE_GUIDE, AWARENESS_LABELS, CONCEPT_STATUS_COLORS, PRODUCTION_STATUS_COLORS, VERDICT_COLORS } from "@/lib/constants/creatives"
 import type { CreativeConcept, CreativeAsset, FunnelStage } from "@/lib/types"
-import { Sparkles, Star, ChevronDown, ChevronUp, Trash2, ArrowUpRight, Plus, Info } from "lucide-react"
+import { Sparkles, Star, ChevronDown, ChevronUp, Trash2, ArrowUpRight, Plus, Info, Wand2, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const ORGANIZING_PRINCIPLES = ["Pain-First", "Desire-First"] as const
@@ -25,6 +25,7 @@ interface ConceptModalProps {
   isAdminOrSubadmin: boolean
   open: boolean
   brandLineId?: string | null
+  brandBrainId?: string | null
   onRefresh?: () => void
   onClose: () => void
   onNewAsset?: () => void
@@ -45,10 +46,12 @@ function FieldLabel({ label, tooltip, required }: { label: string; tooltip?: str
   )
 }
 
-export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSubadmin, open, brandLineId, onRefresh, onClose, onNewAsset }: ConceptModalProps) {
+export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSubadmin, open, brandLineId, brandBrainId, onRefresh, onClose, onNewAsset }: ConceptModalProps) {
   const isEdit = !!concept
   const [isPending, startTransition] = useTransition()
   const [showAngleGuide, setShowAngleGuide] = useState(false)
+  const [ideaText, setIdeaText] = useState("")
+  const [isAutofilling, setIsAutofilling] = useState(false)
 
   const [form, setForm] = useState({
     name:                 concept?.name ?? "",
@@ -108,6 +111,35 @@ export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSub
     })
   }
 
+  async function handleAutofill() {
+    if (!ideaText.trim() || isAutofilling) return
+    setIsAutofilling(true)
+    try {
+      const result = await autofillConcept(
+        ideaText.trim(),
+        brandBrainId ?? undefined,
+        (concept?.brand_line_id ?? brandLineId) ?? undefined,
+      )
+      setForm((prev) => ({
+        ...prev,
+        name:                 result.name ?? prev.name,
+        organizing_principle: result.organizing_principle ?? prev.organizing_principle,
+        target_persona:       result.target_persona ?? prev.target_persona,
+        angle_type:           result.angle_type ?? prev.angle_type,
+        awareness_stage:      String(result.awareness_stage ?? prev.awareness_stage),
+        funnel_stage:         result.funnel_stage ?? prev.funnel_stage,
+        pain_point:           result.pain_point ?? prev.pain_point,
+        objection:            result.objection ?? prev.objection,
+        why_it_works:         result.why_it_works ?? prev.why_it_works,
+        transformation:       result.transformation ?? prev.transformation,
+      }))
+    } catch (err) {
+      console.error("Autofill failed:", err)
+    } finally {
+      setIsAutofilling(false)
+    }
+  }
+
   const fieldCls = "w-full text-sm border rounded px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-ring"
 
   return (
@@ -136,6 +168,31 @@ export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSub
         )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
+
+          {/* ── AI Autofill ── */}
+          {!isEdit && (
+            <div className="flex gap-2">
+              <input
+                value={ideaText}
+                onChange={(e) => setIdeaText(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAutofill() } }}
+                placeholder="Describe tu idea y la IA rellena todo..."
+                className={cn(fieldCls, "flex-1")}
+                disabled={isAutofilling}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleAutofill}
+                disabled={isAutofilling || !ideaText.trim()}
+                className="shrink-0 gap-1.5 text-purple-600 border-purple-200 hover:bg-purple-50 hover:text-purple-700"
+              >
+                {isAutofilling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+                {isAutofilling ? "Generando..." : "Auto-rellenar"}
+              </Button>
+            </div>
+          )}
 
           {/* ── Identificación ── */}
           <div className="space-y-3">
