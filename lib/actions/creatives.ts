@@ -553,7 +553,7 @@ Cada objeto debe tener exactamente estos campos:
 - awareness_stage: número del 1 al 5
 - funnel_stage: "TOF", "MOF" o "BOF"
 
-Ángulos disponibles: Desired Outcome, Objection, Feature/Benefit, Use Case, Consequence, Misconception, Education, Acceptance, Failed Solutions, Identity`
+Ángulos disponibles (usar EXACTAMENTE estos nombres): Desired Outcome, Objection, Feature / Benefit, Use Case, Consequence, Misconception, Education, Acceptance, Failed Solutions, Identity`
 
   const brandBlock = brain ? `BRAND BRAIN — ${brain.name}:
 - Industria: ${brain.industry ?? "—"}

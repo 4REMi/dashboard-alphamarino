@@ -685,12 +685,12 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
           {isAdminOrSubadmin && (
             <>
               {cycleId && (
-                <div className="relative">
+                <>
                   <Button
                     variant="outline"
                     size="sm"
                     className="text-xs"
-                    onClick={() => setShowBrainPicker(!showBrainPicker)}
+                    onClick={() => setShowBrainPicker(true)}
                     disabled={isGenerating}
                   >
                     {isGenerating
@@ -698,51 +698,52 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
                       : <><Sparkles className="w-3.5 h-3.5 mr-1 text-purple-500" />Generar con IA</>
                     }
                   </Button>
-                  {showBrainPicker && !isGenerating && (
-                    <>
-                      <div className="fixed inset-0 z-30" onClick={() => setShowBrainPicker(false)} />
-                      <div className="absolute right-0 top-full mt-1 z-40 w-64 bg-popover border rounded-lg shadow-lg p-2 space-y-1">
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground px-2 py-1">
-                          Selecciona Brand Brain
+                  <Dialog open={showBrainPicker} onOpenChange={setShowBrainPicker}>
+                    <DialogContent className="max-w-lg">
+                      <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                          <Sparkles className="w-4 h-4 text-purple-500" />
+                          Generar conceptos con IA
+                        </DialogTitle>
+                      </DialogHeader>
+                      <div className="py-2 space-y-3">
+                        <p className="text-xs text-muted-foreground">
+                          Selecciona un Brand Brain para que la IA genere conceptos basados en la identidad de la marca.
                         </p>
                         {brandBrains.length === 0 ? (
-                          <>
-                            <p className="text-xs text-muted-foreground px-2 py-2">Sin Brand Brains disponibles</p>
-                            <button
-                              onClick={() => handleGenerate()}
-                              className="w-full text-left text-xs px-2 py-2 rounded hover:bg-muted transition-colors text-muted-foreground"
-                            >
-                              Generar sin Brand Brain →
-                            </button>
-                          </>
+                          <p className="text-sm text-muted-foreground py-4 text-center border rounded-lg">
+                            No hay Brand Brains. Crea uno en Ad Lab.
+                          </p>
                         ) : (
-                          <>
+                          <div className="grid gap-2">
                             {brandBrains.map((b: any) => (
                               <button
                                 key={b.id}
                                 onClick={() => handleGenerate(b.id)}
-                                className="w-full flex items-center gap-2 text-left text-xs px-2 py-2 rounded hover:bg-muted transition-colors"
+                                className="flex items-center gap-3 p-4 rounded-xl border text-left hover:border-primary/40 hover:bg-primary/5 transition-all"
                               >
-                                <span className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                                  <Sparkles className="w-2.5 h-2.5 text-primary" />
-                                </span>
-                                <span className="truncate font-medium">{b.name}</span>
-                                {b.industry && <span className="text-muted-foreground ml-auto flex-shrink-0">{b.industry}</span>}
+                                <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                                  <Sparkles className="w-4 h-4 text-primary" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium truncate">{b.name}</p>
+                                  {b.industry && (
+                                    <p className="text-xs text-muted-foreground truncate">{b.industry}</p>
+                                  )}
+                                </div>
                               </button>
                             ))}
-                            <div className="border-t my-1" />
-                            <button
-                              onClick={() => handleGenerate()}
-                              className="w-full text-left text-xs px-2 py-2 rounded hover:bg-muted transition-colors text-muted-foreground"
-                            >
-                              Generar sin Brand Brain →
-                            </button>
-                          </>
+                          </div>
                         )}
                       </div>
-                    </>
-                  )}
-                </div>
+                      <DialogFooter>
+                        <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => handleGenerate()}>
+                          Generar sin Brand Brain
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                </>
               )}
               <Button size="sm" className="text-xs" onClick={() => setShowCreate(true)}>
                 <Plus className="w-3.5 h-3.5 mr-1" />
