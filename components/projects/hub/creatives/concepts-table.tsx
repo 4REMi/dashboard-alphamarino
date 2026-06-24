@@ -598,6 +598,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
   const [newAssetForConceptId, setNewAssetForConceptId] = useState<string | null>(null)
   const [briefForConcept, setBriefForConcept] = useState<CreativeConcept | null>(null)
   const [copied,        setCopied]          = useState(false)
+  const [showBrainPicker, setShowBrainPicker] = useState(false)
   const [isGenerating, startGenerate] = useTransition()
   const [isConfirming, startConfirm]  = useTransition()
 
@@ -611,10 +612,11 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
   const evergreen = concepts.filter((c) => c.status === "Evergreen")
   const cycleOnly = concepts.filter((c) => c.status !== "Evergreen")
 
-  function handleGenerate() {
+  function handleGenerate(brainId?: string) {
     if (!cycleId) return
+    setShowBrainPicker(false)
     startGenerate(async () => {
-      const drafts = await generateCreativeConcepts(projectId, cycleId)
+      const drafts = await generateCreativeConcepts(projectId, cycleId, brainId)
       setAiDrafts(drafts)
     })
   }
@@ -683,12 +685,64 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
           {isAdminOrSubadmin && (
             <>
               {cycleId && (
-                <Button variant="outline" size="sm" className="text-xs" onClick={handleGenerate} disabled={isGenerating}>
-                  {isGenerating
-                    ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />Generando…</>
-                    : <><Sparkles className="w-3.5 h-3.5 mr-1 text-purple-500" />Generar con IA</>
-                  }
-                </Button>
+                <div className="relative">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs"
+                    onClick={() => setShowBrainPicker(!showBrainPicker)}
+                    disabled={isGenerating}
+                  >
+                    {isGenerating
+                      ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />Generando…</>
+                      : <><Sparkles className="w-3.5 h-3.5 mr-1 text-purple-500" />Generar con IA</>
+                    }
+                  </Button>
+                  {showBrainPicker && !isGenerating && (
+                    <>
+                      <div className="fixed inset-0 z-30" onClick={() => setShowBrainPicker(false)} />
+                      <div className="absolute right-0 top-full mt-1 z-40 w-64 bg-popover border rounded-lg shadow-lg p-2 space-y-1">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground px-2 py-1">
+                          Selecciona Brand Brain
+                        </p>
+                        {brandBrains.length === 0 ? (
+                          <>
+                            <p className="text-xs text-muted-foreground px-2 py-2">Sin Brand Brains disponibles</p>
+                            <button
+                              onClick={() => handleGenerate()}
+                              className="w-full text-left text-xs px-2 py-2 rounded hover:bg-muted transition-colors text-muted-foreground"
+                            >
+                              Generar sin Brand Brain →
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            {brandBrains.map((b: any) => (
+                              <button
+                                key={b.id}
+                                onClick={() => handleGenerate(b.id)}
+                                className="w-full flex items-center gap-2 text-left text-xs px-2 py-2 rounded hover:bg-muted transition-colors"
+                              >
+                                <span className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                                  <Sparkles className="w-2.5 h-2.5 text-primary" />
+                                </span>
+                                <span className="truncate font-medium">{b.name}</span>
+                                {b.industry && <span className="text-muted-foreground ml-auto flex-shrink-0">{b.industry}</span>}
+                              </button>
+                            ))}
+                            <div className="border-t my-1" />
+                            <button
+                              onClick={() => handleGenerate()}
+                              className="w-full text-left text-xs px-2 py-2 rounded hover:bg-muted transition-colors text-muted-foreground"
+                            >
+                              Generar sin Brand Brain →
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
               )}
               <Button size="sm" className="text-xs" onClick={() => setShowCreate(true)}>
                 <Plus className="w-3.5 h-3.5 mr-1" />

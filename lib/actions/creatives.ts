@@ -510,15 +510,19 @@ export interface AIDraftConcept {
 
 export async function generateCreativeConcepts(
   projectId: string,
-  cycleId: string
+  cycleId: string,
+  brandBrainId?: string,
 ): Promise<AIDraftConcept[]> {
   const supabase = await createClient()
   const { role } = await getRole()
   if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
 
-  // Fetch context: paid media context + previous concepts with insights
-  const [contextRes, conceptsRes, cycleRes] = await Promise.all([
-    supabase.from("paid_media_context").select("*").eq("project_id", projectId).single(),
+  // Fetch context: Brand Brain (preferred) + paid_media_context (fallback) + previous concepts + cycle
+  const [brainRes, contextRes, conceptsRes, cycleRes] = await Promise.all([
+    brandBrainId
+      ? supabase.from("brand_brains").select("name, industry, language, tone_of_voice, usps, key_benefits, pain_points, target_audience, ctas, description").eq("id", brandBrainId).single()
+      : Promise.resolve({ data: null }),
+    supabase.from("paid_media_context").select("*").eq("project_id", projectId).maybeSingle(),
     supabase.from("creative_concepts")
       .select("angle_type, target_persona, pain_point, status, insight, awareness_stage")
       .eq("project_id", projectId)
@@ -527,6 +531,7 @@ export async function generateCreativeConcepts(
     supabase.from("paid_media_cycles").select("*").eq("id", cycleId).single(),
   ])
 
+  const brain    = brainRes.data as Record<string, any> | null
   const ctx      = contextRes.data
   const prevConcepts = conceptsRes.data ?? []
   const cycle    = cycleRes.data
@@ -550,15 +555,29 @@ Cada objeto debe tener exactamente estos campos:
 
 Ángulos disponibles: Desired Outcome, Objection, Feature/Benefit, Use Case, Consequence, Misconception, Education, Acceptance, Failed Solutions, Identity`
 
-  const userPrompt = `Contexto de la cuenta:
-- Plataformas: ${ctx?.platforms?.join(", ") ?? "No especificadas"}
-- Objetivo principal: ${ctx?.main_objective ?? "No especificado"}
-- Presupuesto mensual de pauta: ${ctx?.monthly_ad_budget ? `$${ctx.monthly_ad_budget}` : "No especificado"}
-- ROAS objetivo: ${ctx?.target_roas ?? "—"}
-- CPA objetivo: ${ctx?.target_cpa ?? "—"}
-- CPL objetivo: ${ctx?.target_cpl ?? "—"}
-- Leads objetivo/mes: ${ctx?.target_leads_per_month ?? "—"}
-- Notas de cuenta (buyer persona, restricciones, briefing): ${ctx?.account_notes ?? "No especificadas"}
+  const brandBlock = brain ? `BRAND BRAIN — ${brain.name}:
+- Industria: ${brain.industry ?? "—"}
+- Idioma: ${brain.language ?? "español"}
+- Tono de voz: ${brain.tone_of_voice ?? "—"}
+- USPs: ${(brain.usps ?? []).join(", ") || "—"}
+- Beneficios clave: ${(brain.key_benefits ?? []).join(", ") || "—"}
+- Dolores del cliente: ${(brain.pain_points ?? []).join(", ") || "—"}
+- Audiencia objetivo: ${brain.target_audience ?? "—"}
+- CTAs: ${(brain.ctas ?? []).join(", ") || "—"}
+- Descripción: ${brain.description ?? "—"}` : null
+
+  const contextBlock = ctx ? `Contexto de cuenta (Paid Media):
+- Plataformas: ${ctx.platforms?.join(", ") ?? "No especificadas"}
+- Objetivo principal: ${ctx.main_objective ?? "No especificado"}
+- Presupuesto mensual de pauta: ${ctx.monthly_ad_budget ? `$${ctx.monthly_ad_budget}` : "No especificado"}
+- ROAS objetivo: ${ctx.target_roas ?? "—"}
+- CPA objetivo: ${ctx.target_cpa ?? "—"}
+- CPL objetivo: ${ctx.target_cpl ?? "—"}
+- Leads objetivo/mes: ${ctx.target_leads_per_month ?? "—"}
+- Notas de cuenta: ${ctx.account_notes ?? "No especificadas"}` : null
+
+  const userPrompt = `${brandBlock ?? contextBlock ?? "Sin contexto de marca disponible."}
+${brandBlock && contextBlock ? `\n${contextBlock}` : ""}
 
 Ciclo actual: ${cycle?.cycle_month ? new Date(cycle.cycle_month).toLocaleDateString("es-MX", { month: "long", year: "numeric" }) : "Activo"}
 
@@ -567,7 +586,7 @@ ${prevConcepts.length === 0 ? "Sin historial — cliente nuevo." : prevConcepts.
   `${i + 1}. Ángulo: ${c.angle_type ?? "—"} | Persona: ${c.target_persona} | Pain Point: ${c.pain_point} | Status: ${c.status}${c.insight ? ` | Insight: ${c.insight}` : ""}`
 ).join("\n")}
 
-Genera 5 conceptos creativos nuevos. Evita repetir combinaciones de ángulo+persona+dolor que ya existen en el historial. Si hay conceptos con status "Archived" y un insight negativo, aprende de ellos para no repetir el mismo error. Si hay conceptos "Winner" o "Evergreen", úsalos como referencia de qué tipo de mensaje resuena con este cliente.`
+Genera 5 conceptos creativos nuevos. ${brandBlock ? "Usa el Brand Brain como fuente principal de contexto sobre la marca, su audiencia, sus dolores y su tono." : ""} Evita repetir combinaciones de ángulo+persona+dolor que ya existen en el historial. Si hay conceptos con status "Archived" y un insight negativo, aprende de ellos para no repetir el mismo error. Si hay conceptos "Winner" o "Evergreen", úsalos como referencia de qué tipo de mensaje resuena con este cliente.`
 
   const Anthropic = (await import("@anthropic-ai/sdk")).default
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
