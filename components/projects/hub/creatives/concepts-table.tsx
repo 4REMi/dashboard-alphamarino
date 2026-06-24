@@ -681,21 +681,29 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
   }
 
   // ── Group concepts by brand line ──
-  const lineIds = [...new Set(concepts.map((c) => c.brand_line_id).filter(Boolean))] as string[]
-  const usedLines = brandLines.filter((l) => lineIds.includes(l.id)).sort((a, b) => a.position - b.position)
+  // Show ALL brand lines (even empty ones), plus a "General" group for ungrouped concepts
+  const allLines = [...brandLines].sort((a, b) => a.position - b.position)
   const ungrouped = concepts.filter((c) => !c.brand_line_id)
 
   type LineGroup = { line: BrandLine | null; concepts: CreativeConcept[]; groupId: string }
   const groups: LineGroup[] = [
-    ...usedLines.map((l) => ({
+    ...allLines.map((l) => ({
       line: l,
       concepts: concepts.filter((c) => c.brand_line_id === l.id),
       groupId: l.id,
     })),
-    ...(ungrouped.length > 0 || (concepts.length === 0 && usedLines.length === 0)
-      ? [{ line: null, concepts: ungrouped, groupId: "__general__" }]
-      : []),
+    { line: null, concepts: ungrouped, groupId: "__general__" },
   ]
+
+  // Empty groups start collapsed
+  const [initializedCollapsed, setInitializedCollapsed] = useState(false)
+  if (!initializedCollapsed && allLines.length > 0) {
+    const emptyIds = groups.filter((g) => g.concepts.length === 0 && g.line).map((g) => g.groupId)
+    if (emptyIds.length > 0) {
+      setCollapsedGroups(new Set(emptyIds))
+    }
+    setInitializedCollapsed(true)
+  }
 
   const groupTh = "px-3 py-1.5 text-center text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70 border-b border-border bg-muted/30"
   const subTh   = "px-3 py-2 text-left text-xs font-medium text-muted-foreground bg-muted/50"
@@ -880,8 +888,8 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
               <span className="text-sm font-semibold flex-1">
                 {line?.name ?? "General"}
               </span>
-              <span className="text-xs text-muted-foreground mr-2">
-                {count} concepto{count !== 1 ? "s" : ""}
+              <span className={cn("text-xs mr-2", count === 0 ? "text-muted-foreground/40 italic" : "text-muted-foreground")}>
+                {count === 0 ? "Sin conceptos" : `${count} concepto${count !== 1 ? "s" : ""}`}
               </span>
               {isAdminOrSubadmin && cycleId && (
                 <span
@@ -934,11 +942,34 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
                     {renderConceptRows(groupConcepts)}
                     {groupConcepts.length === 0 && !(showDraftsHere && aiDrafts.length > 0) && (
                       <tr>
-                        <td colSpan={12} className="px-4 py-8 text-center text-muted-foreground text-sm">
-                          Sin conceptos{line ? ` para ${line.name}` : ""}
-                          {isAdminOrSubadmin && cycleId && (
-                            <p className="text-xs mt-1">Genera conceptos con IA o crea uno manualmente</p>
-                          )}
+                        <td colSpan={12} className="px-4 py-8 text-center">
+                          <div className="flex flex-col items-center gap-2">
+                            <p className="text-sm text-muted-foreground">
+                              {line ? `Sin conceptos para ${line.name}` : "Sin conceptos"}
+                            </p>
+                            {isAdminOrSubadmin && cycleId && line && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const brain = brandBrains.find((b: any) => b.id === line.brand_brain_id)
+                                  if (brain) {
+                                    setGenerateForLineId(line.id)
+                                    handleGenerate(brain.id)
+                                  } else {
+                                    openBrainPicker(line.id)
+                                  }
+                                }}
+                                disabled={isGenerating}
+                                className="flex items-center gap-1.5 text-xs text-purple-600 hover:text-purple-700 px-3 py-1.5 rounded-lg border border-purple-200 hover:bg-purple-50 transition-colors"
+                              >
+                                <Sparkles className="w-3 h-3" />
+                                Generar primeros conceptos
+                              </button>
+                            )}
+                            {isAdminOrSubadmin && cycleId && !line && (
+                              <p className="text-xs text-muted-foreground">Crea uno manualmente o genera con IA</p>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     )}
