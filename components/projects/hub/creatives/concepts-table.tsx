@@ -593,7 +593,7 @@ function MecanismoCell({
 export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleId, isAdminOrSubadmin, onRefresh, brandBrains = [], brandLines = [], savedAds = [], boards = [] }: ConceptsTableProps) {
   const [detailConcept, setDetailConcept]   = useState<CreativeConcept | null>(null)
   const [editConcept,   setEditConcept]     = useState<CreativeConcept | null>(null)
-  const [showCreate,    setShowCreate]      = useState(false)
+  const [createForLineId, setCreateForLineId] = useState<string | null | undefined>(undefined)
   const [aiDrafts,      setAiDrafts]        = useState<AIDraftConcept[]>([])
   const [aiDraftsLineId, setAiDraftsLineId] = useState<string | null>(null)
   const [previewIdx,    setPreviewIdx]      = useState<number | null>(null)
@@ -811,10 +811,6 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
                   }
                 </Button>
               )}
-              <Button size="sm" className="text-xs" onClick={() => setShowCreate(true)}>
-                <Plus className="w-3.5 h-3.5 mr-1" />
-                Nuevo concepto
-              </Button>
             </>
           )}
         </div>
@@ -892,28 +888,36 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
                 {count === 0 ? "Sin conceptos" : `${count} concepto${count !== 1 ? "s" : ""}`}
               </span>
               {isAdminOrSubadmin && cycleId && (
-                <span
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    if (line) {
-                      const brain = brandBrains.find((b: any) => b.id === line.brand_brain_id)
-                      if (brain) {
-                        handleGenerate(brain.id, line.id)
+                <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                  <span
+                    onClick={() => setCreateForLineId(line?.id ?? null)}
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-muted transition-colors"
+                  >
+                    <Plus className="w-3 h-3" />
+                    Nuevo
+                  </span>
+                  <span
+                    onClick={() => {
+                      if (line) {
+                        const brain = brandBrains.find((b: any) => b.id === line.brand_brain_id)
+                        if (brain) {
+                          handleGenerate(brain.id, line.id)
+                        } else {
+                          openBrainPicker(line.id)
+                        }
                       } else {
-                        openBrainPicker(line.id)
+                        openBrainPicker()
                       }
-                    } else {
-                      openBrainPicker()
+                    }}
+                    className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-700 px-2 py-1 rounded hover:bg-purple-50 transition-colors"
+                  >
+                    {isGenerating && generateForLineId === (line?.id ?? null)
+                      ? <Loader2 className="w-3 h-3 animate-spin" />
+                      : <Sparkles className="w-3 h-3" />
                     }
-                  }}
-                  className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-700 px-2 py-1 rounded hover:bg-purple-50 transition-colors"
-                >
-                  {isGenerating && generateForLineId === (line?.id ?? null)
-                    ? <Loader2 className="w-3 h-3 animate-spin" />
-                    : <Sparkles className="w-3 h-3" />
-                  }
-                  Generar
-                </span>
+                    Generar
+                  </span>
+                </div>
               )}
               <ChevronDown className={cn(
                 "w-4 h-4 text-muted-foreground transition-transform",
@@ -1025,14 +1029,15 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
       )}
 
       {/* Create concept modal */}
-      {showCreate && (
+      {createForLineId !== undefined && (
         <ConceptModal
           projectId={projectId}
           cycleId={cycleId}
           isAdminOrSubadmin={isAdminOrSubadmin}
-          open={showCreate}
+          brandLineId={createForLineId}
+          open={createForLineId !== undefined}
           onRefresh={onRefresh}
-          onClose={() => setShowCreate(false)}
+          onClose={() => setCreateForLineId(undefined)}
         />
       )}
 
