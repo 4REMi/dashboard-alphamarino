@@ -2,6 +2,7 @@ import { notFound } from "next/navigation"
 import { getBriefByToken } from "@/lib/actions/creatives"
 import type { AdCloneLine } from "@/lib/types"
 import { ANGLE_GUIDE } from "@/lib/constants/creatives"
+import { BriefReferences } from "@/components/share/brief-references"
 
 interface Props {
   params: Promise<{ token: string }>
@@ -33,14 +34,33 @@ export default async function ShareBriefPage({ params }: Props) {
 
   const angleEntry = concept?.angle_type ? ANGLE_GUIDE.find((a) => a.name === concept.angle_type) : null
 
+  const references: { id: string; type: "video" | "image"; name: string; videoSrc?: string; thumbSrc?: string; script?: AdCloneLine[] }[] = []
+
   const videoAds = attachedAds?.filter((a) => a.format === "video" || a.cached_video_url || a.video_url) ?? []
   const imageAds = attachedAds?.filter((a) => a.format !== "video" && !a.cached_video_url && !a.video_url) ?? []
-  const hasMedia = videoAds.length > 0 || imageAds.length > 0
-  const hasScript = script && script.length > 0
+
+  videoAds.forEach((ad) => {
+    references.push({
+      id: ad.id,
+      type: "video",
+      name: ad.page_name ?? "Video",
+      videoSrc: ad.cached_video_url || ad.video_url || undefined,
+      thumbSrc: ad.cached_image_url || ad.image_url || undefined,
+      script: script ?? undefined,
+    })
+  })
+
+  imageAds.forEach((ad) => {
+    references.push({
+      id: ad.id,
+      type: "image",
+      name: ad.page_name ?? "Imagen",
+      thumbSrc: ad.cached_image_url || ad.image_url || undefined,
+    })
+  })
 
   return (
     <div className="min-h-screen bg-[#f8f9fb]">
-      {/* ── Header ── */}
       <header className="border-b border-gray-200 bg-white sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
           <div>
@@ -62,7 +82,6 @@ export default async function ShareBriefPage({ params }: Props) {
       </header>
 
       <main className="max-w-5xl mx-auto px-6 py-10 space-y-10">
-
         {/* ── Concept Angle Card ── */}
         {concept && (
           <section className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
@@ -110,93 +129,20 @@ export default async function ShareBriefPage({ params }: Props) {
           </section>
         )}
 
-        {/* ── References: Media Grid ── */}
-        {hasMedia && (
+        {/* ── References (accordion) ── */}
+        {references.length > 0 ? (
           <section>
-            <SectionLabel>Referencias</SectionLabel>
-            <div className={`grid gap-4 ${videoAds.length === 1 && imageAds.length === 0 ? "max-w-xs" : "sm:grid-cols-2 lg:grid-cols-3"}`}>
-              {videoAds.map((ad: any) => {
-                const videoSrc = ad.cached_video_url || ad.video_url
-                const thumb = ad.cached_image_url || ad.image_url
-                return (
-                  <div key={ad.id} className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-                    {videoSrc ? (
-                      <div className="bg-black">
-                        <video
-                          controls
-                          preload="metadata"
-                          poster={thumb || undefined}
-                          className="w-full aspect-[9/16] object-contain"
-                          style={{ display: "block" }}
-                        >
-                          <source src={videoSrc} />
-                        </video>
-                      </div>
-                    ) : thumb ? (
-                      <div className="bg-gray-50">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={thumb} alt="" className="w-full aspect-[9/16] object-cover" />
-                      </div>
-                    ) : null}
-                    <div className="px-4 py-3">
-                      <p className="text-sm font-medium text-gray-900 truncate">{ad.page_name ?? "Video"}</p>
-                    </div>
-                  </div>
-                )
-              })}
-              {imageAds.map((ad: any) => {
-                const src = ad.cached_image_url || ad.image_url
-                return (
-                  <div key={ad.id} className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-                    {src && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={src} alt="" className="w-full object-cover" />
-                    )}
-                    <div className="px-4 py-3">
-                      <p className="text-sm font-medium text-gray-900 truncate">{ad.page_name ?? "Imagen"}</p>
-                    </div>
-                  </div>
-                )
-              })}
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-1 h-6 rounded-full bg-gray-300" />
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500">
+                Referencias ({references.length})
+              </p>
             </div>
+            <BriefReferences references={references} />
           </section>
-        )}
-
-        {/* ── Tropicalized Script ── */}
-        {hasScript && (
-          <section>
-            <SectionLabel>Guión tropicalizado</SectionLabel>
-            <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-              <div className="divide-y divide-gray-100">
-                {script.map((line, i) => (
-                  <div key={i} className="grid sm:grid-cols-2">
-                    <div className="px-5 py-3.5 sm:border-r border-gray-100">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-[10px] font-bold flex items-center justify-center flex-shrink-0">
-                          {i + 1}
-                        </span>
-                        {line.speaker && (
-                          <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-                            {line.speaker}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-sm text-gray-400 line-through leading-relaxed">{line.original}</p>
-                    </div>
-                    <div className="px-5 py-3.5 bg-indigo-50/30">
-                      <p className="text-sm text-gray-900 font-medium leading-relaxed">{line.adapted}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* ── Empty state ── */}
-        {!hasMedia && !hasScript && (
+        ) : (
           <div className="text-center py-16">
-            <p className="text-sm text-gray-400">Brief sin referencias multimedia ni guión tropicalizado.</p>
+            <p className="text-sm text-gray-400">Brief sin referencias multimedia.</p>
           </div>
         )}
       </main>
@@ -206,15 +152,6 @@ export default async function ShareBriefPage({ params }: Props) {
           <p className="text-xs text-gray-400">Brief generado por Alpha Marino · Paint Media</p>
         </div>
       </footer>
-    </div>
-  )
-}
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-3 mb-4">
-      <div className="w-1 h-6 rounded-full bg-gray-300" />
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500">{children}</p>
     </div>
   )
 }
