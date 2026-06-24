@@ -8,7 +8,7 @@ import { getCustomers } from "@/lib/actions/customers"
 import { getProjectDeliverables } from "@/lib/actions/deliverables"
 import { getSops } from "@/lib/actions/sops"
 import { getCreativeConcepts, getCreativeAssets } from "@/lib/actions/creatives"
-import { getBrandBrains } from "@/lib/actions/brand-brains"
+import { getBrandBrains, getAllBrandLines } from "@/lib/actions/brand-brains"
 import { getSavedAds, getBoards } from "@/lib/actions/ad-lab"
 import { getMetaCampaigns } from "@/lib/actions/meta"
 import { getProjectIntegrations } from "@/lib/actions/integrations"
@@ -95,7 +95,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const historyCycles = (cycles as PaidMediaCycle[]).filter((c) => !c.is_active)
 
   // Fetch initial creatives + meta campaigns + integrations for active cycle
-  const [initialConcepts, initialAssets, initialMetaCampaigns, integrations, brandBrains, savedAds, boards] = isPaidMedia
+  const [initialConcepts, initialAssets, initialMetaCampaigns, integrations, brandBrains, savedAds, boards, brandLines] = isPaidMedia
     ? await Promise.all([
         getCreativeConcepts(id, activeCycle?.id ?? null).catch(() => []),
         getCreativeAssets(id, activeCycle?.id ?? null).catch(() => []),
@@ -104,8 +104,9 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         getBrandBrains().catch(() => []),
         getSavedAds().catch(() => []),
         getBoards().catch(() => []),
+        getAllBrandLines().catch(() => []),
       ])
-    : [[], [], [], [], [], [], []]
+    : [[], [], [], [], [], [], [], []]
 
   const totalIncome        = income.reduce((s, i) => s + Number(i.amount), 0)
   const totalExpenses      = expenses.reduce((s, e) => s + Number(e.amount), 0)
@@ -397,6 +398,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               initialAssets={initialAssets as CreativeAsset[]}
               isAdminOrSubadmin={isAdminOrSubadmin}
               brandBrains={brandBrains as any[]}
+              brandLines={brandLines as any[]}
               savedAds={savedAds as any[]}
               boards={boards as any[]}
             />

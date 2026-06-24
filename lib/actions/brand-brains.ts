@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import type { BrandBrain, BrandBrainAsset } from "@/lib/types"
+import type { BrandBrain, BrandBrainAsset, BrandLine } from "@/lib/types"
 
 async function assertAuth() {
   const supabase = await createClient()
@@ -270,4 +270,76 @@ export async function deleteBrandBrainAsset(assetId: string, brandBrainId: strin
   const { error } = await supabase.from("brand_brain_assets").delete().eq("id", assetId)
   if (error) throw error
   revalidate(brandBrainId)
+}
+
+// ── Brand Lines ──────────────────────────────────────────────
+
+export async function getBrandLines(brainId: string): Promise<BrandLine[]> {
+  const { supabase } = await assertAuth()
+  const { data, error } = await supabase
+    .from("brand_lines")
+    .select("*")
+    .eq("brand_brain_id", brainId)
+    .order("position", { ascending: true })
+  if (error) throw error
+  return (data ?? []) as BrandLine[]
+}
+
+export async function getAllBrandLines(): Promise<BrandLine[]> {
+  const { supabase } = await assertAuth()
+  const { data, error } = await supabase
+    .from("brand_lines")
+    .select("*")
+    .order("position", { ascending: true })
+  if (error) throw error
+  return (data ?? []) as BrandLine[]
+}
+
+export async function createBrandLine(
+  brainId: string,
+  fields: { name: string; description?: string | null; usps?: string[]; pain_points?: string[]; keywords?: string[]; color?: string }
+): Promise<BrandLine> {
+  const { supabase } = await assertAuth()
+  const { data: maxPos } = await supabase
+    .from("brand_lines")
+    .select("position")
+    .eq("brand_brain_id", brainId)
+    .order("position", { ascending: false })
+    .limit(1)
+    .single()
+
+  const { data, error } = await supabase.from("brand_lines").insert({
+    brand_brain_id: brainId,
+    name: fields.name,
+    description: fields.description || null,
+    usps: fields.usps ?? [],
+    pain_points: fields.pain_points ?? [],
+    keywords: fields.keywords ?? [],
+    color: fields.color ?? "#6366f1",
+    position: (maxPos?.position ?? -1) + 1,
+  }).select("*").single()
+  if (error) throw error
+  revalidate(brainId)
+  return data as BrandLine
+}
+
+export async function updateBrandLine(
+  id: string,
+  brainId: string,
+  fields: Partial<Pick<BrandLine, "name" | "description" | "usps" | "pain_points" | "keywords" | "color" | "position">>
+): Promise<void> {
+  const { supabase } = await assertAuth()
+  const { error } = await supabase.from("brand_lines").update({
+    ...fields,
+    updated_at: new Date().toISOString(),
+  }).eq("id", id)
+  if (error) throw error
+  revalidate(brainId)
+}
+
+export async function deleteBrandLine(id: string, brainId: string): Promise<void> {
+  const { supabase } = await assertAuth()
+  const { error } = await supabase.from("brand_lines").delete().eq("id", id)
+  if (error) throw error
+  revalidate(brainId)
 }

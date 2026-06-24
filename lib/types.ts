@@ -656,11 +656,13 @@ export interface CreativeConcept {
   proposed_hook: string | null
   status: ConceptStatus
   insight: string | null  // admin/subadmin only
+  brand_line_id: string | null
   created_by: string | null
   created_at: string
   // relations
   parent?: Pick<CreativeConcept, "id" | "angle_type" | "status" | "insight"> | null
   creator?: Pick<Profile, "id" | "full_name"> | null
+  brand_line?: Pick<BrandLine, "id" | "name" | "color"> | null
 }
 
 export interface BriefContent {
@@ -680,6 +682,7 @@ export interface CreativeBrief {
   project_id: string
   concept_id: string
   brand_brain_id: string | null
+  brand_line_id: string | null
   brief_content: BriefContent
   attached_ad_ids: string[]
   attached_board_ids: string[]
@@ -691,6 +694,7 @@ export interface CreativeBrief {
   // relations
   concept?: Pick<CreativeConcept, "id" | "name" | "angle_type" | "target_persona"> | null
   brand_brain?: Pick<BrandBrain, "id" | "name" | "industry"> | null
+  brand_line?: Pick<BrandLine, "id" | "name" | "color"> | null
 }
 
 export interface CreativeAsset {
@@ -823,6 +827,20 @@ export interface BrandBrainAsset {
   size: number | null
   added_by: string | null
   created_at: string
+}
+
+export interface BrandLine {
+  id: string
+  brand_brain_id: string
+  name: string
+  description: string | null
+  usps: string[]
+  pain_points: string[]
+  keywords: string[]
+  color: string
+  position: number
+  created_at: string
+  updated_at: string
 }
 
 export interface AdBoard {

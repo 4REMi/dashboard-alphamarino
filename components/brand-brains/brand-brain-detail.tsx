@@ -1,19 +1,21 @@
 "use client"
 
 import { useState, useTransition, useRef } from "react"
-import type { BrandBrain, BrandBrainAsset } from "@/lib/types"
-import { deleteBrandBrain, addBrandBrainAsset, deleteBrandBrainAsset } from "@/lib/actions/brand-brains"
+import type { BrandBrain, BrandBrainAsset, BrandLine } from "@/lib/types"
+import { deleteBrandBrain, addBrandBrainAsset, deleteBrandBrainAsset, createBrandLine, updateBrandLine, deleteBrandLine } from "@/lib/actions/brand-brains"
 import { BrandBrainModal } from "@/components/brand-brains/brand-brain-modal"
 import {
   ArrowLeft, Brain, Pencil, Trash2, Upload, X,
-  Loader2, Image as ImageIcon, Film, Download,
+  Loader2, Image as ImageIcon, Film, Download, Plus, Package,
 } from "lucide-react"
+import { cn } from "@/lib/utils"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 
 interface Props {
   brain: BrandBrain
   canEdit: boolean
+  initialLines?: BrandLine[]
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -49,9 +51,14 @@ function brandColor(name: string): string {
   return colors[Math.abs(hash) % colors.length]
 }
 
-export function BrandBrainDetail({ brain: initialBrain, canEdit }: Props) {
+const LINE_COLORS = ["#6366f1", "#ec4899", "#14b8a6", "#f59e0b", "#ef4444", "#3b82f6", "#8b5cf6", "#10b981"]
+
+export function BrandBrainDetail({ brain: initialBrain, canEdit, initialLines = [] }: Props) {
   const [brain, setBrain]       = useState(initialBrain)
   const [assets, setAssets]     = useState<BrandBrainAsset[]>(initialBrain.assets ?? [])
+  const [lines, setLines]       = useState<BrandLine[]>(initialLines)
+  const [editingLine, setEditingLine] = useState<BrandLine | null>(null)
+  const [showNewLine, setShowNewLine] = useState(false)
   const [showEdit, setShowEdit] = useState(false)
   const [isPending, startTransition] = useTransition()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -298,6 +305,103 @@ export function BrandBrainDetail({ brain: initialBrain, canEdit }: Props) {
                 </div>
               )}
 
+              {/* Brand Lines */}
+              <div className="rounded-xl border border-border bg-card p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Package className="w-3.5 h-3.5 text-muted-foreground" />
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                      Líneas de Producto / Servicio
+                    </p>
+                  </div>
+                  {canEdit && (
+                    <button
+                      onClick={() => setShowNewLine(true)}
+                      className="flex items-center gap-1.5 h-7 px-3 rounded-lg border border-border text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                    >
+                      <Plus className="w-3 h-3" />
+                      Nueva línea
+                    </button>
+                  )}
+                </div>
+
+                {showNewLine && (
+                  <BrandLineForm
+                    brainId={brain.id}
+                    suggestedColor={LINE_COLORS[lines.length % LINE_COLORS.length]}
+                    onSaved={(line) => { setLines((prev) => [...prev, line]); setShowNewLine(false) }}
+                    onCancel={() => setShowNewLine(false)}
+                  />
+                )}
+
+                {editingLine && (
+                  <BrandLineForm
+                    brainId={brain.id}
+                    line={editingLine}
+                    onSaved={(updated) => {
+                      setLines((prev) => prev.map((l) => l.id === updated.id ? updated : l))
+                      setEditingLine(null)
+                    }}
+                    onCancel={() => setEditingLine(null)}
+                  />
+                )}
+
+                {lines.length === 0 && !showNewLine ? (
+                  <div
+                    onClick={() => canEdit && setShowNewLine(true)}
+                    className={`border-2 border-dashed border-border rounded-lg py-6 flex flex-col items-center gap-2 text-center ${canEdit ? "cursor-pointer hover:border-primary/40 hover:bg-muted/30 transition-colors" : ""}`}
+                  >
+                    <Package className="w-5 h-5 text-muted-foreground" />
+                    <p className="text-xs text-muted-foreground">
+                      {canEdit ? "Agrega líneas de producto o servicio para contextualizar tus creativos" : "Sin líneas definidas"}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {lines.map((line) => (
+                      <div key={line.id} className="flex items-start gap-3 p-3 rounded-lg border border-border hover:bg-muted/30 transition-colors group">
+                        <div className="w-3 h-3 rounded-full flex-shrink-0 mt-1" style={{ backgroundColor: line.color }} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium">{line.name}</p>
+                          {line.description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{line.description}</p>}
+                          <div className="flex flex-wrap gap-1 mt-1.5">
+                            {line.usps?.map((u, i) => (
+                              <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">{u}</span>
+                            ))}
+                            {line.pain_points?.map((p, i) => (
+                              <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-rose-50 text-rose-700">{p}</span>
+                            ))}
+                            {line.keywords?.map((k, i) => (
+                              <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">{k}</span>
+                            ))}
+                          </div>
+                        </div>
+                        {canEdit && (
+                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                            <button
+                              onClick={() => setEditingLine(line)}
+                              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                            >
+                              <Pencil className="w-3 h-3" />
+                            </button>
+                            <button
+                              onClick={async () => {
+                                if (!confirm(`¿Eliminar "${line.name}"?`)) return
+                                await deleteBrandLine(line.id, brain.id)
+                                setLines((prev) => prev.filter((l) => l.id !== line.id))
+                              }}
+                              className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Assets */}
               <div className="rounded-xl border border-border bg-card p-4">
                 <div className="flex items-center justify-between mb-3">
@@ -369,5 +473,96 @@ export function BrandBrainDetail({ brain: initialBrain, canEdit }: Props) {
         </div>
       </div>
     </>
+  )
+}
+
+// ── Brand Line inline form ──────────────────────────────────
+
+function BrandLineForm({
+  brainId,
+  line,
+  suggestedColor,
+  onSaved,
+  onCancel,
+}: {
+  brainId: string
+  line?: BrandLine
+  suggestedColor?: string
+  onSaved: (line: BrandLine) => void
+  onCancel: () => void
+}) {
+  const [name, setName] = useState(line?.name ?? "")
+  const [description, setDescription] = useState(line?.description ?? "")
+  const [usps, setUsps] = useState(line?.usps?.join("\n") ?? "")
+  const [painPoints, setPainPoints] = useState(line?.pain_points?.join("\n") ?? "")
+  const [keywords, setKeywords] = useState(line?.keywords?.join(", ") ?? "")
+  const [color, setColor] = useState(line?.color ?? suggestedColor ?? "#6366f1")
+  const [isPending, startTransition] = useTransition()
+
+  const inputCls = "w-full px-3 py-2 text-sm rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+  const labelCls = "text-[11px] font-medium text-muted-foreground mb-1 block"
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!name.trim()) return
+    startTransition(async () => {
+      const fields = {
+        name: name.trim(),
+        description: description.trim() || null,
+        usps: usps.split("\n").map((s) => s.trim()).filter(Boolean),
+        pain_points: painPoints.split("\n").map((s) => s.trim()).filter(Boolean),
+        keywords: keywords.split(",").map((s) => s.trim()).filter(Boolean),
+        color,
+      }
+      if (line) {
+        await updateBrandLine(line.id, brainId, fields)
+        onSaved({ ...line, ...fields, pain_points: fields.pain_points, updated_at: new Date().toISOString() })
+      } else {
+        const created = await createBrandLine(brainId, fields)
+        onSaved(created)
+      }
+    })
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="border border-primary/30 rounded-lg p-4 mb-3 bg-primary/5 space-y-3">
+      <div className="flex items-center gap-3">
+        <div>
+          <label className={labelCls}>Color</label>
+          <input type="color" value={color} onChange={(e) => setColor(e.target.value)} className="w-8 h-8 rounded cursor-pointer border-0 p-0" />
+        </div>
+        <div className="flex-1">
+          <label className={labelCls}>Nombre</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej: Skincare Anti-edad" className={inputCls} required />
+        </div>
+      </div>
+      <div>
+        <label className={labelCls}>Descripción</label>
+        <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Breve descripción del producto o servicio" className={inputCls} />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className={labelCls}>USPs (uno por línea)</label>
+          <textarea value={usps} onChange={(e) => setUsps(e.target.value)} placeholder="Ingredientes naturales&#10;Sin parabenos" className={cn(inputCls, "h-20 resize-none")} />
+        </div>
+        <div>
+          <label className={labelCls}>Pain Points (uno por línea)</label>
+          <textarea value={painPoints} onChange={(e) => setPainPoints(e.target.value)} placeholder="Piel reseca&#10;Manchas por el sol" className={cn(inputCls, "h-20 resize-none")} />
+        </div>
+      </div>
+      <div>
+        <label className={labelCls}>Keywords (separadas por coma)</label>
+        <input value={keywords} onChange={(e) => setKeywords(e.target.value)} placeholder="anti-edad, serum, colágeno" className={inputCls} />
+      </div>
+      <div className="flex justify-end gap-2 pt-1">
+        <button type="button" onClick={onCancel} className="h-8 px-4 rounded-lg border border-border text-xs text-muted-foreground hover:bg-muted transition-colors">
+          Cancelar
+        </button>
+        <button type="submit" disabled={isPending || !name.trim()} className="h-8 px-4 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors flex items-center gap-1.5">
+          {isPending && <Loader2 className="w-3 h-3 animate-spin" />}
+          {line ? "Guardar" : "Crear"}
+        </button>
+      </div>
+    </form>
   )
 }

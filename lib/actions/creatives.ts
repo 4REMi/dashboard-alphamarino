@@ -37,7 +37,8 @@ export async function getCreativeConcepts(
     .select(`
       *,
       parent:creative_concepts!parent_concept_id(id, angle_type, status, insight),
-      creator:profiles!created_by(id, full_name)
+      creator:profiles!created_by(id, full_name),
+      brand_line:brand_lines!brand_line_id(id, name, color)
     `)
     .eq("project_id", projectId)
     .order("created_at", { ascending: false })
@@ -84,6 +85,7 @@ export async function createConcept(projectId: string, formData: FormData): Prom
     funnel_stage:         (formData.get("funnel_stage") as string) || null,
     ref_links:            (formData.get("ref_links") as string) || null,
     insight:              (formData.get("insight") as string) || null,
+    brand_line_id:        (formData.get("brand_line_id") as string) || null,
     status:               "Active",
     created_by:           userId,
   })
@@ -114,6 +116,7 @@ export async function updateConcept(
     funnel_stage:         (formData.get("funnel_stage") as string) || null,
     ref_links:            (formData.get("ref_links") as string) || null,
     insight:              (formData.get("insight") as string) || null,
+    brand_line_id:        (formData.get("brand_line_id") as string) || null,
     status:               (formData.get("status") as ConceptStatus) ?? "Active",
   }).eq("id", id)
   if (error) throw error
@@ -266,6 +269,7 @@ export async function createBrief(
   brandBrainId: string,
   attachedAdIds: string[] = [],
   attachedBoardIds: string[] = [],
+  brandLineId?: string,
 ): Promise<CreativeBrief> {
   const supabase = await createClient()
   const { userId, role } = await getRole()
@@ -275,6 +279,7 @@ export async function createBrief(
     project_id: projectId,
     concept_id: conceptId,
     brand_brain_id: brandBrainId,
+    brand_line_id: brandLineId || null,
     attached_ad_ids: attachedAdIds,
     attached_board_ids: attachedBoardIds,
     created_by: userId,
@@ -302,6 +307,23 @@ export async function generateBriefContent(briefId: string): Promise<BriefConten
     .eq("id", brief.brand_brain_id)
     .single()
   if (!brain) throw new Error("Brand Brain not found")
+
+  let brandLineBlock = ""
+  if (brief.brand_line_id) {
+    const { data: line } = await supabase
+      .from("brand_lines")
+      .select("name, description, usps, pain_points, keywords")
+      .eq("id", brief.brand_line_id)
+      .single()
+    if (line) {
+      brandLineBlock = `\nLÍNEA DE PRODUCTO/SERVICIO — ${line.name}:
+- Descripción: ${line.description ?? "—"}
+- USPs específicos: ${(line.usps ?? []).join(", ") || "—"}
+- Dolores específicos: ${(line.pain_points ?? []).join(", ") || "—"}
+- Keywords: ${(line.keywords ?? []).join(", ") || "—"}
+El brief debe enfocarse en este producto/servicio específico.`
+    }
+  }
 
   let referenceSummary = ""
   if (brief.attached_ad_ids?.length > 0) {
@@ -370,7 +392,7 @@ BRAND BRAIN:
 - Audiencia objetivo: ${brain.target_audience ?? "—"}
 - CTAs: ${ctas}
 - Descripción: ${brain.description ?? "—"}
-${referenceSummary}
+${brandLineBlock}${referenceSummary}
 
 El brief debe ser accionable: un editor o diseñador que lo lea debe poder empezar a producir sin preguntar nada.`,
     }],
@@ -449,7 +471,7 @@ export async function getBriefsForProject(projectId: string): Promise<CreativeBr
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("creative_briefs")
-    .select("*, concept:creative_concepts!concept_id(id, name, angle_type, target_persona), brand_brain:brand_brains!brand_brain_id(id, name, industry)")
+    .select("*, concept:creative_concepts!concept_id(id, name, angle_type, target_persona), brand_brain:brand_brains!brand_brain_id(id, name, industry), brand_line:brand_lines!brand_line_id(id, name, color)")
     .eq("project_id", projectId)
     .order("created_at", { ascending: false })
   if (error) throw error
@@ -512,15 +534,19 @@ export async function generateCreativeConcepts(
   projectId: string,
   cycleId: string,
   brandBrainId?: string,
+  brandLineId?: string,
 ): Promise<AIDraftConcept[]> {
   const supabase = await createClient()
   const { role } = await getRole()
   if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
 
-  // Fetch context: Brand Brain (preferred) + paid_media_context (fallback) + previous concepts + cycle
-  const [brainRes, contextRes, conceptsRes, cycleRes] = await Promise.all([
+  // Fetch context: Brand Brain (preferred) + Brand Line + paid_media_context (fallback) + previous concepts + cycle
+  const [brainRes, lineRes, contextRes, conceptsRes, cycleRes] = await Promise.all([
     brandBrainId
       ? supabase.from("brand_brains").select("name, industry, language, tone_of_voice, usps, key_benefits, pain_points, target_audience, ctas, description").eq("id", brandBrainId).single()
+      : Promise.resolve({ data: null }),
+    brandLineId
+      ? supabase.from("brand_lines").select("name, description, usps, pain_points, keywords").eq("id", brandLineId).single()
       : Promise.resolve({ data: null }),
     supabase.from("paid_media_context").select("*").eq("project_id", projectId).maybeSingle(),
     supabase.from("creative_concepts")
@@ -532,6 +558,7 @@ export async function generateCreativeConcepts(
   ])
 
   const brain    = brainRes.data as Record<string, any> | null
+  const line     = lineRes.data as Record<string, any> | null
   const ctx      = contextRes.data
   const prevConcepts = conceptsRes.data ?? []
   const cycle    = cycleRes.data
@@ -576,8 +603,16 @@ Cada objeto debe tener exactamente estos campos:
 - Leads objetivo/mes: ${ctx.target_leads_per_month ?? "—"}
 - Notas de cuenta: ${ctx.account_notes ?? "No especificadas"}` : null
 
+  const lineBlock = line ? `\nLÍNEA DE PRODUCTO/SERVICIO — ${line.name}:
+- Descripción: ${line.description ?? "—"}
+- USPs específicos: ${(line.usps ?? []).join(", ") || "—"}
+- Dolores específicos: ${(line.pain_points ?? []).join(", ") || "—"}
+- Keywords: ${(line.keywords ?? []).join(", ") || "—"}
+
+IMPORTANTE: Todos los conceptos deben enfocarse específicamente en "${line.name}". Los pain points, USPs y transformaciones deben ser relevantes para este producto/servicio en particular, no para la marca en general.` : ""
+
   const userPrompt = `${brandBlock ?? contextBlock ?? "Sin contexto de marca disponible."}
-${brandBlock && contextBlock ? `\n${contextBlock}` : ""}
+${brandBlock && contextBlock ? `\n${contextBlock}` : ""}${lineBlock}
 
 Ciclo actual: ${cycle?.cycle_month ? new Date(cycle.cycle_month).toLocaleDateString("es-MX", { month: "long", year: "numeric" }) : "Activo"}
 
@@ -755,7 +790,8 @@ El copy debe sentirse auténtico y específico para la persona descrita — no g
 export async function confirmAIDrafts(
   projectId: string,
   cycleId: string,
-  drafts: AIDraftConcept[]
+  drafts: AIDraftConcept[],
+  brandLineId?: string,
 ): Promise<void> {
   const supabase = await createClient()
   const { userId, role } = await getRole()
@@ -775,6 +811,7 @@ export async function confirmAIDrafts(
     transformation:       d.transformation || null,
     awareness_stage:      d.awareness_stage,
     funnel_stage:         d.funnel_stage || null,
+    brand_line_id:        brandLineId || null,
     status:               "Active",
     created_by:           userId,
   }))

@@ -13,6 +13,7 @@ interface CreativesHubProps {
   initialAssets: CreativeAsset[]
   isAdminOrSubadmin: boolean
   brandBrains?: any[]
+  brandLines?: any[]
   savedAds?: any[]
   boards?: any[]
 }
@@ -24,6 +25,7 @@ export function CreativesHub({
   initialAssets,
   isAdminOrSubadmin,
   brandBrains = [],
+  brandLines = [],
   savedAds = [],
   boards = [],
 }: CreativesHubProps) {
@@ -114,6 +116,7 @@ export function CreativesHub({
         isAdminOrSubadmin={canEdit}
         onRefresh={reload}
         brandBrains={brandBrains}
+        brandLines={brandLines}
         savedAds={savedAds}
         boards={boards}
       />
