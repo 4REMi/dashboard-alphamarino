@@ -54,6 +54,7 @@ export function BriefCreator({
   const [selectedAdIds, setSelectedAdIds] = useState<string[]>([])
   const [selectedBoardIds, setSelectedBoardIds] = useState<string[]>([])
   const [generatedBrief, setGeneratedBrief] = useState<CreativeBrief | null>(null)
+  const [previewVideoId, setPreviewVideoId] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [isPending, startTransition] = useTransition()
 
@@ -171,40 +172,98 @@ export function BriefCreator({
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
                 Videos de referencia <span className="font-normal">(opcional — se tropicalizará el guión)</span>
               </p>
+
+              {/* Inline video preview */}
+              {previewVideoId && (() => {
+                const ad = videoAds.find((a) => a.id === previewVideoId)
+                const src = ad?.cached_video_url || ad?.video_url
+                if (!ad || !src) return null
+                return (
+                  <div className="mb-3 rounded-xl overflow-hidden border bg-black relative">
+                    <video
+                      controls
+                      autoPlay
+                      preload="metadata"
+                      poster={getThumb(ad) || undefined}
+                      className="w-full max-h-[280px] object-contain"
+                      style={{ display: "block" }}
+                    >
+                      <source src={src} />
+                    </video>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewVideoId(null)}
+                      className="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 transition-colors"
+                    >
+                      <span className="text-xs font-bold">✕</span>
+                    </button>
+                    <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 to-transparent px-3 py-2">
+                      <p className="text-xs text-white font-medium">{ad.page_name ?? "Video"}</p>
+                    </div>
+                  </div>
+                )
+              })()}
+
               <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2">
                 {videoAds.map((ad) => {
                   const thumb = getThumb(ad)
                   const selected = selectedAdIds.includes(ad.id)
+                  const hasVideo = !!(ad.cached_video_url || ad.video_url)
                   return (
-                    <button
+                    <div
                       key={ad.id}
-                      type="button"
-                      onClick={() => toggleAd(ad.id)}
                       className={cn(
                         "group relative rounded-xl overflow-hidden border-2 transition-all aspect-[9/16]",
                         selected ? "border-primary ring-1 ring-primary" : "border-transparent hover:border-primary/30"
                       )}
                     >
-                      {thumb ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={thumb} alt="" className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full bg-muted flex items-center justify-center">
-                          <Play className="w-5 h-5 text-muted-foreground" />
-                        </div>
+                      {/* Thumbnail — click to select */}
+                      <button
+                        type="button"
+                        onClick={() => toggleAd(ad.id)}
+                        className="w-full h-full"
+                      >
+                        {thumb ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={thumb} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full bg-muted flex items-center justify-center">
+                            <Play className="w-5 h-5 text-muted-foreground" />
+                          </div>
+                        )}
+                        <div className="absolute inset-0 bg-black/30 pointer-events-none" />
+                      </button>
+
+                      {/* Play preview button */}
+                      {hasVideo && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setPreviewVideoId(previewVideoId === ad.id ? null : ad.id) }}
+                          className={cn(
+                            "absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full flex items-center justify-center transition-all",
+                            previewVideoId === ad.id
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-white/90 text-gray-800 hover:bg-white hover:scale-110"
+                          )}
+                        >
+                          <Play className="w-3.5 h-3.5 ml-0.5" />
+                        </button>
                       )}
-                      <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-end p-2">
-                        <Play className="w-4 h-4 text-white/80 mb-auto mt-auto" />
-                        <p className="text-[10px] text-white/90 truncate w-full text-center font-medium">
+
+                      {/* Name label */}
+                      <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/60 to-transparent p-2 pt-6 pointer-events-none">
+                        <p className="text-[10px] text-white/90 truncate text-center font-medium">
                           {ad.page_name ?? "Video"}
                         </p>
                       </div>
+
+                      {/* Selection checkmark */}
                       {selected && (
-                        <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                        <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-primary flex items-center justify-center pointer-events-none">
                           <Check className="w-3 h-3 text-primary-foreground" />
                         </div>
                       )}
-                    </button>
+                    </div>
                   )
                 })}
               </div>
