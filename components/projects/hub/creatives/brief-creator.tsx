@@ -157,7 +157,11 @@ export function BriefCreator({
                         : "border-border hover:border-primary/30"
                     )}
                   >
-                    <Brain className="w-3.5 h-3.5 text-primary/60" />
+                    {brain.logo_square_url || brain.logo_url ? (
+                      <img src={brain.logo_square_url || brain.logo_url!} alt="" className="w-5 h-5 rounded object-contain" />
+                    ) : (
+                      <Brain className="w-3.5 h-3.5 text-primary/60" />
+                    )}
                     {brain.name}
                     {brain.industry && <span className="text-xs text-muted-foreground">· {brain.industry}</span>}
                   </button>
