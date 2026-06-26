@@ -81,8 +81,9 @@ export async function adaptWithClaude(
 
   const langBlock = langInstruction(brain.language)
 
-  const productBlock = brandLine
-    ? `\nPRODUCTO/SERVICIO ESPECÍFICO: ${brandLine.name}${brandLine.description ? ` — ${brandLine.description}` : ""}${brandLine.keywords?.length ? `\nKeywords: ${brandLine.keywords.join(", ")}` : ""}\nIMPORTANTE: La adaptación debe vender específicamente "${brandLine.name}", no la marca en general.\n`
+  const destinationName = brandLine ? `${brandLine.name} (de ${brain.name})` : brain.name
+  const productInstruction = brandLine
+    ? `\nEste anuncio es para "${brandLine.name}"${brandLine.description ? ` — ${brandLine.description}` : ""}. Cada línea adaptada DEBE mencionar o referirse a "${brandLine.name}", NO a "${brain.name}" de forma genérica.${brandLine.keywords?.length ? ` Keywords relevantes: ${brandLine.keywords.join(", ")}.` : ""}\n`
     : angulo?.trim()
       ? `\nÁNGULO: "${angulo.trim()}"\n`
       : ""
@@ -91,23 +92,23 @@ export async function adaptWithClaude(
 ${langBlock ? `\n${langBlock}\n` : ""}
 PASO 1 — DIVIDE el siguiente guión en líneas naturales de longitud similar, como aparecerían en un teleprompter o guión de video. Cada línea debe ser una unidad de sentido completa que se pueda decir de un tirón (entre 10 y 25 palabras aproximadamente). Agrupa frases cortas relacionadas en una misma línea. Separa en líneas distintas los cambios de idea o de gancho.
 
-PASO 2 — ADAPTA cada línea al Brand Brain de la marca destino. Preserva la estructura emocional y el ritmo del original. Mantén cada línea adaptada aproximadamente de la misma extensión que la original para respetar el timing del video. Adapta nombres de producto, beneficios, dolores y tono de voz.
-${productBlock}
+PASO 2 — ADAPTA cada línea para vender "${destinationName}". Preserva la estructura emocional y el ritmo del original. Mantén cada línea adaptada aproximadamente de la misma extensión que la original para respetar el timing del video. Adapta nombres de producto, beneficios, dolores y tono de voz.
+${productInstruction}
 GUIÓN ORIGINAL (texto continuo):
 ${rawText}
 
-MARCA DESTINO:
-- Nombre: ${brain.name}
+MARCA / PRODUCTO DESTINO:
+- Producto: ${destinationName}
 - Industria: ${brain.industry ?? "—"}
 - Idioma: ${brain.language ?? "español"}
 - Tono de voz: ${brain.tone_of_voice ?? "—"}
-- USPs: ${usps}
+- USPs del producto: ${usps}
 - Dolores del cliente: ${pains}
 - Audiencia objetivo: ${brain.target_audience ?? "—"}
 - CTAs: ${ctas}
 
 Devuelve ÚNICAMENTE un array JSON válido (sin markdown, sin texto extra) donde cada elemento tenga este formato exacto:
-{"speaker": null, "original": "<línea original tal como la dividiste>", "adapted": "<línea adaptada para la marca — en ${brain.language ?? "español"}>"}`
+{"speaker": null, "original": "<línea original tal como la dividiste>", "adapted": "<línea adaptada para ${destinationName} — en ${brain.language ?? "español"}>"}`
 
   const msg = await client.messages.create({
     model: "claude-opus-4-7",
