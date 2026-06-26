@@ -62,6 +62,7 @@ function ConceptDetailModal({
   onRefresh: () => void
 }) {
   const [isPending, startTransition] = useTransition()
+  const [activeTab, setActiveTab] = useState<"id" | "angle" | "mech">("id")
   const angleEntry  = ANGLE_GUIDE.find((a) => a.name === concept.angle_type)
   const isEvergreen = concept.status === "Evergreen"
 
@@ -148,32 +149,45 @@ function ConceptDetailModal({
           </div>
         )}
 
-        {/* ── 3-column body ── */}
-        <div className="grid grid-cols-3 gap-0 border rounded-xl overflow-hidden">
-
-          {/* Col 1 — Identificación */}
-          <div className="px-5 py-4 space-y-4 border-r">
-            <p className={grpLabel}>Identificación</p>
-            <F label="Principio organizador" value={concept.organizing_principle} />
-            <div>
-              <p className={fLabel}>Persona objetivo</p>
-              {concept.target_persona
-                ? <p className="text-sm leading-snug font-medium">{concept.target_persona}</p>
-                : <p className={fEmpty}>—</p>}
-            </div>
+        {/* ── Tabbed slides ── */}
+        <div className="border rounded-xl overflow-hidden">
+          {/* Tab bar */}
+          <div className="flex border-b bg-muted/30">
+            {([
+              { key: "id" as const, label: "Identificación" },
+              { key: "angle" as const, label: "Teoría del Ángulo" },
+              { key: "mech" as const, label: "Mecanismo" },
+            ]).map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveTab(tab.key)}
+                className={cn(
+                  "flex-1 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide transition-colors relative",
+                  activeTab === tab.key
+                    ? "text-foreground bg-background"
+                    : "text-muted-foreground hover:text-foreground/70"
+                )}
+              >
+                {tab.label}
+                {activeTab === tab.key && (
+                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
+                )}
+              </button>
+            ))}
           </div>
 
-          {/* Col 2 — Ángulo */}
-          <div className="px-5 py-4 space-y-4 border-r bg-muted/20">
-            <p className={grpLabel}>Teoría del Ángulo</p>
-            {angleEntry ? (
-              <>
-                <div className="space-y-0.5">
-                  <span className="text-3xl leading-none">{angleEntry.emoji}</span>
-                  <p className="text-sm font-semibold mt-1">{concept.angle_type}</p>
-                  <p className="text-xs text-muted-foreground italic leading-snug">{angleEntry.guiding_question}</p>
+          {/* Slide content */}
+          <div className="px-6 py-5 min-h-[180px]">
+            {activeTab === "id" && (
+              <div className="space-y-5">
+                <F label="Principio organizador" value={concept.organizing_principle} />
+                <div>
+                  <p className={fLabel}>Persona objetivo</p>
+                  {concept.target_persona
+                    ? <p className="text-sm leading-snug">{concept.target_persona}</p>
+                    : <p className={fEmpty}>—</p>}
                 </div>
-                <div className="h-px bg-border" />
                 <F label="Awareness Stage" value={concept.awareness_stage ? `${concept.awareness_stage} — ${AWARENESS_LABELS[concept.awareness_stage]}` : null} />
                 <div>
                   <p className={fLabel}>Funnel Stage</p>
@@ -181,28 +195,45 @@ function ConceptDetailModal({
                     ? <Badge className={cn("text-xs border-0 mt-0.5", FUNNEL_COLORS[concept.funnel_stage] ?? "bg-gray-100 text-gray-600")}>{concept.funnel_stage}</Badge>
                     : <p className={fEmpty}>—</p>}
                 </div>
-              </>
-            ) : (
-              <p className={fEmpty}>Sin ángulo asignado</p>
+              </div>
             )}
-          </div>
 
-          {/* Col 3 — Mecanismo */}
-          <div className="px-5 py-4 space-y-0">
-            <p className={grpLabel}>Mecanismo</p>
-            <div className="space-y-0 divide-y divide-border">
-              {[
-                { label: "¿Por qué va a funcionar?", value: concept.why_it_works },
-                { label: "Pain Point específico",    value: concept.pain_point },
-                { label: "Objeción que derrumba",    value: concept.objection },
-                { label: "Transformación prometida", value: concept.transformation },
-              ].map(({ label, value }) => (
-                <div key={label} className="py-3 first:pt-0 last:pb-0">
-                  <p className={fLabel}>{label}</p>
-                  {value ? <p className={fValue}>{value}</p> : <p className={fEmpty}>—</p>}
-                </div>
-              ))}
-            </div>
+            {activeTab === "angle" && (
+              <div className="space-y-5">
+                {angleEntry ? (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <span className="text-4xl leading-none">{angleEntry.emoji}</span>
+                      <div>
+                        <p className="text-base font-semibold">{concept.angle_type}</p>
+                        <p className="text-sm text-muted-foreground italic leading-snug">{angleEntry.guiding_question}</p>
+                      </div>
+                    </div>
+                    {angleEntry.mechanism && (
+                      <p className="text-sm text-muted-foreground leading-relaxed">{angleEntry.mechanism}</p>
+                    )}
+                  </>
+                ) : (
+                  <p className={fEmpty}>Sin ángulo asignado</p>
+                )}
+              </div>
+            )}
+
+            {activeTab === "mech" && (
+              <div className="space-y-0 divide-y divide-border">
+                {[
+                  { label: "¿Por qué va a funcionar?", value: concept.why_it_works },
+                  { label: "Pain Point específico",    value: concept.pain_point },
+                  { label: "Objeción que derrumba",    value: concept.objection },
+                  { label: "Transformación prometida", value: concept.transformation },
+                ].map(({ label, value }) => (
+                  <div key={label} className="py-4 first:pt-0 last:pb-0">
+                    <p className={fLabel}>{label}</p>
+                    {value ? <p className="text-sm leading-relaxed">{value}</p> : <p className={fEmpty}>—</p>}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
