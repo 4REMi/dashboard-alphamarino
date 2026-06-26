@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ConceptModal } from "./concept-modal"
 import { AssetModal } from "./asset-modal"
-import { generateCreativeConcepts, confirmAIDrafts, promoteConcept, demoteConcept, deleteConcept } from "@/lib/actions/creatives"
+import { generateCreativeConcepts, confirmAIDrafts, promoteConcept, demoteConcept, deleteConcept, bulkDeleteConcepts } from "@/lib/actions/creatives"
 import { CONCEPT_STATUS_COLORS, AWARENESS_LABELS, ANGLE_GUIDE, PRODUCTION_STATUS_COLORS, VERDICT_COLORS } from "@/lib/constants/creatives"
 import type { CreativeConcept, CreativeAsset, CreativeBrief, BrandLine } from "@/lib/types"
 import type { AIDraftConcept } from "@/lib/actions/creatives"
@@ -599,8 +599,39 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
   const [showBrainPicker, setShowBrainPicker] = useState(false)
   const [generateForLineId, setGenerateForLineId] = useState<string | null>(null)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [isDeleting, startDelete] = useTransition()
   const [isGenerating, startGenerate] = useTransition()
   const [isConfirming, startConfirm]  = useTransition()
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleSelectAll(ids: string[]) {
+    setSelectedIds((prev) => {
+      const allSelected = ids.every((id) => prev.has(id))
+      const next = new Set(prev)
+      if (allSelected) ids.forEach((id) => next.delete(id))
+      else ids.forEach((id) => next.add(id))
+      return next
+    })
+  }
+
+  function handleBulkDelete() {
+    if (selectedIds.size === 0) return
+    if (!confirm(`¿Eliminar ${selectedIds.size} concepto${selectedIds.size !== 1 ? "s" : ""}?`)) return
+    startDelete(async () => {
+      await bulkDeleteConcepts(Array.from(selectedIds), projectId)
+      setSelectedIds(new Set())
+      onRefresh()
+    })
+  }
 
   function handleShareProject() {
     const url = `${window.location.origin}/share/concepts/${projectId}`
@@ -704,10 +735,22 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
   const groupTh = "px-3 py-1.5 text-center text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70 border-b border-border bg-muted/30"
   const subTh   = "px-3 py-2 text-left text-xs font-medium text-muted-foreground bg-muted/50"
 
-  function renderTableHeader() {
+  function renderTableHeader(groupConceptIds?: string[]) {
     return (
       <thead>
         <tr className="border-b">
+          {isAdminOrSubadmin && (
+            <th rowSpan={2} className={cn(subTh, "w-10 align-middle text-center")}>
+              {groupConceptIds && groupConceptIds.length > 0 && (
+                <input
+                  type="checkbox"
+                  className="rounded border-muted-foreground/30 cursor-pointer"
+                  checked={groupConceptIds.length > 0 && groupConceptIds.every((id) => selectedIds.has(id))}
+                  onChange={() => toggleSelectAll(groupConceptIds)}
+                />
+              )}
+            </th>
+          )}
           <th rowSpan={2} className={cn(subTh, "border-r w-16 align-middle")}>Status</th>
           <th colSpan={2} className={cn(groupTh, "border-r border-l")}>IDENTIFICACIÓN</th>
           <th rowSpan={2} className={cn(subTh, "border-r align-middle w-28")}>P. Organizador</th>
@@ -752,6 +795,8 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
             conceptAssets={assets.filter((a) => a.concept_id === c.id)}
             conceptBriefs={briefs.filter((b) => b.concept_id === c.id)}
             isAdminOrSubadmin={isAdminOrSubadmin}
+            selected={selectedIds.has(c.id)}
+            onToggleSelect={() => toggleSelect(c.id)}
             onClick={() => setDetailConcept(c)}
             onNewBrief={() => setBriefForConcept(c)}
             onNewAsset={() => setNewAssetForConceptId(c.id)}
@@ -764,6 +809,8 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
             conceptAssets={assets.filter((a) => a.concept_id === c.id)}
             conceptBriefs={briefs.filter((b) => b.concept_id === c.id)}
             isAdminOrSubadmin={isAdminOrSubadmin}
+            selected={selectedIds.has(c.id)}
+            onToggleSelect={() => toggleSelect(c.id)}
             onClick={() => setDetailConcept(c)}
             onNewBrief={() => setBriefForConcept(c)}
             onNewAsset={() => setNewAssetForConceptId(c.id)}
@@ -925,7 +972,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
             {!isCollapsed && (
               <div className="border-t overflow-x-auto">
                 <table className="w-full text-sm min-w-[1400px]">
-                  {renderTableHeader()}
+                  {renderTableHeader(groupConcepts.map((c) => c.id))}
                   <tbody>
                     {showDraftsHere && (
                       <AIDraftRows
@@ -1065,6 +1112,31 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
           onCreated={() => { setBriefForConcept(null); onRefresh(); }}
         />
       )}
+
+      {/* Floating bulk action bar */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-background border shadow-lg rounded-lg px-4 py-2.5 flex items-center gap-3">
+          <span className="text-sm font-medium">
+            {selectedIds.size} concepto{selectedIds.size !== 1 ? "s" : ""} seleccionado{selectedIds.size !== 1 ? "s" : ""}
+          </span>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={handleBulkDelete}
+            disabled={isDeleting}
+          >
+            <Trash2 className="w-3.5 h-3.5 mr-1" />
+            {isDeleting ? "Eliminando..." : "Eliminar"}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSelectedIds(new Set())}
+          >
+            <X className="w-3.5 h-3.5" />
+          </Button>
+        </div>
+      )}
     </div>
   )
 }
@@ -1076,6 +1148,8 @@ function ConceptRow({
   conceptAssets,
   conceptBriefs,
   isAdminOrSubadmin,
+  selected,
+  onToggleSelect,
   onClick,
   onNewBrief,
   onNewAsset,
@@ -1084,6 +1158,8 @@ function ConceptRow({
   conceptAssets: CreativeAsset[]
   conceptBriefs: CreativeBrief[]
   isAdminOrSubadmin: boolean
+  selected?: boolean
+  onToggleSelect?: () => void
   onClick: () => void
   onNewBrief: () => void
   onNewAsset: () => void
@@ -1091,7 +1167,17 @@ function ConceptRow({
   const angleEntry = ANGLE_GUIDE.find((a) => a.name === concept.angle_type)
 
   return (
-    <tr className="border-t hover:bg-muted/30 transition-colors cursor-pointer" onClick={onClick}>
+    <tr className={cn("border-t hover:bg-muted/30 transition-colors cursor-pointer", selected && "bg-purple-50/50")} onClick={onClick}>
+      {isAdminOrSubadmin && (
+        <td className="px-3 py-3 text-center" onClick={(e) => e.stopPropagation()}>
+          <input
+            type="checkbox"
+            className="rounded border-muted-foreground/30 cursor-pointer"
+            checked={!!selected}
+            onChange={onToggleSelect}
+          />
+        </td>
+      )}
       <td className="px-3 py-3">
         <div className="flex items-center gap-1">
           <Badge className={cn("text-xs border-0", CONCEPT_STATUS_COLORS[concept.status])}>

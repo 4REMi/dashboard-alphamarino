@@ -158,6 +158,16 @@ export async function deleteConcept(id: string, projectId: string): Promise<void
   revalidatePath(`/projects/${projectId}`)
 }
 
+export async function bulkDeleteConcepts(ids: string[], projectId: string): Promise<void> {
+  const supabase = await createClient()
+  const { role } = await getRole()
+  if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
+
+  const { error } = await supabase.from("creative_concepts").delete().in("id", ids)
+  if (error) throw error
+  revalidatePath(`/projects/${projectId}`)
+}
+
 // ── ASSETS ───────────────────────────────────────────────────
 
 export async function getCreativeAssets(
