@@ -153,7 +153,6 @@ function ConceptDetailModal({
           <div className="px-5 py-4 space-y-4 border-r">
             <p className={grpLabel}>Identificación</p>
             <F label="Principio organizador" value={concept.organizing_principle} />
-            <F label="Producto / Servicio" value={concept.product_service} />
             <div>
               <p className={fLabel}>Persona objetivo</p>
               {concept.target_persona
@@ -373,10 +372,7 @@ function DraftPreviewModal({
             <div>
               <p className={sectionLabel}>Identificación</p>
               <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Principio organizador" value={draft.organizing_principle} />
-                  <Field label="Producto / Servicio" value={draft.product_service} />
-                </div>
+                <Field label="Principio organizador" value={draft.organizing_principle} />
                 <Field label="Persona objetivo" value={draft.target_persona} />
               </div>
             </div>
@@ -492,7 +488,7 @@ function AIDraftRows({
             </td>
             <td className="px-3 py-3">
               <div className="text-sm font-medium">{draft.name || "—"}</div>
-              <div className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{draft.product_service || "—"}</div>
+              <div className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{draft.pain_point || "—"}</div>
             </td>
             <td className="px-3 py-3">
               <div className="text-xs line-clamp-2">{draft.target_persona}</div>
@@ -1110,7 +1106,7 @@ function ConceptRow({
       </td>
       <td className="px-3 py-3">
         <div className="text-sm font-medium">{concept.name || "—"}</div>
-        <div className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{concept.product_service || "—"}</div>
+        <div className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{concept.pain_point || "—"}</div>
       </td>
       <td className="px-3 py-3">
         <div className="text-xs line-clamp-2">{concept.target_persona || "—"}</div>
