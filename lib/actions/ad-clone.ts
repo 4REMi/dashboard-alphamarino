@@ -62,30 +62,37 @@ function langInstruction(lang: string | null | undefined): string {
 export async function adaptWithClaude(
   rawText: string,
   brain: Pick<BrandBrain, "name" | "industry" | "language" | "tone_of_voice" | "usps" | "key_benefits" | "pain_points" | "target_audience" | "ctas">,
-  angulo?: string,
+  brandLineOrAngulo?: { name: string; description?: string | null; usps?: string[]; pain_points?: string[]; keywords?: string[] } | string | null,
 ): Promise<AdCloneLine[]> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY no configurado")
 
   const client = new Anthropic({ apiKey })
 
-  const usps    = (brain.usps         ?? []).join(", ") || "—"
-  const benefits = (brain.key_benefits ?? []).join(", ") || "—"
-  const pains   = (brain.pain_points   ?? []).join(", ") || "—"
-  const ctas    = (brain.ctas          ?? []).join(", ") || "—"
+  const brandLine = typeof brandLineOrAngulo === "object" ? brandLineOrAngulo : null
+  const angulo    = typeof brandLineOrAngulo === "string" ? brandLineOrAngulo : null
 
-  const anguloBlock = angulo?.trim()
-    ? `\nÁNGULO DEL CREATIVO:\n"${angulo.trim()}"\nTen en cuenta este ángulo al adaptar el guión: el mensaje debe reflejar este objetivo sin perder el tono de voz de la marca ni el ritmo del video.\n`
-    : ""
+  const lineUsps  = brandLine?.usps?.length        ? brandLine.usps.join(", ")       : null
+  const linePains = brandLine?.pain_points?.length  ? brandLine.pain_points.join(", ") : null
+
+  const usps     = (lineUsps  ?? (brain.usps         ?? []).join(", ")) || "—"
+  const pains    = (linePains ?? (brain.pain_points   ?? []).join(", ")) || "—"
+  const ctas     = (brain.ctas ?? []).join(", ") || "—"
 
   const langBlock = langInstruction(brain.language)
+
+  const productBlock = brandLine
+    ? `\nPRODUCTO/SERVICIO ESPECÍFICO: ${brandLine.name}${brandLine.description ? ` — ${brandLine.description}` : ""}${brandLine.keywords?.length ? `\nKeywords: ${brandLine.keywords.join(", ")}` : ""}\nIMPORTANTE: La adaptación debe vender específicamente "${brandLine.name}", no la marca en general.\n`
+    : angulo?.trim()
+      ? `\nÁNGULO: "${angulo.trim()}"\n`
+      : ""
 
   const prompt = `Eres un redactor creativo experto en publicidad digital. Tu tarea tiene dos pasos:
 ${langBlock ? `\n${langBlock}\n` : ""}
 PASO 1 — DIVIDE el siguiente guión en líneas naturales de longitud similar, como aparecerían en un teleprompter o guión de video. Cada línea debe ser una unidad de sentido completa que se pueda decir de un tirón (entre 10 y 25 palabras aproximadamente). Agrupa frases cortas relacionadas en una misma línea. Separa en líneas distintas los cambios de idea o de gancho.
 
 PASO 2 — ADAPTA cada línea al Brand Brain de la marca destino. Preserva la estructura emocional y el ritmo del original. Mantén cada línea adaptada aproximadamente de la misma extensión que la original para respetar el timing del video. Adapta nombres de producto, beneficios, dolores y tono de voz.
-${anguloBlock}
+${productBlock}
 GUIÓN ORIGINAL (texto continuo):
 ${rawText}
 
@@ -95,7 +102,6 @@ MARCA DESTINO:
 - Idioma: ${brain.language ?? "español"}
 - Tono de voz: ${brain.tone_of_voice ?? "—"}
 - USPs: ${usps}
-- Beneficios clave: ${benefits}
 - Dolores del cliente: ${pains}
 - Audiencia objetivo: ${brain.target_audience ?? "—"}
 - CTAs: ${ctas}

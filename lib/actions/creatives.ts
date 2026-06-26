@@ -436,10 +436,10 @@ El brief debe ser accionable: un editor o diseñador que lo lea debe poder empez
         } while (result.status !== "completed" && result.status !== "error")
 
         if (result.status === "completed" && result.text?.trim()) {
-          const conceptAngle = c.angle_type
-            ? `${c.angle_type}: ${c.organizing_principle ?? ""} — ${c.pain_point ?? ""} → ${c.transformation ?? ""}`
-            : undefined
-          const adaptedLines = await adaptWithClaude(result.text, brain as any, conceptAngle)
+          const lineData = brief.brand_line_id
+            ? (await supabase.from("brand_lines").select("name, description, usps, pain_points, keywords").eq("id", brief.brand_line_id).single()).data
+            : null
+          const adaptedLines = await adaptWithClaude(result.text, brain as any, lineData)
 
           await supabase.from("creative_briefs").update({
             adapted_script: adaptedLines,
