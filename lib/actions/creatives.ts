@@ -423,36 +423,49 @@ El brief debe ser accionable: un editor o diseñador que lo lea debe poder empez
     updated_at: new Date().toISOString(),
   }).eq("id", briefId)
 
-  // Tropicalize video scripts if video references are attached
+  // Tropicalize video scripts for each video reference
   if (brief.attached_ad_ids?.length > 0) {
     try {
       const { data: ads } = await supabase
         .from("saved_ads")
         .select("id, video_url, cached_video_url, format")
         .in("id", brief.attached_ad_ids)
-      const videoAd = ads?.find((a: any) => a.format === "video" || a.cached_video_url || a.video_url)
-      const videoUrl = videoAd?.cached_video_url || videoAd?.video_url
+      const videoAds = ads?.filter((a: any) => a.format === "video" || a.cached_video_url || a.video_url) ?? []
 
-      if (videoUrl) {
-        const transcript = await aaiPost("/transcript", {
-          audio_url: videoUrl,
-          language_detection: true,
-        })
+      if (videoAds.length > 0) {
+        const lineData = brief.brand_line_id
+          ? (await supabase.from("brand_lines").select("name, description, usps, pain_points, keywords").eq("id", brief.brand_line_id).single()).data
+          : null
 
-        let result: { status: string; text?: string }
-        do {
-          await new Promise((r) => setTimeout(r, 3000))
-          result = await aaiGet(`/transcript/${transcript.id}`)
-        } while (result.status !== "completed" && result.status !== "error")
+        const scripts: Record<string, any[]> = {}
 
-        if (result.status === "completed" && result.text?.trim()) {
-          const lineData = brief.brand_line_id
-            ? (await supabase.from("brand_lines").select("name, description, usps, pain_points, keywords").eq("id", brief.brand_line_id).single()).data
-            : null
-          const adaptedLines = await adaptWithClaude(result.text, brain as any, lineData)
+        for (const videoAd of videoAds) {
+          const videoUrl = videoAd.cached_video_url || videoAd.video_url
+          if (!videoUrl) continue
 
+          try {
+            const transcript = await aaiPost("/transcript", {
+              audio_url: videoUrl,
+              language_detection: true,
+            })
+
+            let result: { status: string; text?: string }
+            do {
+              await new Promise((r) => setTimeout(r, 3000))
+              result = await aaiGet(`/transcript/${transcript.id}`)
+            } while (result.status !== "completed" && result.status !== "error")
+
+            if (result.status === "completed" && result.text?.trim()) {
+              scripts[videoAd.id] = await adaptWithClaude(result.text, brain as any, lineData)
+            }
+          } catch (e) {
+            console.error(`Brief tropicalization failed for ad ${videoAd.id}:`, e)
+          }
+        }
+
+        if (Object.keys(scripts).length > 0) {
           await supabase.from("creative_briefs").update({
-            adapted_script: adaptedLines,
+            adapted_script: scripts,
             updated_at: new Date().toISOString(),
           }).eq("id", briefId)
         }

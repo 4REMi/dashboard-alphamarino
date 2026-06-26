@@ -686,7 +686,7 @@ export interface CreativeBrief {
   brief_content: BriefContent
   attached_ad_ids: string[]
   attached_board_ids: string[]
-  adapted_script: AdCloneLine[] | null
+  adapted_script: Record<string, AdCloneLine[]> | AdCloneLine[] | null
   share_token: string
   created_by: string | null
   created_at: string

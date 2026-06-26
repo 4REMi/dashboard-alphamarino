@@ -29,7 +29,9 @@ export default async function ShareBriefPage({ params }: Props) {
 
   const concept = brief.concept as Record<string, string | number | null> | null
   const brain = brief.brand_brain as Record<string, string | null> | null
-  const script = brief.adapted_script as AdCloneLine[] | null
+  const rawScript = brief.adapted_script as Record<string, AdCloneLine[]> | AdCloneLine[] | null
+  const scriptMap = rawScript && !Array.isArray(rawScript) ? rawScript : null
+  const legacyScript = rawScript && Array.isArray(rawScript) ? rawScript : null
   const attachedAds = (brief as any).attached_ads as any[] | undefined
 
   const angleEntry = concept?.angle_type ? ANGLE_GUIDE.find((a) => a.name === concept.angle_type) : null
@@ -46,7 +48,7 @@ export default async function ShareBriefPage({ params }: Props) {
       name: ad.page_name ?? "Video",
       videoSrc: ad.cached_video_url || ad.video_url || undefined,
       thumbSrc: ad.cached_image_url || ad.image_url || undefined,
-      script: script ?? undefined,
+      script: scriptMap?.[ad.id] ?? legacyScript ?? undefined,
     })
   })
 
