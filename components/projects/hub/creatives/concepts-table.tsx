@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ConceptModal } from "./concept-modal"
 import { AssetModal } from "./asset-modal"
-import { generateCreativeConcepts, confirmAIDrafts, promoteConcept, demoteConcept, deleteConcept, bulkDeleteConcepts, deleteBrief, toggleClientVisible } from "@/lib/actions/creatives"
+import { generateCreativeConcepts, confirmAIDrafts, promoteConcept, demoteConcept, deleteConcept, bulkDeleteConcepts, deleteBrief, deleteAsset, toggleClientVisible } from "@/lib/actions/creatives"
 import { CONCEPT_STATUS_COLORS, AWARENESS_LABELS, ANGLE_GUIDE, PRODUCTION_STATUS_COLORS, VERDICT_COLORS } from "@/lib/constants/creatives"
 import type { CreativeConcept, CreativeAsset, CreativeBrief, BrandLine } from "@/lib/types"
 import type { AIDraftConcept } from "@/lib/actions/creatives"
@@ -414,6 +414,26 @@ function ConceptDetailModal({
                       <div className="flex items-center gap-2 text-sm">
                         {a.format && <span className="font-medium">{a.format}</span>}
                         {a.platform && <span className="text-muted-foreground">· {a.platform}</span>}
+                        {isAdminOrSubadmin && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={isPending}
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10 ml-1"
+                            onClick={() => {
+                              if (!confirm("¿Eliminar este asset?")) return
+                              startTransition(async () => {
+                                await deleteAsset(a.id, projectId)
+                                onRefresh()
+                                setLightboxAsset(null)
+                              })
+                            }}
+                          >
+                            <Trash2 className="w-3.5 h-3.5 mr-1" />
+                            Eliminar
+                          </Button>
+                        )}
                       </div>
                       {isAdminOrSubadmin && (
                         <Button
