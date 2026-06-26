@@ -9,6 +9,9 @@ interface ClientAsset {
   format: string | null
   platform: string | null
   asset_url: string | null
+  file_path: string | null
+  thumbnail_path: string | null
+  file_type: string | null
   client_status: ClientReviewStatus | null
   client_feedback: string | null
   concept_name: string | null
@@ -52,7 +55,12 @@ export function ClientAssetReview({ asset }: { asset: ClientAsset }) {
   }
 
   const formatLabel = [asset.format, asset.platform].filter(Boolean).join(" · ")
-  const assetType = asset.asset_url ? detectAssetType(asset.asset_url) : null
+  const mediaUrl = asset.file_path
+    ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/creative-assets/${asset.file_path}`
+    : asset.asset_url
+  const assetType = asset.file_type === "video" ? "video"
+    : asset.file_type === "image" ? "image"
+    : mediaUrl ? detectAssetType(mediaUrl) : null
 
   return (
     <div className="bg-white rounded-2xl border shadow-sm overflow-hidden flex flex-col">
@@ -67,9 +75,9 @@ export function ClientAssetReview({ asset }: { asset: ClientAsset }) {
             </p>
           )}
         </div>
-        {asset.asset_url && (
+        {mediaUrl && (
           <a
-            href={asset.asset_url}
+            href={mediaUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="flex-shrink-0 text-xs text-blue-600 hover:text-blue-700 font-medium border border-blue-200 rounded-full px-3 py-1.5 bg-blue-50 hover:bg-blue-100 transition-colors"
@@ -80,23 +88,23 @@ export function ClientAssetReview({ asset }: { asset: ClientAsset }) {
       </div>
 
       {/* ── Media preview ── */}
-      {asset.asset_url && assetType === "image" && (
+      {mediaUrl && assetType === "image" && (
         <a
-          href={asset.asset_url}
+          href={mediaUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="block bg-slate-50 border-b overflow-hidden"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={asset.asset_url}
+            src={mediaUrl}
             alt={formatLabel || "Asset preview"}
             className="w-full max-h-[420px] object-contain"
           />
         </a>
       )}
 
-      {asset.asset_url && assetType === "video" && (
+      {mediaUrl && assetType === "video" && (
         <div className="bg-black border-b">
           <video
             controls
@@ -104,7 +112,7 @@ export function ClientAssetReview({ asset }: { asset: ClientAsset }) {
             className="w-full max-h-[420px]"
             style={{ display: "block" }}
           >
-            <source src={asset.asset_url} />
+            <source src={mediaUrl} />
             Tu navegador no soporta reproducción de video.
           </video>
         </div>

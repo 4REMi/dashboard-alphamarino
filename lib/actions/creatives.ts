@@ -212,13 +212,16 @@ export async function createAsset(projectId: string, formData: FormData): Promis
   if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
 
   const { error } = await supabase.from("creative_assets").insert({
-    project_id: projectId,
-    cycle_id:   (formData.get("cycle_id") as string) || null,
-    concept_id: (formData.get("concept_id") as string) || null,
-    brief_id:   (formData.get("brief_id") as string) || null,
-    asset_url:  (formData.get("asset_url") as string) || null,
-    format:     (formData.get("format") as string) || null,
-    platform:   (formData.get("platform") as string) || null,
+    project_id:     projectId,
+    cycle_id:       (formData.get("cycle_id") as string) || null,
+    concept_id:     (formData.get("concept_id") as string) || null,
+    brief_id:       (formData.get("brief_id") as string) || null,
+    asset_url:      (formData.get("asset_url") as string) || null,
+    file_path:      (formData.get("file_path") as string) || null,
+    thumbnail_path: (formData.get("thumbnail_path") as string) || null,
+    file_type:      (formData.get("file_type") as string) || null,
+    format:         (formData.get("format") as string) || null,
+    platform:       (formData.get("platform") as string) || null,
   })
   if (error) throw error
   revalidatePath(`/projects/${projectId}`)
@@ -234,11 +237,14 @@ export async function updateAsset(
   if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
 
   const { error } = await supabase.from("creative_assets").update({
-    concept_id: (formData.get("concept_id") as string) || null,
-    brief_id:   (formData.get("brief_id") as string) || null,
-    asset_url:  (formData.get("asset_url") as string) || null,
-    format:     (formData.get("format") as string) || null,
-    platform:   (formData.get("platform") as string) || null,
+    concept_id:     (formData.get("concept_id") as string) || null,
+    brief_id:       (formData.get("brief_id") as string) || null,
+    asset_url:      (formData.get("asset_url") as string) || null,
+    file_path:      (formData.get("file_path") as string) || null,
+    thumbnail_path: (formData.get("thumbnail_path") as string) || null,
+    file_type:      (formData.get("file_type") as string) || null,
+    format:         (formData.get("format") as string) || null,
+    platform:       (formData.get("platform") as string) || null,
   }).eq("id", id)
   if (error) throw error
   revalidatePath(`/projects/${projectId}`)

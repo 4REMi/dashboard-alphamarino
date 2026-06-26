@@ -1,25 +1,50 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useRef, useState, useTransition, useCallback } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { createAsset, updateAsset, deleteAsset, toggleClientVisible } from "@/lib/actions/creatives"
-import type { CreativeAsset, CreativeConcept, CreativeBrief } from "@/lib/types"
-import { ExternalLink, Trash2, Upload, Eye, EyeOff } from "lucide-react"
+import { createClient } from "@/lib/supabase/client"
+import type { CreativeAsset } from "@/lib/types"
+import { Trash2, Upload, Eye, EyeOff, ImageIcon, Film, X, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const PLATFORMS = ["Meta Ads", "Google Ads", "TikTok Ads", "LinkedIn Ads", "Pinterest Ads"]
-const FORMATS = ["Video", "Imagen"] as const
+const ACCEPT = "image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,video/webm"
+const MAX_IMAGE_BYTES = 20 * 1024 * 1024
+const MAX_VIDEO_BYTES = 150 * 1024 * 1024
+
+function captureVideoThumbnail(blobUrl: string): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    const video = document.createElement("video")
+    video.preload = "metadata"
+    video.muted = true
+    video.src = blobUrl
+    video.onloadedmetadata = () => {
+      video.currentTime = Math.min(1, video.duration * 0.1)
+    }
+    video.onseeked = () => {
+      try {
+        const canvas = document.createElement("canvas")
+        canvas.width = video.videoWidth
+        canvas.height = video.videoHeight
+        canvas.getContext("2d")?.drawImage(video, 0, 0)
+        canvas.toBlob((blob) => resolve(blob), "image/jpeg", 0.82)
+      } catch {
+        resolve(null)
+      }
+    }
+    video.onerror = () => resolve(null)
+  })
+}
 
 interface AssetModalProps {
   projectId: string
   cycleId: string | null
+  conceptId: string
+  briefId?: string | null
   asset?: CreativeAsset | null
-  concepts: CreativeConcept[]
-  briefs?: CreativeBrief[]
-  defaultConceptId?: string | null
   isAdminOrSubadmin: boolean
   open: boolean
   onRefresh?: () => void
@@ -27,30 +52,101 @@ interface AssetModalProps {
 }
 
 export function AssetModal({
-  projectId, cycleId, asset, concepts, briefs = [], defaultConceptId,
+  projectId, cycleId, conceptId, briefId, asset,
   isAdminOrSubadmin, open, onRefresh, onClose,
 }: AssetModalProps) {
   const isEdit = !!asset
+  const inputRef = useRef<HTMLInputElement>(null)
+  const thumbnailBlobRef = useRef<Blob | null>(null)
+
   const [isPending, startTransition] = useTransition()
-
-  const [selectedConceptId, setSelectedConceptId] = useState(asset?.concept_id ?? defaultConceptId ?? "")
-  const [selectedBriefId, setSelectedBriefId] = useState(asset?.brief_id ?? "")
-  const [fileUrl, setFileUrl] = useState(asset?.asset_url ?? "")
-  const [format, setFormat] = useState(asset?.format ?? "")
+  const [file, setFile] = useState<File | null>(null)
+  const [preview, setPreview] = useState<string | null>(asset?.thumbnail_path || asset?.file_path || asset?.asset_url || null)
   const [platform, setPlatform] = useState(asset?.platform ?? "")
+  const [dragOver, setDragOver] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null)
 
-  const conceptBriefs = briefs.filter((b) => b.concept_id === selectedConceptId)
+  const isVideo = file?.type.startsWith("video/") ?? asset?.file_type === "video"
 
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  const existingUrl = asset?.file_path
+    ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/creative-assets/${asset.file_path}`
+    : asset?.asset_url
+
+  function validateAndSet(f: File) {
+    setUploadError(null)
+    const max = f.type.startsWith("video/") ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES
+    if (f.size > max) {
+      setUploadError(`Archivo supera el límite (${f.type.startsWith("video/") ? "150 MB" : "20 MB"})`)
+      return
+    }
+    setFile(f)
+    thumbnailBlobRef.current = null
+
+    const blobUrl = URL.createObjectURL(f)
+    setPreview(blobUrl)
+
+    if (f.type.startsWith("video/")) {
+      captureVideoThumbnail(blobUrl).then((blob) => {
+        thumbnailBlobRef.current = blob
+      })
+    }
+  }
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
+    const f = e.dataTransfer.files[0]
+    if (f) validateAndSet(f)
+  }, [])
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    if (f) validateAndSet(f)
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     startTransition(async () => {
       const fd = new FormData()
       if (cycleId) fd.set("cycle_id", cycleId)
-      if (selectedConceptId) fd.set("concept_id", selectedConceptId)
-      if (selectedBriefId) fd.set("brief_id", selectedBriefId)
-      fd.set("asset_url", fileUrl)
-      fd.set("format", format)
+      fd.set("concept_id", conceptId)
+      if (briefId) fd.set("brief_id", briefId)
       fd.set("platform", platform)
+
+      if (file) {
+        setUploadProgress("Subiendo archivo…")
+        const supabase = createClient()
+        const ext = (file.name.split(".").pop() ?? (file.type.startsWith("video/") ? "mp4" : "jpg")).slice(0, 4)
+        const uuid = crypto.randomUUID()
+        const fileType = file.type.startsWith("video/") ? "video" : "image"
+
+        const path = `${projectId}/${uuid}/${fileType}.${ext}`
+        const { error: uploadErr } = await supabase.storage
+          .from("creative-assets")
+          .upload(path, file, { contentType: file.type, upsert: false })
+        if (uploadErr) throw new Error(`Error al subir: ${uploadErr.message}`)
+
+        fd.set("file_path", path)
+        fd.set("file_type", fileType)
+        fd.set("format", fileType === "video" ? "Video" : "Imagen")
+
+        if (fileType === "video" && thumbnailBlobRef.current) {
+          setUploadProgress("Generando miniatura…")
+          const thumbPath = `${projectId}/${uuid}/thumbnail.jpg`
+          const { error: thumbErr } = await supabase.storage
+            .from("creative-assets")
+            .upload(thumbPath, thumbnailBlobRef.current, { contentType: "image/jpeg", upsert: false })
+          if (!thumbErr) fd.set("thumbnail_path", thumbPath)
+        } else if (fileType === "image") {
+          fd.set("thumbnail_path", path)
+        }
+
+        const { data: { publicUrl } } = supabase.storage.from("creative-assets").getPublicUrl(path)
+        fd.set("asset_url", publicUrl)
+      }
+
+      setUploadProgress("Guardando…")
 
       if (isEdit && asset) {
         await updateAsset(asset.id, projectId, fd)
@@ -63,7 +159,7 @@ export function AssetModal({
   }
 
   function handleDelete() {
-    if (!asset) return
+    if (!asset || !confirm("¿Eliminar este asset?")) return
     startTransition(async () => {
       await deleteAsset(asset.id, projectId)
       onRefresh?.()
@@ -90,79 +186,59 @@ export function AssetModal({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
-          {/* Concept */}
-          <div className="space-y-1.5">
-            <Label>Concepto</Label>
-            <select
-              value={selectedConceptId}
-              onChange={(e) => { setSelectedConceptId(e.target.value); setSelectedBriefId("") }}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            >
-              <option value="">Sin concepto</option>
-              {concepts.map((c) => (
-                <option key={c.id} value={c.id}>{c.name ?? c.angle_type ?? c.id.slice(0, 8)}</option>
-              ))}
-            </select>
+          {/* Drop zone / preview */}
+          <div
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleDrop}
+            onClick={() => !isPending && inputRef.current?.click()}
+            className={cn(
+              "relative flex flex-col items-center justify-center border-2 border-dashed rounded-xl cursor-pointer transition-colors overflow-hidden",
+              dragOver ? "border-primary bg-primary/5" : "border-border hover:border-primary/40",
+              (preview || existingUrl) ? "h-48" : "h-36",
+            )}
+          >
+            {(preview || existingUrl) ? (
+              <>
+                {isVideo ? (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/5">
+                    {preview && !preview.startsWith("http") ? (
+                      <video src={preview} className="max-h-full max-w-full object-contain" muted />
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={asset?.thumbnail_path ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/creative-assets/${asset.thumbnail_path}` : preview || ""} alt="" className="max-h-full max-w-full object-contain" />
+                    )}
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <Film className="w-8 h-8 text-white/80 drop-shadow-lg" />
+                    </div>
+                  </div>
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={preview || existingUrl || ""} alt="" className="absolute inset-0 w-full h-full object-contain" />
+                )}
+                <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full">
+                  Cambiar archivo
+                </div>
+              </>
+            ) : (
+              <>
+                <Upload className="w-6 h-6 text-muted-foreground mb-2" />
+                <p className="text-sm text-muted-foreground">Arrastra o haz clic para subir</p>
+                <p className="text-[10px] text-muted-foreground/60 mt-1">Imagen (20 MB) o Video (150 MB)</p>
+              </>
+            )}
+            <input
+              ref={inputRef}
+              type="file"
+              accept={ACCEPT}
+              onChange={handleFileChange}
+              className="hidden"
+            />
           </div>
 
-          {/* Brief (filtered by concept) */}
-          {conceptBriefs.length > 0 && (
-            <div className="space-y-1.5">
-              <Label>Brief asociado (opcional)</Label>
-              <select
-                value={selectedBriefId}
-                onChange={(e) => setSelectedBriefId(e.target.value)}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              >
-                <option value="">Sin brief</option>
-                {conceptBriefs.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    Brief — {b.brand_brain?.name ?? "Sin brand"} ({new Date(b.created_at).toLocaleDateString()})
-                  </option>
-                ))}
-              </select>
-            </div>
+          {uploadError && (
+            <p className="text-xs text-destructive">{uploadError}</p>
           )}
-
-          {/* File URL */}
-          <div className="space-y-1.5">
-            <Label>URL del asset</Label>
-            <div className="flex gap-2">
-              <Input
-                value={fileUrl}
-                onChange={(e) => setFileUrl(e.target.value)}
-                placeholder="https://..."
-                className="flex-1"
-              />
-              {fileUrl && (
-                <a href={fileUrl} target="_blank" rel="noopener noreferrer" className="flex items-center">
-                  <Button type="button" variant="ghost" size="sm" className="h-9 px-2">
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </Button>
-                </a>
-              )}
-            </div>
-          </div>
-
-          {/* Format */}
-          <div className="space-y-1.5">
-            <Label>Formato</Label>
-            <div className="flex gap-2">
-              {FORMATS.map((f) => (
-                <button
-                  key={f}
-                  type="button"
-                  onClick={() => setFormat(f)}
-                  className={cn(
-                    "px-3 py-1.5 rounded-md text-sm border transition-colors",
-                    format === f ? "bg-primary text-primary-foreground border-primary" : "border-border hover:border-primary/30"
-                  )}
-                >
-                  {f}
-                </button>
-              ))}
-            </div>
-          </div>
 
           {/* Platform */}
           <div className="space-y-1.5">
@@ -207,6 +283,13 @@ export function AssetModal({
             </div>
           )}
 
+          {uploadProgress && isPending && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              {uploadProgress}
+            </div>
+          )}
+
           <DialogFooter className="gap-2 pt-2">
             {isEdit && isAdminOrSubadmin && (
               <Button type="button" variant="ghost" onClick={handleDelete} disabled={isPending} className="text-destructive hover:text-destructive mr-auto">
@@ -215,8 +298,8 @@ export function AssetModal({
               </Button>
             )}
             <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
-            <Button type="submit" disabled={isPending || !isAdminOrSubadmin}>
-              {isEdit ? "Guardar" : "Subir asset"}
+            <Button type="submit" disabled={isPending || (!isEdit && !file) || !isAdminOrSubadmin}>
+              {isPending ? "Guardando…" : isEdit ? "Guardar" : "Subir"}
             </Button>
           </DialogFooter>
         </form>

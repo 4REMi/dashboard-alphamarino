@@ -6,12 +6,11 @@ import { Button } from "@/components/ui/button"
 import { AssetModal } from "./asset-modal"
 import {
   PRODUCTION_STATUS_COLORS,
-  VERDICT_COLORS, VERDICT_EMOJIS,
-  FORMAT_EMOJIS, PLATFORM_COLORS,
+  PLATFORM_COLORS,
   FUNNEL_COLORS, ANGLE_GUIDE,
 } from "@/lib/constants/creatives"
 import type { CreativeAsset, CreativeConcept } from "@/lib/types"
-import { Plus, ExternalLink, Eye } from "lucide-react"
+import { Plus, ExternalLink, Eye, Film, ImageIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface AssetsTableProps {
@@ -50,7 +49,7 @@ export function AssetsTable({ assets, concepts, projectId, cycleId, isAdminOrSub
   // Assets not linked to any concept
   const unlinked = byConceptId.get(null) ?? []
 
-  const totalCols = isAdminOrSubadmin ? 7 : 5
+  const totalCols = 3
   const colHeader = "text-left px-4 py-2.5 text-xs font-medium text-muted-foreground"
 
   return (
@@ -60,27 +59,14 @@ export function AssetsTable({ assets, concepts, projectId, cycleId, isAdminOrSub
         <p className="text-xs text-muted-foreground">
           {assets.length} asset{assets.length !== 1 ? "s" : ""} en este ciclo
         </p>
-        {isAdminOrSubadmin && (
-          <Button size="sm" className="text-xs" onClick={() => openCreate()}>
-            <Plus className="w-3.5 h-3.5 mr-1" />
-            Nuevo asset
-          </Button>
-        )}
       </div>
 
       <div className="border rounded-lg overflow-hidden bg-card overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-muted/50 border-b">
             <tr>
-              <th className={colHeader}>Formato · Plataforma</th>
-              <th className={cn(colHeader, "hidden md:table-cell")}>Hook</th>
+              <th className={colHeader}>Asset</th>
               <th className={colHeader}>Estado</th>
-              {isAdminOrSubadmin && (
-                <>
-                  <th className={cn(colHeader, "hidden lg:table-cell")}>ROAS</th>
-                  <th className={cn(colHeader, "hidden lg:table-cell")}>Veredicto</th>
-                </>
-              )}
               <th className="px-4 py-2.5 w-10" />
             </tr>
           </thead>
@@ -186,24 +172,23 @@ export function AssetsTable({ assets, concepts, projectId, cycleId, isAdminOrSub
       </div>
 
       {/* Modals */}
-      {showCreate && (
+      {showCreate && defaultConceptId && (
         <AssetModal
           projectId={projectId}
           cycleId={cycleId}
-          concepts={concepts}
-          defaultConceptId={defaultConceptId}
+          conceptId={defaultConceptId}
           isAdminOrSubadmin={isAdminOrSubadmin}
           open={showCreate}
           onRefresh={onRefresh}
           onClose={() => { setShowCreate(false); setDefaultConceptId(null) }}
         />
       )}
-      {selectedAsset && (
+      {selectedAsset && selectedAsset.concept_id && (
         <AssetModal
           projectId={projectId}
           cycleId={cycleId}
           asset={selectedAsset}
-          concepts={concepts}
+          conceptId={selectedAsset.concept_id}
           isAdminOrSubadmin={isAdminOrSubadmin}
           open={!!selectedAsset}
           onRefresh={onRefresh}
@@ -216,6 +201,12 @@ export function AssetsTable({ assets, concepts, projectId, cycleId, isAdminOrSub
 
 // ── Asset row ────────────────────────────────────────────────────────────────
 
+function getAssetThumbUrl(asset: CreativeAsset): string | null {
+  if (asset.thumbnail_path) return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/creative-assets/${asset.thumbnail_path}`
+  if (asset.file_path) return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/creative-assets/${asset.file_path}`
+  return asset.asset_url
+}
+
 function AssetRow({
   asset,
   isAdminOrSubadmin,
@@ -225,94 +216,57 @@ function AssetRow({
   isAdminOrSubadmin: boolean
   onClick: () => void
 }) {
-  const formatEmoji = asset.format ? (FORMAT_EMOJIS[asset.format] ?? "✦") : null
+  const thumbUrl = getAssetThumbUrl(asset)
 
   return (
     <tr className="border-t hover:bg-muted/30 transition-colors cursor-pointer" onClick={onClick}>
 
-      {/* Format + Platform */}
-      <td className="px-4 py-3 pl-6">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {formatEmoji && (
-            <span className="text-sm leading-none">{formatEmoji}</span>
-          )}
-          {asset.format && (
-            <span className="text-xs font-medium text-foreground">{asset.format}</span>
-          )}
-          {asset.platform && (
-            <span className={cn(
-              "text-[10px] font-semibold px-1.5 py-0.5 rounded-md",
-              PLATFORM_COLORS[asset.platform] ?? "bg-muted text-muted-foreground"
-            )}>
-              {asset.platform.replace(" Ads", "")}
-            </span>
-          )}
-          {!asset.format && !asset.platform && (
-            <span className="text-muted-foreground text-xs">—</span>
-          )}
-        </div>
-        {(asset.variant || asset.iteration) && (
-          <div className="flex gap-1 mt-1.5 flex-wrap">
-            {asset.variant && (
-              <span className="text-[10px] font-mono bg-muted px-1.5 py-0.5 rounded text-muted-foreground">
-                {asset.variant}
-              </span>
-            )}
-            {asset.iteration && (
-              <span className="text-[10px] font-mono bg-muted px-1.5 py-0.5 rounded text-muted-foreground">
-                {asset.iteration}
-              </span>
+      {/* Thumbnail + format */}
+      <td className="px-4 py-2.5 pl-6">
+        <div className="flex items-center gap-3">
+          <div className="relative w-12 h-12 rounded-lg overflow-hidden bg-muted/50 flex-shrink-0 flex items-center justify-center border">
+            {thumbUrl ? (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={thumbUrl} alt="" className="w-full h-full object-cover" />
+                {asset.file_type === "video" && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                    <Film className="w-4 h-4 text-white drop-shadow" />
+                  </div>
+                )}
+              </>
+            ) : (
+              <ImageIcon className="w-4 h-4 text-muted-foreground/40" />
             )}
           </div>
-        )}
-      </td>
-
-      {/* Hook */}
-      <td className="px-4 py-3 hidden md:table-cell max-w-xs">
-        <span className="text-xs text-foreground/70 line-clamp-2 leading-relaxed">
-          {asset.hook ?? <span className="text-muted-foreground/40">—</span>}
-        </span>
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {asset.format && <span className="text-xs font-medium text-foreground">{asset.format}</span>}
+              {asset.platform && (
+                <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded-md", PLATFORM_COLORS[asset.platform] ?? "bg-muted text-muted-foreground")}>
+                  {asset.platform.replace(" Ads", "")}
+                </span>
+              )}
+            </div>
+            {(asset.variant || asset.iteration) && (
+              <div className="flex gap-1 mt-1 flex-wrap">
+                {asset.variant && <span className="text-[10px] font-mono bg-muted px-1.5 py-0.5 rounded text-muted-foreground">{asset.variant}</span>}
+                {asset.iteration && <span className="text-[10px] font-mono bg-muted px-1.5 py-0.5 rounded text-muted-foreground">{asset.iteration}</span>}
+              </div>
+            )}
+          </div>
+        </div>
       </td>
 
       {/* Production status */}
-      <td className="px-4 py-3">
+      <td className="px-4 py-2.5">
         <Badge className={cn("text-xs border-0 font-medium", PRODUCTION_STATUS_COLORS[asset.production_status] ?? "bg-gray-100 text-gray-600")}>
           {asset.production_status}
         </Badge>
       </td>
 
-      {isAdminOrSubadmin && (
-        <>
-          {/* ROAS */}
-          <td className="px-4 py-3 text-xs hidden lg:table-cell">
-            {asset.roas != null ? (
-              <span className={cn(
-                "font-semibold tabular-nums",
-                asset.roas >= 2 ? "text-emerald-600" : "text-red-500"
-              )}>
-                {asset.roas >= 2 ? "↑" : "↓"} {asset.roas.toFixed(2)}x
-              </span>
-            ) : (
-              <span className="text-muted-foreground/30">—</span>
-            )}
-          </td>
-
-          {/* Verdict */}
-          <td className="px-4 py-3 hidden lg:table-cell">
-            {asset.verdict ? (
-              <Badge className={cn("text-xs border-0 gap-1", VERDICT_COLORS[asset.verdict] ?? "")}>
-                <span>{VERDICT_EMOJIS[asset.verdict]}</span>
-                {asset.verdict}
-              </Badge>
-            ) : (
-              <span className="text-muted-foreground/30 text-xs">—</span>
-            )}
-          </td>
-        </>
-      )}
-
       {/* Actions */}
-      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+      <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-end gap-1.5">
           {asset.client_visible && (
             <span
@@ -333,16 +287,6 @@ function AssetRow({
                asset.client_status === "changes_requested" ? "Cambios" :
                "Pendiente"}
             </span>
-          )}
-          {asset.asset_url && (
-            <a
-              href={asset.asset_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-            </a>
           )}
         </div>
       </td>

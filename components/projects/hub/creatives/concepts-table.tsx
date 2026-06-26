@@ -11,7 +11,7 @@ import { CONCEPT_STATUS_COLORS, AWARENESS_LABELS, ANGLE_GUIDE, PRODUCTION_STATUS
 import type { CreativeConcept, CreativeAsset, CreativeBrief, BrandLine } from "@/lib/types"
 import type { AIDraftConcept } from "@/lib/actions/creatives"
 import { BriefCreator } from "./brief-creator"
-import { Plus, Sparkles, Check, X, Loader2, Star, ArrowUpRight, Pencil, Trash2, Link2, FileText, Upload, ChevronDown } from "lucide-react"
+import { Plus, Sparkles, Check, X, Loader2, Star, ArrowUpRight, Pencil, Trash2, Link2, FileText, Upload, ChevronDown, Film, ImageIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const FUNNEL_COLORS: Record<string, string> = {
@@ -278,14 +278,36 @@ function ConceptDetailModal({
                 )}
               </div>
               {conceptAssets.length > 0 ? (
-                <div className="space-y-1">
-                  {conceptAssets.map((a) => (
-                    <div key={a.id} className="flex items-center justify-between text-xs py-1.5 px-2 rounded bg-muted/40">
-                      <span className="text-muted-foreground truncate mr-2">
-                        {[a.format, a.platform].filter(Boolean).join(" · ") || "Sin detalle"}
-                      </span>
-                    </div>
-                  ))}
+                <div className="flex flex-wrap gap-2">
+                  {conceptAssets.map((a) => {
+                    const thumb = a.thumbnail_path
+                      ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/creative-assets/${a.thumbnail_path}`
+                      : a.file_path
+                        ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/creative-assets/${a.file_path}`
+                        : a.asset_url
+                    return (
+                      <div key={a.id} className="relative w-16 h-16 rounded-lg overflow-hidden bg-muted/50 border flex items-center justify-center group">
+                        {thumb ? (
+                          <>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={thumb} alt="" className="w-full h-full object-cover" />
+                            {a.file_type === "video" && (
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                                <Film className="w-4 h-4 text-white drop-shadow" />
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <ImageIcon className="w-4 h-4 text-muted-foreground/40" />
+                        )}
+                        {a.platform && (
+                          <span className="absolute bottom-0.5 left-0.5 text-[8px] font-semibold bg-black/60 text-white px-1 py-0.5 rounded">
+                            {a.platform.replace(" Ads", "")}
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               ) : (
                 <p className={fEmpty}>Sin assets aún</p>
@@ -1063,9 +1085,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
         <AssetModal
           projectId={projectId}
           cycleId={cycleId}
-          concepts={concepts}
-          briefs={briefs}
-          defaultConceptId={newAssetForConceptId}
+          conceptId={newAssetForConceptId}
           isAdminOrSubadmin={isAdminOrSubadmin}
           open={!!newAssetForConceptId}
           onRefresh={onRefresh}

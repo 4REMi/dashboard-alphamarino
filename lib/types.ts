@@ -715,6 +715,9 @@ export interface CreativeAsset {
   mechanic_primary: string | null
   mechanic_secondary: string | null
   asset_url: string | null
+  file_path: string | null
+  thumbnail_path: string | null
+  file_type: string | null
   production_status: ProductionStatus
   client_visible: boolean
   client_status: ClientReviewStatus | null
