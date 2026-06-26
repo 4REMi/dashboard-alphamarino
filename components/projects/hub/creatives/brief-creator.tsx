@@ -63,7 +63,7 @@ export function BriefCreator({
   function handleGenerate() {
     if (!selectedBrainId) return
     startTransition(async () => {
-      const brief = await createBrief(projectId, concept.id, selectedBrainId, selectedAdIds, selectedBoardIds)
+      const brief = await createBrief(projectId, concept.id, selectedBrainId, selectedAdIds, selectedBoardIds, concept.brand_line_id ?? undefined)
       setGeneratedBrief(brief)
       await generateBriefContent(brief.id)
     })
