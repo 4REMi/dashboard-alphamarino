@@ -8,21 +8,23 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { Plus } from "lucide-react"
-import type { Project, Customer, ProjectType, PhaseSetPhase } from "@/lib/types"
+import type { Project, Customer, ProjectType, PhaseSetPhase, BrandBrain } from "@/lib/types"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
 
 interface ProjectFormProps {
   project?: Project
   customers: Customer[]
   projectTypes: ProjectType[]
+  brandBrains?: BrandBrain[]
   trigger?: React.ReactNode
   canViewFinancials?: boolean
 }
 
-export function ProjectForm({ project, customers, projectTypes, trigger, canViewFinancials = true }: ProjectFormProps) {
+export function ProjectForm({ project, customers, projectTypes, brandBrains = [], trigger, canViewFinancials = true }: ProjectFormProps) {
   const [open, setOpen] = useState(false)
   const [customerId, setCustomerId] = useState(project?.customer_id ?? "none")
   const [projectTypeId, setProjectTypeId] = useState(project?.project_type_id ?? "none")
+  const [brandBrainId, setBrandBrainId] = useState(project?.brand_brain_id ?? "none")
   const [selectedPhaseIds, setSelectedPhaseIds] = useState<string[]>([])
   const [isPending, startTransition] = useTransition()
 
@@ -50,6 +52,7 @@ export function ProjectForm({ project, customers, projectTypes, trigger, canView
     const formData = new FormData(e.currentTarget)
     formData.set("customer_id", customerId === "none" ? "" : customerId)
     formData.set("project_type_id", projectTypeId === "none" ? "" : projectTypeId)
+    formData.set("brand_brain_id", brandBrainId === "none" ? "" : brandBrainId)
 
     startTransition(async () => {
       if (project) {
@@ -111,6 +114,25 @@ export function ProjectForm({ project, customers, projectTypes, trigger, canView
               </Select>
             </div>
           </div>
+
+          {brandBrains.length > 0 && (
+            <div className="space-y-2">
+              <Label>Brand Brain</Label>
+              <Select value={brandBrainId} onValueChange={setBrandBrainId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Sin marca" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sin marca</SelectItem>
+                  {brandBrains.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>
+                      {b.name}{b.industry ? ` · ${b.industry}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {canViewFinancials && (
             <div className="grid grid-cols-2 gap-4">

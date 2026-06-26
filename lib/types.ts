@@ -152,6 +152,7 @@ export interface Project {
   start_date: string | null
   end_date: string | null
   description: string | null
+  brand_brain_id: string | null
   created_at: string
   // Relations
   customer?: Customer | null

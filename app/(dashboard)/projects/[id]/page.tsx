@@ -8,7 +8,7 @@ import { getCustomers } from "@/lib/actions/customers"
 import { getProjectDeliverables } from "@/lib/actions/deliverables"
 import { getSops } from "@/lib/actions/sops"
 import { getCreativeConcepts, getCreativeAssets } from "@/lib/actions/creatives"
-import { getBrandBrains, getAllBrandLines } from "@/lib/actions/brand-brains"
+import { getBrandBrains, getBrandLines } from "@/lib/actions/brand-brains"
 import { getSavedAds, getBoards } from "@/lib/actions/ad-lab"
 import { getMetaCampaigns } from "@/lib/actions/meta"
 import { getProjectIntegrations } from "@/lib/actions/integrations"
@@ -104,7 +104,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         getBrandBrains().catch(() => []),
         getSavedAds().catch(() => []),
         getBoards().catch(() => []),
-        getAllBrandLines().catch(() => []),
+        project.brand_brain_id ? getBrandLines(project.brand_brain_id).catch(() => []) : Promise.resolve([]),
       ])
     : [[], [], [], [], [], [], [], []]
 
@@ -172,6 +172,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               project={canEditProjects ? project as Project : undefined}
               customers={customers as Customer[]}
               projectTypes={projectTypes as ProjectType[]}
+              brandBrains={brandBrains as any[]}
               canViewFinancials={canViewFinancials}
             />
           </div>

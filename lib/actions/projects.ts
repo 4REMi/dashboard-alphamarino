@@ -350,6 +350,7 @@ export async function createProject(
       start_date: (formData.get("start_date") as string) || null,
       end_date: (formData.get("end_date") as string) || null,
       description: (formData.get("description") as string) || null,
+      brand_brain_id: (formData.get("brand_brain_id") as string) || null,
     })
     .select()
     .single()
@@ -526,6 +527,7 @@ export async function updateProject(id: string, formData: FormData) {
       start_date: (formData.get("start_date") as string) || null,
       end_date: (formData.get("end_date") as string) || null,
       description: (formData.get("description") as string) || null,
+      brand_brain_id: (formData.get("brand_brain_id") as string) || null,
     })
     .eq("id", id)
 

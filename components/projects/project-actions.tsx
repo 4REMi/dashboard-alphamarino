@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { archiveProject, completeProject, reactivateProject, deleteProject } from "@/lib/actions/projects"
 import { ProjectForm } from "@/components/projects/project-form"
 import { Button } from "@/components/ui/button"
-import type { Project, Customer, ProjectType, ProjectStatus } from "@/lib/types"
+import type { Project, Customer, ProjectType, ProjectStatus, BrandBrain } from "@/lib/types"
 
 interface Props {
   projectId: string
@@ -15,6 +15,7 @@ interface Props {
   project?: Project
   customers?: Customer[]
   projectTypes?: ProjectType[]
+  brandBrains?: BrandBrain[]
   canViewFinancials?: boolean
 }
 
@@ -26,6 +27,7 @@ export function ProjectActions({
   project,
   customers = [],
   projectTypes = [],
+  brandBrains = [],
   canViewFinancials = true,
 }: Props) {
   const router = useRouter()
@@ -48,6 +50,7 @@ export function ProjectActions({
           project={project}
           customers={customers}
           projectTypes={projectTypes}
+          brandBrains={brandBrains}
           trigger={<Button variant="outline" size="sm">Editar</Button>}
           canViewFinancials={canViewFinancials}
         />
