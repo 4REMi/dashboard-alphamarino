@@ -41,6 +41,7 @@ function ConceptDetailModal({
   conceptAssets,
   conceptBriefs,
   projectId,
+  cycleId,
   isAdminOrSubadmin,
   onEdit,
   onClose,
@@ -52,6 +53,7 @@ function ConceptDetailModal({
   conceptAssets: CreativeAsset[]
   conceptBriefs: CreativeBrief[]
   projectId: string
+  cycleId: string | null
   isAdminOrSubadmin: boolean
   onEdit: () => void
   onClose: () => void
@@ -73,7 +75,7 @@ function ConceptDetailModal({
 
   function handleDemote() {
     startTransition(async () => {
-      await demoteConcept(concept.id, projectId)
+      await demoteConcept(concept.id, projectId, cycleId ?? undefined)
       onRefresh()
       onClose()
     })
@@ -1013,6 +1015,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
           conceptAssets={assets.filter((a) => a.concept_id === detailConcept.id)}
           conceptBriefs={briefs.filter((b) => b.concept_id === detailConcept.id)}
           projectId={projectId}
+          cycleId={cycleId}
           isAdminOrSubadmin={isAdminOrSubadmin}
           onEdit={openEditFromDetail}
           onClose={() => setDetailConcept(null)}

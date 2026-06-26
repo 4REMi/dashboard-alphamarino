@@ -136,13 +136,14 @@ export async function promoteConcept(id: string, projectId: string): Promise<voi
   revalidatePath(`/projects/${projectId}`)
 }
 
-export async function demoteConcept(id: string, projectId: string): Promise<void> {
+export async function demoteConcept(id: string, projectId: string, cycleId?: string): Promise<void> {
   const supabase = await createClient()
   const { role } = await getRole()
   if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
 
   const { error } = await supabase.from("creative_concepts").update({
     status: "Active",
+    ...(cycleId ? { cycle_id: cycleId } : {}),
   }).eq("id", id)
   if (error) throw error
   revalidatePath(`/projects/${projectId}`)
