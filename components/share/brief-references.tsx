@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useTransition } from "react"
+import { updateBriefScript } from "@/lib/actions/creatives"
 import type { AdCloneLine } from "@/lib/types"
 
 interface Reference {
@@ -12,7 +13,13 @@ interface Reference {
   script?: AdCloneLine[]
 }
 
-export function BriefReferences({ references }: { references: Reference[] }) {
+interface Props {
+  references: Reference[]
+  briefId?: string
+  editable?: boolean
+}
+
+export function BriefReferences({ references, briefId, editable = false }: Props) {
   const [openId, setOpenId] = useState<string | null>(null)
 
   function toggle(id: string) {
@@ -119,47 +126,139 @@ export function BriefReferences({ references }: { references: Reference[] }) {
                   </div>
                 ) : null}
 
-                {/* Script (only for videos with script) */}
+                {/* Script */}
                 {isVideo && ref.script && ref.script.length > 0 && (
-                  <div>
-                    <div className="px-5 py-3 bg-gray-50/80 border-t border-b border-gray-100">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-500">
-                        Guión tropicalizado
-                      </p>
-                    </div>
-                    <div className="divide-y divide-gray-100">
-                      {ref.script.map((line, i) => (
-                        <div key={i} className="grid sm:grid-cols-2">
-                          <div className="px-5 py-3.5 sm:border-r border-gray-100">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-[10px] font-bold flex items-center justify-center flex-shrink-0">
-                                {i + 1}
-                              </span>
-                              {line.speaker && (
-                                <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-                                  {line.speaker}
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-sm text-gray-400 line-through leading-relaxed">
-                              {line.original}
-                            </p>
-                          </div>
-                          <div className="px-5 py-3.5 bg-indigo-50/30">
-                            <p className="text-sm text-gray-900 font-medium leading-relaxed">
-                              {line.adapted}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                  editable && briefId ? (
+                    <EditableScript
+                      briefId={briefId}
+                      adId={ref.id}
+                      initialLines={ref.script}
+                    />
+                  ) : (
+                    <ReadOnlyScript lines={ref.script} />
+                  )
                 )}
               </div>
             )}
           </div>
         )
       })}
+    </div>
+  )
+}
+
+function ReadOnlyScript({ lines }: { lines: AdCloneLine[] }) {
+  return (
+    <div>
+      <div className="px-5 py-3 bg-gray-50/80 border-t border-b border-gray-100">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-500">
+          Guión tropicalizado
+        </p>
+      </div>
+      <div className="divide-y divide-gray-100">
+        {lines.map((line, i) => (
+          <div key={i} className="grid sm:grid-cols-2">
+            <div className="px-5 py-3.5 sm:border-r border-gray-100">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+                  {i + 1}
+                </span>
+                {line.speaker && (
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                    {line.speaker}
+                  </span>
+                )}
+              </div>
+              <p className="text-sm text-gray-400 line-through leading-relaxed">
+                {line.original}
+              </p>
+            </div>
+            <div className="px-5 py-3.5 bg-indigo-50/30">
+              <p className="text-sm text-gray-900 font-medium leading-relaxed">
+                {line.adapted}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function EditableScript({ briefId, adId, initialLines }: { briefId: string; adId: string; initialLines: AdCloneLine[] }) {
+  const [lines, setLines] = useState<AdCloneLine[]>(initialLines)
+  const [isPending, startTransition] = useTransition()
+  const [saved, setSaved] = useState(false)
+
+  const hasChanges = JSON.stringify(lines) !== JSON.stringify(initialLines)
+
+  function updateLine(index: number, adapted: string) {
+    setLines((prev) => {
+      const next = [...prev]
+      next[index] = { ...next[index], adapted }
+      return next
+    })
+    setSaved(false)
+  }
+
+  function handleSave() {
+    startTransition(async () => {
+      await updateBriefScript(briefId, adId, lines)
+      setSaved(true)
+    })
+  }
+
+  return (
+    <div>
+      <div className="px-5 py-3 bg-gray-50/80 border-t border-b border-gray-100 flex items-center justify-between">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-500">
+          Guión tropicalizado
+        </p>
+        <div className="flex items-center gap-2">
+          {saved && !hasChanges && (
+            <span className="text-[10px] font-medium text-emerald-600">✓ Guardado</span>
+          )}
+          {hasChanges && (
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={isPending}
+              className="text-xs font-medium px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+            >
+              {isPending ? "Guardando…" : "Guardar cambios"}
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="divide-y divide-gray-100">
+        {lines.map((line, i) => (
+          <div key={i} className="grid sm:grid-cols-2">
+            <div className="px-5 py-3.5 sm:border-r border-gray-100">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+                  {i + 1}
+                </span>
+                {line.speaker && (
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                    {line.speaker}
+                  </span>
+                )}
+              </div>
+              <p className="text-sm text-gray-400 line-through leading-relaxed">
+                {line.original}
+              </p>
+            </div>
+            <div className="px-5 py-3.5 bg-indigo-50/30">
+              <textarea
+                value={line.adapted}
+                onChange={(e) => updateLine(i, e.target.value)}
+                rows={Math.max(2, Math.ceil(line.adapted.length / 55))}
+                className="w-full resize-none bg-transparent border border-transparent hover:border-indigo-200 focus:border-indigo-400 rounded-lg px-2 py-1 text-sm font-medium leading-relaxed text-gray-900 focus:outline-none transition-colors"
+              />
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation"
+import { createClient } from "@/lib/supabase/server"
 import { getBriefByToken } from "@/lib/actions/creatives"
+import { can } from "@/lib/permissions"
 import type { AdCloneLine } from "@/lib/types"
 import { ANGLE_GUIDE } from "@/lib/constants/creatives"
 import { BriefReferences } from "@/components/share/brief-references"
@@ -26,6 +28,16 @@ export default async function ShareBriefPage({ params }: Props) {
   const { token } = await params
   const brief = await getBriefByToken(token)
   if (!brief) notFound()
+
+  let canEdit = false
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
+      canEdit = profile?.role === "admin" || profile?.role === "subadmin"
+    }
+  } catch {}
 
   const concept = brief.concept as Record<string, string | number | null> | null
   const brain = brief.brand_brain as Record<string, string | null> | null
@@ -140,7 +152,7 @@ export default async function ShareBriefPage({ params }: Props) {
                 Referencias ({references.length})
               </p>
             </div>
-            <BriefReferences references={references} />
+            <BriefReferences references={references} briefId={canEdit ? brief.id : undefined} editable={canEdit} />
           </section>
         ) : (
           <div className="text-center py-16">

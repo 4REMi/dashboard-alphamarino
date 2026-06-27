@@ -544,6 +544,32 @@ export async function deleteBrief(id: string, projectId: string): Promise<void> 
   revalidatePath(`/projects/${projectId}`)
 }
 
+export async function updateBriefScript(
+  briefId: string,
+  adId: string,
+  lines: { speaker: string | null; original: string; adapted: string }[]
+): Promise<void> {
+  const supabase = await createClient()
+  const { role } = await getRole()
+  if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
+
+  const { data: brief } = await supabase
+    .from("creative_briefs")
+    .select("adapted_script")
+    .eq("id", briefId)
+    .single()
+  if (!brief) throw new Error("Brief not found")
+
+  const current = (brief.adapted_script as Record<string, unknown>) ?? {}
+  const updated = { ...current, [adId]: lines }
+
+  const { error } = await supabase
+    .from("creative_briefs")
+    .update({ adapted_script: updated, updated_at: new Date().toISOString() })
+    .eq("id", briefId)
+  if (error) throw error
+}
+
 // ── AI GENERATION ────────────────────────────────────────────
 
 export interface AIDraftConcept {
