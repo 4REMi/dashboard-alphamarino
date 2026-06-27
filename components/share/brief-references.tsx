@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react"
 import { updateBriefScript } from "@/lib/actions/creatives"
+import { CopyScriptButton } from "@/components/share/copy-script-button"
 import type { AdCloneLine } from "@/lib/types"
 
 interface Reference {
@@ -150,10 +151,11 @@ export function BriefReferences({ references, briefId, editable = false }: Props
 function ReadOnlyScript({ lines }: { lines: AdCloneLine[] }) {
   return (
     <div>
-      <div className="px-5 py-3 bg-gray-50/80 border-t border-b border-gray-100">
+      <div className="px-5 py-3 bg-gray-50/80 border-t border-b border-gray-100 flex items-center justify-between">
         <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-500">
           Guión tropicalizado
         </p>
+        <CopyScriptButton lines={lines} brandName={null} />
       </div>
       <div className="divide-y divide-gray-100">
         {lines.map((line, i) => (
@@ -215,6 +217,7 @@ function EditableScript({ briefId, adId, initialLines }: { briefId: string; adId
           Guión tropicalizado
         </p>
         <div className="flex items-center gap-2">
+          <CopyScriptButton lines={lines} brandName={null} />
           {saved && !hasChanges && (
             <span className="text-[10px] font-medium text-emerald-600">✓ Guardado</span>
           )}
