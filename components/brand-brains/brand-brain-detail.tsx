@@ -2,11 +2,11 @@
 
 import { useState, useTransition, useRef } from "react"
 import type { BrandBrain, BrandBrainAsset, BrandLine } from "@/lib/types"
-import { deleteBrandBrain, addBrandBrainAsset, deleteBrandBrainAsset, createBrandLine, updateBrandLine, deleteBrandLine } from "@/lib/actions/brand-brains"
+import { deleteBrandBrain, addBrandBrainAsset, deleteBrandBrainAsset, createBrandLine, updateBrandLine, deleteBrandLine, autofillBrandLine } from "@/lib/actions/brand-brains"
 import { BrandBrainModal } from "@/components/brand-brains/brand-brain-modal"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
-  ArrowLeft, Brain, Pencil, Trash2, Upload, X,
+  ArrowLeft, Brain, Pencil, Trash2, Upload, X, Wand2,
   Loader2, Image as ImageIcon, Film, Download, Plus, Package,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -562,8 +562,24 @@ function BrandLineForm({
   const [keywords, setKeywords] = useState<string[]>(line?.keywords ?? [])
   const [color, setColor] = useState(line?.color ?? suggestedColor ?? "#6366f1")
   const [isPending, startTransition] = useTransition()
+  const [isAutofilling, setIsAutofilling] = useState(false)
 
   const inputCls = "w-full px-3 py-2 text-sm rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+
+  async function handleAutofill() {
+    if (!name.trim()) return
+    setIsAutofilling(true)
+    try {
+      const result = await autofillBrandLine(name.trim(), brainId)
+      if (result.description) setDescription(result.description)
+      if (result.usps?.length) setUsps(result.usps)
+      if (result.pain_points?.length) setPainPoints(result.pain_points)
+      if (result.keywords?.length) setKeywords(result.keywords)
+    } catch {
+      // silently fail
+    }
+    setIsAutofilling(false)
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -625,14 +641,26 @@ function BrandLineForm({
               <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
                 Nombre del producto / servicio *
               </label>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Ej: Residencial Los Álamos, Consultoría Hipotecaria"
-                className={inputCls}
-                required
-                autoFocus
-              />
+              <div className="flex gap-2">
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Ej: Residencial Los Álamos, Consultoría Hipotecaria"
+                  className={cn(inputCls, "flex-1")}
+                  required
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={handleAutofill}
+                  disabled={isAutofilling || !name.trim()}
+                  className="h-9 px-3 rounded-lg border border-primary/30 bg-primary/5 text-primary text-xs font-medium hover:bg-primary/10 disabled:opacity-50 transition-colors flex items-center gap-1.5 shrink-0"
+                  title="Auto-rellenar con IA"
+                >
+                  {isAutofilling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+                  Auto-rellenar
+                </button>
+              </div>
             </div>
           </div>
 
