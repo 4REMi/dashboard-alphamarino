@@ -19,19 +19,17 @@ import { ApplyPhasesButton } from "@/components/projects/apply-phases-button"
 import { AddPhasesButton } from "@/components/projects/add-phases-button"
 import { TaskForm } from "@/components/tasks/task-form"
 import { TaskTable } from "@/components/tasks/task-table"
-import { TeamManager } from "@/components/projects/team-manager"
 import { ProjectPhases } from "@/components/projects/project-phases"
 import { PaidMediaContextCard } from "@/components/projects/hub/paid-media-context-card"
 import { PaidMediaCycleCard } from "@/components/projects/hub/paid-media-cycle-card"
 import { PaidMediaCycleHistory } from "@/components/projects/hub/paid-media-cycle-history"
 import { WebContextCard } from "@/components/projects/hub/web-context-card"
-import { ProjectLog } from "@/components/projects/hub/project-log"
 import { ExpandableDescription } from "@/components/projects/expandable-description"
 import { DeliverablesSectionClient } from "@/components/projects/deliverables-section"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent } from "@/components/ui/card"
 import { createClient } from "@/lib/supabase/server"
+import { ProjectContextBar } from "@/components/projects/project-context-bar"
 import { ArrowLeft, CalendarDays, Plus } from "lucide-react"
 import { formatDate, formatCurrency } from "@/lib/utils"
 import type { Customer, Profile, Project, Task, ProjectType, PaidMediaContext, PaidMediaCycle, WebProjectContext, ProjectLogEntry, ProjectPhase, Deliverable, Sop, CreativeConcept, CreativeAsset, MetaCampaign, ProjectIntegration } from "@/lib/types"
@@ -288,102 +286,42 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           />
         )}
 
-        {/* ── Lower grid: context hubs (left) + sidebar (right) ─────── */}
-        {(hasContextSection || true) && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+        {/* ── Context bar: team + bitácora + finances ─────── */}
+        <ProjectContextBar
+          projectId={project.id}
+          members={memberProfiles}
+          allEmployees={employees as Profile[]}
+          canManageTeam={canManageTeam}
+          logEntries={logEntries as ProjectLogEntry[]}
+          currentUserId={user!.id}
+          isAdmin={isAdmin}
+          finances={canViewFinancials ? {
+            projectValue,
+            totalIncome,
+            accountsReceivable,
+            monthlyFee: project.monthly_fee,
+            totalExpenses,
+          } : null}
+        />
 
-            {/* Left: web context + paid media hub */}
-            <div className="lg:col-span-2 space-y-6">
-              {webContext !== null && !isPaidMedia && (
-                <section>
-                  <WebContextCard projectId={project.id} context={webContext} canEdit={isAdminOrSubadmin} />
-                </section>
-              )}
+        {/* ── Context hubs — full width ─────── */}
+        {webContext !== null && !isPaidMedia && (
+          <section>
+            <WebContextCard projectId={project.id} context={webContext} canEdit={isAdminOrSubadmin} />
+          </section>
+        )}
 
-              {isPaidMedia && (
-                <section className="space-y-4">
-                  <h2 className="text-sm font-semibold">Hub Paid Media</h2>
-                  {webContext !== null && (
-                    <WebContextCard projectId={project.id} context={webContext} canEdit={isAdminOrSubadmin} />
-                  )}
-                  <PaidMediaContextCard projectId={project.id} context={paidMediaContext} canEdit={isAdminOrSubadmin} />
-                  <IntegrationsCard     projectId={project.id} integrations={integrations as ProjectIntegration[]} canEdit={isAdminOrSubadmin} />
-                  <PaidMediaCycleCard   projectId={project.id} activeCycle={activeCycle} context={paidMediaContext} canEdit={isAdminOrSubadmin} initialCampaigns={initialMetaCampaigns as MetaCampaign[]} hasMetaConnected={!!(integrations as ProjectIntegration[]).find((i) => i.platform === "meta")} />
-                  {historyCycles.length > 0 && <PaidMediaCycleHistory cycles={historyCycles} />}
-                </section>
-              )}
-
-              {/* Placeholder so the left column always exists and grid holds its shape */}
-              {webContext === null && !isPaidMedia && <div />}
-            </div>
-
-            {/* Right: sidebar */}
-            <div className="space-y-4 lg:sticky lg:top-[89px]">
-
-              {/* Team */}
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm font-semibold">Equipo</h3>
-                    <span className="text-xs text-muted-foreground">{memberProfiles.length} miembros</span>
-                  </div>
-
-                  <TeamManager
-                    projectId={project.id}
-                    members={memberProfiles}
-                    allEmployees={employees as Profile[]}
-                    isAdmin={canManageTeam}
-                  />
-                </CardContent>
-              </Card>
-
-              {/* Log */}
-              <ProjectLog
-                projectId={project.id}
-                initialEntries={logEntries as ProjectLogEntry[]}
-                currentUserId={user!.id}
-                isAdmin={isAdmin}
-                compact
-              />
-
-              {/* Finances */}
-              {canViewFinancials && (
-                <Card>
-                  <CardContent className="p-4">
-                    <h3 className="text-sm font-semibold mb-3">Finanzas</h3>
-                    <div className="space-y-2 text-xs">
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Valor del proyecto</span>
-                        <span className="font-semibold">{formatCurrency(projectValue)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Cobrado</span>
-                        <span className="font-semibold text-success">{formatCurrency(totalIncome)}</span>
-                      </div>
-                      <div className="flex justify-between border-t pt-2">
-                        <span className="text-muted-foreground">Por cobrar</span>
-                        <span className={`font-semibold ${accountsReceivable > 0 ? "text-warning" : "text-success"}`}>
-                          {formatCurrency(accountsReceivable)}
-                        </span>
-                      </div>
-                      {project.monthly_fee && (
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Fee mensual</span>
-                          <span className="font-semibold">{formatCurrency(project.monthly_fee)}</span>
-                        </div>
-                      )}
-                      {totalExpenses > 0 && (
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Gastos del proyecto</span>
-                          <span className="font-semibold text-destructive">{formatCurrency(totalExpenses)}</span>
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-          </div>
+        {isPaidMedia && (
+          <section className="space-y-4">
+            <h2 className="text-sm font-semibold">Hub Paid Media</h2>
+            {webContext !== null && (
+              <WebContextCard projectId={project.id} context={webContext} canEdit={isAdminOrSubadmin} />
+            )}
+            <PaidMediaContextCard projectId={project.id} context={paidMediaContext} canEdit={isAdminOrSubadmin} />
+            <IntegrationsCard     projectId={project.id} integrations={integrations as ProjectIntegration[]} canEdit={isAdminOrSubadmin} />
+            <PaidMediaCycleCard   projectId={project.id} activeCycle={activeCycle} context={paidMediaContext} canEdit={isAdminOrSubadmin} initialCampaigns={initialMetaCampaigns as MetaCampaign[]} hasMetaConnected={!!(integrations as ProjectIntegration[]).find((i) => i.platform === "meta")} />
+            {historyCycles.length > 0 && <PaidMediaCycleHistory cycles={historyCycles} />}
+          </section>
         )}
 
         {/* ── Creative Tracker — full width, own section ──────────────── */}
