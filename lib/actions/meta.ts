@@ -43,6 +43,40 @@ function pickResults(actions: MetaInsightRow["actions"]): { results: number | nu
   return { results: Number(actions[0].value), results_type: actions[0].action_type }
 }
 
+export interface MetaAdAccount {
+  id: string
+  account_id: string
+  name: string
+  business_name: string | null
+  account_status: number
+}
+
+export async function getMetaAdAccounts(): Promise<{ accounts: MetaAdAccount[]; error?: string }> {
+  const accessToken = process.env.META_SYSTEM_USER_TOKEN
+  if (!accessToken) return { accounts: [], error: "META_SYSTEM_USER_TOKEN no configurado" }
+
+  const url = new URL(`${META_BASE}/me/adaccounts`)
+  url.searchParams.set("fields", "name,account_id,account_status,business_name")
+  url.searchParams.set("limit", "200")
+  url.searchParams.set("access_token", accessToken)
+
+  try {
+    const res = await fetch(url.toString(), { cache: "no-store" })
+    const json = await res.json()
+    if (json.error) return { accounts: [], error: `Meta API: ${json.error.message}` }
+    const accounts: MetaAdAccount[] = (json.data ?? []).map((a: any) => ({
+      id: a.id,
+      account_id: a.account_id.replace(/^act_/, ""),
+      name: a.name ?? a.account_id,
+      business_name: a.business_name ?? null,
+      account_status: a.account_status ?? 0,
+    }))
+    return { accounts }
+  } catch {
+    return { accounts: [], error: "Error de red al conectar con Meta" }
+  }
+}
+
 export async function syncMetaCampaigns(projectId: string, cycleId: string): Promise<{ synced: number; error?: string }> {
   const accessToken = process.env.META_SYSTEM_USER_TOKEN
   if (!accessToken) return { synced: 0, error: "META_SYSTEM_USER_TOKEN no está configurado en el servidor" }

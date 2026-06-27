@@ -15,14 +15,18 @@ export async function getProjectIntegrations(projectId: string): Promise<Project
   return data ?? []
 }
 
-export async function upsertProjectIntegration(projectId: string, platform: string, accountId: string) {
+export async function upsertProjectIntegration(projectId: string, platform: string, accountId: string, extra?: Record<string, unknown>) {
   const supabase = await createClient()
+  const row: Record<string, unknown> = {
+    project_id: projectId,
+    platform,
+    account_id: accountId,
+    updated_at: new Date().toISOString(),
+  }
+  if (extra) row.extra = extra
   const { error } = await supabase
     .from("project_integrations")
-    .upsert(
-      { project_id: projectId, platform, account_id: accountId, updated_at: new Date().toISOString() },
-      { onConflict: "project_id,platform" }
-    )
+    .upsert(row, { onConflict: "project_id,platform" })
   if (error) throw error
   revalidatePath(`/projects/${projectId}`)
 }
