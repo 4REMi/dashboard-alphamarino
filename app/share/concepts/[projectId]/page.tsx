@@ -26,13 +26,13 @@ export default async function ShareConceptsPage({ params }: Props) {
   const [projectRes, conceptsRes, assetsRes, settingsRes] = await Promise.all([
     supabase
       .from("projects")
-      .select("name, customer:customers(name, company)")
+      .select("name, brand_brain_id, customer:customers(name, company)")
       .eq("id", projectId)
       .single(),
     supabase
       .from("creative_concepts")
       .select(`id, name, angle_type, target_persona, product_service,
-               pain_point, why_it_works, transformation, funnel_stage, status`)
+               pain_point, why_it_works, transformation, funnel_stage, status, brand_line_id`)
       .eq("project_id", projectId)
       .in("status", ["Active", "Evergreen"])
       .order("status", { ascending: false })
@@ -59,6 +59,12 @@ export default async function ShareConceptsPage({ params }: Props) {
   const customer = project.customer as any
   const concepts = conceptsRes.data ?? []
   const assets   = assetsRes.data ?? []
+
+  // Fetch brand lines for grouping
+  const brandLines: { id: string; name: string; color: string | null; position: number }[] =
+    (project as any).brand_brain_id
+      ? ((await supabase.from("brand_lines").select("id, name, color, position").eq("brand_brain_id", (project as any).brand_brain_id).order("position")).data ?? [])
+      : []
 
   const clientName  = customer?.company || customer?.name || null
   const projectName = project.name
@@ -98,6 +104,24 @@ export default async function ShareConceptsPage({ params }: Props) {
 
   // Concepts with no assets (strategy-only)
   const strategyOnlyConcepts = concepts.filter((c) => (assetsByConcept.get(c.id) ?? []).length === 0)
+
+  // Group by brand line
+  const hasBrandLines = brandLines.length > 0
+  type LineGroup = { line: typeof brandLines[number] | null; items: typeof conceptsPendingFirst; strategyOnly: typeof strategyOnlyConcepts }
+  const lineGroups: LineGroup[] = hasBrandLines
+    ? [
+        ...brandLines.map((l) => ({
+          line: l,
+          items: conceptsPendingFirst.filter((g) => g.concept.brand_line_id === l.id),
+          strategyOnly: strategyOnlyConcepts.filter((c) => c.brand_line_id === l.id),
+        })),
+        {
+          line: null,
+          items: conceptsPendingFirst.filter((g) => !g.concept.brand_line_id),
+          strategyOnly: strategyOnlyConcepts.filter((c) => !c.brand_line_id),
+        },
+      ].filter((g) => g.items.length > 0 || g.strategyOnly.length > 0)
+    : []
 
   return (
     <ClientPortalShell
@@ -146,8 +170,33 @@ export default async function ShareConceptsPage({ params }: Props) {
         </div>
       )}
 
-      {/* ── Concepts + Assets (grouped) ─────────────────────────── */}
-      {hasAssets && conceptsPendingFirst.length > 0 && (
+      {/* ── Concepts + Assets (grouped by brand line) ──────────── */}
+      {hasBrandLines && lineGroups.length > 0 && (
+        <section className="px-4 sm:px-8 pb-10">
+          <div className="max-w-6xl mx-auto space-y-10">
+            <SectionHeader
+              eyebrow="Conceptos en revisión"
+              title="Los ángulos y sus piezas"
+              subtitle="Cada concepto agrupa las piezas creativas que lo desarrollan. Aprueba o pide cambios pieza por pieza."
+            />
+
+            <div className="space-y-14">
+              {lineGroups.map((group) => (
+                <BrandLineSection
+                  key={group.line?.id ?? "__general__"}
+                  line={group.line}
+                  conceptGroups={group.items}
+                  strategyOnly={group.strategyOnly}
+                  unlinkedAssets={group.line === null ? unlinked : []}
+                />
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ── Concepts + Assets (flat — no brand lines) ──────────── */}
+      {!hasBrandLines && hasAssets && conceptsPendingFirst.length > 0 && (
         <section className="px-4 sm:px-8 pb-10">
           <div className="max-w-6xl mx-auto space-y-10">
             <SectionHeader
@@ -174,7 +223,7 @@ export default async function ShareConceptsPage({ params }: Props) {
       )}
 
       {/* ── Assets without concepts (fallback) ──────────────────── */}
-      {hasAssets && conceptsPendingFirst.length === 0 && unlinked.length > 0 && (
+      {!hasBrandLines && hasAssets && conceptsPendingFirst.length === 0 && unlinked.length > 0 && (
         <section className="px-4 sm:px-8 pb-10">
           <div className="max-w-6xl mx-auto space-y-6">
             <SectionHeader
@@ -188,8 +237,8 @@ export default async function ShareConceptsPage({ params }: Props) {
         </section>
       )}
 
-      {/* ── Strategy-only concepts ──────────────────────────────── */}
-      {strategyOnlyConcepts.length > 0 && (
+      {/* ── Strategy-only concepts (flat — no brand lines) ──────── */}
+      {!hasBrandLines && strategyOnlyConcepts.length > 0 && (
         <section className="px-4 sm:px-8 pb-16 border-t border-slate-200/70 pt-12 mt-4 bg-slate-50/40">
           <div className="max-w-6xl mx-auto space-y-6">
             <SectionHeader
@@ -325,6 +374,64 @@ function SectionHeader({ eyebrow, title, subtitle }: {
           <p className="text-sm text-slate-500 mt-1.5 max-w-2xl leading-relaxed">{subtitle}</p>
         )}
       </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Brand line section — collapsible group header + concepts inside
+// ─────────────────────────────────────────────────────────────────
+
+function BrandLineSection({ line, conceptGroups, strategyOnly, unlinkedAssets }: {
+  line: { id: string; name: string; color: string | null; position: number } | null
+  conceptGroups: { concept: any; assets: any[] }[]
+  strategyOnly: any[]
+  unlinkedAssets: any[]
+}) {
+  const totalConcepts = conceptGroups.length + strategyOnly.length
+  const color = line?.color ?? "#64748b"
+
+  return (
+    <div>
+      {/* Line header */}
+      <div className="flex items-center gap-3 mb-8">
+        <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: color }} />
+        <h3 className="text-lg font-bold tracking-tight text-slate-900">
+          {line?.name ?? "General"}
+        </h3>
+        <span className="text-xs text-slate-400 font-medium">
+          {totalConcepts} concepto{totalConcepts !== 1 ? "s" : ""}
+        </span>
+        <span className="flex-1 h-px bg-slate-200/70" />
+      </div>
+
+      {/* Concepts with assets */}
+      {conceptGroups.length > 0 && (
+        <div className="space-y-12 mb-8">
+          {conceptGroups.map(({ concept, assets }) => (
+            <ConceptGroup key={concept.id} concept={concept} assets={assets} />
+          ))}
+        </div>
+      )}
+
+      {/* Unlinked assets (only in General group) */}
+      {unlinkedAssets.length > 0 && (
+        <div className="space-y-12 mb-8">
+          <ConceptGroup concept={null} assets={unlinkedAssets} />
+        </div>
+      )}
+
+      {/* Strategy-only concepts */}
+      {strategyOnly.length > 0 && (
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 mb-3">
+            Ángulos en desarrollo
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {strategyOnly.map((c: any) => <StrategyConceptCard key={c.id} concept={c} />)}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
