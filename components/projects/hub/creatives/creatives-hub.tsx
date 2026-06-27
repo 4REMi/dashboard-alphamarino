@@ -16,6 +16,7 @@ interface CreativesHubProps {
   brandLines?: any[]
   savedAds?: any[]
   boards?: any[]
+  projectBrandBrainId?: string
 }
 
 export function CreativesHub({
@@ -28,6 +29,7 @@ export function CreativesHub({
   brandLines = [],
   savedAds = [],
   boards = [],
+  projectBrandBrainId,
 }: CreativesHubProps) {
   const activeCycle = cycles.find((c) => c.is_active) ?? cycles[0] ?? null
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(activeCycle?.id ?? null)
@@ -119,6 +121,7 @@ export function CreativesHub({
         brandLines={brandLines}
         savedAds={savedAds}
         boards={boards}
+        projectBrandBrainId={projectBrandBrainId}
       />
     </div>
   )

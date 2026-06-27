@@ -32,6 +32,7 @@ interface ConceptsTableProps {
   brandLines?: BrandLine[]
   savedAds?: any[]
   boards?: any[]
+  projectBrandBrainId?: string
 }
 
 // ── Concept detail modal (read-only) ─────────────────────────────────────────
@@ -736,7 +737,7 @@ function MecanismoCell({
 
 // ── Main table ───────────────────────────────────────────────────────────────
 
-export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleId, isAdminOrSubadmin, onRefresh, brandBrains = [], brandLines = [], savedAds = [], boards = [] }: ConceptsTableProps) {
+export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleId, isAdminOrSubadmin, onRefresh, brandBrains = [], brandLines = [], savedAds = [], boards = [], projectBrandBrainId }: ConceptsTableProps) {
   const [detailConcept, setDetailConcept]   = useState<CreativeConcept | null>(null)
   const [editConcept,   setEditConcept]     = useState<CreativeConcept | null>(null)
   const [createForLineId, setCreateForLineId] = useState<string | null | undefined>(undefined)
@@ -1218,7 +1219,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
           cycleId={cycleId}
           isAdminOrSubadmin={isAdminOrSubadmin}
           brandLineId={createForLineId}
-          brandBrainId={createForLineId ? brandLines.find((l: any) => l.id === createForLineId)?.brand_brain_id : brandBrains[0]?.id}
+          brandBrainId={createForLineId ? brandLines.find((l: any) => l.id === createForLineId)?.brand_brain_id : projectBrandBrainId}
           open={createForLineId !== undefined}
           onRefresh={onRefresh}
           onClose={() => setCreateForLineId(undefined)}

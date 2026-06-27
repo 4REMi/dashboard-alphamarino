@@ -340,6 +340,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               brandLines={brandLines as any[]}
               savedAds={savedAds as any[]}
               boards={boards as any[]}
+              projectBrandBrainId={project.brand_brain_id ?? undefined}
             />
           </section>
         )}
