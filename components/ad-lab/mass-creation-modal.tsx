@@ -8,6 +8,7 @@ import {
 } from "@/lib/actions/image-clone"
 import { startClone, pollClone, updateAdaptedLines as updateScriptLines } from "@/lib/actions/ad-clone"
 import { getBrandBrains, getBrandLines } from "@/lib/actions/brand-brains"
+import { getConceptsByBrandBrain } from "@/lib/actions/creatives"
 import type { BrandLine } from "@/lib/types"
 import { useRecentAngulos } from "@/lib/hooks/use-recent-angulos"
 import {
@@ -95,6 +96,9 @@ export function MassCreationModal({ ads, onClose }: Props) {
   const [brandLines, setBrandLines] = useState<BrandLine[]>([])
   const [brandLineId, setBrandLineId] = useState<string | null>(null)
   const [loadingLines, setLoadingLines] = useState(false)
+  const [concepts, setConcepts] = useState<Awaited<ReturnType<typeof getConceptsByBrandBrain>>>([])
+  const [conceptId, setConceptId] = useState<string | null>(null)
+  const [loadingConcepts, setLoadingConcepts] = useState(false)
   const [angulo, setAngulo]       = useState("")
   const [anguloAdvisory, setAnguloAdvisory] = useState<{ compatible: boolean; note: string } | null>(null)
   const [isCheckingAdvisory, setIsCheckingAdvisory] = useState(false)
@@ -159,11 +163,26 @@ export function MassCreationModal({ ads, onClose }: Props) {
     setBrainId(b.id)
     setBrandLineId(null)
     setBrandLines([])
+    setConceptId(null)
+    setConcepts([])
     const colors = b.brand_colors ?? []
     if (colors.length > 0) { setBrandColor(colors[0].hex); setUseBrandColor(true) }
     else setUseBrandColor(false)
     setLoadingLines(true)
     getBrandLines(b.id).then((lines) => { setBrandLines(lines); setLoadingLines(false) }).catch(() => setLoadingLines(false))
+    loadConcepts(b.id, null)
+  }
+
+  function selectBrandLine(lineId: string | null) {
+    setBrandLineId(lineId)
+    setConceptId(null)
+    loadConcepts(brainId, lineId)
+  }
+
+  function loadConcepts(brain: string, line: string | null) {
+    setLoadingConcepts(true)
+    setConcepts([])
+    getConceptsByBrandBrain(brain, line).then((c) => { setConcepts(c); setLoadingConcepts(false) }).catch(() => setLoadingConcepts(false))
   }
 
   async function handleCheckAdvisory() {
@@ -199,7 +218,30 @@ export function MassCreationModal({ ads, onClose }: Props) {
     setItems(initial)
     setStep(2)
 
-    const anguloSnap = angulo.trim() || undefined
+    // Build enriched context from brand line + concept + user angulo
+    const contextParts: string[] = []
+    const selectedLine = brandLineId ? brandLines.find((l) => l.id === brandLineId) : null
+    if (selectedLine) {
+      const lineParts = [`Producto/Servicio: "${selectedLine.name}"`]
+      if (selectedLine.description) lineParts.push(`Descripción: ${selectedLine.description}`)
+      if (selectedLine.usps?.length) lineParts.push(`USPs del producto: ${selectedLine.usps.join(", ")}`)
+      if (selectedLine.pain_points?.length) lineParts.push(`Pain points: ${selectedLine.pain_points.join(", ")}`)
+      if (selectedLine.keywords?.length) lineParts.push(`Keywords: ${selectedLine.keywords.join(", ")}`)
+      contextParts.push(lineParts.join("\n"))
+    }
+    const selectedConcept = conceptId ? concepts.find((c) => c.id === conceptId) : null
+    if (selectedConcept) {
+      const cParts = [`Concepto creativo: "${selectedConcept.name}"`]
+      if (selectedConcept.angle_type) cParts.push(`Ángulo: ${selectedConcept.angle_type}`)
+      if (selectedConcept.target_persona) cParts.push(`Persona objetivo: ${selectedConcept.target_persona}`)
+      if (selectedConcept.pain_point) cParts.push(`Dolor: ${selectedConcept.pain_point}`)
+      if (selectedConcept.transformation) cParts.push(`Transformación: ${selectedConcept.transformation}`)
+      if (selectedConcept.why_it_works) cParts.push(`Por qué conecta: ${selectedConcept.why_it_works}`)
+      if (selectedConcept.funnel_stage) cParts.push(`Etapa de funnel: ${selectedConcept.funnel_stage}`)
+      contextParts.push(cParts.join("\n"))
+    }
+    if (angulo.trim()) contextParts.push(angulo.trim())
+    const anguloSnap = contextParts.length > 0 ? contextParts.join("\n\n") : undefined
 
     if (type === "estaticos") {
       const results = await Promise.allSettled(
@@ -521,7 +563,7 @@ export function MassCreationModal({ ads, onClose }: Props) {
                   <div className="flex flex-wrap gap-1.5">
                     <button
                       type="button"
-                      onClick={() => setBrandLineId(null)}
+                      onClick={() => selectBrandLine(null)}
                       className={`h-7 px-3 rounded-full text-xs font-medium border transition-colors ${
                         !brandLineId ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/30"
                       }`}
@@ -532,13 +574,65 @@ export function MassCreationModal({ ads, onClose }: Props) {
                       <button
                         key={l.id}
                         type="button"
-                        onClick={() => setBrandLineId(l.id)}
+                        onClick={() => selectBrandLine(l.id)}
                         className={`h-7 px-3 rounded-full text-xs font-medium border transition-colors flex items-center gap-1.5 ${
                           brandLineId === l.id ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/30"
                         }`}
                       >
                         {l.color && <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: l.color }} />}
                         {l.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Concept selector */}
+            {brainId && (loadingConcepts || concepts.length > 0) && (
+              <div>
+                <p className="text-sm font-medium mb-1">
+                  Concepto creativo <span className="text-xs font-normal text-muted-foreground">(opcional)</span>
+                </p>
+                <p className="text-xs text-muted-foreground mb-2">Adapta el contenido al ángulo estratégico de un concepto existente.</p>
+                {loadingConcepts ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Cargando conceptos…
+                  </div>
+                ) : (
+                  <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
+                    {concepts.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => setConceptId(conceptId === c.id ? null : c.id)}
+                        className={`w-full text-left p-2.5 rounded-lg border transition-all ${
+                          conceptId === c.id
+                            ? "border-primary bg-primary/5 ring-1 ring-primary/30"
+                            : "border-border hover:border-primary/30"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className="text-sm font-medium truncate">{c.name}</span>
+                          {c.angle_type && (
+                            <span className="text-[10px] font-semibold bg-slate-900 text-white px-1.5 py-0.5 rounded shrink-0">
+                              {c.angle_type}
+                            </span>
+                          )}
+                          {c.funnel_stage && (
+                            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
+                              {c.funnel_stage}
+                            </span>
+                          )}
+                          {c.status === "Evergreen" && (
+                            <span className="text-[10px] shrink-0">⭐</span>
+                          )}
+                        </div>
+                        {(c.pain_point || c.target_persona) && (
+                          <p className="text-[11px] text-muted-foreground truncate">
+                            {c.target_persona}{c.pain_point ? ` · ${c.pain_point}` : ""}
+                          </p>
+                        )}
                       </button>
                     ))}
                   </div>

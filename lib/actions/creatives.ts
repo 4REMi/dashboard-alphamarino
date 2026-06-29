@@ -33,6 +33,37 @@ function isAdminOrSubadmin(role: string) {
   return role === "admin" || role === "subadmin"
 }
 
+// ── CONCEPTS (Ad Lab lookup) ─────────────────────────────────
+
+export async function getConceptsByBrandBrain(
+  brandBrainId: string,
+  brandLineId?: string | null,
+): Promise<Pick<CreativeConcept, "id" | "name" | "angle_type" | "target_persona" | "pain_point" | "transformation" | "why_it_works" | "funnel_stage" | "status" | "brand_line_id">[]> {
+  const supabase = await createClient()
+
+  const { data: project } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("brand_brain_id", brandBrainId)
+    .limit(1)
+    .maybeSingle()
+  if (!project) return []
+
+  let query = supabase
+    .from("creative_concepts")
+    .select("id, name, angle_type, target_persona, pain_point, transformation, why_it_works, funnel_stage, status, brand_line_id")
+    .eq("project_id", project.id)
+    .in("status", ["Active", "Evergreen"])
+    .order("created_at", { ascending: false })
+
+  if (brandLineId) {
+    query = query.eq("brand_line_id", brandLineId)
+  }
+
+  const { data } = await query
+  return data ?? []
+}
+
 // ── CONCEPTS ─────────────────────────────────────────────────
 
 export async function getCreativeConcepts(
