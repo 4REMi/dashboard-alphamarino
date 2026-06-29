@@ -1,10 +1,11 @@
 "use client"
 
 import { useEffect, useRef, useState, useTransition } from "react"
-import type { AdCloneLine, AdCloneStatus, BrandBrain, MetaAdResult } from "@/lib/types"
+import type { AdCloneLine, AdCloneStatus, BrandBrain, MetaAdResult, BrandLine } from "@/lib/types"
 import { startClone, pollClone, updateAdaptedLines } from "@/lib/actions/ad-clone"
 import { checkAnguloCompatibility } from "@/lib/actions/image-clone"
-import { getBrandBrains } from "@/lib/actions/brand-brains"
+import { getBrandBrains, getBrandLines } from "@/lib/actions/brand-brains"
+import { getConceptsByBrandBrain } from "@/lib/actions/creatives"
 import { useRecentAngulos } from "@/lib/hooks/use-recent-angulos"
 import {
   X, Wand2, Loader2, Check, Copy, ChevronRight,
@@ -39,6 +40,14 @@ export function CloneModal({ ad, onClose }: Props) {
   const [isPending, startTransition]        = useTransition()
   const [isSaving, setIsSaving]             = useState(false)
 
+  // Brand line + concepts
+  const [brandLines, setBrandLines]             = useState<BrandLine[]>([])
+  const [brandLineId, setBrandLineId]           = useState<string | null>(null)
+  const [loadingLines, setLoadingLines]         = useState(false)
+  const [concepts, setConcepts]                 = useState<Awaited<ReturnType<typeof getConceptsByBrandBrain>>>([])
+  const [conceptId, setConceptId]               = useState<string | null>(null)
+  const [loadingConcepts, setLoadingConcepts]   = useState(false)
+
   // Ángulo
   const [angulo, setAngulo]                         = useState("")
   const [anguloAdvisory, setAnguloAdvisory]         = useState<{ compatible: boolean; note: string } | null>(null)
@@ -57,6 +66,55 @@ export function CloneModal({ ad, onClose }: Props) {
       setBrains(all.map((b) => ({ id: b.id, name: b.name })))
     )
   }, [])
+
+  function selectBrain(brainId: string) {
+    setSelectedBrainId(brainId)
+    setBrandLineId(null)
+    setBrandLines([])
+    setConceptId(null)
+    setConcepts([])
+    setLoadingLines(true)
+    getBrandLines(brainId).then((l) => { setBrandLines(l); setLoadingLines(false) }).catch(() => setLoadingLines(false))
+    loadConcepts(brainId, null)
+  }
+
+  function selectBrandLine(lineId: string | null) {
+    setBrandLineId(lineId)
+    setConceptId(null)
+    loadConcepts(selectedBrainId, lineId)
+  }
+
+  function loadConcepts(brain: string, line: string | null) {
+    setLoadingConcepts(true)
+    setConcepts([])
+    getConceptsByBrandBrain(brain, line).then((c) => { setConcepts(c); setLoadingConcepts(false) }).catch(() => setLoadingConcepts(false))
+  }
+
+  function buildEnrichedAngulo(): string | undefined {
+    const parts: string[] = []
+    const selectedLine = brandLineId ? brandLines.find((l) => l.id === brandLineId) : null
+    if (selectedLine) {
+      const lp = [`Producto/Servicio: "${selectedLine.name}"`]
+      if (selectedLine.description) lp.push(`Descripción: ${selectedLine.description}`)
+      if (selectedLine.usps?.length) lp.push(`USPs del producto: ${selectedLine.usps.join(", ")}`)
+      if (selectedLine.pain_points?.length) lp.push(`Pain points: ${selectedLine.pain_points.join(", ")}`)
+      if (selectedLine.keywords?.length) lp.push(`Keywords: ${selectedLine.keywords.join(", ")}`)
+      parts.push(lp.join("\n"))
+    }
+    const selectedConcept = conceptId ? concepts.find((c) => c.id === conceptId) : null
+    if (selectedConcept) {
+      const cp = [`Concepto creativo: "${selectedConcept.name}"`]
+      if (selectedConcept.angle_type) cp.push(`Ángulo: ${selectedConcept.angle_type}`)
+      if (selectedConcept.target_persona) cp.push(`Persona objetivo: ${selectedConcept.target_persona}`)
+      if (selectedConcept.pain_point) cp.push(`Dolor: ${selectedConcept.pain_point}`)
+      if (selectedConcept.transformation) cp.push(`Transformación: ${selectedConcept.transformation}`)
+      if (selectedConcept.why_it_works) cp.push(`Por qué conecta: ${selectedConcept.why_it_works}`)
+      if (selectedConcept.funnel_stage) cp.push(`Etapa de funnel: ${selectedConcept.funnel_stage}`)
+      parts.push(cp.join("\n"))
+    }
+    if (angulo.trim()) parts.push(angulo.trim())
+    return parts.length > 0 ? parts.join("\n\n") : undefined
+  }
 
   async function handleCheckAdvisory() {
     if (!selectedBrainId || !angulo.trim()) return
@@ -77,7 +135,7 @@ export function CloneModal({ ad, onClose }: Props) {
     if (!cloneId) return
     if (cloneStatus === "ready" || cloneStatus === "error") return
 
-    const anguloSnap = angulo.trim() || undefined
+    const anguloSnap = buildEnrichedAngulo()
     const interval = setInterval(async () => {
       try {
         const result = await pollClone(cloneId, anguloSnap)
@@ -94,7 +152,7 @@ export function CloneModal({ ad, onClose }: Props) {
     }, 3000)
 
     return () => clearInterval(interval)
-  }, [cloneId, cloneStatus, angulo])
+  }, [cloneId, cloneStatus, angulo, brandLineId, conceptId])
 
   // Transition from step 2 loading → editing once ready
   useEffect(() => {
@@ -222,7 +280,7 @@ export function CloneModal({ ad, onClose }: Props) {
                     {brains.map((b) => (
                       <button
                         key={b.id}
-                        onClick={() => setSelectedBrainId(b.id)}
+                        onClick={() => selectBrain(b.id)}
                         className={`p-3 rounded-xl border text-left text-sm font-medium transition-all ${
                           selectedBrainId === b.id
                             ? "border-primary bg-primary/5 text-primary"
@@ -238,6 +296,69 @@ export function CloneModal({ ad, onClose }: Props) {
                   </div>
                 )}
               </div>
+
+              {/* ── Brand Line ── */}
+              {selectedBrainId && (loadingLines || brandLines.length > 0) && (
+                <div>
+                  <p className="text-sm font-medium mb-1">
+                    Producto / Servicio <span className="text-xs font-normal text-muted-foreground">(opcional)</span>
+                  </p>
+                  <p className="text-xs text-muted-foreground mb-2">Enfoca la adaptación a una línea específica.</p>
+                  {loadingLines ? (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Cargando…
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5">
+                      <button type="button" onClick={() => selectBrandLine(null)}
+                        className={`h-7 px-3 rounded-full text-xs font-medium border transition-colors ${!brandLineId ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground hover:border-primary/40"}`}>
+                        General
+                      </button>
+                      {brandLines.map((l) => (
+                        <button key={l.id} type="button" onClick={() => selectBrandLine(l.id)}
+                          className={`h-7 px-3 rounded-full text-xs font-medium border transition-colors flex items-center gap-1.5 ${brandLineId === l.id ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground hover:border-primary/40"}`}>
+                          {l.color && <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: l.color }} />}
+                          {l.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── Concept ── */}
+              {selectedBrainId && (loadingConcepts || concepts.length > 0) && (
+                <div>
+                  <p className="text-sm font-medium mb-1">
+                    Concepto creativo <span className="text-xs font-normal text-muted-foreground">(opcional)</span>
+                  </p>
+                  <p className="text-xs text-muted-foreground mb-2">Adapta según el ángulo estratégico de un concepto existente.</p>
+                  {loadingConcepts ? (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Cargando…
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5 max-h-[180px] overflow-y-auto">
+                      {concepts.map((c) => (
+                        <button key={c.id} type="button" onClick={() => setConceptId(conceptId === c.id ? null : c.id)}
+                          className={`w-full text-left p-2.5 rounded-lg border transition-all ${conceptId === c.id ? "border-primary bg-primary/5 ring-1 ring-primary/40" : "border-border hover:border-primary/40"}`}>
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <span className="text-sm font-medium truncate">{c.name}</span>
+                            {c.angle_type && <span className="text-[10px] font-semibold bg-slate-900 text-white px-1.5 py-0.5 rounded shrink-0">{c.angle_type}</span>}
+                            {c.funnel_stage && <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">{c.funnel_stage}</span>}
+                            {c.status === "Evergreen" && <span className="text-[10px] shrink-0">⭐</span>}
+                          </div>
+                          {(c.pain_point || c.target_persona) && (
+                            <p className="text-[11px] text-muted-foreground truncate">
+                              {c.target_persona}{c.pain_point ? ` · ${c.pain_point}` : ""}
+                            </p>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* ── Ángulo section ── */}
               <div className="pt-1 border-t border-border">
