@@ -11,6 +11,16 @@ import { adaptWithClaude, aaiPost, aaiGet } from "@/lib/actions/ad-clone"
 
 // ── helpers ──────────────────────────────────────────────────
 
+async function touchProjectActivity(projectId: string) {
+  const supabase = await createClient()
+  await supabase.from("projects").update({ last_activity_at: new Date().toISOString() }).eq("id", projectId).then(() => {})
+}
+
+function revalidateProject(projectId: string) {
+  touchProjectActivity(projectId).catch(() => {})
+  revalidateProject(projectId)
+}
+
 async function getRole() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -90,7 +100,7 @@ export async function createConcept(projectId: string, formData: FormData): Prom
     created_by:           userId,
   })
   if (error) throw error
-  revalidatePath(`/projects/${projectId}`)
+  revalidateProject(projectId)
 }
 
 export async function updateConcept(
@@ -120,7 +130,7 @@ export async function updateConcept(
     status:               (formData.get("status") as ConceptStatus) ?? "Active",
   }).eq("id", id)
   if (error) throw error
-  revalidatePath(`/projects/${projectId}`)
+  revalidateProject(projectId)
 }
 
 export async function promoteConcept(id: string, projectId: string): Promise<void> {
@@ -133,7 +143,7 @@ export async function promoteConcept(id: string, projectId: string): Promise<voi
     cycle_id: null,
   }).eq("id", id)
   if (error) throw error
-  revalidatePath(`/projects/${projectId}`)
+  revalidateProject(projectId)
 }
 
 export async function demoteConcept(id: string, projectId: string, cycleId?: string): Promise<void> {
@@ -146,7 +156,7 @@ export async function demoteConcept(id: string, projectId: string, cycleId?: str
     ...(cycleId ? { cycle_id: cycleId } : {}),
   }).eq("id", id)
   if (error) throw error
-  revalidatePath(`/projects/${projectId}`)
+  revalidateProject(projectId)
 }
 
 export async function deleteConcept(id: string, projectId: string): Promise<void> {
@@ -156,7 +166,7 @@ export async function deleteConcept(id: string, projectId: string): Promise<void
 
   const { error } = await supabase.from("creative_concepts").delete().eq("id", id)
   if (error) throw error
-  revalidatePath(`/projects/${projectId}`)
+  revalidateProject(projectId)
 }
 
 export async function bulkDeleteConcepts(ids: string[], projectId: string): Promise<void> {
@@ -166,7 +176,7 @@ export async function bulkDeleteConcepts(ids: string[], projectId: string): Prom
 
   const { error } = await supabase.from("creative_concepts").delete().in("id", ids)
   if (error) throw error
-  revalidatePath(`/projects/${projectId}`)
+  revalidateProject(projectId)
 }
 
 // ── ASSETS ───────────────────────────────────────────────────
@@ -224,7 +234,7 @@ export async function createAsset(projectId: string, formData: FormData): Promis
     platform:       (formData.get("platform") as string) || null,
   })
   if (error) throw error
-  revalidatePath(`/projects/${projectId}`)
+  revalidateProject(projectId)
 }
 
 export async function updateAsset(
@@ -247,7 +257,7 @@ export async function updateAsset(
     platform:       (formData.get("platform") as string) || null,
   }).eq("id", id)
   if (error) throw error
-  revalidatePath(`/projects/${projectId}`)
+  revalidateProject(projectId)
 }
 
 export async function deleteAsset(id: string, projectId: string): Promise<void> {
@@ -257,7 +267,7 @@ export async function deleteAsset(id: string, projectId: string): Promise<void> 
 
   const { error } = await supabase.from("creative_assets").delete().eq("id", id)
   if (error) throw error
-  revalidatePath(`/projects/${projectId}`)
+  revalidateProject(projectId)
 }
 
 export async function toggleClientVisible(
@@ -275,7 +285,7 @@ export async function toggleClientVisible(
     client_feedback: null,
   }).eq("id", assetId)
   if (error) throw error
-  revalidatePath(`/projects/${projectId}`)
+  revalidateProject(projectId)
 }
 
 // ── BRIEFS ──────────────────────────────────────────────────
@@ -302,7 +312,7 @@ export async function createBrief(
     created_by: userId,
   }).select("*").single()
   if (error) throw error
-  revalidatePath(`/projects/${projectId}`)
+  revalidateProject(projectId)
   return data as CreativeBrief
 }
 
@@ -482,7 +492,7 @@ El brief debe ser accionable: un editor o diseñador que lo lea debe poder empez
     }
   }
 
-  revalidatePath(`/projects/${brief.project_id}`)
+  revalidateProject(brief.project_id)
   return parsed
 }
 
@@ -541,7 +551,7 @@ export async function deleteBrief(id: string, projectId: string): Promise<void> 
 
   const { error } = await supabase.from("creative_briefs").delete().eq("id", id)
   if (error) throw error
-  revalidatePath(`/projects/${projectId}`)
+  revalidateProject(projectId)
 }
 
 export async function updateBriefScript(
@@ -874,7 +884,7 @@ export async function confirmAIDrafts(
 
   const { error } = await supabase.from("creative_concepts").insert(rows)
   if (error) throw error
-  revalidatePath(`/projects/${projectId}`)
+  revalidateProject(projectId)
 }
 
 // ── AI AUTOFILL ─────────────────────────────────────────────

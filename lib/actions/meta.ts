@@ -146,6 +146,8 @@ export async function syncMetaCampaigns(projectId: string, cycleId: string): Pro
 
   if (upsertError) return { synced: 0, error: upsertError.message }
 
+  await supabase.from("projects").update({ last_activity_at: new Date().toISOString() }).eq("id", projectId).then(() => {})
+
   return { synced: upsertRows.length }
 }
 

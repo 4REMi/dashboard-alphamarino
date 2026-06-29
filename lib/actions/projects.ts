@@ -220,6 +220,7 @@ export async function getProjects(includeArchived = false) {
 
     const pid = p.id as string
     const activityDates: string[] = [p.created_at as string]
+    if ((p as any).last_activity_at) activityDates.push((p as any).last_activity_at)
     if (logMap[pid]) activityDates.push(logMap[pid])
     if (taskActivityMap[pid]) activityDates.push(taskActivityMap[pid])
     if (phaseActivityMap[pid]) activityDates.push(phaseActivityMap[pid])
