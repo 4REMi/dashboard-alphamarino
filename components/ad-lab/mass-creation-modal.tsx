@@ -7,7 +7,8 @@ import {
   uploadReferenceImages,
 } from "@/lib/actions/image-clone"
 import { startClone, pollClone, updateAdaptedLines as updateScriptLines } from "@/lib/actions/ad-clone"
-import { getBrandBrains } from "@/lib/actions/brand-brains"
+import { getBrandBrains, getBrandLines } from "@/lib/actions/brand-brains"
+import type { BrandLine } from "@/lib/types"
 import { useRecentAngulos } from "@/lib/hooks/use-recent-angulos"
 import {
   X, Loader2, Check, ChevronRight, ChevronLeft, AlertCircle,
@@ -91,6 +92,9 @@ export function MassCreationModal({ ads, onClose }: Props) {
   const [type, setType]           = useState<CreationType>("estaticos")
   const [brains, setBrains]       = useState<BrainOption[]>([])
   const [brainId, setBrainId]     = useState("")
+  const [brandLines, setBrandLines] = useState<BrandLine[]>([])
+  const [brandLineId, setBrandLineId] = useState<string | null>(null)
+  const [loadingLines, setLoadingLines] = useState(false)
   const [angulo, setAngulo]       = useState("")
   const [anguloAdvisory, setAnguloAdvisory] = useState<{ compatible: boolean; note: string } | null>(null)
   const [isCheckingAdvisory, setIsCheckingAdvisory] = useState(false)
@@ -153,9 +157,13 @@ export function MassCreationModal({ ads, onClose }: Props) {
 
   function selectBrain(b: BrainOption) {
     setBrainId(b.id)
+    setBrandLineId(null)
+    setBrandLines([])
     const colors = b.brand_colors ?? []
     if (colors.length > 0) { setBrandColor(colors[0].hex); setUseBrandColor(true) }
     else setUseBrandColor(false)
+    setLoadingLines(true)
+    getBrandLines(b.id).then((lines) => { setBrandLines(lines); setLoadingLines(false) }).catch(() => setLoadingLines(false))
   }
 
   async function handleCheckAdvisory() {
@@ -497,6 +505,46 @@ export function MassCreationModal({ ads, onClose }: Props) {
                 </div>
               )}
             </div>
+
+            {/* Brand Line */}
+            {brainId && (loadingLines || brandLines.length > 0) && (
+              <div>
+                <p className="text-sm font-medium mb-1">
+                  Producto / Servicio <span className="text-xs font-normal text-muted-foreground">(opcional)</span>
+                </p>
+                <p className="text-xs text-muted-foreground mb-2">Enfoca la adaptación a una línea específica de la marca.</p>
+                {loadingLines ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Cargando líneas…
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setBrandLineId(null)}
+                      className={`h-7 px-3 rounded-full text-xs font-medium border transition-colors ${
+                        !brandLineId ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/30"
+                      }`}
+                    >
+                      General
+                    </button>
+                    {brandLines.map((l) => (
+                      <button
+                        key={l.id}
+                        type="button"
+                        onClick={() => setBrandLineId(l.id)}
+                        className={`h-7 px-3 rounded-full text-xs font-medium border transition-colors flex items-center gap-1.5 ${
+                          brandLineId === l.id ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/30"
+                        }`}
+                      >
+                        {l.color && <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: l.color }} />}
+                        {l.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Ángulo */}
             <div className="border-t border-border pt-4">
