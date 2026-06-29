@@ -105,6 +105,7 @@ function ProjectRow({ project, canViewFinancials }: {
 
 type ViewMode = "grid" | "list"
 type StatusFilter = "active" | "completed"
+type TypeFilter = string | null
 
 interface Props {
   active: Parameters<typeof ProjectCard>[0]["project"][]
@@ -119,6 +120,7 @@ export function ProjectsClient({ active, completed, archived, canViewFinancials,
   const tP = useTranslations("projects")
   const [view, setView] = useState<ViewMode>("grid")
   const [tab, setTab] = useState<StatusFilter>("active")
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>(null)
 
   // Persist view preference
   useEffect(() => {
@@ -129,7 +131,23 @@ export function ProjectsClient({ active, completed, archived, canViewFinancials,
     setView(v); localStorage.setItem("projects-view", v)
   }
 
-  const projects = tab === "active" ? active : completed
+  // Extract unique project types from all projects
+  const allProjects = [...active, ...completed]
+  const projectTypes = Array.from(
+    new Map(
+      allProjects
+        .filter((p) => p.project_type)
+        .map((p) => {
+          const pt = p.project_type as { id: string; name: string; icon?: string; color?: string }
+          return [pt.id, pt]
+        })
+    ).values()
+  )
+
+  const baseProjects = tab === "active" ? active : completed
+  const projects = typeFilter
+    ? baseProjects.filter((p) => (p.project_type as any)?.id === typeFilter)
+    : baseProjects
 
   return (
     <div className="space-y-4">
@@ -156,6 +174,42 @@ export function ProjectsClient({ active, completed, archived, canViewFinancials,
           ))}
         </div>
 
+        {/* Type filter */}
+        {projectTypes.length > 1 && (
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setTypeFilter(null)}
+              className={cn(
+                "px-2.5 py-1 rounded-md text-xs font-medium transition-colors",
+                !typeFilter
+                  ? "bg-foreground text-background"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              )}
+            >
+              Todos
+            </button>
+            {projectTypes.map((pt) => {
+              const Icon = pt.icon ? getProjectTypeIcon(pt.icon) : null
+              const isActive = typeFilter === pt.id
+              return (
+                <button
+                  key={pt.id}
+                  onClick={() => setTypeFilter(isActive ? null : pt.id)}
+                  className={cn(
+                    "inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-colors",
+                    isActive
+                      ? "bg-foreground text-background"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                  )}
+                >
+                  {Icon && <Icon className="w-3 h-3" />}
+                  {pt.name}
+                </button>
+              )
+            })}
+          </div>
+        )}
+
         {/* Grid / List toggle */}
         <div className="flex items-center border rounded-lg overflow-hidden bg-card">
           <button
@@ -178,7 +232,7 @@ export function ProjectsClient({ active, completed, archived, canViewFinancials,
       {/* Project grid or list */}
       {projects.length === 0 ? (
         <div className="text-center py-16 text-muted-foreground text-sm">
-          {tab === "active" ? tP("noActive") : tP("noCompleted")}
+          {typeFilter ? "Sin proyectos de este tipo" : tab === "active" ? tP("noActive") : tP("noCompleted")}
         </div>
       ) : view === "grid" ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
