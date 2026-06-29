@@ -18,7 +18,7 @@ async function touchProjectActivity(projectId: string) {
 
 function revalidateProject(projectId: string) {
   touchProjectActivity(projectId).catch(() => {})
-  revalidateProject(projectId)
+  revalidatePath(`/projects/${projectId}`)
 }
 
 async function getRole() {
