@@ -24,15 +24,16 @@ export function BrandLineTabs({ tabs }: { tabs: Tab[] }) {
           <button
             key={t.key}
             onClick={() => setActive(t.key)}
-            className={`flex items-center gap-2 h-9 px-4 rounded-full text-sm font-semibold transition-colors ${
+            title={t.label}
+            className={`flex items-center gap-2 h-9 px-4 rounded-full text-sm font-semibold transition-colors max-w-[220px] ${
               activeTab.key === t.key
                 ? "bg-slate-900 text-white"
                 : "bg-white border border-slate-200 text-slate-600 hover:border-slate-300"
             }`}
           >
             <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: t.color ?? "#64748b" }} />
-            {t.label}
-            <span className={activeTab.key === t.key ? "opacity-60" : "text-slate-400"}>({t.count})</span>
+            <span className="truncate">{t.label}</span>
+            <span className={`shrink-0 ${activeTab.key === t.key ? "opacity-60" : "text-slate-400"}`}>({t.count})</span>
           </button>
         ))}
       </div>

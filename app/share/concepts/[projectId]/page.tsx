@@ -108,7 +108,7 @@ export default async function ShareConceptsPage({ params }: Props) {
   const pendingCount  = assets.filter((a) => !a.client_status || a.client_status === "pending_review").length
   const approvedCount = assets.filter((a) => a.client_status === "approved").length
   const changesCount  = assets.filter((a) => a.client_status === "changes_requested").length
-  const allReviewed   = totalAssets > 0 && pendingCount === 0
+  const allReviewed   = (totalAssets > 0 || scripts.length > 0) && pendingCount === 0 && pendingScriptsCount === 0
   const reviewedPct   = totalAssets === 0 ? 0 : Math.round(((approvedCount + changesCount) / totalAssets) * 100)
   const hasAssets     = totalAssets > 0
   const hasConcepts   = concepts.length > 0
@@ -200,13 +200,15 @@ export default async function ShareConceptsPage({ params }: Props) {
       </section>
 
       {/* ── Review banner ───────────────────────────────────────── */}
-      {hasAssets && (
+      {(hasAssets || scripts.length > 0) && (
         <div className="px-4 sm:px-8 pb-4">
           <div className="max-w-6xl mx-auto">
             <ReviewBanner
               allReviewed={allReviewed}
               pendingCount={pendingCount}
               totalAssets={totalAssets}
+              pendingScriptsCount={pendingScriptsCount}
+              totalScripts={scripts.length}
             />
           </div>
         </div>
@@ -215,6 +217,13 @@ export default async function ShareConceptsPage({ params }: Props) {
       {/* ── Concepts + Assets (grouped by brand line, tabbed) ───── */}
       {hasBrandLines && lineGroups.length > 0 && (
         <section className="px-4 sm:px-8 pb-10">
+          <div className="max-w-6xl mx-auto mb-8">
+            <SectionHeader
+              eyebrow="Conceptos en revisión"
+              title="Los ángulos y sus piezas"
+              subtitle="Cada concepto agrupa su guión (si aplica) y las piezas creativas que lo desarrollan. Aprueba o pide cambios en cada etapa."
+            />
+          </div>
           <BrandLineTabs
             tabs={lineGroups.map((group) => ({
               key:   group.line?.id ?? "__general__",
@@ -223,16 +232,12 @@ export default async function ShareConceptsPage({ params }: Props) {
               count: group.items.length + group.strategyOnly.length,
               content: (
                 <div className="max-w-6xl mx-auto space-y-10">
-                  <SectionHeader
-                    eyebrow="Conceptos en revisión"
-                    title="Los ángulos y sus piezas"
-                    subtitle="Cada concepto agrupa su guión (si aplica) y las piezas creativas que lo desarrollan. Aprueba o pide cambios en cada etapa."
-                  />
                   <BrandLineSection
                     line={group.line}
                     conceptGroups={group.items}
                     strategyOnly={group.strategyOnly}
                     unlinkedAssets={group.line === null ? unlinked : []}
+                    showHeader={false}
                   />
                 </div>
               ),
@@ -349,12 +354,18 @@ function KpiCard({ label, value, tone }: {
 // Review banner
 // ─────────────────────────────────────────────────────────────────
 
-function ReviewBanner({ allReviewed, pendingCount, totalAssets }: {
+function ReviewBanner({ allReviewed, pendingCount, totalAssets, pendingScriptsCount, totalScripts }: {
   allReviewed: boolean
   pendingCount: number
   totalAssets: number
+  pendingScriptsCount: number
+  totalScripts: number
 }) {
   if (allReviewed) {
+    const parts = [
+      totalAssets > 0 ? `${totalAssets} pieza${totalAssets !== 1 ? "s" : ""}` : null,
+      totalScripts > 0 ? `${totalScripts} guión${totalScripts !== 1 ? "es" : ""}` : null,
+    ].filter(Boolean).join(" y ")
     return (
       <div className="rounded-xl border border-emerald-200/80 bg-gradient-to-r from-emerald-50 to-emerald-50/30 px-4 sm:px-5 py-4 flex items-center gap-3">
         <span className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center flex-shrink-0">
@@ -365,24 +376,29 @@ function ReviewBanner({ allReviewed, pendingCount, totalAssets }: {
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-emerald-900">Revisión completada</p>
           <p className="text-xs text-emerald-700/80 mt-0.5">
-            Las {totalAssets} pieza{totalAssets !== 1 ? "s" : ""} han sido revisadas. Gracias.
+            {parts} han sido revisados. Gracias.
           </p>
         </div>
       </div>
     )
   }
+  const totalPending = pendingCount + pendingScriptsCount
+  const label = [
+    pendingScriptsCount > 0 ? `${pendingScriptsCount} guión${pendingScriptsCount !== 1 ? "es" : ""}` : null,
+    pendingCount > 0 ? `${pendingCount} pieza${pendingCount !== 1 ? "s" : ""}` : null,
+  ].filter(Boolean).join(" y ")
   return (
     <div className="rounded-xl border border-amber-200/80 bg-gradient-to-r from-amber-50 to-amber-50/30 px-4 sm:px-5 py-4 flex items-center gap-3">
       <span className="relative w-8 h-8 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center flex-shrink-0">
         <span className="absolute inset-0 rounded-full bg-amber-400/40 animate-ping" />
-        <span className="relative text-xs font-bold tabular-nums">{pendingCount}</span>
+        <span className="relative text-xs font-bold tabular-nums">{totalPending}</span>
       </span>
       <div className="min-w-0 flex-1">
         <p className="text-sm font-semibold text-amber-900">
-          {pendingCount} pieza{pendingCount !== 1 ? "s" : ""} esperan tu revisión
+          {label} esperan tu revisión
         </p>
         <p className="text-xs text-amber-800/75 mt-0.5">
-          Aprueba lo que te convence o solicita cambios puntuales en cada pieza.
+          Aprueba lo que te convence o solicita cambios puntuales en cada etapa.
         </p>
       </div>
       <a
@@ -429,11 +445,12 @@ function SectionHeader({ eyebrow, title, subtitle }: {
 // Brand line section — collapsible group header + concepts inside
 // ─────────────────────────────────────────────────────────────────
 
-function BrandLineSection({ line, conceptGroups, strategyOnly, unlinkedAssets }: {
+function BrandLineSection({ line, conceptGroups, strategyOnly, unlinkedAssets, showHeader = true }: {
   line: { id: string; name: string; color: string | null; position: number } | null
   conceptGroups: { concept: any; assets: any[]; scripts: any[] }[]
   strategyOnly: any[]
   unlinkedAssets: any[]
+  showHeader?: boolean
 }) {
   const totalConcepts = conceptGroups.length + strategyOnly.length
   const color = line?.color ?? "#64748b"
@@ -441,16 +458,18 @@ function BrandLineSection({ line, conceptGroups, strategyOnly, unlinkedAssets }:
   return (
     <div>
       {/* Line header */}
-      <div className="flex items-center gap-3 mb-8">
-        <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: color }} />
-        <h3 className="text-lg font-bold tracking-tight text-slate-900">
-          {line?.name ?? "General"}
-        </h3>
-        <span className="text-xs text-slate-400 font-medium">
-          {totalConcepts} concepto{totalConcepts !== 1 ? "s" : ""}
-        </span>
-        <span className="flex-1 h-px bg-slate-200/70" />
-      </div>
+      {showHeader && (
+        <div className="flex items-center gap-3 mb-8">
+          <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: color }} />
+          <h3 className="text-lg font-bold tracking-tight text-slate-900">
+            {line?.name ?? "General"}
+          </h3>
+          <span className="text-xs text-slate-400 font-medium">
+            {totalConcepts} concepto{totalConcepts !== 1 ? "s" : ""}
+          </span>
+          <span className="flex-1 h-px bg-slate-200/70" />
+        </div>
+      )}
 
       {/* Concepts with assets and/or scripts */}
       {conceptGroups.length > 0 && (
