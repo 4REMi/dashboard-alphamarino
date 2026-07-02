@@ -570,7 +570,7 @@ function BrandLineForm({
     if (!name.trim()) return
     setIsAutofilling(true)
     try {
-      const result = await autofillBrandLine(name.trim(), brainId)
+      const result = await autofillBrandLine(name.trim(), brainId, description.trim() || undefined)
       if (result.description) setDescription(result.description)
       if (result.usps?.length) setUsps(result.usps)
       if (result.pain_points?.length) setPainPoints(result.pain_points)

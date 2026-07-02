@@ -347,6 +347,7 @@ export async function deleteBrandLine(id: string, brainId: string): Promise<void
 export async function autofillBrandLine(
   lineName: string,
   brainId: string,
+  userDescription?: string,
 ): Promise<{ description: string; usps: string[]; pain_points: string[]; keywords: string[] }> {
   const { supabase } = await assertAuth()
 
@@ -358,13 +359,15 @@ export async function autofillBrandLine(
 
   if (!brain) throw new Error("Brand Brain no encontrado")
 
-  const systemPrompt = `Eres un estratega de marca y producto. A partir del nombre de un producto/servicio y el contexto de la marca, genera la ficha de la línea de producto.
+  const systemPrompt = `Eres un estratega de marca y producto. A partir del nombre de un producto/servicio, una descripción opcional del usuario, y el contexto de la marca, genera la ficha de la línea de producto.
 
 Devuelve ÚNICAMENTE un objeto JSON válido con estos campos:
 - description: string — descripción concisa del producto/servicio (1-2 oraciones)
 - usps: string[] — 3-5 diferenciadores únicos de esta línea (frases cortas)
 - pain_points: string[] — 3-5 dolores del cliente que esta línea resuelve (frases cortas)
 - keywords: string[] — 5-8 palabras clave relevantes para esta línea (palabras sueltas o frases de 2-3 palabras)
+
+Si el usuario proporcionó una descripción, trátala como la fuente de verdad sobre qué es este producto/servicio (especialmente si el nombre es un nombre propio o de marca que el contexto general no explica) y redacta una versión pulida y más específica — no te limites a repetirla.
 
 Todo en ${brain.language ?? "español"}. Sin markdown, sin texto extra. Solo el JSON.`
 
@@ -377,8 +380,9 @@ Todo en ${brain.language ?? "español"}. Sin markdown, sin texto extra. Solo el 
 - Descripción de marca: ${brain.description ?? "—"}
 
 LÍNEA DE PRODUCTO/SERVICIO A RELLENAR: "${lineName}"
+${userDescription?.trim() ? `DESCRIPCIÓN PROPORCIONADA POR EL USUARIO (fuente de verdad, úsala como base): "${userDescription.trim()}"` : ""}
 
-Genera la ficha de esta línea basándote en el contexto de la marca.`
+Genera la ficha de esta línea basándote en el contexto de la marca${userDescription?.trim() ? " y la descripción proporcionada" : ""}.`
 
   const Anthropic = (await import("@anthropic-ai/sdk")).default
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
