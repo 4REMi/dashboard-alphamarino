@@ -1,8 +1,12 @@
 import { notFound } from "next/navigation"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { ANGLE_GUIDE } from "@/lib/constants/creatives"
-import { ClientAssetReview } from "@/components/share/client-asset-review"
 import { ClientPortalShell } from "@/components/share/client-portal-shell"
+import { ClientAssetReview } from "@/components/share/client-asset-review"
+import { ConceptAssetsGallery } from "@/components/share/concept-assets-gallery"
+import { ClientScriptReview } from "@/components/share/client-script-review"
+import { BrandLineTabs } from "@/components/share/brand-line-tabs"
+import type { AdCloneLine } from "@/lib/types"
 
 interface Props {
   params: Promise<{ projectId: string }>
@@ -23,7 +27,7 @@ export default async function ShareConceptsPage({ params }: Props) {
   const { projectId } = await params
   const supabase = createAdminClient()
 
-  const [projectRes, conceptsRes, assetsRes, settingsRes] = await Promise.all([
+  const [projectRes, conceptsRes, assetsRes, settingsRes, scriptsRes] = await Promise.all([
     supabase
       .from("projects")
       .select("name, brand_brain_id, customer:customers(name, company)")
@@ -39,7 +43,7 @@ export default async function ShareConceptsPage({ params }: Props) {
       .order("created_at", { ascending: false }),
     supabase
       .from("creative_assets")
-      .select(`id, format, platform, asset_url,
+      .select(`id, format, platform, asset_url, file_path, thumbnail_path, file_type, brief_id,
                client_status, client_feedback, concept_id,
                concept:creative_concepts!concept_id(name, angle_type)`)
       .eq("project_id", projectId)
@@ -50,6 +54,12 @@ export default async function ShareConceptsPage({ params }: Props) {
       .select("logo_url")
       .eq("id", "default")
       .maybeSingle(),
+    supabase
+      .from("creative_briefs")
+      .select("id, concept_id, adapted_script, client_status, client_feedback")
+      .eq("project_id", projectId)
+      .not("adapted_script", "is", null)
+      .order("created_at", { ascending: true }),
   ])
 
   if (projectRes.error || !projectRes.data) notFound()
@@ -57,8 +67,31 @@ export default async function ShareConceptsPage({ params }: Props) {
   const project  = projectRes.data
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const customer = project.customer as any
-  const concepts = conceptsRes.data ?? []
-  const assets   = assetsRes.data ?? []
+  const concepts    = conceptsRes.data ?? []
+  const assets      = assetsRes.data ?? []
+  const briefsData  = scriptsRes.data ?? []
+
+  // Normalize adapted_script (Record<adId, lines[]> or legacy lines[]) into one
+  // reviewable card per script, scoped to the fields the client is allowed to see.
+  type ClientScript = { key: string; briefId: string; conceptId: string; lines: AdCloneLine[]; client_status: any; client_feedback: string | null }
+  const scripts: ClientScript[] = []
+  for (const b of briefsData) {
+    const raw = b.adapted_script as Record<string, AdCloneLine[]> | AdCloneLine[] | null
+    if (!raw) continue
+    if (Array.isArray(raw)) {
+      if (raw.length > 0) scripts.push({ key: b.id, briefId: b.id, conceptId: b.concept_id, lines: raw, client_status: b.client_status, client_feedback: b.client_feedback })
+    } else {
+      Object.entries(raw).forEach(([adId, lines]) => {
+        if (lines?.length) scripts.push({ key: `${b.id}:${adId}`, briefId: b.id, conceptId: b.concept_id, lines, client_status: b.client_status, client_feedback: b.client_feedback })
+      })
+    }
+  }
+  const scriptsByConcept = new Map<string, ClientScript[]>()
+  for (const s of scripts) {
+    if (!scriptsByConcept.has(s.conceptId)) scriptsByConcept.set(s.conceptId, [])
+    scriptsByConcept.get(s.conceptId)!.push(s)
+  }
+  const pendingScriptsCount = scripts.filter((s) => !s.client_status || s.client_status === "pending_review").length
 
   // Fetch brand lines for grouping
   const brandLines: { id: string; name: string; color: string | null; position: number }[] =
@@ -89,21 +122,26 @@ export default async function ShareConceptsPage({ params }: Props) {
   }
   const unlinked = assetsByConcept.get(null) ?? []
 
-  // Order: concepts that have pending assets first
+  // Order: concepts that have pending assets or scripts first
   const conceptsWithAssets = concepts
     .map((c) => ({
       concept: c,
       assets: assetsByConcept.get(c.id) ?? [],
+      scripts: scriptsByConcept.get(c.id) ?? [],
     }))
-    .filter((g) => g.assets.length > 0 || concepts.length <= 6)
+    .filter((g) => g.assets.length > 0 || g.scripts.length > 0 || concepts.length <= 6)
   const conceptsPendingFirst = [...conceptsWithAssets].sort((a, b) => {
     const pa = a.assets.filter((x) => !x.client_status || x.client_status === "pending_review").length
+      + a.scripts.filter((x) => !x.client_status || x.client_status === "pending_review").length
     const pb = b.assets.filter((x) => !x.client_status || x.client_status === "pending_review").length
+      + b.scripts.filter((x) => !x.client_status || x.client_status === "pending_review").length
     return pb - pa
   })
 
-  // Concepts with no assets (strategy-only)
-  const strategyOnlyConcepts = concepts.filter((c) => (assetsByConcept.get(c.id) ?? []).length === 0)
+  // Concepts with no assets and no scripts (strategy-only)
+  const strategyOnlyConcepts = concepts.filter((c) =>
+    (assetsByConcept.get(c.id) ?? []).length === 0 && (scriptsByConcept.get(c.id) ?? []).length === 0
+  )
 
   // Group by brand line
   const hasBrandLines = brandLines.length > 0
@@ -142,7 +180,7 @@ export default async function ShareConceptsPage({ params }: Props) {
             {projectName}
           </h1>
 
-          {hasAssets && (
+          {(hasAssets || scripts.length > 0) && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
               <KpiCard
                 label="Por revisar"
@@ -151,7 +189,11 @@ export default async function ShareConceptsPage({ params }: Props) {
               />
               <KpiCard label="Aprobados" value={approvedCount} tone="emerald" />
               <KpiCard label="Cambios solicitados" value={changesCount} tone="sky" />
-              <KpiCard label="Progreso" value={`${reviewedPct}%`} tone="violet" />
+              {scripts.length > 0 ? (
+                <KpiCard label="Guiones por revisar" value={pendingScriptsCount} tone={pendingScriptsCount > 0 ? "amber" : "slate"} />
+              ) : (
+                <KpiCard label="Progreso" value={`${reviewedPct}%`} tone="violet" />
+              )}
             </div>
           )}
         </div>
@@ -170,52 +212,57 @@ export default async function ShareConceptsPage({ params }: Props) {
         </div>
       )}
 
-      {/* ── Concepts + Assets (grouped by brand line) ──────────── */}
+      {/* ── Concepts + Assets (grouped by brand line, tabbed) ───── */}
       {hasBrandLines && lineGroups.length > 0 && (
         <section className="px-4 sm:px-8 pb-10">
-          <div className="max-w-6xl mx-auto space-y-10">
-            <SectionHeader
-              eyebrow="Conceptos en revisión"
-              title="Los ángulos y sus piezas"
-              subtitle="Cada concepto agrupa las piezas creativas que lo desarrollan. Aprueba o pide cambios pieza por pieza."
-            />
-
-            <div className="space-y-14">
-              {lineGroups.map((group) => (
-                <BrandLineSection
-                  key={group.line?.id ?? "__general__"}
-                  line={group.line}
-                  conceptGroups={group.items}
-                  strategyOnly={group.strategyOnly}
-                  unlinkedAssets={group.line === null ? unlinked : []}
-                />
-              ))}
-            </div>
-          </div>
+          <BrandLineTabs
+            tabs={lineGroups.map((group) => ({
+              key:   group.line?.id ?? "__general__",
+              label: group.line?.name ?? "General",
+              color: group.line?.color ?? null,
+              count: group.items.length + group.strategyOnly.length,
+              content: (
+                <div className="max-w-6xl mx-auto space-y-10">
+                  <SectionHeader
+                    eyebrow="Conceptos en revisión"
+                    title="Los ángulos y sus piezas"
+                    subtitle="Cada concepto agrupa su guión (si aplica) y las piezas creativas que lo desarrollan. Aprueba o pide cambios en cada etapa."
+                  />
+                  <BrandLineSection
+                    line={group.line}
+                    conceptGroups={group.items}
+                    strategyOnly={group.strategyOnly}
+                    unlinkedAssets={group.line === null ? unlinked : []}
+                  />
+                </div>
+              ),
+            }))}
+          />
         </section>
       )}
 
       {/* ── Concepts + Assets (flat — no brand lines) ──────────── */}
-      {!hasBrandLines && hasAssets && conceptsPendingFirst.length > 0 && (
+      {!hasBrandLines && (hasAssets || scripts.length > 0) && conceptsPendingFirst.length > 0 && (
         <section className="px-4 sm:px-8 pb-10">
           <div className="max-w-6xl mx-auto space-y-10">
             <SectionHeader
               eyebrow="Conceptos en revisión"
               title="Los ángulos y sus piezas"
-              subtitle="Cada concepto agrupa las piezas creativas que lo desarrollan. Aprueba o pide cambios pieza por pieza."
+              subtitle="Cada concepto agrupa su guión (si aplica) y las piezas creativas que lo desarrollan. Aprueba o pide cambios en cada etapa."
             />
 
             <div className="space-y-12">
-              {conceptsPendingFirst.map(({ concept, assets: conceptAssets }) => (
+              {conceptsPendingFirst.map(({ concept, assets: conceptAssets, scripts: conceptScripts }) => (
                 <ConceptGroup
                   key={concept.id}
                   concept={concept}
                   assets={conceptAssets}
+                  scripts={conceptScripts}
                 />
               ))}
 
               {unlinked.length > 0 && (
-                <ConceptGroup concept={null} assets={unlinked} />
+                <ConceptGroup concept={null} assets={unlinked} scripts={[]} />
               )}
             </div>
           </div>
@@ -384,7 +431,7 @@ function SectionHeader({ eyebrow, title, subtitle }: {
 
 function BrandLineSection({ line, conceptGroups, strategyOnly, unlinkedAssets }: {
   line: { id: string; name: string; color: string | null; position: number } | null
-  conceptGroups: { concept: any; assets: any[] }[]
+  conceptGroups: { concept: any; assets: any[]; scripts: any[] }[]
   strategyOnly: any[]
   unlinkedAssets: any[]
 }) {
@@ -405,11 +452,11 @@ function BrandLineSection({ line, conceptGroups, strategyOnly, unlinkedAssets }:
         <span className="flex-1 h-px bg-slate-200/70" />
       </div>
 
-      {/* Concepts with assets */}
+      {/* Concepts with assets and/or scripts */}
       {conceptGroups.length > 0 && (
         <div className="space-y-12 mb-8">
-          {conceptGroups.map(({ concept, assets }) => (
-            <ConceptGroup key={concept.id} concept={concept} assets={assets} />
+          {conceptGroups.map(({ concept, assets, scripts }) => (
+            <ConceptGroup key={concept.id} concept={concept} assets={assets} scripts={scripts} />
           ))}
         </div>
       )}
@@ -417,7 +464,7 @@ function BrandLineSection({ line, conceptGroups, strategyOnly, unlinkedAssets }:
       {/* Unlinked assets (only in General group) */}
       {unlinkedAssets.length > 0 && (
         <div className="space-y-12 mb-8">
-          <ConceptGroup concept={null} assets={unlinkedAssets} />
+          <ConceptGroup concept={null} assets={unlinkedAssets} scripts={[]} />
         </div>
       )}
 
@@ -441,10 +488,11 @@ function BrandLineSection({ line, conceptGroups, strategyOnly, unlinkedAssets }:
 // ─────────────────────────────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function ConceptGroup({ concept, assets }: { concept: any | null; assets: any[] }) {
+function ConceptGroup({ concept, assets, scripts }: { concept: any | null; assets: any[]; scripts: any[] }) {
   const pending  = assets.filter((a) => !a.client_status || a.client_status === "pending_review").length
   const approved = assets.filter((a) => a.client_status === "approved").length
   const changes  = assets.filter((a) => a.client_status === "changes_requested").length
+  const pendingScripts = scripts.filter((s) => !s.client_status || s.client_status === "pending_review").length
 
   const angleEntry = concept && ANGLE_GUIDE.find((a) => a.name === concept.angle_type)
 
@@ -507,10 +555,24 @@ function ConceptGroup({ concept, assets }: { concept: any | null; assets: any[] 
             )}
 
             {/* Asset counts footer */}
-            <div className="px-5 py-3 bg-slate-50/70 border-t border-slate-100 flex items-center gap-3 text-[11px]">
+            <div className="px-5 py-3 bg-slate-50/70 border-t border-slate-100 flex items-center gap-3 text-[11px] flex-wrap">
               <span className="font-semibold text-slate-700">
                 {assets.length} pieza{assets.length !== 1 ? "s" : ""}
               </span>
+              {scripts.length > 0 && (
+                <>
+                  <span className="text-slate-300">·</span>
+                  <span className="font-semibold text-slate-700">
+                    {scripts.length} guión{scripts.length !== 1 ? "es" : ""}
+                  </span>
+                  {pendingScripts > 0 && (
+                    <span className="inline-flex items-center gap-1 text-amber-700">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                      {pendingScripts} por revisar
+                    </span>
+                  )}
+                </>
+              )}
               <span className="text-slate-300">·</span>
               {pending > 0 && (
                 <span className="inline-flex items-center gap-1 text-amber-700">
@@ -534,13 +596,48 @@ function ConceptGroup({ concept, assets }: { concept: any | null; assets: any[] 
           </div>
         </aside>
 
-        {/* Assets column */}
-        <div className="space-y-4 min-w-0">
-          {assets.map((a, idx) => (
-            <div key={a.id} id={idx === 0 && pending > 0 ? "first-pending" : undefined}>
-              <AssetReviewWrap asset={a} />
+        {/* Scripts + Assets column */}
+        <div className="space-y-8 min-w-0">
+          {scripts.length > 0 && (
+            <div className="space-y-4">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                Guión{scripts.length !== 1 ? "es" : ""} en revisión
+              </p>
+              {scripts.map((s) => (
+                <ClientScriptReview
+                  key={s.key}
+                  script={{ briefId: s.briefId, lines: s.lines, client_status: s.client_status, client_feedback: s.client_feedback }}
+                />
+              ))}
             </div>
-          ))}
+          )}
+
+          {assets.length > 0 && (
+            <div className="space-y-4">
+              {scripts.length > 0 && (
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  Creativos finales
+                </p>
+              )}
+              <ConceptAssetsGallery
+                assets={assets.map((a) => ({
+                  id:              a.id,
+                  format:          a.format,
+                  platform:        a.platform,
+                  asset_url:       a.asset_url,
+                  file_path:       a.file_path ?? null,
+                  thumbnail_path:  a.thumbnail_path ?? null,
+                  file_type:       a.file_type ?? null,
+                  client_status:   a.client_status,
+                  client_feedback: a.client_feedback,
+                  concept_name:    a.concept?.name ?? null,
+                  concept_angle:   a.concept?.angle_type ?? null,
+                  brief_id:        a.brief_id ?? null,
+                }))}
+                firstPendingId={pending > 0 ? assets.find((a) => !a.client_status || a.client_status === "pending_review")?.id : undefined}
+              />
+            </div>
+          )}
         </div>
       </div>
     </article>

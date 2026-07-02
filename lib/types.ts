@@ -689,6 +689,8 @@ export interface CreativeBrief {
   attached_board_ids: string[]
   adapted_script: Record<string, AdCloneLine[]> | AdCloneLine[] | null
   share_token: string
+  client_status: ClientReviewStatus | null
+  client_feedback: string | null
   created_by: string | null
   created_at: string
   updated_at: string

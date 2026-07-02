@@ -549,6 +549,22 @@ export async function getBriefsForProject(projectId: string): Promise<CreativeBr
   return (data ?? []) as CreativeBrief[]
 }
 
+// Client-portal-safe: only the fields a client is allowed to see (no brief_content,
+// no attached_ad_ids/references — those stay editor-only in getBriefByToken).
+export async function getClientScriptsForProject(
+  projectId: string,
+): Promise<Pick<CreativeBrief, "id" | "concept_id" | "adapted_script" | "client_status" | "client_feedback">[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from("creative_briefs")
+    .select("id, concept_id, adapted_script, client_status, client_feedback")
+    .eq("project_id", projectId)
+    .not("adapted_script", "is", null)
+    .order("created_at", { ascending: true })
+  if (error) throw error
+  return (data ?? []) as any
+}
+
 export async function getBriefByToken(token: string): Promise<(CreativeBrief & { attached_ads?: any[] }) | null> {
   const supabase = createAdminClient()
   const { data } = await supabase
