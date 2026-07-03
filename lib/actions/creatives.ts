@@ -593,7 +593,7 @@ El brief debe ser accionable: un editor o diseñador que lo lea debe poder empez
             } while (result.status !== "completed" && result.status !== "error")
 
             if (result.status === "completed" && result.text?.trim()) {
-              scripts[videoAd.id] = await adaptWithClaude(result.text, brain as any, lineData)
+              scripts[videoAd.id] = await adaptWithClaude(result.text, brain as any, lineData, c as any)
             }
           } catch (e) {
             console.error(`Brief tropicalization failed for ad ${videoAd.id}:`, e)

@@ -64,6 +64,7 @@ export async function adaptWithClaude(
   rawText: string,
   brain: Pick<BrandBrain, "name" | "industry" | "language" | "tone_of_voice" | "usps" | "key_benefits" | "pain_points" | "target_audience" | "ctas">,
   brandLineOrAngulo?: { name: string; description?: string | null; usps?: string[]; pain_points?: string[]; keywords?: string[] } | string | null,
+  concept?: Pick<CreativeConcept, "name" | "angle_type" | "target_persona" | "pain_point" | "why_it_works" | "objection" | "transformation" | "funnel_stage"> | null,
 ): Promise<AdCloneLine[]> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY no configurado")
@@ -89,12 +90,25 @@ export async function adaptWithClaude(
       ? `\nÁNGULO: "${angulo.trim()}"\n`
       : ""
 
+  const conceptBlock = concept
+    ? `\nCONCEPTO CREATIVO — la adaptación DEBE ejecutar esta estrategia, no solo la voz de marca:
+- Nombre: ${concept.name ?? "—"}
+- Ángulo: ${concept.angle_type ?? "—"}
+- Persona objetivo: ${concept.target_persona ?? "—"}
+- Pain point: ${concept.pain_point ?? "—"}
+- Por qué funciona: ${concept.why_it_works ?? "—"}
+- Objeción a superar: ${concept.objection ?? "—"}
+- Transformación prometida: ${concept.transformation ?? "—"}
+- Funnel stage: ${concept.funnel_stage ?? "—"}
+`
+    : ""
+
   const prompt = `Eres un redactor creativo experto en publicidad digital. Tu tarea tiene dos pasos:
 ${langBlock ? `\n${langBlock}\n` : ""}
 PASO 1 — DIVIDE el siguiente guión en líneas naturales de longitud similar, como aparecerían en un teleprompter o guión de video. Cada línea debe ser una unidad de sentido completa que se pueda decir de un tirón (entre 10 y 25 palabras aproximadamente). Agrupa frases cortas relacionadas en una misma línea. Separa en líneas distintas los cambios de idea o de gancho.
 
 PASO 2 — ADAPTA cada línea para vender "${destinationName}". Preserva la estructura emocional y el ritmo del original. Mantén cada línea adaptada aproximadamente de la misma extensión que la original para respetar el timing del video. Adapta nombres de producto, beneficios, dolores y tono de voz.
-${productInstruction}
+${productInstruction}${conceptBlock}
 GUIÓN ORIGINAL (texto continuo):
 ${rawText}
 
@@ -109,7 +123,7 @@ MARCA / PRODUCTO DESTINO:
 - CTAs: ${ctas}
 
 Devuelve ÚNICAMENTE un array JSON válido (sin markdown, sin texto extra) donde cada elemento tenga este formato exacto:
-{"speaker": null, "original": "<línea original tal como la dividiste>", "adapted": "<línea adaptada para ${destinationName} — en ${brain.language ?? "español"}>"}`
+{"speaker": null, "original": "<línea original tal como la dividiste>", "adapted": "<línea adaptada para ${destinationName} — en ${brain.language ?? "español"}, ejecutando el concepto creativo si se proporcionó uno>"}`
 
   const msg = await client.messages.create({
     model: "claude-opus-4-7",
