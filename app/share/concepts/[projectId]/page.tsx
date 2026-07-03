@@ -6,6 +6,7 @@ import { ClientAssetReview } from "@/components/share/client-asset-review"
 import { ConceptAssetsGallery } from "@/components/share/concept-assets-gallery"
 import { ClientScriptReview } from "@/components/share/client-script-review"
 import { BrandLineTabs } from "@/components/share/brand-line-tabs"
+import { ConceptStrategyCard } from "@/components/share/concept-strategy-card"
 import type { AdCloneLine } from "@/lib/types"
 
 interface Props {
@@ -513,151 +514,56 @@ function ConceptGroup({ concept, assets, scripts }: { concept: any | null; asset
   const changes  = assets.filter((a) => a.client_status === "changes_requested").length
   const pendingScripts = scripts.filter((s) => !s.client_status || s.client_status === "pending_review").length
 
-  const angleEntry = concept && ANGLE_GUIDE.find((a) => a.name === concept.angle_type)
-
   return (
-    <article className="relative">
-      <div className="grid lg:grid-cols-[340px_1fr] gap-6 lg:gap-8">
+    <article className="relative space-y-6">
+      <ConceptStrategyCard
+        concept={concept}
+        angleEmoji={concept && ANGLE_GUIDE.find((a) => a.name === concept.angle_type)?.emoji || null}
+        counts={{ assets: assets.length, scripts: scripts.length, pendingScripts, pending, approved, changes }}
+      />
 
-        {/* Strategy card — sticky on lg+ */}
-        <aside className="lg:sticky lg:top-20 lg:self-start">
-          <div className="rounded-2xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] overflow-hidden">
-            {concept ? (
-              <>
-                <div className="px-5 pt-5 pb-4 border-b border-slate-100">
-                  <div className="flex items-center gap-1.5 mb-3 flex-wrap">
-                    {angleEntry && (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-slate-900 text-white px-2 py-0.5 rounded-md">
-                        <span>{angleEntry.emoji}</span>
-                        {concept.angle_type}
-                      </span>
-                    )}
-                    {concept.funnel_stage && (
-                      <span className={`text-[11px] font-medium px-2 py-0.5 rounded-md ${FUNNEL_COLORS[concept.funnel_stage] ?? "bg-slate-100 text-slate-600"}`}>
-                        {FUNNEL_LABELS[concept.funnel_stage] ?? concept.funnel_stage}
-                      </span>
-                    )}
-                    {concept.status === "Evergreen" && (
-                      <span className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200/60">
-                        ⭐ Validado
-                      </span>
-                    )}
-                  </div>
-                  <h3 className="text-lg font-bold tracking-tight leading-snug text-slate-900">
-                    {concept.name || "Concepto"}
-                  </h3>
-                </div>
-
-                <div className="px-5 py-4 space-y-4">
-                  {concept.product_service && (
-                    <StrategyField label="Producto / Servicio" value={concept.product_service} />
-                  )}
-                  <StrategyField label="A quién le hablamos" value={concept.target_persona} />
-                  {concept.pain_point && (
-                    <StrategyField label="Problema" value={concept.pain_point} accent="rose" />
-                  )}
-                  {concept.transformation && (
-                    <StrategyField label="Transformación" value={concept.transformation} accent="emerald" />
-                  )}
-                  {concept.why_it_works && (
-                    <StrategyField label="Por qué conecta" value={concept.why_it_works} />
-                  )}
-                </div>
-              </>
-            ) : (
-              <div className="px-5 py-6">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-2">Piezas sueltas</p>
-                <p className="text-sm text-slate-600 leading-relaxed">
-                  Contenido adicional que no está vinculado a un concepto específico.
-                </p>
-              </div>
-            )}
-
-            {/* Asset counts footer */}
-            <div className="px-5 py-3 bg-slate-50/70 border-t border-slate-100 flex items-center gap-3 text-[11px] flex-wrap">
-              <span className="font-semibold text-slate-700">
-                {assets.length} pieza{assets.length !== 1 ? "s" : ""}
-              </span>
-              {scripts.length > 0 && (
-                <>
-                  <span className="text-slate-300">·</span>
-                  <span className="font-semibold text-slate-700">
-                    {scripts.length} guión{scripts.length !== 1 ? "es" : ""}
-                  </span>
-                  {pendingScripts > 0 && (
-                    <span className="inline-flex items-center gap-1 text-amber-700">
-                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                      {pendingScripts} por revisar
-                    </span>
-                  )}
-                </>
-              )}
-              <span className="text-slate-300">·</span>
-              {pending > 0 && (
-                <span className="inline-flex items-center gap-1 text-amber-700">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                  {pending} pendiente{pending !== 1 ? "s" : ""}
-                </span>
-              )}
-              {approved > 0 && (
-                <span className="inline-flex items-center gap-1 text-emerald-700">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                  {approved}
-                </span>
-              )}
-              {changes > 0 && (
-                <span className="inline-flex items-center gap-1 text-sky-700">
-                  <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
-                  {changes}
-                </span>
-              )}
-            </div>
-          </div>
-        </aside>
-
-        {/* Scripts + Assets column */}
-        <div className="space-y-8 min-w-0">
-          {scripts.length > 0 && (
-            <div className="space-y-4">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                Guión{scripts.length !== 1 ? "es" : ""} en revisión
-              </p>
-              {scripts.map((s) => (
-                <ClientScriptReview
-                  key={s.key}
-                  script={{ briefId: s.briefId, lines: s.lines, client_status: s.client_status, client_feedback: s.client_feedback }}
-                />
-              ))}
-            </div>
-          )}
-
-          {assets.length > 0 && (
-            <div className="space-y-4">
-              {scripts.length > 0 && (
-                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                  Creativos finales
-                </p>
-              )}
-              <ConceptAssetsGallery
-                assets={assets.map((a) => ({
-                  id:              a.id,
-                  format:          a.format,
-                  platform:        a.platform,
-                  asset_url:       a.asset_url,
-                  file_path:       a.file_path ?? null,
-                  thumbnail_path:  a.thumbnail_path ?? null,
-                  file_type:       a.file_type ?? null,
-                  client_status:   a.client_status,
-                  client_feedback: a.client_feedback,
-                  concept_name:    a.concept?.name ?? null,
-                  concept_angle:   a.concept?.angle_type ?? null,
-                  brief_id:        a.brief_id ?? null,
-                }))}
-                firstPendingId={pending > 0 ? assets.find((a) => !a.client_status || a.client_status === "pending_review")?.id : undefined}
+      {/* Scripts + Assets */}
+      <div className="space-y-8 min-w-0">
+        {scripts.length > 0 && (
+          <div className="space-y-4">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+              Guión{scripts.length !== 1 ? "es" : ""} en revisión
+            </p>
+            {scripts.map((s) => (
+              <ClientScriptReview
+                key={s.key}
+                script={{ briefId: s.briefId, lines: s.lines, client_status: s.client_status, client_feedback: s.client_feedback }}
               />
-            </div>
-          )}
-        </div>
+            ))}
+          </div>
+        )}
+
+        {assets.length > 0 && (
+          <div className="space-y-4">
+            {scripts.length > 0 && (
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                Creativos finales
+              </p>
+            )}
+            <ConceptAssetsGallery
+              assets={assets.map((a) => ({
+                id:              a.id,
+                format:          a.format,
+                platform:        a.platform,
+                asset_url:       a.asset_url,
+                file_path:       a.file_path ?? null,
+                thumbnail_path:  a.thumbnail_path ?? null,
+                file_type:       a.file_type ?? null,
+                client_status:   a.client_status,
+                client_feedback: a.client_feedback,
+                concept_name:    a.concept?.name ?? null,
+                concept_angle:   a.concept?.angle_type ?? null,
+                brief_id:        a.brief_id ?? null,
+              }))}
+              firstPendingId={pending > 0 ? assets.find((a) => !a.client_status || a.client_status === "pending_review")?.id : undefined}
+            />
+          </div>
+        )}
       </div>
     </article>
   )
