@@ -1,20 +1,30 @@
 import { notFound } from "next/navigation"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { ClientPortalShell } from "@/components/share/client-portal-shell"
-import { BrandLineTabs } from "@/components/share/brand-line-tabs"
-import { ConceptMasterDetail } from "@/components/share/concept-master-detail"
+import { ANGLE_GUIDE, AWARENESS_LABELS } from "@/lib/constants/creatives"
+import { ClientPortalApp, type PortalData, type Servicio, type Concepto, type Pieza } from "@/components/share/client-portal-app"
 import type { AdCloneLine } from "@/lib/types"
 
 interface Props {
   params: Promise<{ projectId: string }>
 }
 
+const FUNNEL_LABELS: Record<string, string> = {
+  TOF: "Audiencia fría",
+  MOF: "Audiencia tibia",
+  BOF: "Audiencia caliente",
+}
+
+function formatMonth(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00")
+  const label = d.toLocaleDateString("es-MX", { month: "long", year: "numeric" })
+  return label.charAt(0).toUpperCase() + label.slice(1)
+}
 
 export default async function ShareConceptsPage({ params }: Props) {
   const { projectId } = await params
   const supabase = createAdminClient()
 
-  const [projectRes, conceptsRes, assetsRes, settingsRes, scriptsRes, activeCycleRes] = await Promise.all([
+  const [projectRes, conceptsRes, assetsRes, settingsRes, scriptsRes, cyclesRes] = await Promise.all([
     supabase
       .from("projects")
       .select("name, brand_brain_id, customer:customers(name, company)")
@@ -26,13 +36,11 @@ export default async function ShareConceptsPage({ params }: Props) {
                pain_point, objection, why_it_works, transformation, funnel_stage, awareness_stage, status, brand_line_id, cycle_id`)
       .eq("project_id", projectId)
       .in("status", ["Active", "Evergreen"])
-      .order("status", { ascending: false })
       .order("created_at", { ascending: false }),
     supabase
       .from("creative_assets")
       .select(`id, format, platform, asset_url, file_path, thumbnail_path, file_type, brief_id,
-               client_status, client_feedback, concept_id,
-               concept:creative_concepts!concept_id(name, angle_type)`)
+               client_status, client_feedback, concept_id`)
       .eq("project_id", projectId)
       .eq("client_visible", true)
       .order("created_at", { ascending: false }),
@@ -49,10 +57,8 @@ export default async function ShareConceptsPage({ params }: Props) {
       .order("created_at", { ascending: true }),
     supabase
       .from("paid_media_cycles")
-      .select("id")
-      .eq("project_id", projectId)
-      .eq("is_active", true)
-      .maybeSingle(),
+      .select("id, cycle_month, is_active")
+      .eq("project_id", projectId),
   ])
 
   if (projectRes.error || !projectRes.data) notFound()
@@ -60,359 +66,159 @@ export default async function ShareConceptsPage({ params }: Props) {
   const project  = projectRes.data
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const customer = project.customer as any
-  const activeCycleId = activeCycleRes.data?.id ?? null
-  // Only show concepts from the current cycle (or evergreen concepts, which
-  // live at the project level with no cycle) — otherwise every past month's
-  // concepts keep piling up on the client with no way to tell them apart.
-  const concepts = (conceptsRes.data ?? []).filter(
-    (c: any) => !c.cycle_id || c.cycle_id === activeCycleId
-  )
-  const assets      = assetsRes.data ?? []
-  const briefsData  = scriptsRes.data ?? []
+  const clientName  = customer?.company || customer?.name || null
+  const projectName = project.name
+  const logoUrl     = settingsRes.data?.logo_url ?? null
 
-  // Normalize adapted_script (Record<adId, lines[]> or legacy lines[]) into one
-  // reviewable card per script, scoped to the fields the client is allowed to see.
-  // Each script's review state is looked up independently via script_reviews[scriptKey] —
-  // never shared across scripts in the same brief.
-  type ClientScript = { key: string; briefId: string; scriptKey: string; conceptId: string; lines: AdCloneLine[]; client_status: any; client_feedback: string | null }
-  const scripts: ClientScript[] = []
-  for (const b of briefsData) {
-    const raw = b.adapted_script as Record<string, AdCloneLine[]> | AdCloneLine[] | null
-    if (!raw) continue
-    const reviews = (b.script_reviews as Record<string, { client_status: any; client_feedback: string | null }>) ?? {}
-    if (Array.isArray(raw)) {
-      if (raw.length > 0) {
-        const r = reviews["_single"]
-        scripts.push({ key: b.id, briefId: b.id, scriptKey: "_single", conceptId: b.concept_id, lines: raw, client_status: r?.client_status ?? null, client_feedback: r?.client_feedback ?? null })
-      }
-    } else {
-      Object.entries(raw).forEach(([adId, lines]) => {
-        if (lines?.length) {
-          const r = reviews[adId]
-          scripts.push({ key: `${b.id}:${adId}`, briefId: b.id, scriptKey: adId, conceptId: b.concept_id, lines, client_status: r?.client_status ?? null, client_feedback: r?.client_feedback ?? null })
-        }
-      })
-    }
-  }
-  const scriptsByConcept = new Map<string, ClientScript[]>()
-  for (const s of scripts) {
-    if (!scriptsByConcept.has(s.conceptId)) scriptsByConcept.set(s.conceptId, [])
-    scriptsByConcept.get(s.conceptId)!.push(s)
-  }
-  const pendingScriptsCount = scripts.filter((s) => !s.client_status || s.client_status === "pending_review").length
+  const cycles       = cyclesRes.data ?? []
+  const activeCycle  = cycles.find((c) => c.is_active) ?? null
+  const cycleById    = new Map(cycles.map((c) => [c.id, c]))
 
-  // Fetch brand lines for grouping
+  const concepts   = conceptsRes.data ?? []
+  const assets     = assetsRes.data ?? []
+  const briefsData = scriptsRes.data ?? []
+
+  // Fetch brand lines ("servicios")
   const brandLines: { id: string; name: string; color: string | null; position: number }[] =
     (project as any).brand_brain_id
       ? ((await supabase.from("brand_lines").select("id, name, color, position").eq("brand_brain_id", (project as any).brand_brain_id).order("position")).data ?? [])
       : []
 
-  const clientName  = customer?.company || customer?.name || null
-  const projectName = project.name
-  const logoUrl     = settingsRes.data?.logo_url ?? null
-
-  // KPIs
-  const totalAssets   = assets.length
-  const pendingCount  = assets.filter((a) => !a.client_status || a.client_status === "pending_review").length
-  const approvedCount = assets.filter((a) => a.client_status === "approved").length
-  const changesCount  = assets.filter((a) => a.client_status === "changes_requested").length
-  const allReviewed   = (totalAssets > 0 || scripts.length > 0) && pendingCount === 0 && pendingScriptsCount === 0
-  const reviewedPct   = totalAssets === 0 ? 0 : Math.round(((approvedCount + changesCount) / totalAssets) * 100)
-  const hasAssets     = totalAssets > 0
-  const hasConcepts   = concepts.length > 0
-
-  // Group assets by concept
-  const assetsByConcept = new Map<string | null, typeof assets>()
+  // ── Normalize scripts (guiones) — one per script, keyed independently ──
+  type ScriptEntry = { conceptId: string; briefId: string; scriptKey: string; lines: AdCloneLine[]; client_status: string | null; client_feedback: string | null }
+  const scriptEntries: ScriptEntry[] = []
+  for (const b of briefsData) {
+    const raw = b.adapted_script as Record<string, AdCloneLine[]> | AdCloneLine[] | null
+    if (!raw) continue
+    const reviews = (b.script_reviews as Record<string, { client_status: string | null; client_feedback: string | null }>) ?? {}
+    if (Array.isArray(raw)) {
+      if (raw.length > 0) {
+        const r = reviews["_single"]
+        scriptEntries.push({ conceptId: b.concept_id, briefId: b.id, scriptKey: "_single", lines: raw, client_status: r?.client_status ?? null, client_feedback: r?.client_feedback ?? null })
+      }
+    } else {
+      Object.entries(raw).forEach(([adId, lines]) => {
+        if (lines?.length) {
+          const r = reviews[adId]
+          scriptEntries.push({ conceptId: b.concept_id, briefId: b.id, scriptKey: adId, lines, client_status: r?.client_status ?? null, client_feedback: r?.client_feedback ?? null })
+        }
+      })
+    }
+  }
+  const scriptsByConcept = new Map<string, ScriptEntry[]>()
+  for (const s of scriptEntries) {
+    if (!scriptsByConcept.has(s.conceptId)) scriptsByConcept.set(s.conceptId, [])
+    scriptsByConcept.get(s.conceptId)!.push(s)
+  }
+  const assetsByConcept = new Map<string, typeof assets>()
   for (const a of assets) {
-    const key = a.concept_id ?? null
-    if (!assetsByConcept.has(key)) assetsByConcept.set(key, [])
-    assetsByConcept.get(key)!.push(a)
+    if (!a.concept_id) continue
+    if (!assetsByConcept.has(a.concept_id)) assetsByConcept.set(a.concept_id, [])
+    assetsByConcept.get(a.concept_id)!.push(a)
   }
-  const unlinked = assetsByConcept.get(null) ?? []
 
-  // Order: concepts that have pending assets or scripts first
-  const conceptsWithAssets = concepts
-    .map((c) => ({
-      concept: c,
-      assets: assetsByConcept.get(c.id) ?? [],
-      scripts: scriptsByConcept.get(c.id) ?? [],
-    }))
-    .filter((g) => g.assets.length > 0 || g.scripts.length > 0)
-  const conceptsPendingFirst = [...conceptsWithAssets].sort((a, b) => {
-    const pa = a.assets.filter((x) => !x.client_status || x.client_status === "pending_review").length
-      + a.scripts.filter((x) => !x.client_status || x.client_status === "pending_review").length
-    const pb = b.assets.filter((x) => !x.client_status || x.client_status === "pending_review").length
-      + b.scripts.filter((x) => !x.client_status || x.client_status === "pending_review").length
-    return pb - pa
-  })
+  // ── Build Concepto[] with piezas ──
+  function buildConcepto(c: (typeof concepts)[number]): Concepto {
+    const scripts = scriptsByConcept.get(c.id) ?? []
+    const conceptAssets = assetsByConcept.get(c.id) ?? []
+    const angleEntry = ANGLE_GUIDE.find((a) => a.name === c.angle_type) ?? null
 
-  // Concepts with no assets and no scripts (strategy-only)
-  const strategyOnlyConcepts = concepts.filter((c) =>
-    (assetsByConcept.get(c.id) ?? []).length === 0 && (scriptsByConcept.get(c.id) ?? []).length === 0
-  )
+    const vigencia: Concepto["vigencia"] =
+      c.status === "Evergreen" ? "evergreen"
+      : !c.cycle_id || c.cycle_id === activeCycle?.id ? "actual"
+      : "archivado"
+    const mes = vigencia === "archivado" && c.cycle_id
+      ? formatMonth(cycleById.get(c.cycle_id)?.cycle_month ?? "")
+      : null
 
-  // Group by brand line
-  const hasBrandLines = brandLines.length > 0
-  type LineGroup = { line: typeof brandLines[number] | null; items: typeof conceptsPendingFirst; strategyOnly: typeof strategyOnlyConcepts }
-  const lineGroups: LineGroup[] = hasBrandLines
-    ? [
-        ...brandLines.map((l) => ({
-          line: l,
-          items: conceptsPendingFirst.filter((g) => g.concept.brand_line_id === l.id),
-          strategyOnly: strategyOnlyConcepts.filter((c) => c.brand_line_id === l.id),
-        })),
-        {
-          line: null,
-          items: conceptsPendingFirst.filter((g) => !g.concept.brand_line_id),
-          strategyOnly: strategyOnlyConcepts.filter((c) => !c.brand_line_id),
-        },
-      ].filter((g) => g.items.length > 0 || g.strategyOnly.length > 0)
-    : []
+    const piezas: Pieza[] = [
+      ...scripts.map((s): Pieza => ({
+        id: `${s.briefId}:${s.scriptKey}`,
+        briefId: s.briefId,
+        scriptKey: s.scriptKey,
+        tipo: "guion",
+        titulo: `Guion VO — "${c.name || "Sin título"}"`,
+        sub: "Paso 1 · se produce el video al aprobarlo",
+        guion: s.lines.map((l, i) => ({ n: i + 1, t: l.adapted })),
+        client_status: s.client_status,
+        client_feedback: s.client_feedback,
+      })),
+      ...conceptAssets.map((a): Pieza => {
+        const isVideo = a.file_type === "video" || /video/i.test(a.format ?? "")
+        const meta = [a.platform, a.format].filter(Boolean).join(" · ")
+        const mediaUrl = a.file_path
+          ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/creative-assets/${a.file_path}`
+          : a.asset_url
+        return {
+          id: a.id,
+          assetId: a.id,
+          tipo: isVideo ? "video" : "imagen",
+          titulo: a.format || (isVideo ? "Video" : "Imagen"),
+          sub: meta || (isVideo ? "Video" : "Imagen estática"),
+          mediaUrl: mediaUrl ?? null,
+          client_status: a.client_status,
+          client_feedback: a.client_feedback,
+        }
+      }),
+    ]
 
-  return (
-    <ClientPortalShell
-      brand="Alpha Marino"
-      logoUrl={logoUrl}
-      clientName={clientName}
-      projectName={projectName}
-    >
-      {/* ── Hero + KPIs ─────────────────────────────────────────── */}
-      <section className="px-4 sm:px-8 pt-8 sm:pt-12 pb-8">
-        <div className="max-w-6xl mx-auto space-y-6">
-          {clientName && (
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Alpha Marino × {clientName}
-            </p>
-          )}
-          <h1 className="text-[28px] sm:text-4xl font-bold tracking-tight leading-[1.1] text-slate-900">
-            {projectName}
-          </h1>
-
-          {(hasAssets || scripts.length > 0) && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
-              <KpiCard
-                label="Por revisar"
-                value={pendingCount}
-                tone={pendingCount > 0 ? "amber" : "slate"}
-              />
-              <KpiCard label="Aprobados" value={approvedCount} tone="emerald" />
-              <KpiCard label="Cambios solicitados" value={changesCount} tone="sky" />
-              {scripts.length > 0 ? (
-                <KpiCard label="Guiones por revisar" value={pendingScriptsCount} tone={pendingScriptsCount > 0 ? "amber" : "slate"} />
-              ) : (
-                <KpiCard label="Progreso" value={`${reviewedPct}%`} tone="violet" />
-              )}
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* ── Review banner ───────────────────────────────────────── */}
-      {(hasAssets || scripts.length > 0) && (
-        <div className="px-4 sm:px-8 pb-4">
-          <div className="max-w-6xl mx-auto">
-            <ReviewBanner
-              allReviewed={allReviewed}
-              pendingCount={pendingCount}
-              totalAssets={totalAssets}
-              pendingScriptsCount={pendingScriptsCount}
-              totalScripts={scripts.length}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* ── Concepts + Assets (grouped by brand line, tabbed) ───── */}
-      {hasBrandLines && lineGroups.length > 0 && (
-        <section className="px-4 sm:px-8 pb-10">
-          <div className="max-w-6xl mx-auto mb-8">
-            <SectionHeader
-              eyebrow="Conceptos en revisión"
-              title="Los ángulos y sus piezas"
-              subtitle="Cada concepto agrupa su guión (si aplica) y las piezas creativas que lo desarrollan. Aprueba o pide cambios en cada etapa."
-            />
-          </div>
-          <BrandLineTabs
-            tabs={lineGroups.map((group) => {
-              const items = [
-                ...(group.line === null ? unlinked.length ? [{ id: "__unlinked__", concept: null, assets: unlinked, scripts: [] }] : [] : []),
-                ...group.items.map((g) => ({ id: g.concept.id, concept: g.concept, assets: g.assets, scripts: g.scripts })),
-                ...group.strategyOnly.map((c: any) => ({ id: c.id, concept: c, assets: [], scripts: [] })),
-              ]
-              return {
-                key:   group.line?.id ?? "__general__",
-                label: group.line?.name ?? "General",
-                color: group.line?.color ?? null,
-                count: items.length,
-                content: (
-                  <div className="max-w-4xl mx-auto">
-                    <ConceptMasterDetail items={items} />
-                  </div>
-                ),
-              }
-            })}
-          />
-        </section>
-      )}
-
-      {/* ── Concepts + Assets (flat — no brand lines) ──────────── */}
-      {!hasBrandLines && (hasAssets || scripts.length > 0 || strategyOnlyConcepts.length > 0) && (
-        <section className="px-4 sm:px-8 pb-10">
-          <div className="max-w-6xl mx-auto space-y-10">
-            <SectionHeader
-              eyebrow="Conceptos en revisión"
-              title="Los ángulos y sus piezas"
-              subtitle="Cada concepto agrupa su guión (si aplica) y las piezas creativas que lo desarrollan. Aprueba o pide cambios en cada etapa."
-            />
-
-            <div className="max-w-4xl mx-auto">
-              <ConceptMasterDetail
-                items={[
-                  ...(unlinked.length ? [{ id: "__unlinked__", concept: null, assets: unlinked, scripts: [] }] : []),
-                  ...conceptsPendingFirst.map(({ concept, assets: a, scripts: s }) => ({ id: concept.id, concept, assets: a, scripts: s })),
-                  ...strategyOnlyConcepts.map((c: any) => ({ id: c.id, concept: c, assets: [], scripts: [] })),
-                ]}
-              />
-            </div>
-          </div>
-        </section>
-      )}
-
-
-      {!hasAssets && !hasConcepts && (
-        <div className="max-w-6xl mx-auto px-4 sm:px-8 py-24 text-center">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-slate-100 text-slate-400 mb-4">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-7 h-7">
-              <rect x="4" y="4" width="16" height="16" rx="3" />
-              <path d="M4 10h16" />
-            </svg>
-          </div>
-          <p className="text-sm text-slate-500">Sin contenido disponible por el momento.</p>
-        </div>
-      )}
-    </ClientPortalShell>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────
-// KPI card
-// ─────────────────────────────────────────────────────────────────
-
-function KpiCard({ label, value, tone }: {
-  label: string
-  value: string | number
-  tone: "amber" | "emerald" | "sky" | "violet" | "slate"
-}) {
-  const toneStyles: Record<typeof tone, { dot: string; value: string }> = {
-    amber:   { dot: "bg-amber-400",   value: "text-amber-700" },
-    emerald: { dot: "bg-emerald-400", value: "text-emerald-700" },
-    sky:     { dot: "bg-sky-400",     value: "text-sky-700" },
-    violet:  { dot: "bg-violet-400",  value: "text-violet-700" },
-    slate:   { dot: "bg-slate-300",   value: "text-slate-700" },
+    return {
+      id: c.id,
+      nombre: c.name,
+      angulo: c.angle_type,
+      angleEmoji: angleEntry?.emoji ?? null,
+      funnelCode: c.funnel_stage,
+      funnel: c.funnel_stage ? FUNNEL_LABELS[c.funnel_stage] ?? c.funnel_stage : null,
+      vigencia,
+      mes,
+      estrategia: {
+        principio: c.organizing_principle,
+        quien: c.target_persona,
+        awareness: c.awareness_stage != null ? `${c.awareness_stage} — ${AWARENESS_LABELS[c.awareness_stage] ?? ""}` : null,
+        teoriaGuiding: angleEntry?.guiding_question ?? null,
+        teoriaMecanismo: angleEntry?.mechanism ?? null,
+        porque: c.why_it_works,
+        problema: c.pain_point,
+        objecion: c.objection,
+        transformacion: c.transformation,
+      },
+      piezas,
+    }
   }
-  const t = toneStyles[tone]
-  return (
-    <div className="rounded-xl bg-white border border-slate-200/70 px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <div className="flex items-center gap-1.5 mb-1.5">
-        <span className={`w-1.5 h-1.5 rounded-full ${t.dot}`} />
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-          {label}
-        </span>
-      </div>
-      <p className={`text-2xl font-bold tabular-nums tracking-tight ${t.value}`}>{value}</p>
-    </div>
-  )
-}
 
-// ─────────────────────────────────────────────────────────────────
-// Review banner
-// ─────────────────────────────────────────────────────────────────
+  const conceptosPorLinea = new Map<string | null, Concepto[]>()
+  for (const c of concepts) {
+    const key = c.brand_line_id ?? null
+    if (!conceptosPorLinea.has(key)) conceptosPorLinea.set(key, [])
+    conceptosPorLinea.get(key)!.push(buildConcepto(c))
+  }
 
-function ReviewBanner({ allReviewed, pendingCount, totalAssets, pendingScriptsCount, totalScripts }: {
-  allReviewed: boolean
-  pendingCount: number
-  totalAssets: number
-  pendingScriptsCount: number
-  totalScripts: number
-}) {
-  if (allReviewed) {
-    const parts = [
-      totalAssets > 0 ? `${totalAssets} pieza${totalAssets !== 1 ? "s" : ""}` : null,
-      totalScripts > 0 ? `${totalScripts} guión${totalScripts !== 1 ? "es" : ""}` : null,
-    ].filter(Boolean).join(" y ")
+  const servicios: Servicio[] = [
+    ...brandLines.map((l): Servicio => ({
+      id: l.id,
+      nombre: l.name,
+      color: l.color,
+      conceptos: conceptosPorLinea.get(l.id) ?? [],
+    })),
+    ...(conceptosPorLinea.get(null)?.length
+      ? [{ id: "__general__", nombre: "General", color: null, conceptos: conceptosPorLinea.get(null)! }]
+      : []),
+  ].filter((s) => s.conceptos.length > 0)
+
+  const data: PortalData = {
+    clienteNombre: clientName ?? projectName,
+    logoUrl,
+    cicloActualLabel: activeCycle ? formatMonth(activeCycle.cycle_month) : null,
+    servicios,
+  }
+
+  if (servicios.length === 0) {
     return (
-      <div className="rounded-xl border border-emerald-200/80 bg-gradient-to-r from-emerald-50 to-emerald-50/30 px-4 sm:px-5 py-4 flex items-center gap-3">
-        <span className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center flex-shrink-0">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-4 h-4">
-            <path d="m5 12 5 5L20 7" />
-          </svg>
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-emerald-900">Revisión completada</p>
-          <p className="text-xs text-emerald-700/80 mt-0.5">
-            {parts} han sido revisados. Gracias.
-          </p>
-        </div>
+      <div className="min-h-screen bg-[#f5f6fa] flex items-center justify-center px-6 text-center">
+        <p className="text-sm text-slate-400">Sin contenido disponible por el momento.</p>
       </div>
     )
   }
-  const totalPending = pendingCount + pendingScriptsCount
-  const label = [
-    pendingScriptsCount > 0 ? `${pendingScriptsCount} guión${pendingScriptsCount !== 1 ? "es" : ""}` : null,
-    pendingCount > 0 ? `${pendingCount} pieza${pendingCount !== 1 ? "s" : ""}` : null,
-  ].filter(Boolean).join(" y ")
-  return (
-    <div className="rounded-xl border border-amber-200/80 bg-gradient-to-r from-amber-50 to-amber-50/30 px-4 sm:px-5 py-4 flex items-center gap-3">
-      <span className="relative w-8 h-8 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center flex-shrink-0">
-        <span className="absolute inset-0 rounded-full bg-amber-400/40 animate-ping" />
-        <span className="relative text-xs font-bold tabular-nums">{totalPending}</span>
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold text-amber-900">
-          {label} esperan tu revisión
-        </p>
-        <p className="text-xs text-amber-800/75 mt-0.5">
-          Aprueba lo que te convence o solicita cambios puntuales en cada etapa.
-        </p>
-      </div>
-      <a
-        href="#first-pending"
-        className="hidden sm:inline-flex items-center gap-1 text-xs font-semibold text-amber-900 bg-white/70 hover:bg-white ring-1 ring-amber-300/60 rounded-lg px-3 py-1.5 transition-colors flex-shrink-0"
-      >
-        Ir a revisar
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
-          <path d="M5 12h14M13 6l6 6-6 6" />
-        </svg>
-      </a>
-    </div>
-  )
+
+  return <ClientPortalApp data={data} />
 }
-
-// ─────────────────────────────────────────────────────────────────
-// Section header
-// ─────────────────────────────────────────────────────────────────
-
-function SectionHeader({ eyebrow, title, subtitle }: {
-  eyebrow: string
-  title: string
-  subtitle?: string
-}) {
-  return (
-    <div className="flex items-start gap-4">
-      <div className="w-1 h-10 rounded-full bg-gradient-to-b from-slate-300 to-slate-200 mt-1 flex-shrink-0" />
-      <div className="min-w-0">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 mb-1">
-          {eyebrow}
-        </p>
-        <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 leading-tight">
-          {title}
-        </h2>
-        {subtitle && (
-          <p className="text-sm text-slate-500 mt-1.5 max-w-2xl leading-relaxed">{subtitle}</p>
-        )}
-      </div>
-    </div>
-  )
-}
-
-
