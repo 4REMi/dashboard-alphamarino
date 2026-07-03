@@ -1,6 +1,8 @@
 "use client"
 
+import { useState } from "react"
 import type { Pieza } from "@/components/share/client-portal-app"
+import { MediaLightbox } from "@/components/share/media-lightbox"
 
 const ICON: Record<Pieza["tipo"], { emoji: string; bg: string }> = {
   guion:  { emoji: "📝", bg: "#fffbeb" },
@@ -38,6 +40,7 @@ export function PiezaCard({
   const pendiente = status === "pendiente"
   const border = pendiente && !readonly ? "1.5px solid #fde68a" : "1px solid #e2e8f0"
   const mostrarAcciones = pendiente && !feedbackOpen && !readonly
+  const [lightboxOpen, setLightboxOpen] = useState(false)
 
   return (
     <div className="bg-white rounded-[18px] overflow-hidden shadow-[0_1px_3px_rgba(15,23,42,0.05)]" style={{ border }}>
@@ -63,8 +66,16 @@ export function PiezaCard({
 
       {pieza.tipo === "video" && (
         pieza.mediaUrl ? (
-          <div className="bg-black flex justify-center">
+          <div className="relative bg-black flex justify-center">
             <video src={pieza.mediaUrl} controls preload="metadata" className="max-w-full max-h-[220px]" />
+            <button
+              onClick={() => setLightboxOpen(true)}
+              className="absolute top-2 right-2 w-7 h-7 rounded-lg bg-black/60 hover:bg-black/80 flex items-center justify-center text-white text-xs"
+              title="Ver en grande"
+              aria-label="Ver en grande"
+            >
+              ⤢
+            </button>
           </div>
         ) : (
           <div className="bg-[#0f172a] h-[120px] flex items-center justify-center">
@@ -75,14 +86,20 @@ export function PiezaCard({
 
       {pieza.tipo === "imagen" && (
         pieza.mediaUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={pieza.mediaUrl} alt={pieza.titulo} className="w-full max-h-[220px] object-contain bg-[#e8edf4]" />
+          <button onClick={() => setLightboxOpen(true)} className="block w-full cursor-zoom-in">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={pieza.mediaUrl} alt={pieza.titulo} className="w-full max-h-[220px] object-contain bg-[#e8edf4]" />
+          </button>
         ) : (
           <div className="bg-[#e8edf4] h-[110px] flex flex-col items-center justify-center gap-1 text-slate-400">
             <span className="text-[22px]">🖼️</span>
             <span className="text-[9.5px] font-medium">Vista previa</span>
           </div>
         )
+      )}
+
+      {lightboxOpen && pieza.mediaUrl && (pieza.tipo === "video" || pieza.tipo === "imagen") && (
+        <MediaLightbox tipo={pieza.tipo} src={pieza.mediaUrl} titulo={pieza.titulo} onClose={() => setLightboxOpen(false)} />
       )}
 
       {status === "cambios" && feedback && (

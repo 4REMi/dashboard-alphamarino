@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react"
 import { submitClientReview, submitBriefClientReview } from "@/lib/actions/client-review"
 import { PiezaCard } from "@/components/share/pieza-card"
 import { EstrategiaPanel } from "@/components/share/estrategia-panel"
+import { MediaLightbox } from "@/components/share/media-lightbox"
 
 // ─────────────────────────────────────────────────────────────────
 // Types
@@ -526,6 +527,39 @@ function Mark({ logoUrl }: { logoUrl: string | null }) {
   )
 }
 
+// Video/imagen preview used in the quick-review flow — same expand-to-lightbox
+// behavior as PiezaCard, sized larger since this is the focused single-piece view.
+function QuickMedia({ pieza, maxH }: { pieza: Pieza; maxH: number }) {
+  const [open, setOpen] = useState(false)
+  if (pieza.tipo === "video") {
+    return pieza.mediaUrl ? (
+      <div className="relative">
+        <video src={pieza.mediaUrl} controls className="rounded-2xl w-full bg-black" style={{ maxHeight: maxH }} />
+        <button onClick={() => setOpen(true)} className="absolute top-2.5 right-2.5 w-7 h-7 rounded-lg bg-black/60 hover:bg-black/80 flex items-center justify-center text-white text-xs" title="Ver en grande" aria-label="Ver en grande">⤢</button>
+        {open && <MediaLightbox tipo="video" src={pieza.mediaUrl} titulo={pieza.titulo} onClose={() => setOpen(false)} />}
+      </div>
+    ) : (
+      <div className="bg-[#0f172a] rounded-2xl flex items-center justify-center" style={{ height: maxH }}>
+        <span className="w-[52px] h-[52px] rounded-full bg-white/15 flex items-center justify-center text-white text-lg">▶</span>
+      </div>
+    )
+  }
+  return pieza.mediaUrl ? (
+    <>
+      <button onClick={() => setOpen(true)} className="block w-full cursor-zoom-in">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={pieza.mediaUrl} alt="" className="rounded-2xl w-full object-contain bg-[#e8edf4]" style={{ maxHeight: maxH }} />
+      </button>
+      {open && <MediaLightbox tipo="imagen" src={pieza.mediaUrl} titulo={pieza.titulo} onClose={() => setOpen(false)} />}
+    </>
+  ) : (
+    <div className="bg-[#e8edf4] rounded-2xl flex flex-col items-center justify-center gap-1.5 text-slate-400" style={{ height: maxH }}>
+      <span className="text-3xl">🖼️</span>
+      <span className="text-[10.5px] font-medium">Vista previa de la imagen</span>
+    </div>
+  )
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function QuickScreen(props: any) {
   const { onClose, quickQueue, quickIdx, findPieza, getStatus, getFeedback,
@@ -581,25 +615,8 @@ function QuickScreen(props: any) {
                 <p className="text-[11px] leading-relaxed text-slate-400 text-center">📝 Este texto es la voz en off. Al aprobarlo pasamos a producir el video.</p>
               </>
             )}
-            {current.pieza.tipo === "video" && (
-              current.pieza.mediaUrl ? (
-                <video src={current.pieza.mediaUrl} controls className="rounded-2xl w-full max-h-[280px] bg-black" />
-              ) : (
-                <div className="bg-[#0f172a] rounded-2xl h-[280px] flex items-center justify-center">
-                  <span className="w-[52px] h-[52px] rounded-full bg-white/15 flex items-center justify-center text-white text-lg">▶</span>
-                </div>
-              )
-            )}
-            {current.pieza.tipo === "imagen" && (
-              current.pieza.mediaUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={current.pieza.mediaUrl} alt="" className="rounded-2xl w-full max-h-[280px] object-contain bg-[#e8edf4]" />
-              ) : (
-                <div className="bg-[#e8edf4] rounded-2xl h-[280px] flex flex-col items-center justify-center gap-1.5 text-slate-400">
-                  <span className="text-3xl">🖼️</span>
-                  <span className="text-[10.5px] font-medium">Vista previa de la imagen</span>
-                </div>
-              )
+            {(current.pieza.tipo === "video" || current.pieza.tipo === "imagen") && (
+              <QuickMedia pieza={current.pieza} maxH={280} />
             )}
           </div>
           <div className="bg-white border-t border-slate-200 px-5 pt-3.5 pb-2.5 flex flex-col gap-2.5">
@@ -842,25 +859,8 @@ function QuickModalContent(props: any) {
                 <p className="text-[11px] text-slate-400 text-center">📝 Este texto es la voz en off. Al aprobarlo pasamos a producir el video.</p>
               </>
             )}
-            {current.pieza.tipo === "video" && (
-              current.pieza.mediaUrl ? (
-                <video src={current.pieza.mediaUrl} controls className="rounded-[14px] w-full max-h-[240px] bg-black" />
-              ) : (
-                <div className="bg-[#0f172a] rounded-[14px] h-[240px] flex items-center justify-center">
-                  <span className="w-[52px] h-[52px] rounded-full bg-white/15 flex items-center justify-center text-white text-lg">▶</span>
-                </div>
-              )
-            )}
-            {current.pieza.tipo === "imagen" && (
-              current.pieza.mediaUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={current.pieza.mediaUrl} alt="" className="rounded-[14px] w-full max-h-[240px] object-contain bg-[#e8edf4]" />
-              ) : (
-                <div className="bg-[#e8edf4] rounded-[14px] h-[240px] flex flex-col items-center justify-center gap-1.5 text-slate-400">
-                  <span className="text-3xl">🖼️</span>
-                  <span className="text-[10.5px] font-medium">Vista previa de la imagen</span>
-                </div>
-              )
+            {(current.pieza.tipo === "video" || current.pieza.tipo === "imagen") && (
+              <QuickMedia pieza={current.pieza} maxH={240} />
             )}
           </div>
           <div className="border-t border-slate-200 px-6 py-4 flex flex-col gap-2.5">
