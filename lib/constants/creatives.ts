@@ -153,10 +153,10 @@ export type AngleType = typeof ANGLE_GUIDE[number]["name"]
 
 // ── Proven video-script structures (for Quick Create — scripts written from
 // scratch, no reference ad to adapt) ────────────────────────────────────────
-// Collapsed from the 10 angles down to the 4 structurally distinct engines
-// that actually sustain a spoken 20-40s script: pain (PAS), desire (BAB),
-// social proof (Testimonial), curiosity (Myth-Bust). Several angles share a
-// structure because they're flavors of the same underlying beat sequence.
+// The user always picks the structure explicitly — it is never inferred from
+// the concept's angle_type. Keep additions here to structures that are
+// genuinely distinct beat sequences for a spoken 20-40s script, not just a
+// different flavor of an existing one.
 
 export const SCRIPT_STRUCTURES = [
   {
@@ -203,22 +203,22 @@ export const SCRIPT_STRUCTURES = [
       "CTA",
     ],
   },
+  {
+    key: "mechanism",
+    name: "Mechanism-Led (Hook–Problem–Mechanism–Proof–Offer)",
+    engine: "Mecanismo único / autoridad",
+    beats: [
+      "Hook",
+      "Problem: el problema concreto",
+      "New Idea / Mechanism: la razón real, el mecanismo nuevo que nadie más explica",
+      "Proof: evidencia de que el mecanismo funciona",
+      "Offer: la oferta concreta",
+      "CTA",
+    ],
+  },
 ] as const
 
 export type ScriptStructureKey = typeof SCRIPT_STRUCTURES[number]["key"]
-
-export const ANGLE_TO_STRUCTURE: Record<AngleType, ScriptStructureKey> = {
-  "Objection":        "pas",
-  "Consequence":       "pas",
-  "Acceptance":        "pas",
-  "Desired Outcome":   "bab",
-  "Feature / Benefit": "bab",
-  "Identity":          "bab",
-  "Use Case":          "testimonial",
-  "Failed Solutions":  "testimonial",
-  "Misconception":     "myth_bust",
-  "Education":         "myth_bust",
-}
 
 export const AWARENESS_LABELS: Record<number, string> = {
   1: "Unaware",

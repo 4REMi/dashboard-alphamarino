@@ -8,6 +8,7 @@ import type {
   ConceptStatus, ProductionStatus, AssetVerdict, BrandBrain, AdCloneLine,
 } from "@/lib/types"
 import { adaptWithClaude, aaiPost, aaiGet, writeScriptFromConcept } from "@/lib/actions/ad-clone"
+import type { ScriptStructureKey } from "@/lib/constants/creatives"
 
 // ── helpers ──────────────────────────────────────────────────
 
@@ -347,15 +348,16 @@ export async function createBrief(
   return data as CreativeBrief
 }
 
-// Quick Create — writes N script variants from scratch using only the concept's
-// own strategy fields (no reference ad, no transcription, no brief_content).
-// The structural beats are picked automatically from the concept's angle_type.
-export async function generateScriptsFromConcept(
-  projectId: string,
+// Quick Create, step 1 — writes N script variants from scratch using only the
+// concept's own strategy fields (no reference ad, no transcription, no
+// brief_content). Pure generation: nothing is persisted here. The structure
+// is always chosen explicitly by the user, never inferred from angle_type.
+export async function generateScriptDrafts(
   conceptId: string,
   brandBrainId: string,
+  structureKey: ScriptStructureKey,
   variantCount = 3,
-): Promise<CreativeBrief> {
+): Promise<AdCloneLine[][]> {
   const supabase = await createClient()
   const { role } = await getRole()
   if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
@@ -378,8 +380,6 @@ export async function generateScriptsFromConcept(
     ? (await supabase.from("brand_lines").select("name, description, usps, pain_points, keywords").eq("id", concept.brand_line_id).single()).data
     : null
 
-  const brief = await createBrief(projectId, conceptId, brandBrainId, [], [], concept.brand_line_id ?? undefined)
-
   const variantSeeds = [
     "opción 1 — hook directo, ve al grano",
     "opción 2 — hook narrativo, abre con una escena o pregunta",
@@ -388,17 +388,43 @@ export async function generateScriptsFromConcept(
 
   const results = await Promise.allSettled(
     Array.from({ length: Math.min(variantCount, variantSeeds.length) }, (_, i) =>
-      writeScriptFromConcept(concept as any, brain as any, lineData, variantSeeds[i])
+      writeScriptFromConcept(concept as any, brain as any, structureKey, lineData, variantSeeds[i])
     )
   )
 
-  const scripts: Record<string, unknown> = {}
+  const drafts: AdCloneLine[][] = []
   results.forEach((r, i) => {
-    if (r.status === "fulfilled") scripts[`gen_${i + 1}`] = r.value
+    if (r.status === "fulfilled") drafts.push(r.value)
     else console.error(`Quick Create variant ${i + 1} failed:`, r.reason)
   })
 
-  if (Object.keys(scripts).length === 0) throw new Error("No se pudo generar ningún guión")
+  if (drafts.length === 0) throw new Error("No se pudo generar ningún guión")
+  return drafts
+}
+
+// Quick Create, step 2 — only called once the user reviews the drafts and
+// decides which ones to keep. Creates the brief and persists the kept drafts.
+export async function saveScriptDrafts(
+  projectId: string,
+  conceptId: string,
+  brandBrainId: string,
+  drafts: AdCloneLine[][],
+): Promise<CreativeBrief> {
+  const supabase = await createClient()
+  const { role } = await getRole()
+  if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
+  if (drafts.length === 0) throw new Error("No hay guiones para guardar")
+
+  const { data: concept } = await supabase
+    .from("creative_concepts")
+    .select("brand_line_id")
+    .eq("id", conceptId)
+    .single()
+
+  const brief = await createBrief(projectId, conceptId, brandBrainId, [], [], concept?.brand_line_id ?? undefined)
+
+  const scripts: Record<string, unknown> = {}
+  drafts.forEach((lines, i) => { scripts[`gen_${i + 1}`] = lines })
 
   await supabase.from("creative_briefs").update({
     adapted_script: scripts,

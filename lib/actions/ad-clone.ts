@@ -5,7 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import Anthropic from "@anthropic-ai/sdk"
 import type { AdClone, AdCloneLine, MetaAdResult, BrandBrain, CreativeConcept } from "@/lib/types"
 import { saveAd } from "@/lib/actions/ad-lab"
-import { SCRIPT_STRUCTURES, ANGLE_TO_STRUCTURE, type AngleType } from "@/lib/constants/creatives"
+import { SCRIPT_STRUCTURES, type ScriptStructureKey } from "@/lib/constants/creatives"
 
 const ASSEMBLYAI_BASE = "https://api.assemblyai.com/v2"
 
@@ -127,6 +127,7 @@ Devuelve ÚNICAMENTE un array JSON válido (sin markdown, sin texto extra) donde
 export async function writeScriptFromConcept(
   concept: Pick<CreativeConcept, "name" | "angle_type" | "target_persona" | "pain_point" | "why_it_works" | "objection" | "transformation" | "funnel_stage">,
   brain: Pick<BrandBrain, "name" | "industry" | "language" | "tone_of_voice" | "usps" | "key_benefits" | "pain_points" | "target_audience" | "ctas">,
+  structureKey: ScriptStructureKey,
   brandLine?: { name: string; description?: string | null; usps?: string[]; pain_points?: string[]; keywords?: string[] } | null,
   variantSeed?: string,
 ): Promise<AdCloneLine[]> {
@@ -134,7 +135,6 @@ export async function writeScriptFromConcept(
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY no configurado")
   const client = new Anthropic({ apiKey })
 
-  const structureKey = concept.angle_type ? ANGLE_TO_STRUCTURE[concept.angle_type as AngleType] : "pas"
   const structure = SCRIPT_STRUCTURES.find((s) => s.key === structureKey) ?? SCRIPT_STRUCTURES[0]
 
   const lineUsps  = brandLine?.usps?.length       ? brandLine.usps.join(", ")       : null
