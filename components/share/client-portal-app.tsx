@@ -736,7 +736,7 @@ function DesktopApp(props: any) {
         {/* Main */}
         <div className="overflow-y-auto py-7 px-8">
           {concepto ? (
-            <div className="max-w-[1000px] flex flex-col gap-4.5">
+            <div className="w-full max-w-[1600px] flex flex-col gap-4.5">
               <div>
                 <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 mb-1.5">{servicio.nombre}</div>
                 <div className="flex items-center gap-3 flex-wrap">
@@ -747,7 +747,7 @@ function DesktopApp(props: any) {
               </div>
               <VigenciaBanner concepto={concepto} />
 
-              <div className="grid gap-6 items-start" style={{ gridTemplateColumns: "1fr 320px" }}>
+              <div className="grid gap-6 items-start" style={{ gridTemplateColumns: "minmax(0,1fr) 360px" }}>
                 <div className="flex flex-col gap-4 min-w-0">
                   {concepto.piezas.map((p: Pieza) => (
                     <PiezaCard
