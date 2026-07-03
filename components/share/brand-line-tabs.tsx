@@ -38,7 +38,9 @@ export function BrandLineTabs({ tabs }: { tabs: Tab[] }) {
         ))}
       </div>
 
-      {activeTab.content}
+      <div key={activeTab.key}>
+        {activeTab.content}
+      </div>
     </div>
   )
 }

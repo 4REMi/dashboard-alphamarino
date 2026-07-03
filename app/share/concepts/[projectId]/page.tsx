@@ -137,7 +137,7 @@ export default async function ShareConceptsPage({ params }: Props) {
       assets: assetsByConcept.get(c.id) ?? [],
       scripts: scriptsByConcept.get(c.id) ?? [],
     }))
-    .filter((g) => g.assets.length > 0 || g.scripts.length > 0 || concepts.length <= 6)
+    .filter((g) => g.assets.length > 0 || g.scripts.length > 0)
   const conceptsPendingFirst = [...conceptsWithAssets].sort((a, b) => {
     const pa = a.assets.filter((x) => !x.client_status || x.client_status === "pending_review").length
       + a.scripts.filter((x) => !x.client_status || x.client_status === "pending_review").length
