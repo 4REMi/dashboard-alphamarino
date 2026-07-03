@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Unbounded:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#e9edf3;font-family:'Poppins',system-ui,sans-serif;min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:28px 0}</style>
+</helmet>
+<x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" hint-size="410px,870px">
+<div data-screen-label="Portal Cliente" style="height:100%;overflow:hidden;background:#f5f6fa;display:flex;flex-direction:column;padding-top:59px;box-sizing:border-box">
+
+  <!-- ═════════ PANTALLA: SERVICIOS ═════════ -->
+  <sc-if value="{{ isServicios }}" hint-placeholder-val="{{ true }}">
+    <div style="padding:14px 20px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(226,232,240,.6);background:rgba(255,255,255,.85)">
+      <span style="width:30px;height:30px;border-radius:9px;background:#0f172a;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700">A</span>
+      <span style="font-size:13px;font-weight:600;color:#0f172a">Alpha Marino</span>
+      <span style="margin-left:auto;font-size:10.5px;color:#64748b">{{ clienteNombre }}</span>
+    </div>
+    <div style="flex:1;overflow:auto;padding:22px 20px 30px;display:flex;flex-direction:column;gap:16px">
+      <div>
+        <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.18em;color:#64748b;margin-bottom:6px">Tu publicidad, por servicio</div>
+        <div style="font-family:'Unbounded',sans-serif;font-size:20px;font-weight:600;color:#0f172a;line-height:1.25">¿Qué servicio quieres revisar?</div>
+      </div>
+      <sc-for list="{{ servicios }}" as="s" hint-placeholder-count="2">
+        <div onClick="{{ s.abrir }}" style="background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:18px;box-shadow:0 1px 3px rgba(15,23,42,.05);display:flex;flex-direction:column;gap:12px;position:relative;cursor:pointer" style-hover="border-color:#94a3b8">
+        <sc-if value="{{ s.hasPend }}" hint-placeholder-val="{{ false }}">
+          <span style="position:absolute;top:18px;right:16px;font-size:10px;font-weight:700;color:#b45309;background:#fffbeb;border:1px solid #fde68a;padding:3px 9px;border-radius:99px">{{ s.pendLabel }}</span>
+        </sc-if>
+        <sc-if value="{{ s.allOk }}" hint-placeholder-val="{{ false }}">
+          <span style="position:absolute;top:18px;right:16px;font-size:10px;font-weight:700;color:#047857;background:#ecfdf5;padding:3px 9px;border-radius:99px">✓ Al día</span>
+        </sc-if>
+        <span style="width:44px;height:44px;border-radius:13px;background:{{ s.iconBg }};display:flex;align-items:center;justify-content:center;font-size:20px">{{ s.emoji }}</span>
+        <div>
+          <div style="font-size:15px;font-weight:700;letter-spacing:-.01em;color:#0f172a">{{ s.nombre }}</div>
+          <div style="font-size:11px;color:#64748b;margin-top:2px">{{ s.meta }}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="flex:1;height:5px;border-radius:99px;background:#e8edf4;overflow:hidden"><div style="width:{{ s.pct }};height:100%;background:#10b981;border-radius:99px;transition:width .4s"></div></div>
+          <span style="font-size:10.5px;color:#64748b;font-variant-numeric:tabular-nums">{{ s.pctLabel }}</span>
+        </div>
+        </div>
+      </sc-for>
+      <sc-if value="{{ mostrarAtajo }}" hint-placeholder-val="{{ true }}">
+        <div onClick="{{ irQuick }}" style="border:1px dashed #d1dce8;border-radius:16px;padding:14px 16px;display:flex;align-items:center;gap:12px;cursor:pointer" style-hover="background:#fff">
+          <span style="font-size:16px">⚡</span>
+          <div style="flex:1;font-size:11.5px;line-height:1.5;color:#64748b">¿Poco tiempo? Revisa las <strong style="color:#0f172a">{{ totalPend }} piezas pendientes</strong> de corrido.</div>
+          <span style="font-size:11px;font-weight:600;color:#2563eb;flex-shrink:0">Revisar →</span>
+        </div>
+      </sc-if>
+    </div>
+  </sc-if>
+
+  <!-- ═════════ PANTALLA: CONCEPTOS DE UN SERVICIO ═════════ -->
+  <sc-if value="{{ isServicio }}" hint-placeholder-val="{{ false }}">
+    <div style="padding:12px 20px;display:flex;align-items:center;gap:12px;border-bottom:1px solid rgba(226,232,240,.6);background:rgba(255,255,255,.85)">
+      <span onClick="{{ goServicios }}" style="width:32px;height:32px;border-radius:99px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;color:#475569;font-size:15px;cursor:pointer">‹</span>
+      <div>
+        <div style="font-size:10px;color:#64748b">Servicios /</div>
+        <div style="font-size:14px;font-weight:700;color:#0f172a">{{ servicioTitulo }}</div>
+      </div>
+    </div>
+    <div style="flex:1;overflow:auto;padding:20px;display:flex;flex-direction:column;gap:14px">
+      <div style="font-size:11.5px;line-height:1.6;color:#64748b">Cada <strong style="color:#0f172a">concepto</strong> es una idea publicitaria distinta que estamos probando para este servicio.</div>
+      <sc-for list="{{ grupos }}" as="g" hint-placeholder-count="1">
+        <div style="display:flex;align-items:center;gap:8px;margin-top:2px">
+          <span style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:#334155">{{ g.label }}</span>
+          <span style="flex:1;height:1px;background:#e2e8f0"></span>
+        </div>
+        <sc-for list="{{ g.conceptos }}" as="c" hint-placeholder-count="2">
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:18px;overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,.05)">
+          <div style="padding:16px 18px 12px">
+            <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">
+              <span style="font-size:10px;font-weight:600;background:#0f172a;color:#fff;padding:2px 8px;border-radius:6px">{{ c.angulo }}</span>
+              <span style="font-size:10px;font-weight:500;background:{{ c.funnelBg }};color:{{ c.funnelColor }};padding:2px 8px;border-radius:6px">{{ c.funnel }}</span>
+              <sc-if value="{{ c.validado }}" hint-placeholder-val="{{ false }}">
+                <span style="font-size:10px;font-weight:500;background:#fffbeb;color:#b45309;padding:2px 8px;border-radius:6px">⭐ Validado</span>
+              </sc-if>
+            </div>
+            <div style="font-size:14.5px;font-weight:700;color:#0f172a">{{ c.nombre }}</div>
+          </div>
+          <div style="padding:0 18px 14px;display:flex;gap:8px">
+            <div style="flex:1;background:#f8fafc;border:1px solid #e8edf4;border-radius:10px;padding:8px 10px;text-align:center">
+              <div style="font-size:15px;font-weight:700;color:#b45309;font-variant-numeric:tabular-nums">{{ c.pend }}</div>
+              <div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8">Por revisar</div>
+            </div>
+            <div style="flex:1;background:#f8fafc;border:1px solid #e8edf4;border-radius:10px;padding:8px 10px;text-align:center">
+              <div style="font-size:15px;font-weight:700;color:#047857;font-variant-numeric:tabular-nums">{{ c.apr }}</div>
+              <div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8">Aprobadas</div>
+            </div>
+            <div style="flex:1;background:#f8fafc;border:1px solid #e8edf4;border-radius:10px;padding:8px 10px;text-align:center">
+              <div style="font-size:15px;font-weight:700;color:#0369a1;font-variant-numeric:tabular-nums">{{ c.cam }}</div>
+              <div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8">Cambios</div>
+            </div>
+          </div>
+          <sc-if value="{{ c.tienePend }}" hint-placeholder-val="{{ true }}">
+            <div onClick="{{ c.abrir }}" style="padding:12px 18px;background:#fffbeb;border-top:1px solid #fde68a;display:flex;align-items:center;justify-content:space-between;cursor:pointer">
+              <span style="font-size:11.5px;font-weight:600;color:#78350f">{{ c.pendMsg }}</span>
+              <span style="font-size:11px;font-weight:600;color:#b45309">Abrir ›</span>
+            </div>
+          </sc-if>
+          <sc-if value="{{ c.sinPend }}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{ c.abrir }}" style="padding:12px 18px;background:#ecfdf5;border-top:1px solid #d1fae5;display:flex;align-items:center;justify-content:space-between;cursor:pointer">
+              <span style="font-size:11.5px;font-weight:600;color:#065f46">✓ Todo revisado</span>
+              <span style="font-size:11px;font-weight:600;color:#047857">Ver ›</span>
+            </div>
+          </sc-if>
+        </div>
+      </sc-for>
+      </sc-for>
+      <sc-if value="{{ hayArchivo }}" hint-placeholder-val="{{ false }}">
+        <div style="background:rgba(255,255,255,.65);border:1px solid #e8edf4;border-radius:18px;overflow:hidden;margin-top:4px">
+          <div onClick="{{ toggleArchivo }}" style="padding:14px 18px;display:flex;align-items:center;gap:10px;cursor:pointer">
+            <span style="font-size:15px">🗂️</span>
+            <div style="flex:1">
+              <div style="font-size:12.5px;font-weight:600;color:#334155">Conceptos de meses anteriores</div>
+              <div style="font-size:10px;color:#94a3b8">{{ archivoMeta }}</div>
+            </div>
+            <span style="font-size:12px;color:#94a3b8">{{ archivoChevron }}</span>
+          </div>
+          <sc-if value="{{ archivoOpen }}" hint-placeholder-val="{{ false }}">
+            <div style="border-top:1px solid #e8edf4;padding:4px 18px 14px;display:flex;flex-direction:column;gap:4px">
+              <sc-for list="{{ archivoMeses }}" as="m" hint-placeholder-count="1">
+                <div style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:#94a3b8;margin-top:10px">{{ m.mes }}</div>
+                <sc-for list="{{ m.conceptos }}" as="ac" hint-placeholder-count="1">
+                  <div onClick="{{ ac.abrir }}" style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f1f5f9;cursor:pointer">
+                    <span style="font-size:10px;font-weight:600;background:#f1f5f9;color:#475569;padding:2px 8px;border-radius:6px;flex-shrink:0">{{ ac.angulo }}</span>
+                    <div style="flex:1;min-width:0">
+                      <div style="font-size:12px;font-weight:600;color:#334155;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ ac.nombre }}</div>
+                      <div style="font-size:9.5px;color:#94a3b8">{{ ac.metaPiezas }}</div>
+                    </div>
+                    <span style="font-size:10.5px;font-weight:600;color:#2563eb;flex-shrink:0">Ver ›</span>
+                  </div>
+                </sc-for>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+    </div>
+  </sc-if>
+
+  <!-- ═════════ PANTALLA: PIEZAS DE UN CONCEPTO ═════════ -->
+  <sc-if value="{{ isConcepto }}" hint-placeholder-val="{{ false }}">
+    <div style="padding:12px 20px;display:flex;align-items:center;gap:12px;border-bottom:1px solid rgba(226,232,240,.6);background:rgba(255,255,255,.85)">
+      <span onClick="{{ goServicio }}" style="width:32px;height:32px;border-radius:99px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;color:#475569;font-size:15px;cursor:pointer">‹</span>
+      <div style="min-width:0">
+        <div style="font-size:10px;color:#64748b">{{ conceptoBreadcrumb }} /</div>
+        <div style="font-size:14px;font-weight:700;color:#0f172a">{{ conceptoNombre }}</div>
+      </div>
+    </div>
+    <div style="flex:1;overflow:auto;padding:18px 20px 30px;display:flex;flex-direction:column;gap:12px">
+      <sc-if value="{{ esArchivado }}" hint-placeholder-val="{{ false }}">
+        <div style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:14px;padding:12px 16px;display:flex;align-items:center;gap:10px">
+          <span style="font-size:15px">🗂️</span>
+          <div style="font-size:11px;line-height:1.5;color:#475569"><strong>Campaña de {{ conceptoMes }}</strong> — archivo de solo lectura. Estas piezas ya circularon.</div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ esEvergreen }}" hint-placeholder-val="{{ false }}">
+        <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:14px;padding:12px 16px;display:flex;align-items:center;gap:10px">
+          <span style="font-size:15px">♾️</span>
+          <div style="font-size:11px;line-height:1.5;color:#78350f"><strong>Concepto Evergreen</strong> — validado con resultados; se mantiene activo mes a mes.</div>
+        </div>
+      </sc-if>
+      <div style="background:#fff;border:1px dashed #d1dce8;border-radius:14px;overflow:hidden">
+        <div onClick="{{ toggleEstrategia }}" style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer">
+          <span style="font-size:11.5px;color:#64748b">{{ conceptoAngulo }} — ¿Por qué este concepto?</span>
+          <span style="font-size:12px;color:#94a3b8">{{ estrategiaChevron }}</span>
+        </div>
+        <sc-if value="{{ estrategiaOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;border-top:1px solid #eef2f7;border-bottom:1px solid #eef2f7;padding:0 6px">
+            <div onClick="{{ verTabId }}" style="flex:1;text-align:center;padding:11px 2px 9px;font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;cursor:pointer;color:{{ tabIdColor }};border-bottom:2px solid {{ tabIdBorde }};margin-bottom:-1px">Identificación</div>
+            <div onClick="{{ verTabTeoria }}" style="flex:1;text-align:center;padding:11px 2px 9px;font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;cursor:pointer;color:{{ tabTeoriaColor }};border-bottom:2px solid {{ tabTeoriaBorde }};margin-bottom:-1px">Teoría</div>
+            <div onClick="{{ verTabMec }}" style="flex:1;text-align:center;padding:11px 2px 9px;font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;cursor:pointer;color:{{ tabMecColor }};border-bottom:2px solid {{ tabMecBorde }};margin-bottom:-1px">Mecanismo</div>
+          </div>
+          <div style="padding:14px 16px;background:#fbfcfe;border-radius:0 0 14px 14px">
+            <sc-if value="{{ isTabId }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-direction:column;gap:12px">
+                <div>
+                  <div style="font-size:8.5px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#94a3b8;margin-bottom:3px">Principio organizador</div>
+                  <div style="font-size:12px;line-height:1.6;color:#334155">{{ ePrincipio }}</div>
+                </div>
+                <div style="border-top:1px solid #eef2f7;padding-top:10px">
+                  <div style="font-size:8.5px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#94a3b8;margin-bottom:3px">A quién le hablamos</div>
+                  <div style="font-size:12px;line-height:1.6;color:#334155">{{ eQuien }}</div>
+                </div>
+                <div style="border-top:1px solid #eef2f7;padding-top:10px">
+                  <div style="font-size:8.5px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#94a3b8;margin-bottom:3px">Awareness stage</div>
+                  <div style="font-size:12px;line-height:1.6;color:#334155">{{ eAwareness }}</div>
+                </div>
+                <div style="border-top:1px solid #eef2f7;padding-top:10px">
+                  <div style="font-size:8.5px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#94a3b8;margin-bottom:5px">Funnel stage</div>
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <span style="font-size:9.5px;font-weight:700;background:{{ conceptoFunnelBg }};color:{{ conceptoFunnelColor }};padding:2px 8px;border-radius:6px">{{ funnelCode }}</span>
+                    <span style="font-size:11px;color:#64748b">{{ conceptoFunnel }}</span>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ isTabTeoria }}" hint-placeholder-val="{{ false }}">
+              <div>
+                <div style="font-size:8.5px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#94a3b8;margin-bottom:3px">Teoría del ángulo</div>
+                <div style="font-size:12px;line-height:1.6;color:#334155">{{ eTeoria }}</div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ isTabMec }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;gap:12px">
+                <div>
+                  <div style="font-size:8.5px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#94a3b8;margin-bottom:3px">¿Por qué va a funcionar?</div>
+                  <div style="font-size:12px;line-height:1.6;color:#334155">{{ ePorque }}</div>
+                </div>
+                <div style="border-top:1px solid #eef2f7;padding-top:10px">
+                  <div style="font-size:8.5px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#94a3b8;margin-bottom:3px">Problema específico</div>
+                  <div style="font-size:12px;line-height:1.6;color:#334155">{{ eProblema }}</div>
+                </div>
+                <div style="border-top:1px solid #eef2f7;padding-top:10px">
+                  <div style="font-size:8.5px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#94a3b8;margin-bottom:3px">Objeción que derrumba</div>
+                  <div style="font-size:12px;line-height:1.6;color:#334155">{{ eObjecion }}</div>
+                </div>
+                <div style="border-top:1px solid #eef2f7;padding-top:10px">
+                  <div style="font-size:8.5px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#94a3b8;margin-bottom:3px">Transformación prometida</div>
+                  <div style="font-size:12px;line-height:1.6;color:#334155">{{ eTransformacion }}</div>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+      </div>
+      <sc-for list="{{ piezas }}" as="p" hint-placeholder-count="3">
+        <div style="background:#fff;border:{{ p.borde }};border-radius:18px;overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,.05)">
+          <div style="padding:14px 18px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #f1f5f9">
+            <span style="width:36px;height:36px;border-radius:10px;background:{{ p.iconBg }};display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0">{{ p.icono }}</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:600;color:#0f172a">{{ p.titulo }}</div>
+              <div style="font-size:10px;color:#64748b">{{ p.sub }}</div>
+            </div>
+            <span style="font-size:9.5px;font-weight:700;color:{{ p.pillColor }};background:{{ p.pillBg }};padding:3px 8px;border-radius:99px;flex-shrink:0">{{ p.pillLabel }}</span>
+          </div>
+          <sc-if value="{{ p.isGuion }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:14px 18px;display:flex;flex-direction:column;gap:12px;background:#f8fafc">
+              <sc-for list="{{ p.guion }}" as="linea" hint-placeholder-count="3">
+                <div style="display:flex;gap:10px">
+                  <span style="width:20px;height:20px;border-radius:99px;background:#0f172a;color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-variant-numeric:tabular-nums">{{ linea.n }}</span>
+                  <p style="margin:0;font-size:12.5px;line-height:1.65;color:#1e293b">{{ linea.t }}</p>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{ p.isVideo }}" hint-placeholder-val="{{ false }}">
+            <div style="background:#0f172a;height:120px;display:flex;align-items:center;justify-content:center">
+              <span style="width:40px;height:40px;border-radius:99px;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px">▶</span>
+            </div>
+          </sc-if>
+          <sc-if value="{{ p.isImagen }}" hint-placeholder-val="{{ false }}">
+            <div style="background:#e8edf4;height:110px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:#94a3b8">
+              <span style="font-size:22px">🖼️</span>
+              <span style="font-size:9.5px;font-weight:500">Vista previa</span>
+            </div>
+          </sc-if>
+          <sc-if value="{{ p.tieneFeedback }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:10px 18px;background:#f0f9ff;border-top:1px solid #e0f2fe;font-size:11px;line-height:1.5;color:#0369a1"><strong>Tu comentario:</strong> "{{ p.feedback }}"</div>
+          </sc-if>
+          <sc-if value="{{ p.feedbackOpen }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:12px 18px 14px;display:flex;flex-direction:column;gap:8px;border-top:1px solid #f1f5f9">
+              <textarea value="{{ feedbackText }}" onChange="{{ setFeedbackText }}" placeholder="Describe los cambios que necesitas…" rows="3" style="width:100%;box-sizing:border-box;font-size:12px;font-family:'Poppins',sans-serif;border:1px solid #d1dce8;border-radius:12px;padding:10px 12px;resize:none;outline:none;color:#0f172a"></textarea>
+              <div style="display:flex;gap:8px">
+                <button onClick="{{ p.cancelar }}" style="flex:1;font-size:12px;border:1px solid #d1dce8;border-radius:12px;padding:10px 0;background:#fff;color:#64748b;font-family:'Poppins',sans-serif;cursor:pointer">Cancelar</button>
+                <button onClick="{{ p.enviarCambios }}" style="flex:1.3;font-size:12px;border:none;border-radius:12px;padding:10px 0;background:#f59e0b;color:#fff;font-weight:600;font-family:'Poppins',sans-serif;cursor:pointer">Enviar cambios</button>
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ p.mostrarAcciones }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:12px 18px 14px;display:flex;gap:8px;border-top:1px solid #f1f5f9">
+              <button onClick="{{ p.pedirCambios }}" style="flex:1;font-size:12px;border:1px solid #d1dce8;border-radius:12px;padding:11px 0;background:#fff;color:#475569;font-family:'Poppins',sans-serif;cursor:pointer">Pedir cambios</button>
+              <button onClick="{{ p.aprobar }}" style="flex:1.3;font-size:12px;border:none;border-radius:12px;padding:11px 0;background:{{ colorAprobar }};color:#fff;font-weight:600;font-family:'Poppins',sans-serif;cursor:pointer;box-shadow:0 2px 8px rgba(16,185,129,.25)">{{ p.aprobarLabel }}</button>
+            </div>
+          </sc-if>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+
+  <!-- ═════════ PANTALLA: REVISIÓN RÁPIDA ═════════ -->
+  <sc-if value="{{ isQuick }}" hint-placeholder-val="{{ false }}">
+    <div style="padding:12px 20px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #f1f5f9;background:#fff">
+      <span onClick="{{ goServicios }}" style="width:32px;height:32px;border-radius:99px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;color:#475569;font-size:15px;cursor:pointer">✕</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600;color:#0f172a">Revisión rápida</div>
+        <div style="font-size:10px;color:#64748b">{{ quickBreadcrumb }}</div>
+      </div>
+      <span style="font-size:10.5px;font-weight:600;color:#64748b;font-variant-numeric:tabular-nums">{{ quickProgreso }}</span>
+    </div>
+    <div style="height:3px;background:#e8edf4"><div style="width:{{ quickPct }};height:100%;background:#0f172a;transition:width .3s"></div></div>
+    <sc-if value="{{ quickDone }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:0 36px;text-align:center">
+        <span style="width:64px;height:64px;border-radius:99px;background:#ecfdf5;display:flex;align-items:center;justify-content:center;font-size:26px">🎉</span>
+        <div style="font-family:'Unbounded',sans-serif;font-size:18px;font-weight:600;color:#0f172a">¡Todo revisado!</div>
+        <div style="font-size:12px;line-height:1.6;color:#64748b">Gracias. El equipo de Alpha Marino ya recibió tus respuestas y se pone en marcha.</div>
+        <button onClick="{{ goServicios }}" style="margin-top:6px;font-size:12.5px;border:none;border-radius:14px;padding:13px 26px;background:#0f172a;color:#fff;font-weight:600;font-family:'Poppins',sans-serif;cursor:pointer">Volver al inicio</button>
+      </div>
+    </sc-if>
+    <sc-if value="{{ quickActiva }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;overflow:auto;padding:20px;display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="width:42px;height:42px;border-radius:12px;background:{{ q.iconBg }};display:flex;align-items:center;justify-content:center;font-size:18px">{{ q.icono }}</span>
+          <div>
+            <div style="font-size:14.5px;font-weight:700;color:#0f172a">{{ q.titulo }}</div>
+            <div style="font-size:10.5px;color:#64748b">{{ q.sub }}</div>
+          </div>
+        </div>
+        <sc-if value="{{ q.isGuion }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#fff;border:1px solid #e8edf4;border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:13px">
+            <sc-for list="{{ q.guion }}" as="linea" hint-placeholder-count="3">
+              <div style="display:flex;gap:10px">
+                <span style="width:20px;height:20px;border-radius:99px;background:#0f172a;color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-variant-numeric:tabular-nums">{{ linea.n }}</span>
+                <p style="margin:0;font-size:13px;line-height:1.65;color:#1e293b">{{ linea.t }}</p>
+              </div>
+            </sc-for>
+          </div>
+          <div style="font-size:11px;line-height:1.5;color:#94a3b8;text-align:center">📝 Este texto es la voz en off. Al aprobarlo pasamos a producir el video.</div>
+        </sc-if>
+        <sc-if value="{{ q.isVideo }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#0f172a;border-radius:16px;height:280px;display:flex;align-items:center;justify-content:center">
+            <span style="width:52px;height:52px;border-radius:99px;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px">▶</span>
+          </div>
+        </sc-if>
+        <sc-if value="{{ q.isImagen }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#e8edf4;border-radius:16px;height:280px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:#94a3b8">
+            <span style="font-size:30px">🖼️</span>
+            <span style="font-size:10.5px;font-weight:500">Vista previa de la imagen</span>
+          </div>
+        </sc-if>
+      </div>
+      <div style="background:#fff;border-top:1px solid #e2e8f0;padding:14px 20px 10px;display:flex;flex-direction:column;gap:10px">
+        <sc-if value="{{ quickFeedbackOpen }}" hint-placeholder-val="{{ false }}">
+          <textarea value="{{ feedbackText }}" onChange="{{ setFeedbackText }}" placeholder="Describe los cambios que necesitas…" rows="3" style="width:100%;box-sizing:border-box;font-size:12px;font-family:'Poppins',sans-serif;border:1px solid #d1dce8;border-radius:12px;padding:10px 12px;resize:none;outline:none;color:#0f172a"></textarea>
+          <div style="display:flex;gap:10px">
+            <button onClick="{{ q.cancelar }}" style="flex:1;font-size:13px;border:1px solid #d1dce8;border-radius:14px;padding:13px 0;background:#fff;color:#64748b;font-family:'Poppins',sans-serif;cursor:pointer">Cancelar</button>
+            <button onClick="{{ q.enviarCambios }}" style="flex:1.4;font-size:13px;border:none;border-radius:14px;padding:13px 0;background:#f59e0b;color:#fff;font-weight:600;font-family:'Poppins',sans-serif;cursor:pointer">Enviar cambios</button>
+          </div>
+        </sc-if>
+        <sc-if value="{{ quickAccionesVisibles }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;gap:10px">
+            <button onClick="{{ q.pedirCambios }}" style="flex:1;font-size:13px;border:1px solid #d1dce8;border-radius:14px;padding:13px 0;background:#fff;color:#475569;font-weight:500;font-family:'Poppins',sans-serif;cursor:pointer">Pedir cambios</button>
+            <button onClick="{{ q.aprobar }}" style="flex:1.4;font-size:13px;border:none;border-radius:14px;padding:13px 0;background:{{ colorAprobar }};color:#fff;font-weight:600;font-family:'Poppins',sans-serif;cursor:pointer;box-shadow:0 2px 8px rgba(16,185,129,.3)">{{ q.aprobarLabel }}</button>
+          </div>
+          <div style="text-align:center;font-size:10.5px;color:#94a3b8">{{ quickSiguiente }}</div>
+        </sc-if>
+      </div>
+    </sc-if>
+  </sc-if>
+
+</div>
+</x-import>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;: {&quot;width&quot;: 480, &quot;height&quot;: 940}, &quot;clienteNombre&quot;: {&quot;editor&quot;: &quot;text&quot;, &quot;default&quot;: &quot;Clínica Sonría&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Contenido&quot;}, &quot;mostrarAtajo&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Comportamiento&quot;}, &quot;colorAprobar&quot;: {&quot;editor&quot;: &quot;color&quot;, &quot;default&quot;: &quot;#10b981&quot;, &quot;options&quot;: [&quot;#10b981&quot;, &quot;#2563eb&quot;, &quot;#0f172a&quot;], &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Estilo&quot;}}">
+class Component extends DCLogic {
+  state = {
+    screen: "servicios",
+    servicioId: null,
+    conceptoId: null,
+    estrategiaOpen: false,
+    tabEstrategia: "id",
+    statuses: { g1: "pendiente", v1: "pendiente", i1: "aprobada", i2: "aprobada", g2: "pendiente", i4: "aprobada", a1: "aprobada", a2: "aprobada", a3: "aprobada" },
+    archivoOpen: false,
+    feedbacks: {},
+    feedbackFor: null,
+    feedbackText: "",
+    quickQueue: [],
+    quickIdx: 0,
+  };
+
+  data() {
+    return [
+      {
+        id: "orto", emoji: "🦷", nombre: "Ortodoncia Invisible", iconBg: "#eff6ff",
+        conceptos: [
+          {
+            id: "antes", nombre: "Antes/Después real de pacientes", angulo: "🪞 Antes / Después", vigencia: "actual",
+            funnel: "Audiencia fría", funnelBg: "#f0f9ff", funnelColor: "#0369a1", funnelCode: "TOF", validado: false,
+            estrategia: {
+              principio: "Proof-First",
+              quien: "Adultos de 28–42 en zona metropolitana, ingresos medios-altos, que llevan años posponiendo su ortodoncia. Les da pena usar brackets en el trabajo y creen que 'ya es tarde'. Valoran la discreción y desconfían de promesas sin evidencia.",
+              awareness: "2 — Problem-Aware",
+              teoria: "La prueba visual vence al escepticismo: no afirmamos resultados, los mostramos. En audiencia fría, el antes/después genera el stop inicial y la identificación inmediata — 'esa persona era como yo'.",
+              porque: "La evidencia de pacientes reales elimina el riesgo percibido de invertir en algo que no funciona. Al ver la línea de tiempo mes a mes, la promesa abstracta se vuelve un plan concreto con fecha de resultado.",
+              problema: "Quieren alinear su sonrisa pero no creen que un tratamiento invisible dé resultados reales, y temen pagar meses completos sin ver ningún cambio.",
+              objecion: "'¿Y si pago todo el tratamiento y mi caso no se corrige?'",
+              transformacion: "De esconder la sonrisa en fotos y reuniones, a mostrar el resultado en 6 meses sin que nadie note el tratamiento.",
+            },
+            piezas: [
+              { id: "g1", tipo: "guion", titulo: 'Guion VO — "Tu sonrisa en 6 meses"', sub: "Paso 1 · se produce el video al aprobarlo",
+                guion: [
+                  { n: 1, t: '"¿Llevas años escondiendo tu sonrisa en las fotos? No eres el único."' },
+                  { n: 2, t: '"Estos son pacientes reales de Clínica Sonría. Seis meses con alineadores invisibles. Nadie en su trabajo se dio cuenta."' },
+                  { n: 3, t: '"Agenda tu valoración gratuita esta semana y conoce tu plan en 40 minutos."' },
+                ] },
+              { id: "v1", tipo: "video", titulo: "Video Reels — V1", sub: "9:16 · 22 segundos" },
+              { id: "i1", tipo: "imagen", titulo: "Imagen estática — V2", sub: "Feed 1:1" },
+            ],
+          },
+          {
+            id: "costo", nombre: "El costo de esperar", angulo: "⏳ Urgencia", vigencia: "evergreen",
+            funnel: "Audiencia tibia", funnelBg: "#f5f3ff", funnelColor: "#6d28d9", funnelCode: "MOF", validado: true,
+            estrategia: {
+              principio: "Loss-Aversion",
+              quien: "Personas que ya cotizaron ortodoncia (retargeting) y llevan más de 30 días sin decidirse. Conocen el precio y el proceso; su freno no es interés, es inercia.",
+              awareness: "4 — Product-Aware",
+              teoria: "El costo de oportunidad reencuadra la espera como pérdida activa: cada mes sin tratamiento alarga el plan y encarece el resultado. Perder duele más que ganar.",
+              porque: "El prospecto ya validó su interés; solo necesita una razón para actuar hoy. Ponerle cifras a la espera convierte el 'lo hago después' en una decisión con precio visible.",
+              problema: "Posponen el inicio creyendo que esperar no tiene consecuencias, mientras el caso se complica y el tratamiento se alarga y encarece.",
+              objecion: "'Lo puedo empezar el próximo año, no pasa nada.'",
+              transformacion: "De 'algún día lo haré' a empezar hoy con el plan que ya cotizaron — terminando meses antes y pagando menos.",
+            },
+            piezas: [
+              { id: "i2", tipo: "imagen", titulo: 'Imagen — "El costo de esperar"', sub: "Feed 4:5" },
+            ],
+          },
+          {
+            id: "regreso", nombre: "Regreso a clases sin brackets", angulo: "🎒 Estacional",
+            funnel: "Audiencia fría", funnelBg: "#f0f9ff", funnelColor: "#0369a1", funnelCode: "TOF", validado: false,
+            vigencia: "archivado", mes: "Mayo 2026",
+            estrategia: {
+              principio: "Seasonal-Urgency",
+              quien: "Papás de adolescentes de 12–16 en las semanas previas al inicio del ciclo escolar, con presupuesto asignado a la vuelta a clases.",
+              awareness: "3 — Solution-Aware",
+              teoria: "La estacionalidad concentra la decisión: en el regreso a clases la pena social del adolescente pesa más y los papás quieren resolverla antes del primer día.",
+              porque: "El deadline del inicio de clases hace urgente el CTA sin inventar urgencia — la fecha es real y emocionalmente cargada para toda la familia.",
+              problema: "Los brackets metálicos dan pena en la adolescencia y los papás no conocen la alternativa invisible para menores.",
+              objecion: "'Mi hijo no va a ser constante con unos alineadores que se puede quitar.'",
+              transformacion: "De un adolescente que se tapa la boca al reír, a corregir su sonrisa sin que nadie en clases lo note.",
+            },
+            piezas: [
+              { id: "a1", tipo: "video", titulo: "Video Reels — Final", sub: "9:16 · 18 segundos" },
+              { id: "a2", tipo: "imagen", titulo: "Imagen — Final", sub: "Feed 1:1" },
+            ],
+          },
+        ],
+      },
+      {
+        id: "blanq", emoji: "✨", nombre: "Blanqueamiento", iconBg: "#fdf4ff",
+        conceptos: [
+          {
+            id: "sonrisa", nombre: "Sonrisa lista en 1 sesión", angulo: "⚡ Rapidez", vigencia: "actual",
+            funnel: "Audiencia fría", funnelBg: "#f0f9ff", funnelColor: "#0369a1", funnelCode: "TOF", validado: false,
+            estrategia: {
+              principio: "Speed-First",
+              quien: "Profesionistas de 25–40 con un evento próximo (boda, graduación, entrevista) que quieren verse bien en fotos y tienen poco tiempo disponible.",
+              awareness: "3 — Solution-Aware",
+              teoria: "La rapidez elimina la objeción principal ('no tengo tiempo'): si el resultado es hoy mismo, la decisión se vuelve de bajo riesgo y alta urgencia.",
+              porque: "El evento pone un deadline real y la sesión única elimina la fricción logística. La intención ya existe — solo hay que demostrar que es posible en una visita.",
+              problema: "Creen que blanquearse toma semanas y varias citas, y su evento es en cuestión de días.",
+              objecion: "'Seguro me deja los dientes sensibles y el efecto no dura.'",
+              transformacion: "De preocuparse por las fotos del evento, a salir de una sesión de 60 minutos con la sonrisa lista — sin sensibilidad.",
+            },
+            piezas: [
+              { id: "g2", tipo: "guion", titulo: 'Guion VO — "Una sesión, cero pena"', sub: "Paso 1 · se produce el video al aprobarlo",
+                guion: [
+                  { n: 1, t: '"¿Boda, graduación o entrevista en puerta? Tu sonrisa puede estar lista hoy mismo."' },
+                  { n: 2, t: '"Blanqueamiento profesional en una sola sesión de 60 minutos, sin sensibilidad."' },
+                  { n: 3, t: '"Reserva tu lugar de esta semana — quedan pocos espacios."' },
+                ] },
+              { id: "i4", tipo: "imagen", titulo: "Imagen estática — V2", sub: "Feed 1:1" },
+            ],
+          },
+          {
+            id: "madres", nombre: "Promo Día de las Madres", angulo: "🎁 Promoción",
+            funnel: "Audiencia caliente", funnelBg: "#ecfdf5", funnelColor: "#047857", funnelCode: "BOF", validado: false,
+            vigencia: "archivado", mes: "Mayo 2026",
+            estrategia: {
+              principio: "Emotional-Gift",
+              quien: "Hijos adultos de 25–45 buscando regalo para mamá en las dos semanas previas al 10 de mayo, con presupuesto de regalo ya decidido.",
+              awareness: "1 — Unaware",
+              teoria: "El regalo emocional supera al material: enmarcar el blanqueamiento como 'devolverle la sonrisa a mamá' conecta afecto con conversión.",
+              porque: "En temporada de regalos la intención de compra ya existe; el ángulo solo redirige un presupuesto decidido hacia una opción más memorable que flores o perfume.",
+              problema: "No saben qué regalar que se sienta personal y no genérico, y las opciones obvias ya se repitieron años anteriores.",
+              objecion: "'¿Y si a mi mamá le incomoda que le regale algo de dientes?'",
+              transformacion: "De un regalo más, a un momento: mamá estrenando sonrisa en la comida del 10 de mayo.",
+            },
+            piezas: [
+              { id: "a3", tipo: "imagen", titulo: "Imagen — Final", sub: "Feed 4:5" },
+            ],
+          },
+        ],
+      },
+    ];
+  }
+
+  status(id) { return this.state.statuses[id]; }
+
+  setStatus(id, status, feedback) {
+    this.setState((s) => {
+      const statuses = { ...s.statuses, [id]: status };
+      const feedbacks = feedback ? { ...s.feedbacks, [id]: feedback } : s.feedbacks;
+      return { statuses, feedbacks, feedbackFor: null, feedbackText: "" };
+    });
+  }
+
+  pillFor(status) {
+    if (status === "aprobada") return { pillLabel: "✓ Aprobada", pillBg: "#ecfdf5", pillColor: "#047857" };
+    if (status === "cambios") return { pillLabel: "Cambios pedidos", pillBg: "#f0f9ff", pillColor: "#0369a1" };
+    return { pillLabel: "Pendiente", pillBg: "#fffbeb", pillColor: "#b45309" };
+  }
+
+  iconFor(tipo) {
+    if (tipo === "guion") return { icono: "📝", iconBg: "#fffbeb" };
+    if (tipo === "video") return { icono: "🎬", iconBg: "#f0f9ff" };
+    return { icono: "🖼️", iconBg: "#f5f3ff" };
+  }
+
+  piezaVM(p, readonly) {
+    const st = this.status(p.id);
+    const pill = this.pillFor(st);
+    const icon = this.iconFor(p.tipo);
+    const pendiente = st === "pendiente";
+    const feedbackOpen = this.state.feedbackFor === p.id;
+    return {
+      ...p, ...pill, ...icon,
+      isGuion: p.tipo === "guion", isVideo: p.tipo === "video", isImagen: p.tipo === "imagen",
+      borde: pendiente ? "1.5px solid #fde68a" : "1px solid #e2e8f0",
+      tieneFeedback: st === "cambios" && !!this.state.feedbacks[p.id],
+      feedback: this.state.feedbacks[p.id] || "",
+      feedbackOpen,
+      mostrarAcciones: pendiente && !feedbackOpen && !readonly,
+      aprobarLabel: p.tipo === "guion" ? "Aprobar guion ✓" : "Aprobar ✓",
+      aprobar: () => this.setStatus(p.id, "aprobada"),
+      pedirCambios: () => this.setState({ feedbackFor: p.id, feedbackText: "" }),
+      cancelar: () => this.setState({ feedbackFor: null, feedbackText: "" }),
+      enviarCambios: () => {
+        if (!this.state.feedbackText.trim()) return;
+        this.setStatus(p.id, "cambios", this.state.feedbackText.trim());
+      },
+    };
+  }
+
+  counts(piezas) {
+    let pend = 0, apr = 0, cam = 0;
+    for (const p of piezas) {
+      const st = this.status(p.id);
+      if (st === "aprobada") apr++; else if (st === "cambios") cam++; else pend++;
+    }
+    return { pend, apr, cam, total: piezas.length };
+  }
+
+  allPending() {
+    const out = [];
+    for (const s of this.data())
+      for (const c of s.conceptos.filter((x) => x.vigencia !== "archivado"))
+        for (const p of c.piezas)
+          if (this.status(p.id) === "pendiente") out.push({ p, s, c });
+    return out;
+  }
+
+  renderVals() {
+    const st = this.state;
+    const data = this.data();
+    const clienteNombre = this.props.clienteNombre ?? "Clínica Sonría";
+    const colorAprobar = this.props.colorAprobar ?? "#10b981";
+    const mostrarAtajo = (this.props.mostrarAtajo ?? true) && this.allPending().length > 0;
+
+    const servicios = data.map((s) => {
+      const activos = s.conceptos.filter((c) => c.vigencia !== "archivado");
+      const piezas = activos.flatMap((c) => c.piezas);
+      const k = this.counts(piezas);
+      return {
+        ...s,
+        meta: activos.length + " concepto" + (activos.length !== 1 ? "s" : "") + " activo" + (activos.length !== 1 ? "s" : "") + " · " + k.total + " piezas",
+        hasPend: k.pend > 0,
+        allOk: k.pend === 0,
+        pendLabel: k.pend + " por revisar",
+        pct: Math.round((k.apr / k.total) * 100) + "%",
+        pctLabel: k.apr + "/" + k.total + " aprobadas",
+        abrir: () => this.setState({ screen: "servicio", servicioId: s.id }),
+      };
+    });
+
+    const servicio = data.find((s) => s.id === st.servicioId) || null;
+    const conceptoVM = (c) => {
+      const k = this.counts(c.piezas);
+      const tipos = [];
+      if (c.piezas.some((p) => p.tipo === "guion" && this.status(p.id) === "pendiente")) tipos.push("guion");
+      if (c.piezas.some((p) => p.tipo !== "guion" && this.status(p.id) === "pendiente")) tipos.push("creativos");
+      return {
+        ...c, ...k,
+        tienePend: k.pend > 0,
+        sinPend: k.pend === 0,
+        pendMsg: (tipos.join(" + ") || "piezas") + (k.pend === 1 ? " espera tu revisión" : " esperan tu revisión"),
+        metaPiezas: k.total + " pieza" + (k.total !== 1 ? "s" : "") + " · campaña finalizada",
+        abrir: () => this.setState({ screen: "concepto", servicioId: servicio.id, conceptoId: c.id, estrategiaOpen: false, feedbackFor: null, feedbackText: "" }),
+      };
+    };
+    const actuales = servicio ? servicio.conceptos.filter((c) => c.vigencia === "actual").map(conceptoVM) : [];
+    const evergreenC = servicio ? servicio.conceptos.filter((c) => c.vigencia === "evergreen").map(conceptoVM) : [];
+    const archivados = servicio ? servicio.conceptos.filter((c) => c.vigencia === "archivado") : [];
+    const grupos = [];
+    if (actuales.length) grupos.push({ label: "En curso · Julio 2026", conceptos: actuales });
+    if (evergreenC.length) grupos.push({ label: "♾️ Siempre activos · Evergreen", conceptos: evergreenC });
+    const mesesMap = new Map();
+    for (const c of archivados) {
+      if (!mesesMap.has(c.mes)) mesesMap.set(c.mes, []);
+      mesesMap.get(c.mes).push(conceptoVM(c));
+    }
+    const archivoMeses = [...mesesMap.entries()].map(([mes, cs]) => ({ mes, conceptos: cs }));
+
+    const concepto = servicio ? servicio.conceptos.find((c) => c.id === st.conceptoId) || null : null;
+    const piezas = concepto ? concepto.piezas.map((p) => this.piezaVM(p, concepto.vigencia === "archivado")) : [];
+
+    // Quick review
+    const queueEntries = st.quickQueue
+      .map((id) => this.allQueueEntry(id))
+      .filter(Boolean);
+    const idx = Math.min(st.quickIdx, st.quickQueue.length);
+    const currentId = st.quickQueue[idx];
+    const current = currentId ? this.allQueueEntry(currentId) : null;
+    const quickDone = st.screen === "quick" && !current;
+    let q = null;
+    if (current) {
+      const vm = this.piezaVM(current.p);
+      q = {
+        ...vm,
+        aprobar: () => { this.setStatus(current.p.id, "aprobada"); this.quickNext(); },
+        enviarCambios: () => {
+          if (!this.state.feedbackText.trim()) return;
+          this.setStatus(current.p.id, "cambios", this.state.feedbackText.trim());
+          this.quickNext();
+        },
+      };
+    }
+    const nextEntry = st.quickQueue[idx + 1] ? this.allQueueEntry(st.quickQueue[idx + 1]) : null;
+
+    return {
+      clienteNombre, colorAprobar, mostrarAtajo,
+      isServicios: st.screen === "servicios",
+      isServicio: st.screen === "servicio",
+      isConcepto: st.screen === "concepto",
+      isQuick: st.screen === "quick",
+      servicios,
+      totalPend: this.allPending().length,
+      servicioTitulo: servicio ? servicio.emoji + " " + servicio.nombre : "",
+      grupos,
+      hayArchivo: archivados.length > 0,
+      archivoOpen: st.archivoOpen,
+      archivoChevron: st.archivoOpen ? "⌃" : "⌄",
+      archivoMeta: archivados.length + " concepto" + (archivados.length !== 1 ? "s" : "") + " de campañas pasadas",
+      archivoMeses,
+      toggleArchivo: () => this.setState((s) => ({ archivoOpen: !s.archivoOpen })),
+      esArchivado: !!concepto && concepto.vigencia === "archivado",
+      esEvergreen: !!concepto && concepto.vigencia === "evergreen",
+      conceptoMes: concepto ? concepto.mes || "" : "",
+      conceptoBreadcrumb: servicio ? servicio.nombre : "",
+      conceptoNombre: concepto ? concepto.nombre : "",
+      conceptoAngulo: concepto ? concepto.angulo : "",
+      estrategiaOpen: st.estrategiaOpen,
+      estrategiaChevron: st.estrategiaOpen ? "⌃" : "⌄",
+      ePrincipio: concepto ? concepto.estrategia.principio : "",
+      eQuien: concepto ? concepto.estrategia.quien : "",
+      eAwareness: concepto ? concepto.estrategia.awareness : "",
+      eTeoria: concepto ? concepto.estrategia.teoria : "",
+      ePorque: concepto ? concepto.estrategia.porque : "",
+      eProblema: concepto ? concepto.estrategia.problema : "",
+      eObjecion: concepto ? concepto.estrategia.objecion : "",
+      eTransformacion: concepto ? concepto.estrategia.transformacion : "",
+      funnelCode: concepto ? concepto.funnelCode || "" : "",
+      conceptoFunnel: concepto ? concepto.funnel : "",
+      conceptoFunnelBg: concepto ? concepto.funnelBg : "#f1f5f9",
+      conceptoFunnelColor: concepto ? concepto.funnelColor : "#475569",
+      isTabId: st.tabEstrategia === "id",
+      isTabTeoria: st.tabEstrategia === "teoria",
+      isTabMec: st.tabEstrategia === "mec",
+      verTabId: () => this.setState({ tabEstrategia: "id" }),
+      verTabTeoria: () => this.setState({ tabEstrategia: "teoria" }),
+      verTabMec: () => this.setState({ tabEstrategia: "mec" }),
+      tabIdColor: st.tabEstrategia === "id" ? "#0f172a" : "#94a3b8",
+      tabIdBorde: st.tabEstrategia === "id" ? "#2563eb" : "transparent",
+      tabTeoriaColor: st.tabEstrategia === "teoria" ? "#0f172a" : "#94a3b8",
+      tabTeoriaBorde: st.tabEstrategia === "teoria" ? "#2563eb" : "transparent",
+      tabMecColor: st.tabEstrategia === "mec" ? "#0f172a" : "#94a3b8",
+      tabMecBorde: st.tabEstrategia === "mec" ? "#2563eb" : "transparent",
+      piezas,
+      feedbackText: st.feedbackText,
+      setFeedbackText: (e) => this.setState({ feedbackText: e.target.value }),
+      toggleEstrategia: () => this.setState((s) => ({ estrategiaOpen: !s.estrategiaOpen })),
+      goServicios: () => this.setState({ screen: "servicios", feedbackFor: null, feedbackText: "" }),
+      goServicio: () => this.setState({ screen: "servicio", feedbackFor: null, feedbackText: "" }),
+      irQuick: () => {
+        const queue = this.allPending().map((e) => e.p.id);
+        this.setState({ screen: "quick", quickQueue: queue, quickIdx: 0, feedbackFor: null, feedbackText: "" });
+      },
+      q,
+      quickActiva: !!q,
+      quickDone,
+      quickBreadcrumb: current ? current.s.nombre + " · " + current.c.nombre : "Listo",
+      quickProgreso: current ? (idx + 1) + " de " + st.quickQueue.length : "",
+      quickPct: st.quickQueue.length ? Math.round(((quickDone ? st.quickQueue.length : idx) / st.quickQueue.length) * 100) + "%" : "0%",
+      quickFeedbackOpen: !!q && st.feedbackFor === currentId,
+      quickAccionesVisibles: !!q && st.feedbackFor !== currentId,
+      quickSiguiente: nextEntry ? "Después de esta: " + nextEntry.p.titulo + " →" : "Esta es la última pieza",
+    };
+  }
+
+  allQueueEntry(id) {
+    for (const s of this.data())
+      for (const c of s.conceptos)
+        for (const p of c.piezas)
+          if (p.id === id) return { p, s, c };
+    return null;
+  }
+
+  quickNext() {
+    this.setState((s) => ({ quickIdx: s.quickIdx + 1, feedbackFor: null, feedbackText: "" }));
+  }
+}
+
+</script>
+</body>
+</html>

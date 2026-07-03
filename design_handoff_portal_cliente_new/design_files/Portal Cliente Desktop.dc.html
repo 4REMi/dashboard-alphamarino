@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Unbounded:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#e9edf3;font-family:'Poppins',system-ui,sans-serif;min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:28px 0}</style>
+</helmet>
+<x-import component-from-global-scope="ChromeWindow" from="./browser-window.jsx" width="{{ 1360 }}" height="{{ 860 }}" url="alphamarino.com/portal/clinica-sonria" hint-size="1360px,860px">
+<div data-screen-label="Portal Desktop" style="height:100%;background:#f5f6fa;display:flex;flex-direction:column;position:relative;font-family:'Poppins',system-ui,sans-serif;color:#0f172a">
+
+  <!-- ── Header ── -->
+  <div style="height:56px;flex-shrink:0;background:rgba(255,255,255,.92);border-bottom:1px solid rgba(226,232,240,.7);display:flex;align-items:center;gap:12px;padding:0 24px">
+    <span style="width:28px;height:28px;border-radius:8px;background:#0f172a;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">A</span>
+    <span style="font-size:14px;font-weight:600;letter-spacing:-.01em">Alpha Marino</span>
+    <span style="color:#cbd5e1">·</span>
+    <span style="font-size:12px;color:#64748b">{{ clienteNombre }} — Portal del cliente</span>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:14px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="width:120px;height:5px;border-radius:99px;background:#e8edf4;overflow:hidden"><div style="width:{{ progresoPct }};height:100%;background:#10b981;border-radius:99px;transition:width .4s"></div></div>
+        <span style="font-size:11px;color:#64748b;font-variant-numeric:tabular-nums">{{ progresoLabel }}</span>
+      </div>
+      <sc-if value="{{ hayPendientes }}" hint-placeholder-val="{{ true }}">
+        <button onClick="{{ irQuick }}" style="font-size:12px;font-weight:600;border:1px solid #fde68a;border-radius:10px;padding:8px 14px;background:#fffbeb;color:#78350f;font-family:'Poppins',sans-serif;cursor:pointer;display:flex;align-items:center;gap:6px" style-hover="background:#fef3c7">⚡ Revisión rápida ({{ totalPend }})</button>
+      </sc-if>
+    </div>
+  </div>
+
+  <!-- ── Body: sidebar + main ── -->
+  <div style="flex:1;display:grid;grid-template-columns:280px 1fr;min-height:0">
+
+    <!-- Sidebar -->
+    <div style="border-right:1px solid rgba(226,232,240,.8);background:#fff;overflow:auto;padding:20px 14px 30px;display:flex;flex-direction:column;gap:22px">
+      <sc-for list="{{ sideServicios }}" as="s" hint-placeholder-count="2">
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <div style="display:flex;align-items:center;gap:8px;padding:0 10px 8px">
+            <span style="font-size:14px">{{ s.emoji }}</span>
+            <span style="font-size:12px;font-weight:700;color:#0f172a;flex:1">{{ s.nombre }}</span>
+            <sc-if value="{{ s.hasPend }}" hint-placeholder-val="{{ false }}">
+              <span style="font-size:9.5px;font-weight:700;color:#b45309;background:#fffbeb;border:1px solid #fde68a;padding:2px 7px;border-radius:99px">{{ s.pend }}</span>
+            </sc-if>
+            <sc-if value="{{ s.allOk }}" hint-placeholder-val="{{ false }}">
+              <span style="font-size:10px;color:#047857">✓</span>
+            </sc-if>
+          </div>
+          <sc-for list="{{ s.items }}" as="it" hint-placeholder-count="2">
+            <div onClick="{{ it.abrir }}" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:9px;cursor:pointer;background:{{ it.bg }};color:{{ it.color }}" style-hover="background:{{ it.hoverBg }}">
+              <span style="font-size:11px;flex-shrink:0">{{ it.prefijo }}</span>
+              <span style="flex:1;min-width:0;font-size:11.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ it.nombre }}</span>
+              <sc-if value="{{ it.hasPend }}" hint-placeholder-val="{{ false }}">
+                <span style="width:6px;height:6px;border-radius:99px;background:#fbbf24;flex-shrink:0"></span>
+              </sc-if>
+            </div>
+          </sc-for>
+          <sc-if value="{{ s.hayArchivo }}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{ s.toggleArchivo }}" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:9px;cursor:pointer;color:#94a3b8" style-hover="background:#f8fafc">
+              <span style="font-size:11px">🗂️</span>
+              <span style="flex:1;font-size:11px;font-weight:500">Meses anteriores</span>
+              <span style="font-size:10px">{{ s.archivoChevron }}</span>
+            </div>
+            <sc-if value="{{ archivoOpen }}" hint-placeholder-val="{{ false }}">
+              <sc-for list="{{ s.archivoMeses }}" as="m" hint-placeholder-count="1">
+                <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:#cbd5e1;padding:6px 10px 2px">{{ m.mes }}</div>
+                <sc-for list="{{ m.items }}" as="it" hint-placeholder-count="1">
+                  <div onClick="{{ it.abrir }}" style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:9px;cursor:pointer;background:{{ it.bg }};color:{{ it.color }}" style-hover="background:{{ it.hoverBg }}">
+                    <span style="flex:1;min-width:0;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ it.nombre }}</span>
+                    <span style="font-size:9px;opacity:.6">solo lectura</span>
+                  </div>
+                </sc-for>
+              </sc-for>
+            </sc-if>
+          </sc-if>
+        </div>
+      </sc-for>
+    </div>
+
+    <!-- Main -->
+    <div style="overflow:auto;padding:28px 32px 40px">
+      <div style="max-width:1000px;display:flex;flex-direction:column;gap:18px">
+        <div>
+          <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.16em;color:#64748b;margin-bottom:6px">{{ migaPan }}</div>
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <span style="font-family:'Unbounded',sans-serif;font-size:22px;font-weight:600;letter-spacing:-.01em">{{ conceptoNombre }}</span>
+            <span style="font-size:11px;font-weight:600;background:#0f172a;color:#fff;padding:3px 10px;border-radius:6px">{{ conceptoAngulo }}</span>
+            <span style="font-size:11px;font-weight:500;background:{{ conceptoFunnelBg }};color:{{ conceptoFunnelColor }};padding:3px 10px;border-radius:6px">{{ conceptoFunnel }}</span>
+          </div>
+        </div>
+        <sc-if value="{{ esArchivado }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:12px;padding:12px 18px;display:flex;align-items:center;gap:10px">
+            <span style="font-size:15px">🗂️</span>
+            <span style="font-size:12px;color:#475569"><strong>Campaña de {{ conceptoMes }}</strong> — archivo de solo lectura. Estas piezas ya circularon.</span>
+          </div>
+        </sc-if>
+        <sc-if value="{{ esEvergreen }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:12px 18px;display:flex;align-items:center;gap:10px">
+            <span style="font-size:15px">♾️</span>
+            <span style="font-size:12px;color:#78350f"><strong>Concepto Evergreen</strong> — validado con resultados; se mantiene activo mes a mes.</span>
+          </div>
+        </sc-if>
+
+        <div style="display:grid;grid-template-columns:1fr 320px;gap:24px;align-items:start">
+
+          <!-- Piezas -->
+          <div style="display:flex;flex-direction:column;gap:16px;min-width:0">
+            <sc-for list="{{ piezas }}" as="p" hint-placeholder-count="3">
+              <div style="background:#fff;border:{{ p.borde }};border-radius:16px;overflow:hidden;box-shadow:0 1px 2px rgba(15,23,42,.04)">
+                <div style="padding:16px 22px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #f1f5f9">
+                  <span style="width:38px;height:38px;border-radius:11px;background:{{ p.iconBg }};display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">{{ p.icono }}</span>
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:14px;font-weight:600">{{ p.titulo }}</div>
+                    <div style="font-size:11px;color:#64748b">{{ p.sub }}</div>
+                  </div>
+                  <span style="font-size:10px;font-weight:700;color:{{ p.pillColor }};background:{{ p.pillBg }};padding:4px 10px;border-radius:99px;flex-shrink:0">{{ p.pillLabel }}</span>
+                </div>
+                <sc-if value="{{ p.isGuion }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding:18px 22px;display:flex;flex-direction:column;gap:13px;background:#f8fafc">
+                    <sc-for list="{{ p.guion }}" as="linea" hint-placeholder-count="3">
+                      <div style="display:flex;gap:12px">
+                        <span style="width:22px;height:22px;border-radius:99px;background:#0f172a;color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-variant-numeric:tabular-nums">{{ linea.n }}</span>
+                        <p style="margin:0;font-size:13.5px;line-height:1.7;color:#1e293b">{{ linea.t }}</p>
+                      </div>
+                    </sc-for>
+                    <div style="font-size:11px;color:#94a3b8">📝 Este texto es la voz en off. Al aprobarlo pasamos a producir el video.</div>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ p.isVideo }}" hint-placeholder-val="{{ false }}">
+                  <div style="background:#0f172a;height:220px;display:flex;align-items:center;justify-content:center">
+                    <span style="width:48px;height:48px;border-radius:99px;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px">▶</span>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ p.isImagen }}" hint-placeholder-val="{{ false }}">
+                  <div style="background:#e8edf4;height:200px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:#94a3b8">
+                    <span style="font-size:26px">🖼️</span>
+                    <span style="font-size:10.5px;font-weight:500">Vista previa</span>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ p.tieneFeedback }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding:12px 22px;background:#f0f9ff;border-top:1px solid #e0f2fe;font-size:12px;line-height:1.5;color:#0369a1"><strong>Tu comentario:</strong> "{{ p.feedback }}"</div>
+                </sc-if>
+                <sc-if value="{{ p.feedbackOpen }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding:14px 22px 16px;display:flex;flex-direction:column;gap:10px;border-top:1px solid #f1f5f9">
+                    <textarea value="{{ feedbackText }}" onChange="{{ setFeedbackText }}" placeholder="Describe los cambios que necesitas…" rows="3" style="width:100%;box-sizing:border-box;font-size:13px;font-family:'Poppins',sans-serif;border:1px solid #d1dce8;border-radius:12px;padding:12px 14px;resize:none;outline:none;color:#0f172a"></textarea>
+                    <div style="display:flex;gap:10px;justify-content:flex-end">
+                      <button onClick="{{ p.cancelar }}" style="font-size:12.5px;border:1px solid #d1dce8;border-radius:11px;padding:10px 20px;background:#fff;color:#64748b;font-family:'Poppins',sans-serif;cursor:pointer">Cancelar</button>
+                      <button onClick="{{ p.enviarCambios }}" style="font-size:12.5px;border:none;border-radius:11px;padding:10px 22px;background:#f59e0b;color:#fff;font-weight:600;font-family:'Poppins',sans-serif;cursor:pointer">Enviar cambios</button>
+                    </div>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ p.mostrarAcciones }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding:14px 22px;display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #f1f5f9">
+                    <button onClick="{{ p.pedirCambios }}" style="font-size:12.5px;border:1px solid #d1dce8;border-radius:11px;padding:10px 20px;background:#fff;color:#475569;font-family:'Poppins',sans-serif;cursor:pointer" style-hover="background:#f8fafc">Pedir cambios</button>
+                    <button onClick="{{ p.aprobar }}" style="font-size:12.5px;border:none;border-radius:11px;padding:10px 26px;background:{{ colorAprobar }};color:#fff;font-weight:600;font-family:'Poppins',sans-serif;cursor:pointer;box-shadow:0 2px 8px rgba(16,185,129,.25)">{{ p.aprobarLabel }}</button>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+
+          <!-- Strategy card (sticky) -->
+          <div style="position:sticky;top:0;display:flex;flex-direction:column;gap:12px">
+            <div style="background:#fff;border:1px solid rgba(226,232,240,.8);border-radius:16px;box-shadow:0 1px 2px rgba(15,23,42,.04);overflow:hidden">
+              <div style="display:flex;border-bottom:1px solid #e8edf4;padding:0 8px">
+                <div onClick="{{ verTabId }}" style="flex:1;text-align:center;padding:13px 2px 11px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;cursor:pointer;color:{{ tabIdColor }};border-bottom:2px solid {{ tabIdBorde }};margin-bottom:-1px">Identificación</div>
+                <div onClick="{{ verTabTeoria }}" style="flex:1;text-align:center;padding:13px 2px 11px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;cursor:pointer;color:{{ tabTeoriaColor }};border-bottom:2px solid {{ tabTeoriaBorde }};margin-bottom:-1px">Teoría del ángulo</div>
+                <div onClick="{{ verTabMec }}" style="flex:1;text-align:center;padding:13px 2px 11px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;cursor:pointer;color:{{ tabMecColor }};border-bottom:2px solid {{ tabMecBorde }};margin-bottom:-1px">Mecanismo</div>
+              </div>
+              <div style="padding:16px 20px;background:#fbfcfe">
+                <sc-if value="{{ isTabId }}" hint-placeholder-val="{{ true }}">
+                  <div style="display:flex;flex-direction:column;gap:14px">
+                    <div>
+                      <div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#94a3b8;margin-bottom:4px">Principio organizador</div>
+                      <div style="font-size:12.5px;line-height:1.65;color:#334155">{{ ePrincipio }}</div>
+                    </div>
+                    <div style="border-top:1px solid #eef2f7;padding-top:12px">
+                      <div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#94a3b8;margin-bottom:4px">A quién le hablamos</div>
+                      <div style="font-size:12.5px;line-height:1.65;color:#334155">{{ eQuien }}</div>
+                    </div>
+                    <div style="border-top:1px solid #eef2f7;padding-top:12px">
+                      <div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#94a3b8;margin-bottom:4px">Awareness stage</div>
+                      <div style="font-size:12.5px;line-height:1.65;color:#334155">{{ eAwareness }}</div>
+                    </div>
+                    <div style="border-top:1px solid #eef2f7;padding-top:12px">
+                      <div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#94a3b8;margin-bottom:6px">Funnel stage</div>
+                      <div style="display:flex;align-items:center;gap:8px">
+                        <span style="font-size:10px;font-weight:700;background:{{ conceptoFunnelBg }};color:{{ conceptoFunnelColor }};padding:2px 9px;border-radius:6px">{{ funnelCode }}</span>
+                        <span style="font-size:11.5px;color:#64748b">{{ conceptoFunnel }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ isTabTeoria }}" hint-placeholder-val="{{ false }}">
+                  <div>
+                    <div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#94a3b8;margin-bottom:4px">Teoría del ángulo</div>
+                    <div style="font-size:12.5px;line-height:1.65;color:#334155">{{ eTeoria }}</div>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ isTabMec }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;flex-direction:column;gap:14px">
+                    <div>
+                      <div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#94a3b8;margin-bottom:4px">¿Por qué va a funcionar?</div>
+                      <div style="font-size:12.5px;line-height:1.65;color:#334155">{{ ePorque }}</div>
+                    </div>
+                    <div style="border-top:1px solid #eef2f7;padding-top:12px">
+                      <div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#94a3b8;margin-bottom:4px">Problema específico</div>
+                      <div style="font-size:12.5px;line-height:1.65;color:#334155">{{ eProblema }}</div>
+                    </div>
+                    <div style="border-top:1px solid #eef2f7;padding-top:12px">
+                      <div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#94a3b8;margin-bottom:4px">Objeción que derrumba</div>
+                      <div style="font-size:12.5px;line-height:1.65;color:#334155">{{ eObjecion }}</div>
+                    </div>
+                    <div style="border-top:1px solid #eef2f7;padding-top:12px">
+                      <div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#94a3b8;margin-bottom:4px">Transformación prometida</div>
+                      <div style="font-size:12.5px;line-height:1.65;color:#334155">{{ eTransformacion }}</div>
+                    </div>
+                  </div>
+                </sc-if>
+              </div>
+              <div style="padding:12px 20px;background:rgba(248,250,252,.7);border-top:1px solid #f1f5f9;display:flex;align-items:center;gap:12px;font-size:11px">
+                <span style="font-weight:600;color:#334155">{{ conceptoTotales }}</span>
+                <sc-if value="{{ conceptoTienePend }}" hint-placeholder-val="{{ false }}">
+                  <span style="display:inline-flex;align-items:center;gap:5px;color:#b45309"><span style="width:6px;height:6px;border-radius:99px;background:#fbbf24"></span>{{ conceptoPendLabel }}</span>
+                </sc-if>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Overlay: Revisión rápida ── -->
+  <sc-if value="{{ isQuick }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;background:rgba(15,23,42,.5);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:30">
+      <div style="width:620px;max-height:88%;background:#fff;border-radius:20px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 60px rgba(15,23,42,.35)">
+        <div style="padding:16px 24px;display:flex;align-items:center;gap:14px;border-bottom:1px solid #f1f5f9">
+          <span onClick="{{ cerrarQuick }}" style="width:32px;height:32px;border-radius:99px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;color:#475569;font-size:14px;cursor:pointer">✕</span>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:14px;font-weight:600">Revisión rápida</div>
+            <div style="font-size:10.5px;color:#64748b">{{ quickBreadcrumb }}</div>
+          </div>
+          <span style="font-size:11px;font-weight:600;color:#64748b;font-variant-numeric:tabular-nums">{{ quickProgreso }}</span>
+        </div>
+        <div style="height:3px;background:#e8edf4;flex-shrink:0"><div style="width:{{ quickPct }};height:100%;background:#0f172a;transition:width .3s"></div></div>
+        <sc-if value="{{ quickDone }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:56px 60px;display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center">
+            <span style="width:64px;height:64px;border-radius:99px;background:#ecfdf5;display:flex;align-items:center;justify-content:center;font-size:26px">🎉</span>
+            <div style="font-family:'Unbounded',sans-serif;font-size:18px;font-weight:600">¡Todo revisado!</div>
+            <div style="font-size:12.5px;line-height:1.6;color:#64748b">Gracias. El equipo de Alpha Marino ya recibió tus respuestas y se pone en marcha.</div>
+            <button onClick="{{ cerrarQuick }}" style="margin-top:6px;font-size:13px;border:none;border-radius:13px;padding:12px 28px;background:#0f172a;color:#fff;font-weight:600;font-family:'Poppins',sans-serif;cursor:pointer">Cerrar</button>
+          </div>
+        </sc-if>
+        <sc-if value="{{ quickActiva }}" hint-placeholder-val="{{ false }}">
+          <div style="flex:1;overflow:auto;padding:22px 24px;display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;align-items:center;gap:12px">
+              <span style="width:42px;height:42px;border-radius:12px;background:{{ q.iconBg }};display:flex;align-items:center;justify-content:center;font-size:18px">{{ q.icono }}</span>
+              <div>
+                <div style="font-size:15px;font-weight:700">{{ q.titulo }}</div>
+                <div style="font-size:11px;color:#64748b">{{ q.sub }}</div>
+              </div>
+            </div>
+            <sc-if value="{{ q.isGuion }}" hint-placeholder-val="{{ false }}">
+              <div style="background:#f8fafc;border:1px solid #e8edf4;border-radius:14px;padding:18px 20px;display:flex;flex-direction:column;gap:13px">
+                <sc-for list="{{ q.guion }}" as="linea" hint-placeholder-count="3">
+                  <div style="display:flex;gap:12px">
+                    <span style="width:22px;height:22px;border-radius:99px;background:#0f172a;color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-variant-numeric:tabular-nums">{{ linea.n }}</span>
+                    <p style="margin:0;font-size:13.5px;line-height:1.7;color:#1e293b">{{ linea.t }}</p>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="font-size:11px;color:#94a3b8;text-align:center">📝 Este texto es la voz en off. Al aprobarlo pasamos a producir el video.</div>
+            </sc-if>
+            <sc-if value="{{ q.isVideo }}" hint-placeholder-val="{{ false }}">
+              <div style="background:#0f172a;border-radius:14px;height:240px;display:flex;align-items:center;justify-content:center">
+                <span style="width:52px;height:52px;border-radius:99px;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px">▶</span>
+              </div>
+            </sc-if>
+            <sc-if value="{{ q.isImagen }}" hint-placeholder-val="{{ false }}">
+              <div style="background:#e8edf4;border-radius:14px;height:240px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:#94a3b8">
+                <span style="font-size:30px">🖼️</span>
+                <span style="font-size:10.5px;font-weight:500">Vista previa de la imagen</span>
+              </div>
+            </sc-if>
+          </div>
+          <div style="border-top:1px solid #e2e8f0;padding:16px 24px;display:flex;flex-direction:column;gap:10px">
+            <sc-if value="{{ quickFeedbackOpen }}" hint-placeholder-val="{{ false }}">
+              <textarea value="{{ feedbackText }}" onChange="{{ setFeedbackText }}" placeholder="Describe los cambios que necesitas…" rows="3" style="width:100%;box-sizing:border-box;font-size:13px;font-family:'Poppins',sans-serif;border:1px solid #d1dce8;border-radius:12px;padding:12px 14px;resize:none;outline:none;color:#0f172a"></textarea>
+              <div style="display:flex;gap:10px;justify-content:flex-end">
+                <button onClick="{{ q.cancelar }}" style="font-size:12.5px;border:1px solid #d1dce8;border-radius:11px;padding:10px 20px;background:#fff;color:#64748b;font-family:'Poppins',sans-serif;cursor:pointer">Cancelar</button>
+                <button onClick="{{ q.enviarCambios }}" style="font-size:12.5px;border:none;border-radius:11px;padding:10px 22px;background:#f59e0b;color:#fff;font-weight:600;font-family:'Poppins',sans-serif;cursor:pointer">Enviar cambios</button>
+              </div>
+            </sc-if>
+            <sc-if value="{{ quickAccionesVisibles }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;gap:10px">
+                <button onClick="{{ q.pedirCambios }}" style="flex:1;font-size:13px;border:1px solid #d1dce8;border-radius:13px;padding:13px 0;background:#fff;color:#475569;font-weight:500;font-family:'Poppins',sans-serif;cursor:pointer">Pedir cambios</button>
+                <button onClick="{{ q.aprobar }}" style="flex:1.4;font-size:13px;border:none;border-radius:13px;padding:13px 0;background:{{ colorAprobar }};color:#fff;font-weight:600;font-family:'Poppins',sans-serif;cursor:pointer;box-shadow:0 2px 8px rgba(16,185,129,.3)">{{ q.aprobarLabel }}</button>
+              </div>
+              <div style="text-align:center;font-size:10.5px;color:#94a3b8">{{ quickSiguiente }}</div>
+            </sc-if>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+
+</div>
+</x-import>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;: {&quot;width&quot;: 1420, &quot;height&quot;: 920}, &quot;clienteNombre&quot;: {&quot;editor&quot;: &quot;text&quot;, &quot;default&quot;: &quot;Clínica Sonría&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Contenido&quot;}, &quot;colorAprobar&quot;: {&quot;editor&quot;: &quot;color&quot;, &quot;default&quot;: &quot;#10b981&quot;, &quot;options&quot;: [&quot;#10b981&quot;, &quot;#2563eb&quot;, &quot;#0f172a&quot;], &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Estilo&quot;}}">
+class Component extends DCLogic {
+  state = {
+    servicioId: "orto",
+    conceptoId: "antes",
+    tabEstrategia: "id",
+    archivoOpen: false,
+    statuses: { g1: "pendiente", v1: "pendiente", i1: "aprobada", i2: "aprobada", g2: "pendiente", i4: "aprobada", a1: "aprobada", a2: "aprobada", a3: "aprobada" },
+    feedbacks: {},
+    feedbackFor: null,
+    feedbackText: "",
+    quick: false,
+    quickQueue: [],
+    quickIdx: 0,
+  };
+
+  data() {
+    return [
+      {
+        id: "orto", emoji: "🦷", nombre: "Ortodoncia Invisible",
+        conceptos: [
+          {
+            id: "antes", nombre: "Antes/Después real de pacientes", angulo: "🪞 Antes / Después", vigencia: "actual",
+            funnel: "Audiencia fría", funnelBg: "#f0f9ff", funnelColor: "#0369a1", funnelCode: "TOF",
+            estrategia: {
+              principio: "Proof-First",
+              quien: "Adultos de 28–42 en zona metropolitana, ingresos medios-altos, que llevan años posponiendo su ortodoncia. Les da pena usar brackets en el trabajo y creen que 'ya es tarde' para alinear su sonrisa. Valoran la discreción y desconfían de promesas sin evidencia.",
+              awareness: "2 — Problem-Aware",
+              teoria: "La prueba visual vence al escepticismo: no afirmamos resultados, los mostramos. En audiencia fría, el antes/después genera el stop inicial y la identificación inmediata — 'esa persona era como yo'. Nadie discute con la foto de alguien igual a él.",
+              porque: "La evidencia de pacientes reales elimina el riesgo percibido de invertir en algo que no funciona. Al ver la línea de tiempo mes a mes, el prospecto puede imaginar su propio proceso — la promesa abstracta se vuelve un plan concreto con fecha de resultado.",
+              problema: "Quieren alinear su sonrisa pero no creen que un tratamiento invisible dé resultados reales, y temen pagar meses completos sin ver ningún cambio.",
+              objecion: "'¿Y si pago todo el tratamiento y mi caso no se corrige?'",
+              transformacion: "De esconder la sonrisa en fotos y reuniones, a mostrar el resultado en 6 meses sin que nadie note el tratamiento — empezando con una valoración gratuita de 40 minutos.",
+            },
+            piezas: [
+              { id: "g1", tipo: "guion", titulo: 'Guion VO — "Tu sonrisa en 6 meses"', sub: "Paso 1 · se produce el video al aprobarlo",
+                guion: [
+                  { n: 1, t: '"¿Llevas años escondiendo tu sonrisa en las fotos? No eres el único."' },
+                  { n: 2, t: '"Estos son pacientes reales de Clínica Sonría. Seis meses con alineadores invisibles. Nadie en su trabajo se dio cuenta."' },
+                  { n: 3, t: '"Agenda tu valoración gratuita esta semana y conoce tu plan en 40 minutos."' },
+                ] },
+              { id: "v1", tipo: "video", titulo: "Video Reels — V1", sub: "9:16 · 22 segundos" },
+              { id: "i1", tipo: "imagen", titulo: "Imagen estática — V2", sub: "Feed 1:1" },
+            ],
+          },
+          {
+            id: "costo", nombre: "El costo de esperar", angulo: "⏳ Urgencia", vigencia: "evergreen",
+            funnel: "Audiencia tibia", funnelBg: "#f5f3ff", funnelColor: "#6d28d9", funnelCode: "MOF",
+            estrategia: {
+              principio: "Loss-Aversion",
+              quien: "Personas que ya cotizaron ortodoncia (retargeting) y llevan más de 30 días sin decidirse. Conocen el precio y el proceso; su freno no es interés, es inercia.",
+              awareness: "4 — Product-Aware",
+              teoria: "El costo de oportunidad reencuadra la espera como pérdida activa: cada mes sin tratamiento alarga el plan y encarece el resultado. Perder duele más que ganar — la aversión a la pérdida mueve al indeciso cuando el beneficio ya no lo mueve.",
+              porque: "El prospecto ya validó su interés; solo necesita una razón para actuar hoy. Ponerle cifras a la espera (meses extra, costo extra) convierte el 'lo hago después' en una decisión con precio visible.",
+              problema: "Posponen el inicio creyendo que esperar no tiene consecuencias, mientras el caso se complica y el tratamiento se alarga y encarece.",
+              objecion: "'Lo puedo empezar el próximo año, no pasa nada.'",
+              transformacion: "De 'algún día lo haré' a empezar hoy con el plan que ya cotizaron — terminando meses antes y pagando menos que si esperan.",
+            },
+            piezas: [
+              { id: "i2", tipo: "imagen", titulo: 'Imagen — "El costo de esperar"', sub: "Feed 4:5" },
+            ],
+          },
+          {
+            id: "regreso", nombre: "Regreso a clases sin brackets", angulo: "🎒 Estacional", vigencia: "archivado", mes: "Mayo 2026",
+            funnel: "Audiencia fría", funnelBg: "#f0f9ff", funnelColor: "#0369a1", funnelCode: "TOF",
+            estrategia: {
+              principio: "Seasonal-Urgency",
+              quien: "Papás de adolescentes de 12–16 en las semanas previas al inicio del ciclo escolar, con presupuesto asignado a la vuelta a clases.",
+              awareness: "3 — Solution-Aware",
+              teoria: "La estacionalidad concentra la decisión: en el regreso a clases la pena social del adolescente pesa más y los papás quieren resolverla antes del primer día.",
+              porque: "El deadline del inicio de clases hace urgente el CTA sin inventar urgencia — la fecha es real y emocionalmente cargada para toda la familia.",
+              problema: "Los brackets metálicos dan pena en la adolescencia y los papás no conocen la alternativa invisible para menores.",
+              objecion: "'Mi hijo no va a ser constante con unos alineadores que se puede quitar.'",
+              transformacion: "De un adolescente que se tapa la boca al reír, a corregir su sonrisa sin que nadie en clases lo note.",
+            },
+            piezas: [
+              { id: "a1", tipo: "video", titulo: "Video Reels — Final", sub: "9:16 · 18 segundos" },
+              { id: "a2", tipo: "imagen", titulo: "Imagen — Final", sub: "Feed 1:1" },
+            ],
+          },
+        ],
+      },
+      {
+        id: "blanq", emoji: "✨", nombre: "Blanqueamiento",
+        conceptos: [
+          {
+            id: "sonrisa", nombre: "Sonrisa lista en 1 sesión", angulo: "⚡ Rapidez", vigencia: "actual",
+            funnel: "Audiencia fría", funnelBg: "#f0f9ff", funnelColor: "#0369a1", funnelCode: "TOF",
+            estrategia: {
+              principio: "Speed-First",
+              quien: "Profesionistas de 25–40 con un evento próximo (boda, graduación, entrevista) que quieren verse bien en fotos y tienen poco tiempo disponible.",
+              awareness: "3 — Solution-Aware",
+              teoria: "La rapidez elimina la objeción principal ('no tengo tiempo'): si el resultado es hoy mismo, la decisión se vuelve de bajo riesgo y alta urgencia.",
+              porque: "El evento pone un deadline real y la sesión única elimina la fricción logística. La intención ya existe — solo hay que demostrar que es posible en una visita.",
+              problema: "Creen que blanquearse toma semanas y varias citas, y su evento es en cuestión de días.",
+              objecion: "'Seguro me deja los dientes sensibles y el efecto no dura.'",
+              transformacion: "De preocuparse por las fotos del evento, a salir de una sesión de 60 minutos con la sonrisa lista — sin sensibilidad.",
+            },
+            piezas: [
+              { id: "g2", tipo: "guion", titulo: 'Guion VO — "Una sesión, cero pena"', sub: "Paso 1 · se produce el video al aprobarlo",
+                guion: [
+                  { n: 1, t: '"¿Boda, graduación o entrevista en puerta? Tu sonrisa puede estar lista hoy mismo."' },
+                  { n: 2, t: '"Blanqueamiento profesional en una sola sesión de 60 minutos, sin sensibilidad."' },
+                  { n: 3, t: '"Reserva tu lugar de esta semana — quedan pocos espacios."' },
+                ] },
+              { id: "i4", tipo: "imagen", titulo: "Imagen estática — V2", sub: "Feed 1:1" },
+            ],
+          },
+          {
+            id: "madres", nombre: "Promo Día de las Madres", angulo: "🎁 Promoción", vigencia: "archivado", mes: "Mayo 2026",
+            funnel: "Audiencia caliente", funnelBg: "#ecfdf5", funnelColor: "#047857", funnelCode: "BOF",
+            estrategia: {
+              principio: "Emotional-Gift",
+              quien: "Hijos adultos de 25–45 buscando regalo para mamá en las dos semanas previas al 10 de mayo, con presupuesto de regalo ya decidido.",
+              awareness: "1 — Unaware",
+              teoria: "El regalo emocional supera al material: enmarcar el blanqueamiento como 'devolverle la sonrisa a mamá' conecta afecto con conversión.",
+              porque: "En temporada de regalos la intención de compra ya existe; el ángulo solo redirige un presupuesto decidido hacia una opción más memorable que flores o perfume.",
+              problema: "No saben qué regalar que se sienta personal y no genérico, y las opciones obvias ya se repitieron años anteriores.",
+              objecion: "'¿Y si a mi mamá le incomoda que le regale algo de dientes?'",
+              transformacion: "De un regalo más, a un momento: mamá estrenando sonrisa en la comida del 10 de mayo.",
+            },
+            piezas: [
+              { id: "a3", tipo: "imagen", titulo: "Imagen — Final", sub: "Feed 4:5" },
+            ],
+          },
+        ],
+      },
+    ];
+  }
+
+  status(id) { return this.state.statuses[id]; }
+
+  setStatus(id, status, feedback) {
+    this.setState((s) => ({
+      statuses: { ...s.statuses, [id]: status },
+      feedbacks: feedback ? { ...s.feedbacks, [id]: feedback } : s.feedbacks,
+      feedbackFor: null,
+      feedbackText: "",
+    }));
+  }
+
+  pillFor(status) {
+    if (status === "aprobada") return { pillLabel: "✓ Aprobada", pillBg: "#ecfdf5", pillColor: "#047857" };
+    if (status === "cambios") return { pillLabel: "Cambios pedidos", pillBg: "#f0f9ff", pillColor: "#0369a1" };
+    return { pillLabel: "Pendiente", pillBg: "#fffbeb", pillColor: "#b45309" };
+  }
+
+  iconFor(tipo) {
+    if (tipo === "guion") return { icono: "📝", iconBg: "#fffbeb" };
+    if (tipo === "video") return { icono: "🎬", iconBg: "#f0f9ff" };
+    return { icono: "🖼️", iconBg: "#f5f3ff" };
+  }
+
+  counts(piezas) {
+    let pend = 0, apr = 0, cam = 0;
+    for (const p of piezas) {
+      const st = this.status(p.id);
+      if (st === "aprobada") apr++; else if (st === "cambios") cam++; else pend++;
+    }
+    return { pend, apr, cam, total: piezas.length };
+  }
+
+  allPending() {
+    const out = [];
+    for (const s of this.data())
+      for (const c of s.conceptos.filter((x) => x.vigencia !== "archivado"))
+        for (const p of c.piezas)
+          if (this.status(p.id) === "pendiente") out.push({ p, s, c });
+    return out;
+  }
+
+  findPieza(id) {
+    for (const s of this.data())
+      for (const c of s.conceptos)
+        for (const p of c.piezas)
+          if (p.id === id) return { p, s, c };
+    return null;
+  }
+
+  piezaVM(p, readonly) {
+    const st = this.status(p.id);
+    const pendiente = st === "pendiente";
+    const feedbackOpen = this.state.feedbackFor === p.id;
+    return {
+      ...p, ...this.pillFor(st), ...this.iconFor(p.tipo),
+      isGuion: p.tipo === "guion", isVideo: p.tipo === "video", isImagen: p.tipo === "imagen",
+      borde: pendiente && !readonly ? "1.5px solid #fde68a" : "1px solid #e2e8f0",
+      tieneFeedback: st === "cambios" && !!this.state.feedbacks[p.id],
+      feedback: this.state.feedbacks[p.id] || "",
+      feedbackOpen,
+      mostrarAcciones: pendiente && !feedbackOpen && !readonly,
+      aprobarLabel: p.tipo === "guion" ? "Aprobar guion ✓" : "Aprobar ✓",
+      aprobar: () => this.setStatus(p.id, "aprobada"),
+      pedirCambios: () => this.setState({ feedbackFor: p.id, feedbackText: "" }),
+      cancelar: () => this.setState({ feedbackFor: null, feedbackText: "" }),
+      enviarCambios: () => {
+        if (!this.state.feedbackText.trim()) return;
+        this.setStatus(p.id, "cambios", this.state.feedbackText.trim());
+      },
+    };
+  }
+
+  quickNext() {
+    this.setState((s) => ({ quickIdx: s.quickIdx + 1, feedbackFor: null, feedbackText: "" }));
+  }
+
+  renderVals() {
+    const st = this.state;
+    const data = this.data();
+    const clienteNombre = this.props.clienteNombre ?? "Clínica Sonría";
+    const colorAprobar = this.props.colorAprobar ?? "#10b981";
+
+    const abrirConcepto = (s, c) => this.setState({ servicioId: s.id, conceptoId: c.id, feedbackFor: null, feedbackText: "" });
+
+    const itemVM = (s, c) => {
+      const k = this.counts(c.piezas);
+      const selected = st.conceptoId === c.id;
+      return {
+        nombre: c.nombre,
+        prefijo: c.vigencia === "evergreen" ? "♾️" : "•",
+        hasPend: c.vigencia !== "archivado" && k.pend > 0,
+        bg: selected ? "#0f172a" : "transparent",
+        color: selected ? "#fff" : "#334155",
+        hoverBg: selected ? "#0f172a" : "#f1f5f9",
+        abrir: () => abrirConcepto(s, c),
+      };
+    };
+
+    const sideServicios = data.map((s) => {
+      const activos = s.conceptos.filter((c) => c.vigencia !== "archivado");
+      const archivados = s.conceptos.filter((c) => c.vigencia === "archivado");
+      const k = this.counts(activos.flatMap((c) => c.piezas));
+      const mesesMap = new Map();
+      for (const c of archivados) {
+        if (!mesesMap.has(c.mes)) mesesMap.set(c.mes, []);
+        mesesMap.get(c.mes).push(itemVM(s, c));
+      }
+      return {
+        ...s,
+        pend: k.pend,
+        hasPend: k.pend > 0,
+        allOk: k.pend === 0,
+        items: activos.map((c) => itemVM(s, c)),
+        hayArchivo: archivados.length > 0,
+        archivoChevron: st.archivoOpen ? "⌃" : "⌄",
+        toggleArchivo: () => this.setState((x) => ({ archivoOpen: !x.archivoOpen })),
+        archivoMeses: [...mesesMap.entries()].map(([mes, items]) => ({ mes, items })),
+      };
+    });
+
+    const servicio = data.find((s) => s.id === st.servicioId) || data[0];
+    const concepto = servicio.conceptos.find((c) => c.id === st.conceptoId) || servicio.conceptos[0];
+    const readonly = concepto.vigencia === "archivado";
+    const piezas = concepto.piezas.map((p) => this.piezaVM(p, readonly));
+    const ck = this.counts(concepto.piezas);
+
+    // Global progress
+    const activasTodo = data.flatMap((s) => s.conceptos.filter((c) => c.vigencia !== "archivado")).flatMap((c) => c.piezas);
+    const gk = this.counts(activasTodo);
+    const pct = gk.total ? Math.round(((gk.apr + gk.cam) / gk.total) * 100) : 0;
+
+    // Quick review
+    const idx = Math.min(st.quickIdx, st.quickQueue.length);
+    const currentId = st.quickQueue[idx];
+    const current = currentId ? this.findPieza(currentId) : null;
+    const quickDone = st.quick && !current;
+    let q = null;
+    if (st.quick && current) {
+      q = {
+        ...this.piezaVM(current.p, false),
+        aprobar: () => { this.setStatus(current.p.id, "aprobada"); this.quickNext(); },
+        enviarCambios: () => {
+          if (!this.state.feedbackText.trim()) return;
+          this.setStatus(current.p.id, "cambios", this.state.feedbackText.trim());
+          this.quickNext();
+        },
+      };
+    }
+    const nextEntry = st.quickQueue[idx + 1] ? this.findPieza(st.quickQueue[idx + 1]) : null;
+
+    return {
+      clienteNombre, colorAprobar,
+      progresoPct: pct + "%",
+      progresoLabel: (gk.apr + gk.cam) + "/" + gk.total + " revisadas",
+      hayPendientes: this.allPending().length > 0,
+      totalPend: this.allPending().length,
+      sideServicios,
+      archivoOpen: st.archivoOpen,
+      migaPan: servicio.emoji + " " + servicio.nombre,
+      conceptoNombre: concepto.nombre,
+      conceptoAngulo: concepto.angulo,
+      conceptoFunnel: concepto.funnel,
+      conceptoFunnelBg: concepto.funnelBg,
+      conceptoFunnelColor: concepto.funnelColor,
+      esArchivado: concepto.vigencia === "archivado",
+      esEvergreen: concepto.vigencia === "evergreen",
+      conceptoMes: concepto.mes || "",
+      ePrincipio: concepto.estrategia.principio,
+      eQuien: concepto.estrategia.quien,
+      eAwareness: concepto.estrategia.awareness,
+      eTeoria: concepto.estrategia.teoria,
+      ePorque: concepto.estrategia.porque,
+      eProblema: concepto.estrategia.problema,
+      eObjecion: concepto.estrategia.objecion,
+      eTransformacion: concepto.estrategia.transformacion,
+      funnelCode: concepto.funnelCode || "",
+      isTabId: st.tabEstrategia === "id",
+      isTabTeoria: st.tabEstrategia === "teoria",
+      isTabMec: st.tabEstrategia === "mec",
+      verTabId: () => this.setState({ tabEstrategia: "id" }),
+      verTabTeoria: () => this.setState({ tabEstrategia: "teoria" }),
+      verTabMec: () => this.setState({ tabEstrategia: "mec" }),
+      tabIdColor: st.tabEstrategia === "id" ? "#0f172a" : "#94a3b8",
+      tabIdBorde: st.tabEstrategia === "id" ? "#2563eb" : "transparent",
+      tabTeoriaColor: st.tabEstrategia === "teoria" ? "#0f172a" : "#94a3b8",
+      tabTeoriaBorde: st.tabEstrategia === "teoria" ? "#2563eb" : "transparent",
+      tabMecColor: st.tabEstrategia === "mec" ? "#0f172a" : "#94a3b8",
+      tabMecBorde: st.tabEstrategia === "mec" ? "#2563eb" : "transparent",
+      piezas,
+      conceptoTotales: ck.total + " pieza" + (ck.total !== 1 ? "s" : "") + " en este concepto",
+      conceptoTienePend: !readonly && ck.pend > 0,
+      conceptoPendLabel: ck.pend + " pendiente" + (ck.pend !== 1 ? "s" : ""),
+      feedbackText: st.feedbackText,
+      setFeedbackText: (e) => this.setState({ feedbackText: e.target.value }),
+      irQuick: () => this.setState({ quick: true, quickQueue: this.allPending().map((e) => e.p.id), quickIdx: 0, feedbackFor: null, feedbackText: "" }),
+      cerrarQuick: () => this.setState({ quick: false, feedbackFor: null, feedbackText: "" }),
+      isQuick: st.quick,
+      q,
+      quickActiva: !!q,
+      quickDone,
+      quickBreadcrumb: current ? current.s.nombre + " · " + current.c.nombre : "Listo",
+      quickProgreso: current ? (idx + 1) + " de " + st.quickQueue.length : "",
+      quickPct: st.quickQueue.length ? Math.round(((quickDone ? st.quickQueue.length : idx) / st.quickQueue.length) * 100) + "%" : "0%",
+      quickFeedbackOpen: !!q && st.feedbackFor === currentId,
+      quickAccionesVisibles: !!q && st.feedbackFor !== currentId,
+      quickSiguiente: nextEntry ? "Después de esta: " + nextEntry.p.titulo + " →" : "Esta es la última pieza",
+    };
+  }
+}
+
+</script>
+</body>
+</html>
