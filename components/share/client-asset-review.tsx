@@ -105,11 +105,11 @@ export function ClientAssetReview({ asset }: { asset: ClientAsset }) {
       )}
 
       {mediaUrl && assetType === "video" && (
-        <div className="bg-black border-b">
+        <div className="bg-black border-b flex justify-center">
           <video
             controls
             preload="metadata"
-            className="w-full max-h-[420px]"
+            className="max-w-full max-h-[420px]"
             style={{ display: "block" }}
           >
             <source src={mediaUrl} />

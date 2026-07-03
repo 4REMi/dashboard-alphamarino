@@ -1,11 +1,8 @@
 import { notFound } from "next/navigation"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { ANGLE_GUIDE } from "@/lib/constants/creatives"
 import { ClientPortalShell } from "@/components/share/client-portal-shell"
-import { ClientAssetReview } from "@/components/share/client-asset-review"
-import { ConceptAssetsGallery } from "@/components/share/concept-assets-gallery"
 import { BrandLineTabs } from "@/components/share/brand-line-tabs"
-import { ConceptCard } from "@/components/share/concept-card"
+import { ConceptMasterDetail } from "@/components/share/concept-master-detail"
 import type { AdCloneLine } from "@/lib/types"
 
 interface Props {
@@ -236,29 +233,30 @@ export default async function ShareConceptsPage({ params }: Props) {
             />
           </div>
           <BrandLineTabs
-            tabs={lineGroups.map((group) => ({
-              key:   group.line?.id ?? "__general__",
-              label: group.line?.name ?? "General",
-              color: group.line?.color ?? null,
-              count: group.items.length + group.strategyOnly.length,
-              content: (
-                <div className="max-w-6xl mx-auto space-y-10">
-                  <BrandLineSection
-                    line={group.line}
-                    conceptGroups={group.items}
-                    strategyOnly={group.strategyOnly}
-                    unlinkedAssets={group.line === null ? unlinked : []}
-                    showHeader={false}
-                  />
-                </div>
-              ),
-            }))}
+            tabs={lineGroups.map((group) => {
+              const items = [
+                ...(group.line === null ? unlinked.length ? [{ id: "__unlinked__", concept: null, assets: unlinked, scripts: [] }] : [] : []),
+                ...group.items.map((g) => ({ id: g.concept.id, concept: g.concept, assets: g.assets, scripts: g.scripts })),
+                ...group.strategyOnly.map((c: any) => ({ id: c.id, concept: c, assets: [], scripts: [] })),
+              ]
+              return {
+                key:   group.line?.id ?? "__general__",
+                label: group.line?.name ?? "General",
+                color: group.line?.color ?? null,
+                count: items.length,
+                content: (
+                  <div className="max-w-4xl mx-auto">
+                    <ConceptMasterDetail items={items} />
+                  </div>
+                ),
+              }
+            })}
           />
         </section>
       )}
 
       {/* ── Concepts + Assets (flat — no brand lines) ──────────── */}
-      {!hasBrandLines && (hasAssets || scripts.length > 0) && conceptsPendingFirst.length > 0 && (
+      {!hasBrandLines && (hasAssets || scripts.length > 0 || strategyOnlyConcepts.length > 0) && (
         <section className="px-4 sm:px-8 pb-10">
           <div className="max-w-6xl mx-auto space-y-10">
             <SectionHeader
@@ -267,62 +265,19 @@ export default async function ShareConceptsPage({ params }: Props) {
               subtitle="Cada concepto agrupa su guión (si aplica) y las piezas creativas que lo desarrollan. Aprueba o pide cambios en cada etapa."
             />
 
-            <div className="space-y-12">
-              {conceptsPendingFirst.map(({ concept, assets: conceptAssets, scripts: conceptScripts }) => (
-                <ConceptGroup
-                  key={concept.id}
-                  concept={concept}
-                  assets={conceptAssets}
-                  scripts={conceptScripts}
-                />
-              ))}
-
-              {unlinked.length > 0 && (
-                <ConceptGroup concept={null} assets={unlinked} scripts={[]} />
-              )}
+            <div className="max-w-4xl mx-auto">
+              <ConceptMasterDetail
+                items={[
+                  ...(unlinked.length ? [{ id: "__unlinked__", concept: null, assets: unlinked, scripts: [] }] : []),
+                  ...conceptsPendingFirst.map(({ concept, assets: a, scripts: s }) => ({ id: concept.id, concept, assets: a, scripts: s })),
+                  ...strategyOnlyConcepts.map((c: any) => ({ id: c.id, concept: c, assets: [], scripts: [] })),
+                ]}
+              />
             </div>
           </div>
         </section>
       )}
 
-      {/* ── Assets without concepts (fallback) ──────────────────── */}
-      {!hasBrandLines && hasAssets && conceptsPendingFirst.length === 0 && unlinked.length > 0 && (
-        <section className="px-4 sm:px-8 pb-10">
-          <div className="max-w-6xl mx-auto space-y-6">
-            <SectionHeader
-              eyebrow="Para tu revisión"
-              title={allReviewed ? "Todo revisado" : "Piezas esperando tu aprobación"}
-            />
-            <div className="grid gap-5 xl:grid-cols-2">
-              {unlinked.map((a) => <AssetReviewWrap key={a.id} asset={a} />)}
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* ── Strategy-only concepts (flat — no brand lines) ──────── */}
-      {!hasBrandLines && strategyOnlyConcepts.length > 0 && (
-        <section className="px-4 sm:px-8 pb-16 border-t border-slate-200/70 pt-12 mt-4 bg-slate-50/40">
-          <div className="max-w-6xl mx-auto space-y-6">
-            <SectionHeader
-              eyebrow="Estrategia creativa"
-              title="Ángulos en desarrollo"
-              subtitle="Estos conceptos aún no tienen piezas producidas. Te los compartimos para alinear la dirección."
-            />
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {strategyOnlyConcepts.map((c: any) => (
-                <ConceptCard
-                  key={c.id}
-                  concept={c}
-                  angleEmoji={ANGLE_GUIDE.find((a) => a.name === c.angle_type)?.emoji || null}
-                  counts={{ assets: 0, pending: 0, approved: 0, changes: 0 }}
-                  scripts={[]}
-                />
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
 
       {!hasAssets && !hasConcepts && (
         <div className="max-w-6xl mx-auto px-4 sm:px-8 py-24 text-center">
@@ -460,145 +415,4 @@ function SectionHeader({ eyebrow, title, subtitle }: {
   )
 }
 
-// ─────────────────────────────────────────────────────────────────
-// Brand line section — collapsible group header + concepts inside
-// ─────────────────────────────────────────────────────────────────
-
-function BrandLineSection({ line, conceptGroups, strategyOnly, unlinkedAssets, showHeader = true }: {
-  line: { id: string; name: string; color: string | null; position: number } | null
-  conceptGroups: { concept: any; assets: any[]; scripts: any[] }[]
-  strategyOnly: any[]
-  unlinkedAssets: any[]
-  showHeader?: boolean
-}) {
-  const totalConcepts = conceptGroups.length + strategyOnly.length
-  const color = line?.color ?? "#64748b"
-
-  return (
-    <div>
-      {/* Line header */}
-      {showHeader && (
-        <div className="flex items-center gap-3 mb-8">
-          <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: color }} />
-          <h3 className="text-lg font-bold tracking-tight text-slate-900">
-            {line?.name ?? "General"}
-          </h3>
-          <span className="text-xs text-slate-400 font-medium">
-            {totalConcepts} concepto{totalConcepts !== 1 ? "s" : ""}
-          </span>
-          <span className="flex-1 h-px bg-slate-200/70" />
-        </div>
-      )}
-
-      {/* Concepts with assets and/or scripts */}
-      {conceptGroups.length > 0 && (
-        <div className="space-y-12 mb-8">
-          {conceptGroups.map(({ concept, assets, scripts }) => (
-            <ConceptGroup key={concept.id} concept={concept} assets={assets} scripts={scripts} />
-          ))}
-        </div>
-      )}
-
-      {/* Unlinked assets (only in General group) */}
-      {unlinkedAssets.length > 0 && (
-        <div className="space-y-12 mb-8">
-          <ConceptGroup concept={null} assets={unlinkedAssets} scripts={[]} />
-        </div>
-      )}
-
-      {/* Strategy-only concepts */}
-      {strategyOnly.length > 0 && (
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 mb-3">
-            Ángulos en desarrollo
-          </p>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {strategyOnly.map((c: any) => (
-              <ConceptCard
-                key={c.id}
-                concept={c}
-                angleEmoji={ANGLE_GUIDE.find((a) => a.name === c.angle_type)?.emoji || null}
-                counts={{ assets: 0, pending: 0, approved: 0, changes: 0 }}
-                scripts={[]}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────
-// Concept group — strategy card (sticky) + its assets
-// ─────────────────────────────────────────────────────────────────
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function ConceptGroup({ concept, assets, scripts }: { concept: any | null; assets: any[]; scripts: any[] }) {
-  const pending  = assets.filter((a) => !a.client_status || a.client_status === "pending_review").length
-  const approved = assets.filter((a) => a.client_status === "approved").length
-  const changes  = assets.filter((a) => a.client_status === "changes_requested").length
-
-  return (
-    <article className="relative space-y-4 max-w-2xl">
-      <ConceptCard
-        concept={concept}
-        angleEmoji={concept && ANGLE_GUIDE.find((a) => a.name === concept.angle_type)?.emoji || null}
-        counts={{ assets: assets.length, pending, approved, changes }}
-        scripts={scripts}
-      />
-
-      {assets.length > 0 && (
-        <ConceptAssetsGallery
-          assets={assets.map((a) => ({
-            id:              a.id,
-            format:          a.format,
-            platform:        a.platform,
-            asset_url:       a.asset_url,
-            file_path:       a.file_path ?? null,
-            thumbnail_path:  a.thumbnail_path ?? null,
-            file_type:       a.file_type ?? null,
-            client_status:   a.client_status,
-            client_feedback: a.client_feedback,
-            concept_name:    a.concept?.name ?? null,
-            concept_angle:   a.concept?.angle_type ?? null,
-            brief_id:        a.brief_id ?? null,
-          }))}
-          firstPendingId={pending > 0 ? assets.find((a) => !a.client_status || a.client_status === "pending_review")?.id : undefined}
-        />
-      )}
-    </article>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────
-// Asset review wrapper
-// ─────────────────────────────────────────────────────────────────
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function AssetReviewWrap({ asset: a }: { asset: any }) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const concept = a.concept as any
-  return (
-    <ClientAssetReview
-      asset={{
-        id:              a.id,
-        format:          a.format,
-        platform:        a.platform,
-        asset_url:       a.asset_url,
-        file_path:       a.file_path ?? null,
-        thumbnail_path:  a.thumbnail_path ?? null,
-        file_type:       a.file_type ?? null,
-        client_status:   a.client_status as any,
-        client_feedback: a.client_feedback,
-        concept_name:    concept?.name ?? null,
-        concept_angle:   concept?.angle_type ?? null,
-      }}
-    />
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────
-// Strategy-only concept card (no assets yet)
-// ─────────────────────────────────────────────────────────────────
 
