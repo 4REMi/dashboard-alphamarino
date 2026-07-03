@@ -6,6 +6,7 @@ import type { AdCloneLine, ClientReviewStatus } from "@/lib/types"
 
 interface Script {
   briefId:         string
+  scriptKey:       string
   lines:           AdCloneLine[]
   client_status:   ClientReviewStatus | null
   client_feedback: string | null

@@ -12,22 +12,12 @@ interface Props {
   params: Promise<{ projectId: string }>
 }
 
-const FUNNEL_COLORS: Record<string, string> = {
-  TOF: "bg-sky-50 text-sky-700 ring-1 ring-inset ring-sky-200/60",
-  MOF: "bg-violet-50 text-violet-700 ring-1 ring-inset ring-violet-200/60",
-  BOF: "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200/60",
-}
-const FUNNEL_LABELS: Record<string, string> = {
-  TOF: "Audiencia fría",
-  MOF: "Audiencia tibia",
-  BOF: "Audiencia caliente",
-}
 
 export default async function ShareConceptsPage({ params }: Props) {
   const { projectId } = await params
   const supabase = createAdminClient()
 
-  const [projectRes, conceptsRes, assetsRes, settingsRes, scriptsRes] = await Promise.all([
+  const [projectRes, conceptsRes, assetsRes, settingsRes, scriptsRes, activeCycleRes] = await Promise.all([
     supabase
       .from("projects")
       .select("name, brand_brain_id, customer:customers(name, company)")
@@ -36,7 +26,7 @@ export default async function ShareConceptsPage({ params }: Props) {
     supabase
       .from("creative_concepts")
       .select(`id, name, angle_type, organizing_principle, target_persona, product_service,
-               pain_point, objection, why_it_works, transformation, funnel_stage, awareness_stage, status, brand_line_id`)
+               pain_point, objection, why_it_works, transformation, funnel_stage, awareness_stage, status, brand_line_id, cycle_id`)
       .eq("project_id", projectId)
       .in("status", ["Active", "Evergreen"])
       .order("status", { ascending: false })
@@ -56,10 +46,16 @@ export default async function ShareConceptsPage({ params }: Props) {
       .maybeSingle(),
     supabase
       .from("creative_briefs")
-      .select("id, concept_id, adapted_script, client_status, client_feedback")
+      .select("id, concept_id, adapted_script, script_reviews")
       .eq("project_id", projectId)
       .not("adapted_script", "is", null)
       .order("created_at", { ascending: true }),
+    supabase
+      .from("paid_media_cycles")
+      .select("id")
+      .eq("project_id", projectId)
+      .eq("is_active", true)
+      .maybeSingle(),
   ])
 
   if (projectRes.error || !projectRes.data) notFound()
@@ -67,22 +63,37 @@ export default async function ShareConceptsPage({ params }: Props) {
   const project  = projectRes.data
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const customer = project.customer as any
-  const concepts    = conceptsRes.data ?? []
+  const activeCycleId = activeCycleRes.data?.id ?? null
+  // Only show concepts from the current cycle (or evergreen concepts, which
+  // live at the project level with no cycle) — otherwise every past month's
+  // concepts keep piling up on the client with no way to tell them apart.
+  const concepts = (conceptsRes.data ?? []).filter(
+    (c: any) => !c.cycle_id || c.cycle_id === activeCycleId
+  )
   const assets      = assetsRes.data ?? []
   const briefsData  = scriptsRes.data ?? []
 
   // Normalize adapted_script (Record<adId, lines[]> or legacy lines[]) into one
   // reviewable card per script, scoped to the fields the client is allowed to see.
-  type ClientScript = { key: string; briefId: string; conceptId: string; lines: AdCloneLine[]; client_status: any; client_feedback: string | null }
+  // Each script's review state is looked up independently via script_reviews[scriptKey] —
+  // never shared across scripts in the same brief.
+  type ClientScript = { key: string; briefId: string; scriptKey: string; conceptId: string; lines: AdCloneLine[]; client_status: any; client_feedback: string | null }
   const scripts: ClientScript[] = []
   for (const b of briefsData) {
     const raw = b.adapted_script as Record<string, AdCloneLine[]> | AdCloneLine[] | null
     if (!raw) continue
+    const reviews = (b.script_reviews as Record<string, { client_status: any; client_feedback: string | null }>) ?? {}
     if (Array.isArray(raw)) {
-      if (raw.length > 0) scripts.push({ key: b.id, briefId: b.id, conceptId: b.concept_id, lines: raw, client_status: b.client_status, client_feedback: b.client_feedback })
+      if (raw.length > 0) {
+        const r = reviews["_single"]
+        scripts.push({ key: b.id, briefId: b.id, scriptKey: "_single", conceptId: b.concept_id, lines: raw, client_status: r?.client_status ?? null, client_feedback: r?.client_feedback ?? null })
+      }
     } else {
       Object.entries(raw).forEach(([adId, lines]) => {
-        if (lines?.length) scripts.push({ key: `${b.id}:${adId}`, briefId: b.id, conceptId: b.concept_id, lines, client_status: b.client_status, client_feedback: b.client_feedback })
+        if (lines?.length) {
+          const r = reviews[adId]
+          scripts.push({ key: `${b.id}:${adId}`, briefId: b.id, scriptKey: adId, conceptId: b.concept_id, lines, client_status: r?.client_status ?? null, client_feedback: r?.client_feedback ?? null })
+        }
       })
     }
   }
@@ -299,7 +310,15 @@ export default async function ShareConceptsPage({ params }: Props) {
               subtitle="Estos conceptos aún no tienen piezas producidas. Te los compartimos para alinear la dirección."
             />
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {strategyOnlyConcepts.map((c) => <StrategyConceptCard key={c.id} concept={c} />)}
+              {strategyOnlyConcepts.map((c: any) => (
+                <ConceptCard
+                  key={c.id}
+                  concept={c}
+                  angleEmoji={ANGLE_GUIDE.find((a) => a.name === c.angle_type)?.emoji || null}
+                  counts={{ assets: 0, pending: 0, approved: 0, changes: 0 }}
+                  scripts={[]}
+                />
+              ))}
             </div>
           </div>
         </section>
@@ -494,7 +513,15 @@ function BrandLineSection({ line, conceptGroups, strategyOnly, unlinkedAssets, s
             Ángulos en desarrollo
           </p>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {strategyOnly.map((c: any) => <StrategyConceptCard key={c.id} concept={c} />)}
+            {strategyOnly.map((c: any) => (
+              <ConceptCard
+                key={c.id}
+                concept={c}
+                angleEmoji={ANGLE_GUIDE.find((a) => a.name === c.angle_type)?.emoji || null}
+                counts={{ assets: 0, pending: 0, approved: 0, changes: 0 }}
+                scripts={[]}
+              />
+            ))}
           </div>
         </div>
       )}
@@ -513,7 +540,7 @@ function ConceptGroup({ concept, assets, scripts }: { concept: any | null; asset
   const changes  = assets.filter((a) => a.client_status === "changes_requested").length
 
   return (
-    <article className="relative space-y-4">
+    <article className="relative space-y-4 max-w-2xl">
       <ConceptCard
         concept={concept}
         angleEmoji={concept && ANGLE_GUIDE.find((a) => a.name === concept.angle_type)?.emoji || null}
@@ -541,24 +568,6 @@ function ConceptGroup({ concept, assets, scripts }: { concept: any | null; asset
         />
       )}
     </article>
-  )
-}
-
-function StrategyField({ label, value, accent }: {
-  label: string
-  value: string | null | undefined
-  accent?: "rose" | "emerald"
-}) {
-  if (!value) return null
-  const dot = accent === "rose" ? "bg-rose-400" : accent === "emerald" ? "bg-emerald-400" : "bg-slate-300"
-  return (
-    <div>
-      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 mb-1 flex items-center gap-1.5">
-        <span className={`w-1 h-1 rounded-full ${dot}`} />
-        {label}
-      </p>
-      <p className="text-[13px] leading-relaxed text-slate-700">{value}</p>
-    </div>
   )
 }
 
@@ -593,52 +602,3 @@ function AssetReviewWrap({ asset: a }: { asset: any }) {
 // Strategy-only concept card (no assets yet)
 // ─────────────────────────────────────────────────────────────────
 
-function StrategyConceptCard({ concept }: {
-  concept: {
-    id: string
-    name: string | null
-    angle_type: string | null
-    target_persona: string
-    product_service: string | null
-    pain_point: string | null
-    why_it_works: string | null
-    transformation: string | null
-    funnel_stage: string | null
-    status: string
-  }
-}) {
-  const angleEntry  = ANGLE_GUIDE.find((a) => a.name === concept.angle_type)
-  const isEvergreen = concept.status === "Evergreen"
-
-  return (
-    <div className={`group bg-white rounded-2xl border ${isEvergreen ? "border-amber-200" : "border-slate-200/70"} shadow-[0_1px_2px_rgba(15,23,42,0.04)] overflow-hidden flex flex-col hover:shadow-md transition-shadow`}>
-      <div className={`px-5 pt-5 pb-4 border-b border-slate-100 ${isEvergreen ? "bg-amber-50/30" : ""}`}>
-        <div className="flex items-center gap-1.5 mb-2 flex-wrap">
-          {angleEntry && (
-            <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-slate-900 text-white px-2 py-0.5 rounded-md">
-              <span>{angleEntry.emoji}</span>{concept.angle_type}
-            </span>
-          )}
-          {concept.funnel_stage && (
-            <span className={`text-[11px] font-medium px-2 py-0.5 rounded-md ${FUNNEL_COLORS[concept.funnel_stage] ?? "bg-slate-100 text-slate-600"}`}>
-              {FUNNEL_LABELS[concept.funnel_stage] ?? concept.funnel_stage}
-            </span>
-          )}
-          {isEvergreen && (
-            <span className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200/60">
-              ⭐ Validado
-            </span>
-          )}
-        </div>
-        <p className="text-base font-bold leading-snug text-slate-900">{concept.name || "Concepto"}</p>
-      </div>
-      <div className="px-5 py-4 space-y-3 flex-1 text-[13px]">
-        {concept.product_service && <StrategyField label="Producto / Servicio" value={concept.product_service} />}
-        <StrategyField label="A quién le hablamos" value={concept.target_persona} />
-        {concept.pain_point     && <StrategyField label="Problema" value={concept.pain_point} accent="rose" />}
-        {concept.transformation && <StrategyField label="Transformación" value={concept.transformation} accent="emerald" />}
-        {concept.why_it_works   && <StrategyField label="Por qué conecta" value={concept.why_it_works} />}
-      </div>
-    </div>
-  )
-}

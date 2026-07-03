@@ -553,11 +553,11 @@ export async function getBriefsForProject(projectId: string): Promise<CreativeBr
 // no attached_ad_ids/references — those stay editor-only in getBriefByToken).
 export async function getClientScriptsForProject(
   projectId: string,
-): Promise<Pick<CreativeBrief, "id" | "concept_id" | "adapted_script" | "client_status" | "client_feedback">[]> {
+): Promise<Pick<CreativeBrief, "id" | "concept_id" | "adapted_script" | "script_reviews">[]> {
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from("creative_briefs")
-    .select("id, concept_id, adapted_script, client_status, client_feedback")
+    .select("id, concept_id, adapted_script, script_reviews")
     .eq("project_id", projectId)
     .not("adapted_script", "is", null)
     .order("created_at", { ascending: true })

@@ -34,6 +34,7 @@ interface Concept {
 interface Script {
   key:             string
   briefId:         string
+  scriptKey:       string
   lines:           AdCloneLine[]
   client_status:   ClientReviewStatus | null
   client_feedback: string | null

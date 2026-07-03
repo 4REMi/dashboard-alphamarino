@@ -6,6 +6,7 @@ import type { AdCloneLine, ClientReviewStatus } from "@/lib/types"
 
 interface ClientScript {
   briefId:         string
+  scriptKey:       string
   lines:           AdCloneLine[]
   client_status:   ClientReviewStatus | null
   client_feedback: string | null
@@ -21,7 +22,7 @@ export function ClientScriptReview({ script }: { script: ClientScript }) {
 
   function handleApprove() {
     startTransition(async () => {
-      await submitBriefClientReview(script.briefId, "approved", null)
+      await submitBriefClientReview(script.briefId, script.scriptKey, "approved", null)
       setStatus("approved")
     })
   }
@@ -30,7 +31,7 @@ export function ClientScriptReview({ script }: { script: ClientScript }) {
     if (!showFeedback) { setShowFeedback(true); return }
     if (!feedback.trim()) return
     startTransition(async () => {
-      await submitBriefClientReview(script.briefId, "changes_requested", feedback.trim())
+      await submitBriefClientReview(script.briefId, script.scriptKey, "changes_requested", feedback.trim())
       setStatus("changes_requested")
       setShowFeedback(false)
     })
