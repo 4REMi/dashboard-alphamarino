@@ -3,8 +3,9 @@
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import Anthropic from "@anthropic-ai/sdk"
-import type { AdClone, AdCloneLine, MetaAdResult, BrandBrain } from "@/lib/types"
+import type { AdClone, AdCloneLine, MetaAdResult, BrandBrain, CreativeConcept } from "@/lib/types"
 import { saveAd } from "@/lib/actions/ad-lab"
+import { SCRIPT_STRUCTURES, ANGLE_TO_STRUCTURE, type AngleType } from "@/lib/constants/creatives"
 
 const ASSEMBLYAI_BASE = "https://api.assemblyai.com/v2"
 
@@ -113,6 +114,77 @@ Devuelve ÚNICAMENTE un array JSON válido (sin markdown, sin texto extra) donde
   const msg = await client.messages.create({
     model: "claude-opus-4-7",
     max_tokens: 4096,
+    messages: [{ role: "user", content: prompt }],
+  })
+
+  const raw = (msg.content[0] as { type: string; text: string }).text.trim()
+  return JSON.parse(raw) as AdCloneLine[]
+}
+
+// Writes a VO script from scratch — no reference ad to transcribe/adapt.
+// The structural beats come from the concept's own angle_type (ANGLE_TO_STRUCTURE),
+// so the caller never has to pick a framework manually.
+export async function writeScriptFromConcept(
+  concept: Pick<CreativeConcept, "name" | "angle_type" | "target_persona" | "pain_point" | "why_it_works" | "objection" | "transformation" | "funnel_stage">,
+  brain: Pick<BrandBrain, "name" | "industry" | "language" | "tone_of_voice" | "usps" | "key_benefits" | "pain_points" | "target_audience" | "ctas">,
+  brandLine?: { name: string; description?: string | null; usps?: string[]; pain_points?: string[]; keywords?: string[] } | null,
+  variantSeed?: string,
+): Promise<AdCloneLine[]> {
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY no configurado")
+  const client = new Anthropic({ apiKey })
+
+  const structureKey = concept.angle_type ? ANGLE_TO_STRUCTURE[concept.angle_type as AngleType] : "pas"
+  const structure = SCRIPT_STRUCTURES.find((s) => s.key === structureKey) ?? SCRIPT_STRUCTURES[0]
+
+  const lineUsps  = brandLine?.usps?.length       ? brandLine.usps.join(", ")       : null
+  const linePains = brandLine?.pain_points?.length ? brandLine.pain_points.join(", ") : null
+  const usps  = (lineUsps  ?? (brain.usps       ?? []).join(", ")) || "—"
+  const pains = (linePains ?? (brain.pain_points ?? []).join(", ")) || "—"
+  const ctas  = (brain.ctas ?? []).join(", ") || "—"
+
+  const destinationName = brandLine ? `${brandLine.name} (de ${brain.name})` : brain.name
+  const langBlock = langInstruction(brain.language)
+
+  const prompt = `Eres un redactor creativo experto en guiones de video para ads de performance marketing (formato VO / UGC, 20-40 segundos, para teleprompter).
+${langBlock ? `\n${langBlock}\n` : ""}
+Escribe un guión ORIGINAL desde cero — no hay ningún guión de referencia que adaptar. Usa esta estructura probada (NO te salgas de estos beats, en este orden):
+
+ESTRUCTURA: ${structure.name}
+Motor psicológico: ${structure.engine}
+Beats:
+${structure.beats.map((b, i) => `${i + 1}. ${b}`).join("\n")}
+
+CONCEPTO CREATIVO (la estrategia que el guión debe ejecutar):
+- Nombre: ${concept.name ?? "—"}
+- Ángulo: ${concept.angle_type ?? "—"}
+- Persona objetivo: ${concept.target_persona}
+- Pain point: ${concept.pain_point ?? "—"}
+- Por qué funciona: ${concept.why_it_works ?? "—"}
+- Objeción a superar: ${concept.objection ?? "—"}
+- Transformación prometida: ${concept.transformation ?? "—"}
+- Funnel stage: ${concept.funnel_stage ?? "—"}
+
+MARCA / PRODUCTO:
+- Producto: ${destinationName}
+- Industria: ${brain.industry ?? "—"}
+- Idioma: ${brain.language ?? "español"}
+- Tono de voz: ${brain.tone_of_voice ?? "—"}
+- USPs: ${usps}
+- Dolores del cliente: ${pains}
+- Audiencia objetivo: ${brain.target_audience ?? "—"}
+- CTAs: ${ctas}
+${brandLine?.keywords?.length ? `- Keywords relevantes: ${brandLine.keywords.join(", ")}` : ""}
+${variantSeed ? `\nVARIANTE: ${variantSeed}` : ""}
+
+Divide el guión en 4-7 líneas naturales de teleprompter (10-25 palabras cada una, unidad de sentido completa). Cada línea debe corresponder claramente a uno de los beats de la estructura.
+
+Devuelve ÚNICAMENTE un array JSON válido (sin markdown, sin texto extra) donde cada elemento tenga este formato exacto:
+{"speaker": null, "original": "", "adapted": "<línea del guión — en ${brain.language ?? "español"}>"}`
+
+  const msg = await client.messages.create({
+    model: "claude-opus-4-7",
+    max_tokens: 2048,
     messages: [{ role: "user", content: prompt }],
   })
 

@@ -151,6 +151,75 @@ export const ANGLE_GUIDE = [
 
 export type AngleType = typeof ANGLE_GUIDE[number]["name"]
 
+// ── Proven video-script structures (for Quick Create — scripts written from
+// scratch, no reference ad to adapt) ────────────────────────────────────────
+// Collapsed from the 10 angles down to the 4 structurally distinct engines
+// that actually sustain a spoken 20-40s script: pain (PAS), desire (BAB),
+// social proof (Testimonial), curiosity (Myth-Bust). Several angles share a
+// structure because they're flavors of the same underlying beat sequence.
+
+export const SCRIPT_STRUCTURES = [
+  {
+    key: "pas",
+    name: "PAS — Problem / Agitate / Solve",
+    engine: "Dolor / fricción",
+    beats: [
+      "Hook: nombra el problema o dolor concreto",
+      "Agita: intensifica la consecuencia de no resolverlo",
+      "Resuelve: el producto como la solución",
+      "CTA",
+    ],
+  },
+  {
+    key: "bab",
+    name: "BAB — Before / After / Bridge",
+    engine: "Deseo / visualización",
+    beats: [
+      "Hook: estado actual (before)",
+      "After: el futuro deseado, vívido y específico",
+      "Bridge: el producto como el puente hacia ese after",
+      "CTA",
+    ],
+  },
+  {
+    key: "testimonial",
+    name: "Testimonial / Story Arc",
+    engine: "Prueba social, primera persona",
+    beats: [
+      "Hook: \"yo también...\" — identificación inmediata",
+      "Intentos fallidos: qué probó antes y no funcionó",
+      "Descubrimiento: cómo encontró la solución real",
+      "Resultado + CTA",
+    ],
+  },
+  {
+    key: "myth_bust",
+    name: "Myth-Bust / Pattern Interrupt",
+    engine: "Curiosidad / disonancia cognitiva",
+    beats: [
+      "Hook: declara la creencia común",
+      "La voltea (\"en realidad...\")",
+      "Revela el mecanismo real",
+      "CTA",
+    ],
+  },
+] as const
+
+export type ScriptStructureKey = typeof SCRIPT_STRUCTURES[number]["key"]
+
+export const ANGLE_TO_STRUCTURE: Record<AngleType, ScriptStructureKey> = {
+  "Objection":        "pas",
+  "Consequence":       "pas",
+  "Acceptance":        "pas",
+  "Desired Outcome":   "bab",
+  "Feature / Benefit": "bab",
+  "Identity":          "bab",
+  "Use Case":          "testimonial",
+  "Failed Solutions":  "testimonial",
+  "Misconception":     "myth_bust",
+  "Education":         "myth_bust",
+}
+
 export const AWARENESS_LABELS: Record<number, string> = {
   1: "Unaware",
   2: "Problem-Aware",

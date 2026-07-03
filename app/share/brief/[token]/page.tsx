@@ -73,6 +73,21 @@ export default async function ShareBriefPage({ params }: Props) {
     })
   })
 
+  // Scripts written from scratch (Quick Create) have no attached reference ad —
+  // surface them as their own entry so editors can still see them here.
+  if (scriptMap) {
+    const coveredIds = new Set(references.map((r) => r.id))
+    Object.entries(scriptMap).forEach(([key, lines], i) => {
+      if (coveredIds.has(key) || !lines?.length) return
+      references.push({
+        id: key,
+        type: "video",
+        name: `Guión generado — opción ${i + 1}`,
+        script: lines,
+      })
+    })
+  }
+
   return (
     <div className="min-h-screen bg-[#f8f9fb]">
       <header className="border-b border-gray-200 bg-white sticky top-0 z-20">

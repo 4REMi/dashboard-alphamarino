@@ -7,7 +7,7 @@ import type {
   CreativeConcept, CreativeAsset, CreativeBrief, BriefContent,
   ConceptStatus, ProductionStatus, AssetVerdict, BrandBrain, AdCloneLine,
 } from "@/lib/types"
-import { adaptWithClaude, aaiPost, aaiGet } from "@/lib/actions/ad-clone"
+import { adaptWithClaude, aaiPost, aaiGet, writeScriptFromConcept } from "@/lib/actions/ad-clone"
 
 // ── helpers ──────────────────────────────────────────────────
 
@@ -345,6 +345,69 @@ export async function createBrief(
   if (error) throw error
   revalidateProject(projectId)
   return data as CreativeBrief
+}
+
+// Quick Create — writes N script variants from scratch using only the concept's
+// own strategy fields (no reference ad, no transcription, no brief_content).
+// The structural beats are picked automatically from the concept's angle_type.
+export async function generateScriptsFromConcept(
+  projectId: string,
+  conceptId: string,
+  brandBrainId: string,
+  variantCount = 3,
+): Promise<CreativeBrief> {
+  const supabase = await createClient()
+  const { role } = await getRole()
+  if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
+
+  const { data: concept } = await supabase
+    .from("creative_concepts")
+    .select("name, angle_type, target_persona, pain_point, why_it_works, objection, transformation, funnel_stage, brand_line_id")
+    .eq("id", conceptId)
+    .single()
+  if (!concept) throw new Error("Concept not found")
+
+  const { data: brain } = await supabase
+    .from("brand_brains")
+    .select("name, industry, language, tone_of_voice, usps, key_benefits, pain_points, target_audience, ctas")
+    .eq("id", brandBrainId)
+    .single()
+  if (!brain) throw new Error("Brand Brain not found")
+
+  const lineData = concept.brand_line_id
+    ? (await supabase.from("brand_lines").select("name, description, usps, pain_points, keywords").eq("id", concept.brand_line_id).single()).data
+    : null
+
+  const brief = await createBrief(projectId, conceptId, brandBrainId, [], [], concept.brand_line_id ?? undefined)
+
+  const variantSeeds = [
+    "opción 1 — hook directo, ve al grano",
+    "opción 2 — hook narrativo, abre con una escena o pregunta",
+    "opción 3 — hook contrastante, abre con una afirmación inesperada",
+  ]
+
+  const results = await Promise.allSettled(
+    Array.from({ length: Math.min(variantCount, variantSeeds.length) }, (_, i) =>
+      writeScriptFromConcept(concept as any, brain as any, lineData, variantSeeds[i])
+    )
+  )
+
+  const scripts: Record<string, unknown> = {}
+  results.forEach((r, i) => {
+    if (r.status === "fulfilled") scripts[`gen_${i + 1}`] = r.value
+    else console.error(`Quick Create variant ${i + 1} failed:`, r.reason)
+  })
+
+  if (Object.keys(scripts).length === 0) throw new Error("No se pudo generar ningún guión")
+
+  await supabase.from("creative_briefs").update({
+    adapted_script: scripts,
+    updated_at: new Date().toISOString(),
+  }).eq("id", brief.id)
+
+  revalidateProject(projectId)
+  const { data: fresh } = await supabase.from("creative_briefs").select("*, brand_brain:brand_brains!brand_brain_id(id, name, industry)").eq("id", brief.id).single()
+  return fresh as CreativeBrief
 }
 
 export async function generateBriefContent(briefId: string): Promise<BriefContent> {

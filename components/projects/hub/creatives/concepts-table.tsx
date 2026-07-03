@@ -11,6 +11,7 @@ import { CONCEPT_STATUS_COLORS, AWARENESS_LABELS, ANGLE_GUIDE, PRODUCTION_STATUS
 import type { CreativeConcept, CreativeAsset, CreativeBrief, BrandLine } from "@/lib/types"
 import type { AIDraftConcept } from "@/lib/actions/creatives"
 import { BriefCreator } from "./brief-creator"
+import { QuickScriptModal } from "./quick-script-modal"
 import { Plus, Sparkles, Check, X, Loader2, Star, ArrowUpRight, Pencil, Trash2, Link2, FileText, Upload, ChevronDown, Film, ImageIcon, Eye, EyeOff, ZoomIn } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -48,6 +49,7 @@ function ConceptDetailModal({
   onClose,
   onNewAsset,
   onNewBrief,
+  onQuickScript,
   onRefresh,
 }: {
   concept: CreativeConcept
@@ -60,6 +62,7 @@ function ConceptDetailModal({
   onClose: () => void
   onNewAsset: () => void
   onNewBrief: () => void
+  onQuickScript: () => void
   onRefresh: () => void
 }) {
   const [isPending, startTransition] = useTransition()
@@ -248,10 +251,16 @@ function ConceptDetailModal({
                 Briefs {conceptBriefs.length > 0 && `(${conceptBriefs.length})`}
               </p>
               {isAdminOrSubadmin && (
-                <button type="button" onClick={onNewBrief} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
-                  <Plus className="w-3 h-3" />
-                  Nuevo brief
-                </button>
+                <div className="flex items-center gap-3">
+                  <button type="button" onClick={onQuickScript} className="flex items-center gap-1 text-xs text-violet-600 hover:text-violet-800 transition-colors">
+                    <Sparkles className="w-3 h-3" />
+                    Guión rápido
+                  </button>
+                  <button type="button" onClick={onNewBrief} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                    <Plus className="w-3 h-3" />
+                    Nuevo brief
+                  </button>
+                </div>
               )}
             </div>
             {conceptBriefs.length > 0 ? (
@@ -746,6 +755,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
   const [previewIdx,    setPreviewIdx]      = useState<number | null>(null)
   const [newAssetForConceptId, setNewAssetForConceptId] = useState<string | null>(null)
   const [briefForConcept, setBriefForConcept] = useState<CreativeConcept | null>(null)
+  const [quickScriptForConcept, setQuickScriptForConcept] = useState<CreativeConcept | null>(null)
   const [copied,        setCopied]          = useState(false)
   const [showBrainPicker, setShowBrainPicker] = useState(false)
   const [generateForLineId, setGenerateForLineId] = useState<string | null>(null)
@@ -1189,6 +1199,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
           onClose={() => setDetailConcept(null)}
           onNewAsset={openDetailAsNewAsset}
           onNewBrief={() => { const c = detailConcept; setDetailConcept(null); setBriefForConcept(c) }}
+          onQuickScript={() => { const c = detailConcept; setDetailConcept(null); setQuickScriptForConcept(c) }}
           onRefresh={onRefresh}
         />
       )}
@@ -1249,6 +1260,18 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
           boards={boards}
           onClose={() => setBriefForConcept(null)}
           onCreated={() => { setBriefForConcept(null); onRefresh(); }}
+        />
+      )}
+
+      {/* Quick Create — scripts from scratch, no reference ad */}
+      {quickScriptForConcept && (
+        <QuickScriptModal
+          concept={quickScriptForConcept}
+          projectId={projectId}
+          brandBrains={brandBrains}
+          projectBrandBrainId={projectBrandBrainId}
+          onClose={() => setQuickScriptForConcept(null)}
+          onCreated={() => { setQuickScriptForConcept(null); onRefresh(); }}
         />
       )}
 
