@@ -4,9 +4,8 @@ import { ANGLE_GUIDE } from "@/lib/constants/creatives"
 import { ClientPortalShell } from "@/components/share/client-portal-shell"
 import { ClientAssetReview } from "@/components/share/client-asset-review"
 import { ConceptAssetsGallery } from "@/components/share/concept-assets-gallery"
-import { ClientScriptReview } from "@/components/share/client-script-review"
 import { BrandLineTabs } from "@/components/share/brand-line-tabs"
-import { ConceptStrategyCard } from "@/components/share/concept-strategy-card"
+import { ConceptCard } from "@/components/share/concept-card"
 import type { AdCloneLine } from "@/lib/types"
 
 interface Props {
@@ -36,8 +35,8 @@ export default async function ShareConceptsPage({ params }: Props) {
       .single(),
     supabase
       .from("creative_concepts")
-      .select(`id, name, angle_type, target_persona, product_service,
-               pain_point, why_it_works, transformation, funnel_stage, status, brand_line_id`)
+      .select(`id, name, angle_type, organizing_principle, target_persona, product_service,
+               pain_point, objection, why_it_works, transformation, funnel_stage, awareness_stage, status, brand_line_id`)
       .eq("project_id", projectId)
       .in("status", ["Active", "Evergreen"])
       .order("status", { ascending: false })
@@ -512,59 +511,35 @@ function ConceptGroup({ concept, assets, scripts }: { concept: any | null; asset
   const pending  = assets.filter((a) => !a.client_status || a.client_status === "pending_review").length
   const approved = assets.filter((a) => a.client_status === "approved").length
   const changes  = assets.filter((a) => a.client_status === "changes_requested").length
-  const pendingScripts = scripts.filter((s) => !s.client_status || s.client_status === "pending_review").length
 
   return (
-    <article className="relative space-y-6">
-      <ConceptStrategyCard
+    <article className="relative space-y-4">
+      <ConceptCard
         concept={concept}
         angleEmoji={concept && ANGLE_GUIDE.find((a) => a.name === concept.angle_type)?.emoji || null}
-        counts={{ assets: assets.length, scripts: scripts.length, pendingScripts, pending, approved, changes }}
+        counts={{ assets: assets.length, pending, approved, changes }}
+        scripts={scripts}
       />
 
-      {/* Scripts + Assets */}
-      <div className="space-y-8 min-w-0">
-        {scripts.length > 0 && (
-          <div className="space-y-4">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-              Guión{scripts.length !== 1 ? "es" : ""} en revisión
-            </p>
-            {scripts.map((s) => (
-              <ClientScriptReview
-                key={s.key}
-                script={{ briefId: s.briefId, lines: s.lines, client_status: s.client_status, client_feedback: s.client_feedback }}
-              />
-            ))}
-          </div>
-        )}
-
-        {assets.length > 0 && (
-          <div className="space-y-4">
-            {scripts.length > 0 && (
-              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                Creativos finales
-              </p>
-            )}
-            <ConceptAssetsGallery
-              assets={assets.map((a) => ({
-                id:              a.id,
-                format:          a.format,
-                platform:        a.platform,
-                asset_url:       a.asset_url,
-                file_path:       a.file_path ?? null,
-                thumbnail_path:  a.thumbnail_path ?? null,
-                file_type:       a.file_type ?? null,
-                client_status:   a.client_status,
-                client_feedback: a.client_feedback,
-                concept_name:    a.concept?.name ?? null,
-                concept_angle:   a.concept?.angle_type ?? null,
-                brief_id:        a.brief_id ?? null,
-              }))}
-              firstPendingId={pending > 0 ? assets.find((a) => !a.client_status || a.client_status === "pending_review")?.id : undefined}
-            />
-          </div>
-        )}
-      </div>
+      {assets.length > 0 && (
+        <ConceptAssetsGallery
+          assets={assets.map((a) => ({
+            id:              a.id,
+            format:          a.format,
+            platform:        a.platform,
+            asset_url:       a.asset_url,
+            file_path:       a.file_path ?? null,
+            thumbnail_path:  a.thumbnail_path ?? null,
+            file_type:       a.file_type ?? null,
+            client_status:   a.client_status,
+            client_feedback: a.client_feedback,
+            concept_name:    a.concept?.name ?? null,
+            concept_angle:   a.concept?.angle_type ?? null,
+            brief_id:        a.brief_id ?? null,
+          }))}
+          firstPendingId={pending > 0 ? assets.find((a) => !a.client_status || a.client_status === "pending_review")?.id : undefined}
+        />
+      )}
     </article>
   )
 }
