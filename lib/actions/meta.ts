@@ -17,6 +17,7 @@ interface MetaInsightRow {
   cpm: string
   reach: string
   actions?: Array<{ action_type: string; value: string }>
+  action_values?: Array<{ action_type: string; value: string }>
   date_start: string
   date_stop: string
 }
@@ -80,6 +81,23 @@ function pickResults(
   return { results: Number(actions[0].value), results_type: actions[0].action_type }
 }
 
+// ROAS only makes sense for campaigns actually optimizing for sales — for
+// any other objective there's no purchase value to compare spend against.
+const SALES_OBJECTIVES = new Set(["OUTCOME_SALES", "CONVERSIONS", "PRODUCT_CATALOG_SALES"])
+
+function pickPurchaseValue(
+  actionValues: MetaInsightRow["action_values"],
+  objective: string | null,
+): number | null {
+  if (!objective || !SALES_OBJECTIVES.has(objective) || !actionValues?.length) return null
+  const candidates = OBJECTIVE_ACTION_TYPES.OUTCOME_SALES
+  for (const t of candidates) {
+    const hit = actionValues.find((a) => a.action_type === t)
+    if (hit) return Number(hit.value)
+  }
+  return null
+}
+
 export interface MetaAdAccount {
   id: string
   account_id: string
@@ -133,7 +151,7 @@ export async function syncMetaCampaigns(projectId: string, cycleId: string): Pro
   }
 
   const { since, until } = cycleRange(cycleResult.data.cycle_month)
-  const fields = "campaign_id,campaign_name,spend,impressions,clicks,ctr,cpc,cpm,reach,actions"
+  const fields = "campaign_id,campaign_name,spend,impressions,clicks,ctr,cpc,cpm,reach,actions,action_values"
 
   const url = new URL(`${META_BASE}/act_${meta_ad_account_id}/insights`)
   url.searchParams.set("level", "campaign")
@@ -175,7 +193,8 @@ export async function syncMetaCampaigns(projectId: string, cycleId: string): Pro
   if (!rows.length) return { synced: 0 }
 
   const upsertRows = rows.map((row) => {
-    const { results, results_type } = pickResults(row.actions, objectiveById.get(row.campaign_id) ?? null)
+    const objective = objectiveById.get(row.campaign_id) ?? null
+    const { results, results_type } = pickResults(row.actions, objective)
     return {
       project_id: projectId,
       cycle_id: cycleId,
@@ -190,6 +209,7 @@ export async function syncMetaCampaigns(projectId: string, cycleId: string): Pro
       reach: row.reach ? Number(row.reach) : null,
       results,
       results_type,
+      purchase_value: pickPurchaseValue(row.action_values, objective),
       status: statusById.get(row.campaign_id) ?? null,
       date_start: row.date_start || null,
       date_stop: row.date_stop || null,

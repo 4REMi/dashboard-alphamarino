@@ -27,6 +27,16 @@ function fmtPct(v: number | null) {
   return `${Number(v).toFixed(2)}%`
 }
 
+function fmtRoas(v: number | null) {
+  if (v === null) return "—"
+  return `${v.toFixed(2)}x`
+}
+
+function campaignRoas(c: MetaCampaign): number | null {
+  if (c.purchase_value === null || !c.spend) return null
+  return c.purchase_value / c.spend
+}
+
 const RESULTS_TYPE_LABELS: Record<string, string> = {
   "lead": "Leads",
   "purchase": "Compras",
@@ -102,6 +112,11 @@ export function MetaCampaignsPanel({ projectId, cycleId, campaigns: initialCampa
   const avgCostPerResult = totalResults > 0 ? totalSpend / totalResults : null
   const activeCount = campaigns.filter((c) => isActiveStatus(c.status)).length
 
+  const salesCampaigns = campaigns.filter((c) => c.purchase_value !== null)
+  const totalPurchaseValue = salesCampaigns.reduce((s, c) => s + (c.purchase_value ?? 0), 0)
+  const totalSalesSpend = salesCampaigns.reduce((s, c) => s + (c.spend ?? 0), 0)
+  const avgRoas = totalSalesSpend > 0 ? totalPurchaseValue / totalSalesSpend : null
+
   return (
     <div className="rounded-xl border border-border bg-card">
       <div className="flex items-center justify-between px-5 py-3 border-b border-border">
@@ -153,13 +168,14 @@ export function MetaCampaignsPanel({ projectId, cycleId, campaigns: initialCampa
       {campaigns.length > 0 && (
         <>
           {/* Summary row */}
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 px-5 py-3 border-b border-border bg-muted/20">
+          <div className="grid grid-cols-3 sm:grid-cols-7 gap-3 px-5 py-3 border-b border-border bg-muted/20">
             <SummaryKpi label="Activas" value={`${activeCount}/${campaigns.length}`} />
             <SummaryKpi label="Inversión total" value={fmt$(totalSpend)} />
             <SummaryKpi label="Impresiones" value={fmtN(totalImpressions)} />
             <SummaryKpi label="Clics" value={fmtN(totalClicks)} />
             <SummaryKpi label="CTR promedio" value={fmtPct(avgCtr)} />
             <SummaryKpi label="Costo / resultado" value={fmt$(avgCostPerResult)} />
+            <SummaryKpi label="ROAS" value={fmtRoas(avgRoas)} />
           </div>
 
           {/* Table */}
@@ -176,7 +192,8 @@ export function MetaCampaignsPanel({ projectId, cycleId, campaigns: initialCampa
                   <th className="text-right px-3 py-2 font-medium text-muted-foreground">CPC</th>
                   <th className="text-right px-3 py-2 font-medium text-muted-foreground">CPM</th>
                   <th className="text-right px-3 py-2 font-medium text-muted-foreground">Resultados</th>
-                  <th className="text-right px-5 py-2 font-medium text-muted-foreground">Costo/Resultado</th>
+                  <th className="text-right px-3 py-2 font-medium text-muted-foreground">Costo/Resultado</th>
+                  <th className="text-right px-5 py-2 font-medium text-muted-foreground">ROAS</th>
                 </tr>
               </thead>
               <tbody>
@@ -200,8 +217,11 @@ export function MetaCampaignsPanel({ projectId, cycleId, campaigns: initialCampa
                         <span className="block text-[10px] text-muted-foreground font-normal">{resultsTypeLabel(c.results_type)}</span>
                       )}
                     </td>
-                    <td className="px-5 py-2.5 text-right tabular-nums">
+                    <td className="px-3 py-2.5 text-right tabular-nums">
                       {fmt$(c.results ? (c.spend ?? 0) / c.results : null)}
+                    </td>
+                    <td className="px-5 py-2.5 text-right tabular-nums">
+                      {fmtRoas(campaignRoas(c))}
                     </td>
                   </tr>
                 ))}
