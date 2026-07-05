@@ -33,10 +33,47 @@ function cycleRange(cycleMonth: string): { since: string; until: string } {
   }
 }
 
-function pickResults(actions: MetaInsightRow["actions"]): { results: number | null; results_type: string | null } {
+// Maps a campaign's objective to the action_type(s) Meta itself counts as
+// "Results" for that objective in Ads Manager — ordered by which key actually
+// shows up depending on pixel/CAPI/catalog setup. Covers both the current
+// OUTCOME_* objectives and the legacy pre-2022 objective enum, since older
+// ad accounts can still return either.
+const OBJECTIVE_ACTION_TYPES: Record<string, string[]> = {
+  OUTCOME_SALES:        ["omni_purchase", "purchase", "offsite_conversion.fb_pixel_purchase"],
+  CONVERSIONS:          ["omni_purchase", "purchase", "offsite_conversion.fb_pixel_purchase"],
+  PRODUCT_CATALOG_SALES:["omni_purchase", "purchase", "offsite_conversion.fb_pixel_purchase"],
+  OUTCOME_LEADS:        ["lead", "offsite_conversion.fb_pixel_lead", "onsite_conversion.lead_grouped"],
+  LEAD_GENERATION:      ["lead", "offsite_conversion.fb_pixel_lead", "onsite_conversion.lead_grouped"],
+  OUTCOME_TRAFFIC:      ["link_click", "landing_page_view"],
+  LINK_CLICKS:          ["link_click", "landing_page_view"],
+  OUTCOME_ENGAGEMENT:   ["post_engagement", "page_engagement"],
+  POST_ENGAGEMENT:      ["post_engagement", "page_engagement"],
+  MESSAGES:             ["onsite_conversion.messaging_conversation_started_7d"],
+  OUTCOME_APP_PROMOTION:["mobile_app_install", "app_install"],
+  APP_INSTALLS:         ["mobile_app_install", "app_install"],
+  VIDEO_VIEWS:          ["video_view"],
+  STORE_VISITS:         ["store_visit"],
+}
+
+// Fallback used only when the objective isn't known/mapped — same generic
+// priority as before, better than grabbing an arbitrary first action.
+const FALLBACK_PRIORITY = ["lead", "purchase", "offsite_conversion.fb_pixel_purchase", "landing_page_view"]
+
+function pickResults(
+  actions: MetaInsightRow["actions"],
+  objective: string | null,
+): { results: number | null; results_type: string | null } {
   if (!actions?.length) return { results: null, results_type: null }
-  const priority = ["lead", "purchase", "offsite_conversion.fb_pixel_purchase", "landing_page_view"]
-  for (const t of priority) {
+
+  const candidates = (objective && OBJECTIVE_ACTION_TYPES[objective]) || []
+  for (const t of candidates) {
+    const hit = actions.find((a) => a.action_type === t)
+    if (hit) return { results: Number(hit.value), results_type: t }
+  }
+
+  // Objective unmapped, or none of its expected action types are present
+  // (e.g. no pixel firing yet) — fall back to the generic heuristic.
+  for (const t of FALLBACK_PRIORITY) {
     const hit = actions.find((a) => a.action_type === t)
     if (hit) return { results: Number(hit.value), results_type: t }
   }
@@ -105,10 +142,11 @@ export async function syncMetaCampaigns(projectId: string, cycleId: string): Pro
   url.searchParams.set("access_token", accessToken)
   url.searchParams.set("limit", "100")
 
-  // Campaign status isn't a valid insights field — fetch it separately from
-  // the campaigns list and merge by id, so the UI can show which are active.
+  // Campaign status and objective aren't valid insights fields — fetch them
+  // separately from the campaigns list and merge by id. The objective is what
+  // lets us pick the actual "Results" action type instead of guessing.
   const statusUrl = new URL(`${META_BASE}/act_${meta_ad_account_id}/campaigns`)
-  statusUrl.searchParams.set("fields", "id,effective_status")
+  statusUrl.searchParams.set("fields", "id,effective_status,objective")
   statusUrl.searchParams.set("access_token", accessToken)
   statusUrl.searchParams.set("limit", "300")
 
@@ -129,12 +167,15 @@ export async function syncMetaCampaigns(projectId: string, cycleId: string): Pro
   const statusById = new Map<string, string>(
     (statusJson.data ?? []).map((c: { id: string; effective_status: string }) => [c.id, c.effective_status])
   )
+  const objectiveById = new Map<string, string>(
+    (statusJson.data ?? []).map((c: { id: string; objective?: string }) => [c.id, c.objective ?? ""])
+  )
 
   const rows: MetaInsightRow[] = json.data ?? []
   if (!rows.length) return { synced: 0 }
 
   const upsertRows = rows.map((row) => {
-    const { results, results_type } = pickResults(row.actions)
+    const { results, results_type } = pickResults(row.actions, objectiveById.get(row.campaign_id) ?? null)
     return {
       project_id: projectId,
       cycle_id: cycleId,

@@ -30,11 +30,20 @@ function fmtPct(v: number | null) {
 const RESULTS_TYPE_LABELS: Record<string, string> = {
   "lead": "Leads",
   "purchase": "Compras",
+  "omni_purchase": "Compras",
   "offsite_conversion.fb_pixel_purchase": "Compras (sitio)",
   "landing_page_view": "Vistas de landing",
   "offsite_conversion.fb_pixel_lead": "Leads (sitio)",
+  "onsite_conversion.lead_grouped": "Leads",
   "offsite_conversion.fb_pixel_add_to_cart": "Agregados al carrito",
   "link_click": "Clics en el link",
+  "post_engagement": "Interacciones",
+  "page_engagement": "Interacciones con la página",
+  "mobile_app_install": "Instalaciones de app",
+  "app_install": "Instalaciones de app",
+  "video_view": "Reproducciones de video",
+  "store_visit": "Visitas a tienda",
+  "onsite_conversion.messaging_conversation_started_7d": "Conversaciones iniciadas",
 }
 
 function resultsTypeLabel(t: string | null) {
