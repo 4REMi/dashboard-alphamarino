@@ -491,6 +491,7 @@ export interface MetaCampaign {
   reach: number | null
   results: number | null
   results_type: string | null
+  status: string | null
   date_start: string | null
   date_stop: string | null
   synced_at: string

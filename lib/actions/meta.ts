@@ -105,15 +105,30 @@ export async function syncMetaCampaigns(projectId: string, cycleId: string): Pro
   url.searchParams.set("access_token", accessToken)
   url.searchParams.set("limit", "100")
 
-  let res: Response
+  // Campaign status isn't a valid insights field — fetch it separately from
+  // the campaigns list and merge by id, so the UI can show which are active.
+  const statusUrl = new URL(`${META_BASE}/act_${meta_ad_account_id}/campaigns`)
+  statusUrl.searchParams.set("fields", "id,effective_status")
+  statusUrl.searchParams.set("access_token", accessToken)
+  statusUrl.searchParams.set("limit", "300")
+
+  let res: Response, statusRes: Response
   try {
-    res = await fetch(url.toString(), { cache: "no-store" })
+    ;[res, statusRes] = await Promise.all([
+      fetch(url.toString(), { cache: "no-store" }),
+      fetch(statusUrl.toString(), { cache: "no-store" }),
+    ])
   } catch {
     return { synced: 0, error: "Error de red al conectar con Meta" }
   }
 
   const json = await res.json()
   if (json.error) return { synced: 0, error: `Meta API: ${json.error.message}` }
+
+  const statusJson = await statusRes.json()
+  const statusById = new Map<string, string>(
+    (statusJson.data ?? []).map((c: { id: string; effective_status: string }) => [c.id, c.effective_status])
+  )
 
   const rows: MetaInsightRow[] = json.data ?? []
   if (!rows.length) return { synced: 0 }
@@ -134,6 +149,7 @@ export async function syncMetaCampaigns(projectId: string, cycleId: string): Pro
       reach: row.reach ? Number(row.reach) : null,
       results,
       results_type,
+      status: statusById.get(row.campaign_id) ?? null,
       date_start: row.date_start || null,
       date_stop: row.date_stop || null,
       synced_at: new Date().toISOString(),

@@ -27,6 +27,40 @@ function fmtPct(v: number | null) {
   return `${Number(v).toFixed(2)}%`
 }
 
+const RESULTS_TYPE_LABELS: Record<string, string> = {
+  "lead": "Leads",
+  "purchase": "Compras",
+  "offsite_conversion.fb_pixel_purchase": "Compras (sitio)",
+  "landing_page_view": "Vistas de landing",
+  "offsite_conversion.fb_pixel_lead": "Leads (sitio)",
+  "offsite_conversion.fb_pixel_add_to_cart": "Agregados al carrito",
+  "link_click": "Clics en el link",
+}
+
+function resultsTypeLabel(t: string | null) {
+  if (!t) return null
+  return RESULTS_TYPE_LABELS[t] ?? t.replace(/^offsite_conversion\.fb_pixel_/, "").replace(/_/g, " ")
+}
+
+function isActiveStatus(status: string | null) {
+  return status === "ACTIVE"
+}
+
+function StatusDot({ status }: { status: string | null }) {
+  const active = isActiveStatus(status)
+  return (
+    <span
+      className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full flex-shrink-0 ${
+        active ? "bg-emerald-50 text-emerald-700" : "bg-muted text-muted-foreground"
+      }`}
+      title={status ?? undefined}
+    >
+      <span className={`w-1.5 h-1.5 rounded-full ${active ? "bg-emerald-500" : "bg-muted-foreground/40"}`} />
+      {active ? "Activa" : status === "PAUSED" ? "Pausada" : status ? status : "—"}
+    </span>
+  )
+}
+
 export function MetaCampaignsPanel({ projectId, cycleId, campaigns: initialCampaigns, hasCredentials, canEdit }: Props) {
   const [campaigns, setCampaigns] = useState<MetaCampaign[]>(initialCampaigns)
   const [isPending, startTransition] = useTransition()
@@ -55,6 +89,9 @@ export function MetaCampaignsPanel({ projectId, cycleId, campaigns: initialCampa
   const totalImpressions = campaigns.reduce((s, c) => s + (c.impressions ?? 0), 0)
   const totalClicks = campaigns.reduce((s, c) => s + (c.clicks ?? 0), 0)
   const avgCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : null
+  const totalResults = campaigns.reduce((s, c) => s + (c.results ?? 0), 0)
+  const avgCostPerResult = totalResults > 0 ? totalSpend / totalResults : null
+  const activeCount = campaigns.filter((c) => isActiveStatus(c.status)).length
 
   return (
     <div className="rounded-xl border border-border bg-card">
@@ -107,11 +144,13 @@ export function MetaCampaignsPanel({ projectId, cycleId, campaigns: initialCampa
       {campaigns.length > 0 && (
         <>
           {/* Summary row */}
-          <div className="grid grid-cols-4 gap-3 px-5 py-3 border-b border-border bg-muted/20">
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 px-5 py-3 border-b border-border bg-muted/20">
+            <SummaryKpi label="Activas" value={`${activeCount}/${campaigns.length}`} />
             <SummaryKpi label="Inversión total" value={fmt$(totalSpend)} />
             <SummaryKpi label="Impresiones" value={fmtN(totalImpressions)} />
             <SummaryKpi label="Clics" value={fmtN(totalClicks)} />
             <SummaryKpi label="CTR promedio" value={fmtPct(avgCtr)} />
+            <SummaryKpi label="Costo / resultado" value={fmt$(avgCostPerResult)} />
           </div>
 
           {/* Table */}
@@ -120,12 +159,15 @@ export function MetaCampaignsPanel({ projectId, cycleId, campaigns: initialCampa
               <thead>
                 <tr className="border-b border-border">
                   <th className="text-left px-5 py-2 font-medium text-muted-foreground">Campaña</th>
+                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">Estado</th>
                   <th className="text-right px-3 py-2 font-medium text-muted-foreground">Inversión</th>
                   <th className="text-right px-3 py-2 font-medium text-muted-foreground">Impresiones</th>
                   <th className="text-right px-3 py-2 font-medium text-muted-foreground">Clics</th>
                   <th className="text-right px-3 py-2 font-medium text-muted-foreground">CTR</th>
                   <th className="text-right px-3 py-2 font-medium text-muted-foreground">CPC</th>
-                  <th className="text-right px-5 py-2 font-medium text-muted-foreground">CPM</th>
+                  <th className="text-right px-3 py-2 font-medium text-muted-foreground">CPM</th>
+                  <th className="text-right px-3 py-2 font-medium text-muted-foreground">Resultados</th>
+                  <th className="text-right px-5 py-2 font-medium text-muted-foreground">Costo/Resultado</th>
                 </tr>
               </thead>
               <tbody>
@@ -134,12 +176,24 @@ export function MetaCampaignsPanel({ projectId, cycleId, campaigns: initialCampa
                     <td className="px-5 py-2.5 font-medium text-foreground truncate max-w-[200px]">
                       {c.campaign_name ?? c.campaign_id}
                     </td>
+                    <td className="px-3 py-2.5">
+                      <StatusDot status={c.status} />
+                    </td>
                     <td className="px-3 py-2.5 text-right tabular-nums">{fmt$(c.spend)}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums">{fmtN(c.impressions)}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums">{fmtN(c.clicks)}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums">{fmtPct(c.ctr)}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums">{fmt$(c.cpc)}</td>
-                    <td className="px-5 py-2.5 text-right tabular-nums">{fmt$(c.cpm)}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">{fmt$(c.cpm)}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">
+                      {fmtN(c.results)}
+                      {c.results && resultsTypeLabel(c.results_type) && (
+                        <span className="block text-[10px] text-muted-foreground font-normal">{resultsTypeLabel(c.results_type)}</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-2.5 text-right tabular-nums">
+                      {fmt$(c.results ? (c.spend ?? 0) / c.results : null)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
