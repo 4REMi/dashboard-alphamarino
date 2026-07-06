@@ -239,3 +239,108 @@ export async function getMetaCampaigns(projectId: string, cycleId: string): Prom
   if (error) return []
   return data ?? []
 }
+
+// ── Ads Manager-style drill-down (Campaign → Ad Set → Ad/creative) ─────────
+// Fetched live from Meta on demand when the user expands a row — nothing
+// here is persisted, this is just a lightweight browsing view.
+
+export interface MetaAdSetSummary {
+  id: string
+  name: string
+  status: string | null
+}
+
+export async function getMetaAdSets(campaignId: string): Promise<{ adSets: MetaAdSetSummary[]; error?: string }> {
+  const accessToken = process.env.META_SYSTEM_USER_TOKEN
+  if (!accessToken) return { adSets: [], error: "META_SYSTEM_USER_TOKEN no configurado" }
+
+  const url = new URL(`${META_BASE}/${campaignId}/adsets`)
+  url.searchParams.set("fields", "id,name,effective_status")
+  url.searchParams.set("limit", "100")
+  url.searchParams.set("access_token", accessToken)
+
+  try {
+    const res = await fetch(url.toString(), { cache: "no-store" })
+    const json = await res.json()
+    if (json.error) return { adSets: [], error: `Meta API: ${json.error.message}` }
+    const adSets: MetaAdSetSummary[] = (json.data ?? []).map((a: any) => ({
+      id: a.id,
+      name: a.name ?? a.id,
+      status: a.effective_status ?? null,
+    }))
+    return { adSets }
+  } catch {
+    return { adSets: [], error: "Error de red al conectar con Meta" }
+  }
+}
+
+export interface MetaAdCreative {
+  id: string
+  name: string
+  status: string | null
+  thumbnailUrl: string | null
+  imageUrl: string | null
+  videoUrl: string | null
+  body: string | null
+  title: string | null
+  cta: string | null
+}
+
+export async function getMetaAds(adSetId: string): Promise<{ ads: MetaAdCreative[]; error?: string }> {
+  const accessToken = process.env.META_SYSTEM_USER_TOKEN
+  if (!accessToken) return { ads: [], error: "META_SYSTEM_USER_TOKEN no configurado" }
+
+  const url = new URL(`${META_BASE}/${adSetId}/ads`)
+  url.searchParams.set(
+    "fields",
+    "id,name,effective_status,creative{id,thumbnail_url,image_url,video_id,body,title,call_to_action_type,object_story_spec}"
+  )
+  url.searchParams.set("limit", "50")
+  url.searchParams.set("access_token", accessToken)
+
+  let json: any
+  try {
+    const res = await fetch(url.toString(), { cache: "no-store" })
+    json = await res.json()
+    if (json.error) return { ads: [], error: `Meta API: ${json.error.message}` }
+  } catch {
+    return { ads: [], error: "Error de red al conectar con Meta" }
+  }
+
+  const rows = json.data ?? []
+  const ads: MetaAdCreative[] = await Promise.all(rows.map(async (a: any) => {
+    const creative = a.creative ?? {}
+    const story = creative.object_story_spec ?? {}
+    const linkData = story.link_data ?? {}
+    const videoData = story.video_data ?? {}
+
+    let videoUrl: string | null = null
+    const videoId = creative.video_id || videoData.video_id
+    if (videoId) {
+      try {
+        const vUrl = new URL(`${META_BASE}/${videoId}`)
+        vUrl.searchParams.set("fields", "source")
+        vUrl.searchParams.set("access_token", accessToken)
+        const vRes = await fetch(vUrl.toString(), { cache: "no-store" })
+        const vJson = await vRes.json()
+        videoUrl = vJson.source ?? null
+      } catch {
+        // no video source available — thumbnail-only preview
+      }
+    }
+
+    return {
+      id: a.id,
+      name: a.name ?? a.id,
+      status: a.effective_status ?? null,
+      thumbnailUrl: creative.thumbnail_url ?? videoData.image_url ?? null,
+      imageUrl: creative.image_url ?? linkData.picture ?? null,
+      videoUrl,
+      body: creative.body ?? linkData.message ?? videoData.message ?? null,
+      title: creative.title ?? linkData.name ?? videoData.title ?? null,
+      cta: creative.call_to_action_type ?? linkData.call_to_action?.type ?? videoData.call_to_action?.type ?? null,
+    }
+  }))
+
+  return { ads }
+}

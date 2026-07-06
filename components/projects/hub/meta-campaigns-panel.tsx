@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { Fragment, useEffect, useState, useTransition } from "react"
 import type { MetaCampaign } from "@/lib/types"
-import { syncMetaCampaigns } from "@/lib/actions/meta"
+import { syncMetaCampaigns, getMetaAdSets, getMetaAds, type MetaAdSetSummary, type MetaAdCreative } from "@/lib/actions/meta"
 
 interface Props {
   projectId: string
@@ -87,6 +87,14 @@ export function MetaCampaignsPanel({ projectId, cycleId, campaigns: initialCampa
   const [lastSynced, setLastSynced] = useState<string | null>(
     initialCampaigns[0]?.synced_at ?? null
   )
+
+  // Ads Manager-style drill-down — only one campaign expanded at a time to
+  // keep the panel from growing too tall.
+  const [expandedCampaignId, setExpandedCampaignId] = useState<string | null>(null)
+
+  function toggleCampaign(campaignId: string) {
+    setExpandedCampaignId((prev) => prev === campaignId ? null : campaignId)
+  }
 
   function handleSync() {
     setSyncError(null)
@@ -183,6 +191,7 @@ export function MetaCampaignsPanel({ projectId, cycleId, campaigns: initialCampa
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-border">
+                  <th className="w-6"></th>
                   <th className="text-left px-5 py-2 font-medium text-muted-foreground">Campaña</th>
                   <th className="text-left px-3 py-2 font-medium text-muted-foreground">Estado</th>
                   <th className="text-right px-3 py-2 font-medium text-muted-foreground">Inversión</th>
@@ -197,34 +206,54 @@ export function MetaCampaignsPanel({ projectId, cycleId, campaigns: initialCampa
                 </tr>
               </thead>
               <tbody>
-                {campaigns.map((c) => (
-                  <tr key={c.id} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
-                    <td className="px-5 py-2.5 font-medium text-foreground truncate max-w-[200px]">
-                      {c.campaign_name ?? c.campaign_id}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <StatusDot status={c.status} />
-                    </td>
-                    <td className="px-3 py-2.5 text-right tabular-nums">{fmt$(c.spend)}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums">{fmtN(c.impressions)}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums">{fmtN(c.clicks)}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums">{fmtPct(c.ctr)}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums">{fmt$(c.cpc)}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums">{fmt$(c.cpm)}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums">
-                      {fmtN(c.results)}
-                      {c.results && resultsTypeLabel(c.results_type) && (
-                        <span className="block text-[10px] text-muted-foreground font-normal">{resultsTypeLabel(c.results_type)}</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5 text-right tabular-nums">
-                      {fmt$(c.results ? (c.spend ?? 0) / c.results : null)}
-                    </td>
-                    <td className="px-5 py-2.5 text-right tabular-nums">
-                      {fmtRoas(campaignRoas(c))}
-                    </td>
-                  </tr>
-                ))}
+                {campaigns.map((c) => {
+                  const expanded = expandedCampaignId === c.campaign_id
+                  return (
+                  <Fragment key={c.id}>
+                    <tr
+                      onClick={() => toggleCampaign(c.campaign_id)}
+                      className="border-b border-border/50 hover:bg-muted/20 transition-colors cursor-pointer"
+                    >
+                      <td className="pl-4 text-muted-foreground">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={`w-3 h-3 transition-transform ${expanded ? "rotate-90" : ""}`}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="m9 6 6 6-6 6" />
+                        </svg>
+                      </td>
+                      <td className="px-5 py-2.5 font-medium text-foreground truncate max-w-[200px]">
+                        {c.campaign_name ?? c.campaign_id}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <StatusDot status={c.status} />
+                      </td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">{fmt$(c.spend)}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">{fmtN(c.impressions)}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">{fmtN(c.clicks)}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">{fmtPct(c.ctr)}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">{fmt$(c.cpc)}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">{fmt$(c.cpm)}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">
+                        {fmtN(c.results)}
+                        {c.results && resultsTypeLabel(c.results_type) && (
+                          <span className="block text-[10px] text-muted-foreground font-normal">{resultsTypeLabel(c.results_type)}</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">
+                        {fmt$(c.results ? (c.spend ?? 0) / c.results : null)}
+                      </td>
+                      <td className="px-5 py-2.5 text-right tabular-nums">
+                        {fmtRoas(campaignRoas(c))}
+                      </td>
+                    </tr>
+                    {expanded && (
+                      <tr className="border-b border-border/50">
+                        <td colSpan={11} className="bg-muted/10 p-0">
+                          <AdSetDrilldown campaignId={c.campaign_id} />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -239,6 +268,144 @@ function SummaryKpi({ label, value }: { label: string; value: string }) {
     <div>
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="text-sm font-semibold text-foreground">{value}</p>
+    </div>
+  )
+}
+
+// ── Ads Manager-style drill-down ────────────────────────────────────────────
+
+function AdSetDrilldown({ campaignId }: { campaignId: string }) {
+  const [adSets, setAdSets] = useState<MetaAdSetSummary[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [expandedAdSetId, setExpandedAdSetId] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    getMetaAdSets(campaignId).then((r) => {
+      if (cancelled) return
+      if (r.error) setError(r.error)
+      setAdSets(r.adSets)
+      setLoading(false)
+    })
+    return () => { cancelled = true }
+  }, [campaignId])
+
+  if (loading) return <div className="px-8 py-3 text-xs text-muted-foreground">Cargando ad sets…</div>
+  if (error) return <div className="px-8 py-3 text-xs text-destructive">{error}</div>
+  if (!adSets?.length) return <div className="px-8 py-3 text-xs text-muted-foreground">Sin ad sets.</div>
+
+  return (
+    <div className="px-8 py-3 space-y-1.5">
+      {adSets.map((a) => (
+        <AdSetRow
+          key={a.id}
+          adSet={a}
+          expanded={expandedAdSetId === a.id}
+          onToggle={() => setExpandedAdSetId((prev) => prev === a.id ? null : a.id)}
+        />
+      ))}
+    </div>
+  )
+}
+
+function AdSetRow({ adSet, expanded, onToggle }: {
+  adSet: MetaAdSetSummary
+  expanded: boolean
+  onToggle: () => void
+}) {
+  return (
+    <div className="rounded-lg border border-border/60 bg-card">
+      <button onClick={onToggle} className="w-full flex items-center gap-2 px-3 py-2 text-left">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={`w-3 h-3 text-muted-foreground transition-transform flex-shrink-0 ${expanded ? "rotate-90" : ""}`}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="m9 6 6 6-6 6" />
+        </svg>
+        <span className="text-xs font-medium flex-1 truncate">{adSet.name}</span>
+        <StatusDot status={adSet.status} />
+      </button>
+      {expanded && <AdList adSetId={adSet.id} />}
+    </div>
+  )
+}
+
+function AdList({ adSetId }: { adSetId: string }) {
+  const [ads, setAds] = useState<MetaAdCreative[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [selectedAd, setSelectedAd] = useState<MetaAdCreative | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    getMetaAds(adSetId).then((r) => {
+      if (cancelled) return
+      if (r.error) setError(r.error)
+      setAds(r.ads)
+      setLoading(false)
+    })
+    return () => { cancelled = true }
+  }, [adSetId])
+
+  return (
+    <div className="border-t border-border/60 px-3 py-3">
+      {loading && <p className="text-xs text-muted-foreground">Cargando ads…</p>}
+      {error && <p className="text-xs text-destructive">{error}</p>}
+      {!loading && !error && ads?.length === 0 && <p className="text-xs text-muted-foreground">Sin ads.</p>}
+      {!loading && ads && ads.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {ads.map((ad) => (
+            <button key={ad.id} onClick={() => setSelectedAd(ad)} className="w-20 flex flex-col gap-1 items-center group">
+              <div className="w-20 h-20 rounded-lg overflow-hidden bg-muted border border-border relative">
+                {(ad.thumbnailUrl || ad.imageUrl) ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={ad.thumbnailUrl ?? ad.imageUrl!} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-muted-foreground text-[10px] text-center px-1">Sin preview</div>
+                )}
+                {ad.videoUrl && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                    <svg viewBox="0 0 24 24" fill="white" className="w-5 h-5"><path d="M8 5v14l11-7z" /></svg>
+                  </div>
+                )}
+              </div>
+              <span className="text-[10px] text-muted-foreground truncate w-full text-center">{ad.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {selectedAd && <AdCreativeModal ad={selectedAd} onClose={() => setSelectedAd(null)} />}
+    </div>
+  )
+}
+
+function AdCreativeModal({ ad, onClose }: { ad: MetaAdCreative; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/70" onClick={onClose}>
+      <div className="bg-card rounded-xl max-w-lg w-full max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <span className="text-sm font-semibold truncate">{ad.name}</span>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-lg leading-none">✕</button>
+        </div>
+        <div className="bg-black flex justify-center">
+          {ad.videoUrl ? (
+            <video src={ad.videoUrl} controls className="max-w-full max-h-[400px]" />
+          ) : ad.imageUrl || ad.thumbnailUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={ad.imageUrl ?? ad.thumbnailUrl!} alt="" className="max-w-full max-h-[400px] object-contain" />
+          ) : (
+            <div className="h-40 flex items-center justify-center text-muted-foreground text-xs">Sin preview disponible</div>
+          )}
+        </div>
+        <div className="p-4 space-y-2 text-sm">
+          {ad.title && <p className="font-semibold">{ad.title}</p>}
+          {ad.body && <p className="text-muted-foreground whitespace-pre-wrap">{ad.body}</p>}
+          {ad.cta && <span className="inline-block text-xs font-medium bg-muted px-2 py-1 rounded">{ad.cta}</span>}
+          {!ad.title && !ad.body && !ad.cta && <p className="text-xs text-muted-foreground">Sin copy disponible.</p>}
+        </div>
+      </div>
     </div>
   )
 }
