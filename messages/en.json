@@ -132,6 +132,7 @@
     "attention": {
       "overdueTasks": "Overdue tasks",
       "blockedPhase": "Blocked phase",
+      "pendingClientChanges": "Client requested changes",
       "inactiveDays": "{days}d inactive"
     },
     "filter": {

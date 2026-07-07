@@ -167,6 +167,7 @@ export interface ProjectWithAttention extends Project {
     hasOverdueTasks: boolean
     hasBlockedPhase: boolean
     hasPendingCycleReport: boolean
+    hasPendingClientChanges: boolean
     inactiveForDays: number
   }
 }

@@ -8,12 +8,72 @@ import { ConceptModal } from "./concept-modal"
 import { AssetModal } from "./asset-modal"
 import { generateCreativeConcepts, confirmAIDrafts, promoteConcept, demoteConcept, deleteConcept, bulkDeleteConcepts, deleteBrief, deleteAsset, toggleClientVisible } from "@/lib/actions/creatives"
 import { CONCEPT_STATUS_COLORS, AWARENESS_LABELS, ANGLE_GUIDE, PRODUCTION_STATUS_COLORS, VERDICT_COLORS } from "@/lib/constants/creatives"
-import type { CreativeConcept, CreativeAsset, CreativeBrief, BrandLine } from "@/lib/types"
+import type { CreativeConcept, CreativeAsset, CreativeBrief, BrandLine, AdCloneLine } from "@/lib/types"
 import type { AIDraftConcept } from "@/lib/actions/creatives"
 import { BriefCreator } from "./brief-creator"
 import { QuickScriptModal } from "./quick-script-modal"
 import { Plus, Sparkles, Check, X, Loader2, Star, ArrowUpRight, Pencil, Trash2, Link2, FileText, Upload, ChevronDown, Film, ImageIcon, Eye, EyeOff, ZoomIn } from "lucide-react"
 import { cn } from "@/lib/utils"
+
+// One entry per script inside a brief's adapted_script — mirrors the
+// normalization used on the client portal, so admin and client agree on
+// what counts as "a script" and what its status/feedback is.
+interface ScriptReviewEntry {
+  key: string
+  label: string
+  status: "pending_review" | "approved" | "changes_requested"
+  feedback: string | null
+}
+
+function scriptReviewEntries(brief: CreativeBrief): ScriptReviewEntry[] {
+  const raw = brief.adapted_script as Record<string, AdCloneLine[]> | AdCloneLine[] | null
+  if (!raw) return []
+  const reviews = brief.script_reviews ?? {}
+  if (Array.isArray(raw)) {
+    if (!raw.length) return []
+    const r = reviews["_single"]
+    return [{ key: "_single", label: "Guión", status: r?.client_status ?? "pending_review", feedback: r?.client_feedback ?? null }]
+  }
+  return Object.entries(raw)
+    .filter(([, lines]) => lines?.length)
+    .map(([key, ], i) => {
+      const r = reviews[key]
+      return { key, label: `Guión ${Object.keys(raw).length > 1 ? `#${i + 1}` : ""}`.trim(), status: r?.client_status ?? "pending_review", feedback: r?.client_feedback ?? null }
+    })
+}
+
+const SCRIPT_STATUS_STYLE: Record<ScriptReviewEntry["status"], { label: string; className: string }> = {
+  pending_review:    { label: "Pendiente",       className: "bg-amber-50 text-amber-700 border-amber-200" },
+  approved:          { label: "Aprobado",        className: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  changes_requested: { label: "Cambios pedidos", className: "bg-sky-50 text-sky-700 border-sky-200" },
+}
+
+function BriefScriptStatus({ brief }: { brief: CreativeBrief }) {
+  const entries = scriptReviewEntries(brief)
+  if (entries.length === 0) return null
+  const changes = entries.filter((e) => e.status === "changes_requested")
+
+  return (
+    <div className="mt-1.5 space-y-1">
+      <div className="flex flex-wrap gap-1">
+        {entries.map((e) => (
+          <span key={e.key} className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded border", SCRIPT_STATUS_STYLE[e.status].className)}>
+            {e.label} · {SCRIPT_STATUS_STYLE[e.status].label}
+          </span>
+        ))}
+      </div>
+      {changes.length > 0 && (
+        <div className="space-y-1">
+          {changes.filter((e) => e.feedback).map((e) => (
+            <div key={e.key} className="text-[11px] text-sky-800 bg-sky-50/70 border border-sky-100 rounded-lg px-2.5 py-1.5">
+              <span className="font-semibold">{e.label}:</span> &quot;{e.feedback}&quot;
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 const FUNNEL_COLORS: Record<string, string> = {
   TOF: "bg-sky-100 text-sky-700",
@@ -268,38 +328,41 @@ function ConceptDetailModal({
                 {conceptBriefs.map((b) => (
                   <div
                     key={b.id}
-                    className="flex items-center justify-between text-xs py-2 px-3 rounded-lg bg-violet-50/60 border border-violet-100 group"
+                    className="text-xs py-2 px-3 rounded-lg bg-violet-50/60 border border-violet-100 group"
                   >
-                    <a
-                      href={`/share/brief/${b.share_token}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-2 min-w-0 flex-1 hover:opacity-80 transition-opacity"
-                    >
-                      <FileText className="w-3.5 h-3.5 text-violet-500 flex-shrink-0" />
-                      <span className="font-medium text-violet-900 truncate">
-                        {b.brand_brain?.name ?? "Brief"}
-                      </span>
-                      <span className="text-violet-500">
-                        {new Date(b.created_at).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}
-                      </span>
-                      <span className="text-violet-400 text-[10px] font-medium">Abrir ↗</span>
-                    </a>
-                    {isAdminOrSubadmin && (
-                      <button
-                        type="button"
-                        className="ml-2 p-1 rounded text-violet-300 hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100"
-                        onClick={() => {
-                          if (!confirm("¿Eliminar este brief?")) return
-                          startTransition(async () => {
-                            await deleteBrief(b.id, projectId)
-                            onRefresh()
-                          })
-                        }}
+                    <div className="flex items-center justify-between">
+                      <a
+                        href={`/share/brief/${b.share_token}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 min-w-0 flex-1 hover:opacity-80 transition-opacity"
                       >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    )}
+                        <FileText className="w-3.5 h-3.5 text-violet-500 flex-shrink-0" />
+                        <span className="font-medium text-violet-900 truncate">
+                          {b.brand_brain?.name ?? "Brief"}
+                        </span>
+                        <span className="text-violet-500">
+                          {new Date(b.created_at).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}
+                        </span>
+                        <span className="text-violet-400 text-[10px] font-medium">Abrir ↗</span>
+                      </a>
+                      {isAdminOrSubadmin && (
+                        <button
+                          type="button"
+                          className="ml-2 p-1 rounded text-violet-300 hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100"
+                          onClick={() => {
+                            if (!confirm("¿Eliminar este brief?")) return
+                            startTransition(async () => {
+                              await deleteBrief(b.id, projectId)
+                              onRefresh()
+                            })
+                          }}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                    <BriefScriptStatus brief={b} />
                   </div>
                 ))}
               </div>
@@ -1372,12 +1435,22 @@ function ConceptRow({
       </td>
       <td className="px-3 py-3">
         <div className="flex items-center justify-end gap-1.5">
-          {conceptBriefs.length > 0 && (
-            <span className="inline-flex items-center gap-0.5 text-xs text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded-full" title={`${conceptBriefs.length} brief${conceptBriefs.length !== 1 ? "s" : ""}`}>
-              <FileText className="w-3 h-3" />
-              {conceptBriefs.length}
-            </span>
-          )}
+          {conceptBriefs.length > 0 && (() => {
+            const hasChanges = conceptBriefs.some((b) => scriptReviewEntries(b).some((e) => e.status === "changes_requested"))
+            return (
+              <span
+                className={cn(
+                  "relative inline-flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded-full",
+                  hasChanges ? "text-sky-700 bg-sky-50" : "text-violet-600 bg-violet-50"
+                )}
+                title={hasChanges ? "Hay cambios pedidos por el cliente en un guión" : `${conceptBriefs.length} brief${conceptBriefs.length !== 1 ? "s" : ""}`}
+              >
+                <FileText className="w-3 h-3" />
+                {conceptBriefs.length}
+                {hasChanges && <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-sky-500" />}
+              </span>
+            )
+          })()}
           {conceptAssets.length > 0 && (
             <span className="inline-flex items-center gap-0.5 text-xs text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-full" title={`${conceptAssets.length} asset${conceptAssets.length !== 1 ? "s" : ""}`}>
               <Upload className="w-3 h-3" />

@@ -29,6 +29,7 @@ interface ProjectCardProps {
       hasOverdueTasks: boolean
       hasBlockedPhase: boolean
       hasPendingCycleReport: boolean
+      hasPendingClientChanges: boolean
       inactiveForDays: number
     }
   }
@@ -57,6 +58,7 @@ export function ProjectCard({ project, canViewFinancials = false }: ProjectCardP
   const needsAttention = attention && (
     attention.hasOverdueTasks ||
     attention.hasBlockedPhase ||
+    attention.hasPendingClientChanges ||
     attention.inactiveForDays > 7
   )
 
@@ -234,6 +236,9 @@ export function ProjectCard({ project, canViewFinancials = false }: ProjectCardP
               )}
               {attention?.hasBlockedPhase && (
                 <span className="text-xs bg-destructive/10 text-destructive px-1.5 py-0.5 rounded">{t("attention.blockedPhase")}</span>
+              )}
+              {attention?.hasPendingClientChanges && (
+                <span className="text-xs bg-sky-100 text-sky-700 px-1.5 py-0.5 rounded">{t("attention.pendingClientChanges")}</span>
               )}
               {attention?.inactiveForDays > 7 && (
                 <span className="text-xs bg-muted text-muted-foreground px-1.5 py-0.5 rounded">{t("attention.inactiveDays", { days: attention.inactiveForDays })}</span>

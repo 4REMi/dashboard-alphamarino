@@ -41,7 +41,7 @@ export default async function HomePage() {
   const activeProjects = projects.filter((p) => p.status === "Active")
   const attentionProjects = activeProjects.filter(
     (p) => p.attention?.hasOverdueTasks || p.attention?.hasBlockedPhase ||
-           p.attention?.hasPendingCycleReport || p.attention?.inactiveForDays > 7
+           p.attention?.hasPendingCycleReport || p.attention?.hasPendingClientChanges || p.attention?.inactiveForDays > 7
   )
 
   // Role-specific fetches

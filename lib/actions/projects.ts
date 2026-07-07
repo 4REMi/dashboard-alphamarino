@@ -209,6 +209,31 @@ export async function getProjects(includeArchived = false) {
     }
   } catch { /* column may not exist */ }
 
+  // Projects where the client is currently waiting on the team — distinct from
+  // "activity" (which tracks work the team did). An asset or script can sit in
+  // changes_requested for a while with no further admin activity, so this has
+  // to be its own signal rather than folded into inactiveForDays.
+  const pendingChangesSet = new Set<string>()
+  try {
+    const { data: assetChanges } = await supabase
+      .from("creative_assets")
+      .select("project_id")
+      .eq("client_status", "changes_requested")
+      .eq("client_visible", true)
+    for (const a of assetChanges ?? []) pendingChangesSet.add(a.project_id as string)
+
+    const { data: briefsWithReviews } = await supabase
+      .from("creative_briefs")
+      .select("project_id, script_reviews")
+      .not("script_reviews", "eq", "{}")
+    for (const b of briefsWithReviews ?? []) {
+      const reviews = (b.script_reviews ?? {}) as Record<string, { client_status?: string }>
+      if (Object.values(reviews).some((r) => r?.client_status === "changes_requested")) {
+        pendingChangesSet.add(b.project_id as string)
+      }
+    }
+  } catch { /* columns may not exist yet */ }
+
   return rawData.map((p) => {
     const tasks = (p.tasks ?? []) as Array<{ status: string; due_date: string | null }>
     const phases = (p.phases ?? []) as Array<{ status: string }>
@@ -238,6 +263,7 @@ export async function getProjects(includeArchived = false) {
         hasOverdueTasks,
         hasBlockedPhase,
         hasPendingCycleReport: false,
+        hasPendingClientChanges: pendingChangesSet.has(pid),
         inactiveForDays,
       },
     }
