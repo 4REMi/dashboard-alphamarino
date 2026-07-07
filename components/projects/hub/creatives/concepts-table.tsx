@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useMemo, useState, useTransition } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -71,6 +71,78 @@ function BriefScriptStatus({ brief }: { brief: CreativeBrief }) {
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+// Flattened queue of every script across every concept/service in this
+// project that needs attention — lives inside Creative Tracker itself (not
+// a separate panel elsewhere) and only renders when there's something to
+// show, so it never occupies space when everything is caught up.
+function PendingScriptsBanner({ rows }: {
+  rows: { key: string; conceptName: string; lineName: string | null; shareToken: string; status: "pending_review" | "changes_requested"; feedback: string | null }[]
+}) {
+  const [openKey, setOpenKey] = useState<string | null>(null)
+  const changesCount = rows.filter((r) => r.status === "changes_requested").length
+  const pendingCount = rows.filter((r) => r.status === "pending_review").length
+
+  return (
+    <div className="border rounded-xl overflow-hidden">
+      <div className="px-4 py-2.5 bg-sky-50/60 border-b flex items-center gap-2">
+        <FileText className="w-3.5 h-3.5 text-sky-600" />
+        <p className="text-xs font-semibold text-sky-900">
+          Guiones que requieren atención
+        </p>
+        <span className="text-xs text-sky-700">
+          {changesCount > 0 && `${changesCount} cambios pedidos`}
+          {changesCount > 0 && pendingCount > 0 && " · "}
+          {pendingCount > 0 && `${pendingCount} pendientes`}
+        </span>
+      </div>
+      <div className="divide-y">
+        {rows.map((r) => {
+          const isOpen = openKey === r.key
+          return (
+            <div key={r.key}>
+              <button
+                type="button"
+                onClick={() => setOpenKey((prev) => prev === r.key ? null : r.key)}
+                className="w-full flex items-center gap-2 px-4 py-2 text-left hover:bg-muted/30 transition-colors"
+              >
+                {r.lineName && (
+                  <span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded flex-shrink-0">{r.lineName}</span>
+                )}
+                <span className="text-xs font-medium truncate flex-1">{r.conceptName}</span>
+                <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded border flex-shrink-0", SCRIPT_STATUS_STYLE[r.status].className)}>
+                  {SCRIPT_STATUS_STYLE[r.status].label}
+                </span>
+                {r.feedback && !isOpen && (
+                  <span className="text-[11px] text-muted-foreground truncate max-w-[220px] hidden sm:block">
+                    &quot;{r.feedback}&quot;
+                  </span>
+                )}
+              </button>
+              {isOpen && (
+                <div className="px-4 pb-2.5 flex items-center justify-between gap-3">
+                  {r.feedback ? (
+                    <p className="text-xs text-sky-900 bg-sky-50/70 border border-sky-100 rounded-lg px-2.5 py-1.5 flex-1">
+                      &quot;{r.feedback}&quot;
+                    </p>
+                  ) : <span />}
+                  <a
+                    href={`/share/brief/${r.shareToken}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[11px] font-medium text-violet-600 hover:text-violet-800 flex-shrink-0"
+                  >
+                    Abrir brief ↗
+                  </a>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -1033,8 +1105,38 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
     )
   }
 
+  const pendingScriptRows = useMemo(() => {
+    const conceptById = new Map(concepts.map((c) => [c.id, c]))
+    const lineNameById = new Map(brandLines.map((l) => [l.id, l.name]))
+    const rows: {
+      key: string
+      conceptName: string
+      lineName: string | null
+      shareToken: string
+      status: "pending_review" | "changes_requested"
+      feedback: string | null
+    }[] = []
+    for (const b of briefs) {
+      const concept = conceptById.get(b.concept_id)
+      for (const e of scriptReviewEntries(b)) {
+        if (e.status !== "pending_review" && e.status !== "changes_requested") continue
+        rows.push({
+          key: `${b.id}:${e.key}`,
+          conceptName: concept?.name || concept?.angle_type || "Concepto",
+          lineName: concept?.brand_line_id ? lineNameById.get(concept.brand_line_id) ?? null : null,
+          shareToken: b.share_token,
+          status: e.status,
+          feedback: e.feedback,
+        })
+      }
+    }
+    return rows.sort((a, b) => (a.status === b.status ? 0 : a.status === "changes_requested" ? -1 : 1))
+  }, [briefs, concepts, brandLines])
+
   return (
     <div className="space-y-4">
+      {pendingScriptRows.length > 0 && <PendingScriptsBanner rows={pendingScriptRows} />}
+
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <p className="text-xs text-muted-foreground">
