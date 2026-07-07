@@ -12,6 +12,14 @@ interface Reference {
   videoSrc?: string
   thumbSrc?: string
   script?: AdCloneLine[]
+  clientStatus?: string | null
+  clientFeedback?: string | null
+}
+
+const CLIENT_STATUS_STYLE: Record<string, { label: string; className: string }> = {
+  pending_review:    { label: "Pendiente de revisión", className: "bg-amber-50 text-amber-700" },
+  approved:          { label: "✓ Aprobado por el cliente", className: "bg-emerald-50 text-emerald-700" },
+  changes_requested: { label: "Cambios pedidos por el cliente", className: "bg-sky-50 text-sky-700" },
 }
 
 interface Props {
@@ -84,6 +92,11 @@ export function BriefReferences({ references, briefId, editable = false }: Props
                       · {ref.script.length} líneas de guión
                     </span>
                   )}
+                  {ref.clientStatus && CLIENT_STATUS_STYLE[ref.clientStatus] && (
+                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${CLIENT_STATUS_STYLE[ref.clientStatus].className}`}>
+                      {CLIENT_STATUS_STYLE[ref.clientStatus].label}
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -126,6 +139,16 @@ export function BriefReferences({ references, briefId, editable = false }: Props
                     />
                   </div>
                 ) : null}
+
+                {/* Client feedback */}
+                {ref.clientStatus === "changes_requested" && ref.clientFeedback && (
+                  <div className="px-5 py-3 bg-sky-50 border-t border-sky-100">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-sky-600 mb-1">
+                      Cambios pedidos por el cliente
+                    </p>
+                    <p className="text-sm text-sky-900 leading-relaxed">&quot;{ref.clientFeedback}&quot;</p>
+                  </div>
+                )}
 
                 {/* Script */}
                 {isVideo && ref.script && ref.script.length > 0 && (

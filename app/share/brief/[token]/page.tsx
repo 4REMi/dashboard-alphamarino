@@ -44,16 +44,19 @@ export default async function ShareBriefPage({ params }: Props) {
   const rawScript = brief.adapted_script as Record<string, AdCloneLine[]> | AdCloneLine[] | null
   const scriptMap = rawScript && !Array.isArray(rawScript) ? rawScript : null
   const legacyScript = rawScript && Array.isArray(rawScript) ? rawScript : null
+  const scriptReviews = (brief.script_reviews ?? {}) as Record<string, { client_status?: string | null; client_feedback?: string | null }>
   const attachedAds = (brief as any).attached_ads as any[] | undefined
 
   const angleEntry = concept?.angle_type ? ANGLE_GUIDE.find((a) => a.name === concept.angle_type) : null
 
-  const references: { id: string; type: "video" | "image"; name: string; videoSrc?: string; thumbSrc?: string; script?: AdCloneLine[] }[] = []
+  const references: { id: string; type: "video" | "image"; name: string; videoSrc?: string; thumbSrc?: string; script?: AdCloneLine[]; clientStatus?: string | null; clientFeedback?: string | null }[] = []
 
   const videoAds = attachedAds?.filter((a) => a.format === "video" || a.cached_video_url || a.video_url) ?? []
   const imageAds = attachedAds?.filter((a) => a.format !== "video" && !a.cached_video_url && !a.video_url) ?? []
 
   videoAds.forEach((ad) => {
+    const reviewKey = legacyScript ? "_single" : ad.id
+    const review = scriptReviews[reviewKey]
     references.push({
       id: ad.id,
       type: "video",
@@ -61,6 +64,8 @@ export default async function ShareBriefPage({ params }: Props) {
       videoSrc: ad.cached_video_url || ad.video_url || undefined,
       thumbSrc: ad.cached_image_url || ad.image_url || undefined,
       script: scriptMap?.[ad.id] ?? legacyScript ?? undefined,
+      clientStatus: review?.client_status ?? null,
+      clientFeedback: review?.client_feedback ?? null,
     })
   })
 
@@ -79,11 +84,14 @@ export default async function ShareBriefPage({ params }: Props) {
     const coveredIds = new Set(references.map((r) => r.id))
     Object.entries(scriptMap).forEach(([key, lines], i) => {
       if (coveredIds.has(key) || !lines?.length) return
+      const review = scriptReviews[key]
       references.push({
         id: key,
         type: "video",
         name: `Guión generado — opción ${i + 1}`,
         script: lines,
+        clientStatus: review?.client_status ?? null,
+        clientFeedback: review?.client_feedback ?? null,
       })
     })
   }
