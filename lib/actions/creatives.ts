@@ -701,19 +701,37 @@ export async function updateBriefScript(
 
   const { data: brief } = await supabase
     .from("creative_briefs")
-    .select("adapted_script")
+    .select("adapted_script, script_reviews, project_id, share_token")
     .eq("id", briefId)
     .single()
   if (!brief) throw new Error("Brief not found")
 
-  const current = (brief.adapted_script as Record<string, unknown>) ?? {}
-  const updated = { ...current, [adId]: lines }
+  const currentScript = brief.adapted_script
+  const isLegacyArray = Array.isArray(currentScript)
+  const updatedScript = isLegacyArray
+    ? lines
+    : { ...((currentScript as Record<string, unknown>) ?? {}), [adId]: lines }
+
+  // Editing the lines invalidates whatever approval/changes-requested state
+  // applied to the old version — the client needs to see and re-review the
+  // new one, not keep looking at a stale "cambios pedidos" that's already
+  // been addressed (or a stale "aprobado" for lines that changed since).
+  const reviewKey = isLegacyArray ? "_single" : adId
+  const currentReviews = (brief.script_reviews as Record<string, unknown>) ?? {}
+  const updatedReviews = {
+    ...currentReviews,
+    [reviewKey]: { client_status: "pending_review", client_feedback: null },
+  }
 
   const { error } = await supabase
     .from("creative_briefs")
-    .update({ adapted_script: updated, updated_at: new Date().toISOString() })
+    .update({ adapted_script: updatedScript, script_reviews: updatedReviews, updated_at: new Date().toISOString() })
     .eq("id", briefId)
   if (error) throw error
+
+  if (brief.project_id) revalidateProject(brief.project_id as string)
+  revalidatePath(`/share/brief/${brief.share_token}`)
+  if (brief.project_id) revalidatePath(`/share/concepts/${brief.project_id}`)
 }
 
 // ── AI GENERATION ────────────────────────────────────────────

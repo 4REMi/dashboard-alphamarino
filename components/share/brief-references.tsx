@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import { useRouter } from "next/navigation"
 import { updateBriefScript } from "@/lib/actions/creatives"
 import { CopyScriptButton } from "@/components/share/copy-script-button"
 import type { AdCloneLine } from "@/lib/types"
@@ -157,6 +158,7 @@ export function BriefReferences({ references, briefId, editable = false }: Props
                       briefId={briefId}
                       adId={ref.id}
                       initialLines={ref.script}
+                      hadClientFeedback={ref.clientStatus === "changes_requested"}
                     />
                   ) : (
                     <ReadOnlyScript lines={ref.script} />
@@ -210,7 +212,8 @@ function ReadOnlyScript({ lines }: { lines: AdCloneLine[] }) {
   )
 }
 
-function EditableScript({ briefId, adId, initialLines }: { briefId: string; adId: string; initialLines: AdCloneLine[] }) {
+function EditableScript({ briefId, adId, initialLines, hadClientFeedback }: { briefId: string; adId: string; initialLines: AdCloneLine[]; hadClientFeedback?: boolean }) {
+  const router = useRouter()
   const [lines, setLines] = useState<AdCloneLine[]>(initialLines)
   const [isPending, startTransition] = useTransition()
   const [saved, setSaved] = useState(false)
@@ -230,6 +233,10 @@ function EditableScript({ briefId, adId, initialLines }: { briefId: string; adId
     startTransition(async () => {
       await updateBriefScript(briefId, adId, lines)
       setSaved(true)
+      // Saving resets this script's client_status back to pending_review —
+      // refresh so the status badge above and the rest of the page reflect
+      // that immediately instead of still showing the old "cambios pedidos".
+      router.refresh()
     })
   }
 
@@ -242,7 +249,9 @@ function EditableScript({ briefId, adId, initialLines }: { briefId: string; adId
         <div className="flex items-center gap-2">
           <CopyScriptButton lines={lines} brandName={null} />
           {saved && !hasChanges && (
-            <span className="text-[10px] font-medium text-emerald-600">✓ Guardado</span>
+            <span className="text-[10px] font-medium text-emerald-600">
+              ✓ Guardado{hadClientFeedback ? " — vuelve a pendiente de aprobación del cliente" : ""}
+            </span>
           )}
           {hasChanges && (
             <button
