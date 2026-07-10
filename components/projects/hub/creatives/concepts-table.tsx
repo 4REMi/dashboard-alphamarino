@@ -75,74 +75,134 @@ function BriefScriptStatus({ brief }: { brief: CreativeBrief }) {
   )
 }
 
-// Flattened queue of every script across every concept/service in this
-// project that needs attention — lives inside Creative Tracker itself (not
-// a separate panel elsewhere) and only renders when there's something to
-// show, so it never occupies space when everything is caught up.
-function PendingScriptsBanner({ rows }: {
-  rows: { key: string; conceptName: string; lineName: string | null; shareToken: string; status: "pending_review" | "changes_requested"; feedback: string | null }[]
+// Flattened queue of everything across every concept/service in this project
+// that needs attention — lives inside Creative Tracker itself (not a
+// separate panel elsewhere) and only renders when there's something to show,
+// so it never occupies space when everything is caught up. Two blocks:
+// scripts awaiting client review, and assets uploaded but not yet published
+// to the client (the review gate for point 9 of the operational audit).
+function AttentionBanner({ scriptRows, assetRows, projectId, onRefresh, canManageAssets }: {
+  scriptRows: { key: string; conceptName: string; lineName: string | null; shareToken: string; status: "pending_review" | "changes_requested"; feedback: string | null }[]
+  assetRows: { id: string; conceptName: string; lineName: string | null; thumb: string | null; fileType: string | null; format: string | null }[]
+  projectId: string
+  onRefresh: () => void
+  canManageAssets: boolean
 }) {
   const [openKey, setOpenKey] = useState<string | null>(null)
-  const changesCount = rows.filter((r) => r.status === "changes_requested").length
-  const pendingCount = rows.filter((r) => r.status === "pending_review").length
+  const [isPending, startTransition] = useTransition()
+  const changesCount = scriptRows.filter((r) => r.status === "changes_requested").length
+  const pendingCount = scriptRows.filter((r) => r.status === "pending_review").length
+
+  function handlePublish(assetId: string) {
+    startTransition(async () => {
+      await toggleClientVisible(assetId, projectId, true)
+      onRefresh()
+    })
+  }
 
   return (
     <div className="border rounded-xl overflow-hidden">
-      <div className="px-4 py-2.5 bg-sky-50/60 border-b flex items-center gap-2">
-        <FileText className="w-3.5 h-3.5 text-sky-600" />
-        <p className="text-xs font-semibold text-sky-900">
-          Guiones que requieren atención
-        </p>
-        <span className="text-xs text-sky-700">
-          {changesCount > 0 && `${changesCount} cambios pedidos`}
-          {changesCount > 0 && pendingCount > 0 && " · "}
-          {pendingCount > 0 && `${pendingCount} pendientes`}
-        </span>
+      <div className="px-4 py-2.5 bg-sky-50/60 border-b">
+        <p className="text-xs font-semibold text-sky-900">Requiere tu atención</p>
       </div>
-      <div className="divide-y">
-        {rows.map((r) => {
-          const isOpen = openKey === r.key
-          return (
-            <div key={r.key}>
-              <button
-                type="button"
-                onClick={() => setOpenKey((prev) => prev === r.key ? null : r.key)}
-                className="w-full flex items-center gap-2 px-4 py-2 text-left hover:bg-muted/30 transition-colors"
-              >
-                {r.lineName && (
-                  <span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded flex-shrink-0">{r.lineName}</span>
-                )}
-                <span className="text-xs font-medium truncate flex-1">{r.conceptName}</span>
-                <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded border flex-shrink-0", SCRIPT_STATUS_STYLE[r.status].className)}>
-                  {SCRIPT_STATUS_STYLE[r.status].label}
-                </span>
-                {r.feedback && !isOpen && (
-                  <span className="text-[11px] text-muted-foreground truncate max-w-[220px] hidden sm:block">
-                    &quot;{r.feedback}&quot;
-                  </span>
-                )}
-              </button>
-              {isOpen && (
-                <div className="px-4 pb-2.5 flex items-center justify-between gap-3">
-                  {r.feedback ? (
-                    <p className="text-xs text-sky-900 bg-sky-50/70 border border-sky-100 rounded-lg px-2.5 py-1.5 flex-1">
-                      &quot;{r.feedback}&quot;
-                    </p>
-                  ) : <span />}
-                  <a
-                    href={`/share/brief/${r.shareToken}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[11px] font-medium text-violet-600 hover:text-violet-800 flex-shrink-0"
+
+      {scriptRows.length > 0 && (
+        <div>
+          <div className="px-4 py-2 bg-muted/20 border-b flex items-center gap-2">
+            <FileText className="w-3.5 h-3.5 text-sky-600" />
+            <p className="text-[11px] font-semibold text-sky-900">Guiones</p>
+            <span className="text-[11px] text-sky-700">
+              {changesCount > 0 && `${changesCount} cambios pedidos`}
+              {changesCount > 0 && pendingCount > 0 && " · "}
+              {pendingCount > 0 && `${pendingCount} pendientes`}
+            </span>
+          </div>
+          <div className="divide-y">
+            {scriptRows.map((r) => {
+              const isOpen = openKey === r.key
+              return (
+                <div key={r.key}>
+                  <button
+                    type="button"
+                    onClick={() => setOpenKey((prev) => prev === r.key ? null : r.key)}
+                    className="w-full flex items-center gap-2 px-4 py-2 text-left hover:bg-muted/30 transition-colors"
                   >
-                    Abrir brief ↗
-                  </a>
+                    {r.lineName && (
+                      <span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded flex-shrink-0">{r.lineName}</span>
+                    )}
+                    <span className="text-xs font-medium truncate flex-1">{r.conceptName}</span>
+                    <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded border flex-shrink-0", SCRIPT_STATUS_STYLE[r.status].className)}>
+                      {SCRIPT_STATUS_STYLE[r.status].label}
+                    </span>
+                    {r.feedback && !isOpen && (
+                      <span className="text-[11px] text-muted-foreground truncate max-w-[220px] hidden sm:block">
+                        &quot;{r.feedback}&quot;
+                      </span>
+                    )}
+                  </button>
+                  {isOpen && (
+                    <div className="px-4 pb-2.5 flex items-center justify-between gap-3">
+                      {r.feedback ? (
+                        <p className="text-xs text-sky-900 bg-sky-50/70 border border-sky-100 rounded-lg px-2.5 py-1.5 flex-1">
+                          &quot;{r.feedback}&quot;
+                        </p>
+                      ) : <span />}
+                      <a
+                        href={`/share/brief/${r.shareToken}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[11px] font-medium text-violet-600 hover:text-violet-800 flex-shrink-0"
+                      >
+                        Abrir brief ↗
+                      </a>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          )
-        })}
-      </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {assetRows.length > 0 && (
+        <div>
+          <div className="px-4 py-2 bg-muted/20 border-b flex items-center gap-2">
+            <EyeOff className="w-3.5 h-3.5 text-slate-600" />
+            <p className="text-[11px] font-semibold text-slate-900">Assets sin publicar</p>
+            <span className="text-[11px] text-slate-600">{assetRows.length} esperando revisión</span>
+          </div>
+          <div className="divide-y">
+            {assetRows.map((a) => (
+              <div key={a.id} className="flex items-center gap-2.5 px-4 py-2">
+                <div className="w-8 h-8 rounded-md overflow-hidden bg-muted border flex-shrink-0 flex items-center justify-center">
+                  {a.thumb ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={a.thumb} alt="" className="w-full h-full object-cover" />
+                  ) : a.fileType === "video" ? (
+                    <Film className="w-3.5 h-3.5 text-muted-foreground/40" />
+                  ) : (
+                    <ImageIcon className="w-3.5 h-3.5 text-muted-foreground/40" />
+                  )}
+                </div>
+                {a.lineName && (
+                  <span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded flex-shrink-0">{a.lineName}</span>
+                )}
+                <span className="text-xs font-medium truncate flex-1">{a.conceptName}</span>
+                {canManageAssets && (
+                  <button
+                    type="button"
+                    onClick={() => handlePublish(a.id)}
+                    disabled={isPending}
+                    className="text-[11px] font-medium text-blue-600 hover:text-blue-800 flex-shrink-0 disabled:opacity-50"
+                  >
+                    Mostrar al cliente
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -497,7 +557,7 @@ function ConceptDetailModal({
                         </span>
                       )}
                       {/* Client visibility indicator */}
-                      {a.client_visible && (
+                      {a.client_visible ? (
                         <span className={cn(
                           "absolute top-1 right-1 p-0.5 rounded-full",
                           a.client_status === "approved" ? "bg-emerald-500" :
@@ -505,6 +565,11 @@ function ConceptDetailModal({
                           "bg-blue-500"
                         )}>
                           <Eye className="w-2.5 h-2.5 text-white" />
+                        </span>
+                      ) : (
+                        <span className="absolute top-1 right-1 text-[9px] font-semibold bg-slate-900/80 text-white px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                          <EyeOff className="w-2.5 h-2.5" />
+                          Sin publicar
                         </span>
                       )}
                     </div>
@@ -1138,9 +1203,40 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
     return rows.sort((a, b) => (a.status === b.status ? 0 : a.status === "changes_requested" ? -1 : 1))
   }, [briefs, concepts, brandLines])
 
+  const unpublishedAssetRows = useMemo(() => {
+    const conceptById = new Map(concepts.map((c) => [c.id, c]))
+    const lineNameById = new Map(brandLines.map((l) => [l.id, l.name]))
+    return assets
+      .filter((a) => !a.client_visible)
+      .map((a) => {
+        const concept = a.concept_id ? conceptById.get(a.concept_id) : null
+        const thumb = a.thumbnail_path
+          ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/creative-assets/${a.thumbnail_path}`
+          : a.file_path
+            ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/creative-assets/${a.file_path}`
+            : a.asset_url
+        return {
+          id: a.id,
+          conceptName: concept?.name || concept?.angle_type || "Sin concepto",
+          lineName: concept?.brand_line_id ? lineNameById.get(concept.brand_line_id) ?? null : null,
+          thumb: thumb ?? null,
+          fileType: a.file_type,
+          format: a.format,
+        }
+      })
+  }, [assets, concepts, brandLines])
+
   return (
     <div className="space-y-4">
-      {pendingScriptRows.length > 0 && <PendingScriptsBanner rows={pendingScriptRows} />}
+      {(pendingScriptRows.length > 0 || unpublishedAssetRows.length > 0) && (
+        <AttentionBanner
+          scriptRows={pendingScriptRows}
+          assetRows={unpublishedAssetRows}
+          projectId={projectId}
+          onRefresh={onRefresh}
+          canManageAssets={canManageAssets}
+        />
+      )}
 
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-2 flex-wrap">

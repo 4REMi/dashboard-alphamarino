@@ -280,6 +280,11 @@ export async function createAsset(projectId: string, formData: FormData): Promis
     file_type:      (formData.get("file_type") as string) || null,
     format:         (formData.get("format") as string) || null,
     platform:       (formData.get("platform") as string) || null,
+    // Every new asset starts hidden from the client, regardless of whatever
+    // the column's default happens to be — a project manager has to
+    // deliberately publish it (toggleClientVisible) before the client sees
+    // it. This is the review gate between "editor uploaded" and "client can see."
+    client_visible: false,
   })
   if (error) throw error
   revalidateProject(projectId)
