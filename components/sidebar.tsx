@@ -23,6 +23,7 @@ import {
   Brain,
   ImagePlay,
   Expand,
+  ClipboardList,
 } from "lucide-react"
 import { useState } from "react"
 import Image from "next/image"
@@ -84,6 +85,7 @@ export function Sidebar({ profile, logoUrl, mobileOpen = false, onMobileClose }:
       href: "/operations", icon: FlaskConical, label: t("operationsLab"), adminOnly: true,
     },
     { href: "/my-lab", icon: Lightbulb, label: "Mi Ops Lab" },
+    { href: "/my-requests", icon: ClipboardList, label: "Mis Solicitudes" },
     { href: "/settings", icon: Settings, label: t("settings"), adminOnly: true },
   ]
 
