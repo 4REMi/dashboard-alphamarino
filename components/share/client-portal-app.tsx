@@ -22,6 +22,7 @@ export interface Pieza {
   scriptKey?:      string
   client_status:   string | null
   client_feedback: string | null
+  createdAt:       string
 }
 
 export interface Concepto {

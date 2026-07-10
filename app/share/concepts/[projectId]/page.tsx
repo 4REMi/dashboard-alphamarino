@@ -40,7 +40,7 @@ export default async function ShareConceptsPage({ params }: Props) {
     supabase
       .from("creative_assets")
       .select(`id, format, platform, asset_url, file_path, thumbnail_path, file_type, brief_id,
-               client_status, client_feedback, concept_id`)
+               client_status, client_feedback, concept_id, created_at`)
       .eq("project_id", projectId)
       .eq("client_visible", true)
       .order("created_at", { ascending: false }),
@@ -51,7 +51,7 @@ export default async function ShareConceptsPage({ params }: Props) {
       .maybeSingle(),
     supabase
       .from("creative_briefs")
-      .select("id, concept_id, adapted_script, script_reviews")
+      .select("id, concept_id, adapted_script, script_reviews, created_at")
       .eq("project_id", projectId)
       .not("adapted_script", "is", null)
       .order("created_at", { ascending: true }),
@@ -85,7 +85,7 @@ export default async function ShareConceptsPage({ params }: Props) {
       : []
 
   // ── Normalize scripts (guiones) — one per script, keyed independently ──
-  type ScriptEntry = { conceptId: string; briefId: string; scriptKey: string; lines: AdCloneLine[]; client_status: string | null; client_feedback: string | null }
+  type ScriptEntry = { conceptId: string; briefId: string; scriptKey: string; lines: AdCloneLine[]; client_status: string | null; client_feedback: string | null; createdAt: string }
   const scriptEntries: ScriptEntry[] = []
   for (const b of briefsData) {
     const raw = b.adapted_script as Record<string, AdCloneLine[]> | AdCloneLine[] | null
@@ -94,13 +94,13 @@ export default async function ShareConceptsPage({ params }: Props) {
     if (Array.isArray(raw)) {
       if (raw.length > 0) {
         const r = reviews["_single"]
-        scriptEntries.push({ conceptId: b.concept_id, briefId: b.id, scriptKey: "_single", lines: raw, client_status: r?.client_status ?? null, client_feedback: r?.client_feedback ?? null })
+        scriptEntries.push({ conceptId: b.concept_id, briefId: b.id, scriptKey: "_single", lines: raw, client_status: r?.client_status ?? null, client_feedback: r?.client_feedback ?? null, createdAt: b.created_at })
       }
     } else {
       Object.entries(raw).forEach(([adId, lines]) => {
         if (lines?.length) {
           const r = reviews[adId]
-          scriptEntries.push({ conceptId: b.concept_id, briefId: b.id, scriptKey: adId, lines, client_status: r?.client_status ?? null, client_feedback: r?.client_feedback ?? null })
+          scriptEntries.push({ conceptId: b.concept_id, briefId: b.id, scriptKey: adId, lines, client_status: r?.client_status ?? null, client_feedback: r?.client_feedback ?? null, createdAt: b.created_at })
         }
       })
     }
@@ -142,6 +142,7 @@ export default async function ShareConceptsPage({ params }: Props) {
         guion: s.lines.map((l, i) => ({ n: i + 1, t: l.adapted })),
         client_status: s.client_status,
         client_feedback: s.client_feedback,
+        createdAt: s.createdAt,
       })),
       ...conceptAssets.map((a): Pieza => {
         const isVideo = a.file_type === "video" || /video/i.test(a.format ?? "")
@@ -158,9 +159,10 @@ export default async function ShareConceptsPage({ params }: Props) {
           mediaUrl: mediaUrl ?? null,
           client_status: a.client_status,
           client_feedback: a.client_feedback,
+          createdAt: a.created_at,
         }
       }),
-    ]
+    ].sort((x, y) => (x.createdAt < y.createdAt ? 1 : x.createdAt > y.createdAt ? -1 : 0))
 
     return {
       id: c.id,
