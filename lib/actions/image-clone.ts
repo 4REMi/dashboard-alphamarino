@@ -348,6 +348,7 @@ export async function startImageClone(
   ad: MetaAdResult,
   brandBrainId: string,
   angulo?: string,
+  conceptId?: string | null,
 ): Promise<{ cloneId: string; shareToken: string; lines: ImageCloneLine[] }> {
   const { supabase, user } = await assertAuth()
 
@@ -393,6 +394,7 @@ export async function startImageClone(
     .insert({
       saved_ad_id:    savedAd.id,
       brand_brain_id: brandBrainId,
+      concept_id:     conceptId || null,
       status:         "extracting",
       created_by:     user.id,
     })
@@ -730,6 +732,7 @@ export async function startImageCloneFromGenerated(params: {
   brandBrainId:   string
   parentCloneId:  string
   angulo?:        string
+  conceptId?:     string | null
 }): Promise<{ cloneId: string; shareToken: string; lines: ImageCloneLine[] }> {
   const { supabase, user } = await assertAuth()
 
@@ -746,6 +749,7 @@ export async function startImageCloneFromGenerated(params: {
     .insert({
       saved_ad_id:    params.savedAdId,
       brand_brain_id: params.brandBrainId,
+      concept_id:     params.conceptId || null,
       status:         "ready",
       adapted_lines:  lines,
       original_lines: lines,

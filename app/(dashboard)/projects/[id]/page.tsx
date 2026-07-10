@@ -327,7 +327,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
 
         {/* ── Creative Tracker — full width, own section ──────────────── */}
         {isPaidMedia && (
-          <section>
+          <section id="creative-tracker">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-semibold">Creative Tracker</h2>
             </div>

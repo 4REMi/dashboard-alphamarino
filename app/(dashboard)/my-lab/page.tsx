@@ -5,13 +5,15 @@ import { getMyPendingSopRequests, getSops } from "@/lib/actions/sops"
 import { getMyPhases, getAllSubmittedPhases, getCanonicalTree, getMyProposedTasks, getAllSubmittedProposedTasks, getMyProposedChecklistAdditions, getAllSubmittedProposedChecklistAdditions, getAllSubmittedProposedPhases } from "@/lib/actions/lab"
 import { getPhaseSets } from "@/lib/actions/config"
 import { getPositions } from "@/lib/actions/config"
+import { getMyRequests } from "@/lib/actions/creative-requests"
 import { SopRequestInbox } from "@/components/lab/sop-request-inbox"
 import { PhaseEditor } from "@/components/lab/phase-editor"
 import { PhaseReviewPanel } from "@/components/lab/phase-review-panel"
 import { CanonicalTreeView } from "@/components/lab/canonical-tree-view"
+import { MyCreativeRequests } from "@/components/lab/my-creative-requests"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Lightbulb } from "lucide-react"
-import type { SopRequest, LabPhase, PhaseSet, Sop, LabProposedPhase } from "@/lib/types"
+import type { SopRequest, LabPhase, PhaseSet, Sop, LabProposedPhase, CreativeRequest } from "@/lib/types"
 
 export default async function MyLabPage() {
   const supabase = await createClient()
@@ -37,6 +39,7 @@ export default async function MyLabPage() {
     allProposedChecklists,
     positions,
     allProposedPhases,
+    myCreativeRequests,
   ] = await Promise.all([
     getMyPendingSopRequests().catch(() => [] as SopRequest[]),
     getMyPhases().catch(() => [] as LabPhase[]),
@@ -50,6 +53,7 @@ export default async function MyLabPage() {
     isAdmin ? getAllSubmittedProposedChecklistAdditions().catch(() => []) : Promise.resolve([]),
     getPositions().catch(() => []),
     isAdmin ? getAllSubmittedProposedPhases().catch(() => [] as LabProposedPhase[]) : Promise.resolve([] as LabProposedPhase[]),
+    getMyRequests().catch(() => [] as CreativeRequest[]),
   ])
 
   const pendingSopCount    = sopRequests.filter((r) => r.status === "pending").length
@@ -100,6 +104,14 @@ export default async function MyLabPage() {
               </span>
             )}
           </TabsTrigger>
+          <TabsTrigger value="creative-requests">
+            Mis Solicitudes
+            {myCreativeRequests.length > 0 && (
+              <span className="ml-1.5 text-[10px] font-semibold bg-blue-500/15 text-blue-600 rounded-full px-1.5 py-0.5">
+                {myCreativeRequests.length}
+              </span>
+            )}
+          </TabsTrigger>
           {isAdmin && (
             <TabsTrigger value="review">
               Revisión
@@ -132,6 +144,10 @@ export default async function MyLabPage() {
 
         <TabsContent value="sop-requests" className="mt-4">
           <SopRequestInbox requests={sopRequests} isAdmin={isAdmin} />
+        </TabsContent>
+
+        <TabsContent value="creative-requests" className="mt-4">
+          <MyCreativeRequests requests={myCreativeRequests as CreativeRequest[]} />
         </TabsContent>
 
         {isAdmin && (

@@ -6,9 +6,10 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ConceptModal } from "./concept-modal"
 import { AssetModal } from "./asset-modal"
+import { RequestAssetModal } from "./request-asset-modal"
 import { generateCreativeConcepts, confirmAIDrafts, promoteConcept, demoteConcept, deleteConcept, bulkDeleteConcepts, deleteBrief, deleteAsset, toggleClientVisible } from "@/lib/actions/creatives"
 import { CONCEPT_STATUS_COLORS, AWARENESS_LABELS, ANGLE_GUIDE, PRODUCTION_STATUS_COLORS, VERDICT_COLORS } from "@/lib/constants/creatives"
-import type { CreativeConcept, CreativeAsset, CreativeBrief, BrandLine, AdCloneLine } from "@/lib/types"
+import type { CreativeConcept, CreativeAsset, CreativeBrief, CreativeRequest, BrandLine, AdCloneLine } from "@/lib/types"
 import type { AIDraftConcept } from "@/lib/actions/creatives"
 import { BriefCreator } from "./brief-creator"
 import { QuickScriptModal } from "./quick-script-modal"
@@ -217,6 +218,7 @@ interface ConceptsTableProps {
   concepts: CreativeConcept[]
   assets: CreativeAsset[]
   briefs?: CreativeBrief[]
+  requests?: CreativeRequest[]
   projectId: string
   cycleId: string | null
   isAdminOrSubadmin: boolean
@@ -235,6 +237,7 @@ function ConceptDetailModal({
   concept,
   conceptAssets,
   conceptBriefs,
+  conceptRequests = [],
   projectId,
   cycleId,
   isAdminOrSubadmin,
@@ -244,11 +247,13 @@ function ConceptDetailModal({
   onNewAsset,
   onNewBrief,
   onQuickScript,
+  onRequestAssets,
   onRefresh,
 }: {
   concept: CreativeConcept
   conceptAssets: CreativeAsset[]
   conceptBriefs: CreativeBrief[]
+  conceptRequests?: CreativeRequest[]
   projectId: string
   cycleId: string | null
   isAdminOrSubadmin: boolean
@@ -258,11 +263,14 @@ function ConceptDetailModal({
   onNewAsset: () => void
   onNewBrief: () => void
   onQuickScript: () => void
+  onRequestAssets: () => void
   onRefresh: () => void
 }) {
   const [isPending, startTransition] = useTransition()
   const [activeTab, setActiveTab] = useState<"id" | "angle" | "mech">("id")
   const [lightboxAsset, setLightboxAsset] = useState<CreativeAsset | null>(null)
+  const activeRequests = conceptRequests.filter((r) => r.status !== "cancelled")
+  const fulfilledCount = activeRequests.filter((r) => r.status === "fulfilled").length
   const angleEntry  = ANGLE_GUIDE.find((a) => a.name === concept.angle_type)
   const isEvergreen = concept.status === "Evergreen"
 
@@ -441,12 +449,31 @@ function ConceptDetailModal({
         {(conceptBriefs.length > 0 || isAdminOrSubadmin) && (
           <div className="border rounded-xl px-5 py-4">
             <div className="flex items-center justify-between mb-2">
-              <p className={grpLabel + " mb-0"}>
-                <FileText className="w-3 h-3 inline mr-1" />
-                Briefs {conceptBriefs.length > 0 && `(${conceptBriefs.length})`}
-              </p>
+              <div className="flex items-center gap-2">
+                <p className={grpLabel + " mb-0"}>
+                  <FileText className="w-3 h-3 inline mr-1" />
+                  Briefs {conceptBriefs.length > 0 && `(${conceptBriefs.length})`}
+                </p>
+                {activeRequests.length > 0 && (
+                  <span
+                    className={cn(
+                      "text-[10px] font-semibold px-1.5 py-0.5 rounded-full border",
+                      fulfilledCount === activeRequests.length
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                        : "bg-amber-50 text-amber-700 border-amber-200"
+                    )}
+                    title="Assets solicitados vs. cumplidos"
+                  >
+                    {fulfilledCount}/{activeRequests.length} assets
+                  </span>
+                )}
+              </div>
               {isAdminOrSubadmin && (
                 <div className="flex items-center gap-3">
+                  <button type="button" onClick={onRequestAssets} className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 transition-colors">
+                    <ImageIcon className="w-3 h-3" />
+                    Solicitar assets
+                  </button>
                   <button type="button" onClick={onQuickScript} className="flex items-center gap-1 text-xs text-violet-600 hover:text-violet-800 transition-colors">
                     <Sparkles className="w-3 h-3" />
                     Guión rápido
@@ -949,7 +976,7 @@ function MecanismoCell({
 
 // ── Main table ───────────────────────────────────────────────────────────────
 
-export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleId, isAdminOrSubadmin, canManageAssets = isAdminOrSubadmin, onRefresh, brandBrains = [], brandLines = [], savedAds = [], boards = [], projectBrandBrainId }: ConceptsTableProps) {
+export function ConceptsTable({ concepts, assets, briefs = [], requests = [], projectId, cycleId, isAdminOrSubadmin, canManageAssets = isAdminOrSubadmin, onRefresh, brandBrains = [], brandLines = [], savedAds = [], boards = [], projectBrandBrainId }: ConceptsTableProps) {
   const [detailConcept, setDetailConcept]   = useState<CreativeConcept | null>(null)
   const [editConcept,   setEditConcept]     = useState<CreativeConcept | null>(null)
   const [createForLineId, setCreateForLineId] = useState<string | null | undefined>(undefined)
@@ -957,6 +984,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
   const [aiDraftsLineId, setAiDraftsLineId] = useState<string | null>(null)
   const [previewIdx,    setPreviewIdx]      = useState<number | null>(null)
   const [newAssetForConceptId, setNewAssetForConceptId] = useState<string | null>(null)
+  const [requestForConceptId, setRequestForConceptId] = useState<string | null>(null)
   const [briefForConcept, setBriefForConcept] = useState<CreativeConcept | null>(null)
   const [quickScriptForConcept, setQuickScriptForConcept] = useState<CreativeConcept | null>(null)
   const [copied,        setCopied]          = useState(false)
@@ -1458,6 +1486,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
           concept={detailConcept}
           conceptAssets={assets.filter((a) => a.concept_id === detailConcept.id)}
           conceptBriefs={briefs.filter((b) => b.concept_id === detailConcept.id)}
+          conceptRequests={requests.filter((r) => r.concept_id === detailConcept.id)}
           projectId={projectId}
           cycleId={cycleId}
           isAdminOrSubadmin={isAdminOrSubadmin}
@@ -1467,7 +1496,19 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
           onNewAsset={openDetailAsNewAsset}
           onNewBrief={() => { const c = detailConcept; setDetailConcept(null); setBriefForConcept(c) }}
           onQuickScript={() => { const c = detailConcept; setDetailConcept(null); setQuickScriptForConcept(c) }}
+          onRequestAssets={() => setRequestForConceptId(detailConcept.id)}
           onRefresh={onRefresh}
+        />
+      )}
+
+      {/* Request assets modal — admin/subadmin only, opened from concept detail */}
+      {requestForConceptId && (
+        <RequestAssetModal
+          projectId={projectId}
+          conceptId={requestForConceptId}
+          open={!!requestForConceptId}
+          onRefresh={onRefresh}
+          onClose={() => setRequestForConceptId(null)}
         />
       )}
 

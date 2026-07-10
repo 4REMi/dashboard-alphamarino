@@ -1,12 +1,13 @@
 "use client"
 
-import { useRef, useState, useTransition, useCallback } from "react"
+import { useEffect, useRef, useState, useTransition, useCallback } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { createAsset, updateAsset, deleteAsset, toggleClientVisible } from "@/lib/actions/creatives"
+import { getRequestsForProject } from "@/lib/actions/creative-requests"
 import { createClient } from "@/lib/supabase/client"
-import type { CreativeAsset } from "@/lib/types"
+import type { CreativeAsset, CreativeRequest } from "@/lib/types"
 import { Trash2, Upload, Eye, EyeOff, ImageIcon, Film, X, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -68,6 +69,27 @@ export function AssetModal({
   const [dragOver, setDragOver] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [uploadProgress, setUploadProgress] = useState<string | null>(null)
+  const [pendingRequests, setPendingRequests] = useState<CreativeRequest[]>([])
+  const [fulfillsRequestId, setFulfillsRequestId] = useState<string>("")
+
+  // Only relevant when creating a new asset — look for pending requests
+  // assigned to the current user for this concept, so they can optionally
+  // mark this upload as fulfilling one. Never required.
+  useEffect(() => {
+    if (!open || isEdit) return
+    let cancelled = false
+    ;(async () => {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const all = await getRequestsForProject(projectId).catch(() => [] as CreativeRequest[])
+      if (cancelled) return
+      setPendingRequests(
+        all.filter((r) => r.concept_id === conceptId && r.status === "pending" && r.assigned_to === user.id)
+      )
+    })()
+    return () => { cancelled = true }
+  }, [open, isEdit, projectId, conceptId])
 
   const isVideo = file?.type.startsWith("video/") ?? asset?.file_type === "video"
 
@@ -115,6 +137,7 @@ export function AssetModal({
       fd.set("concept_id", conceptId)
       if (briefId) fd.set("brief_id", briefId)
       fd.set("platform", platform)
+      if (!isEdit && fulfillsRequestId) fd.set("fulfills_request_id", fulfillsRequestId)
 
       if (file) {
         setUploadProgress("Subiendo archivo…")
@@ -240,6 +263,24 @@ export function AssetModal({
 
           {uploadError && (
             <p className="text-xs text-destructive">{uploadError}</p>
+          )}
+
+          {!isEdit && pendingRequests.length > 0 && (
+            <div className="space-y-1.5">
+              <Label>¿Esto cumple una solicitud pendiente?</Label>
+              <select
+                value={fulfillsRequestId}
+                onChange={(e) => setFulfillsRequestId(e.target.value)}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="">No, es un asset nuevo</option>
+                {pendingRequests.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.tipo === "video" ? "Video" : "Imagen"}{r.notes ? ` — ${r.notes.slice(0, 40)}` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
           )}
 
           {/* Platform */}

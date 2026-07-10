@@ -2,6 +2,7 @@
 
 import { createAdminClient } from "@/lib/supabase/admin"
 import type { ClientReviewStatus } from "@/lib/types"
+import { autoCreateVideoRequestForScript } from "@/lib/actions/creative-requests"
 
 export async function submitClientReview(
   assetId: string,
@@ -36,7 +37,7 @@ export async function submitBriefClientReview(
 
   const { data: brief, error: fetchError } = await supabase
     .from("creative_briefs")
-    .select("script_reviews")
+    .select("script_reviews, project_id, concept_id")
     .eq("id", briefId)
     .not("adapted_script", "is", null)
     .single()
@@ -54,4 +55,15 @@ export async function submitBriefClientReview(
     .eq("id", briefId)
 
   if (error) throw error
+
+  // A script being approved by the client is the one and only trigger for a
+  // video request — never created manually. Best-effort: don't let a request
+  // creation failure block the client's review from landing.
+  if (status === "approved" && brief?.project_id && brief?.concept_id) {
+    try {
+      await autoCreateVideoRequestForScript(briefId, brief.project_id as string, brief.concept_id as string, scriptKey)
+    } catch (e) {
+      console.error("autoCreateVideoRequestForScript failed:", e)
+    }
+  }
 }
