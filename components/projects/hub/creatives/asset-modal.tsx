@@ -46,6 +46,7 @@ interface AssetModalProps {
   briefId?: string | null
   asset?: CreativeAsset | null
   isAdminOrSubadmin: boolean
+  canManageAssets?: boolean
   open: boolean
   onRefresh?: () => void
   onClose: () => void
@@ -53,8 +54,9 @@ interface AssetModalProps {
 
 export function AssetModal({
   projectId, cycleId, conceptId, briefId, asset,
-  isAdminOrSubadmin, open, onRefresh, onClose,
+  isAdminOrSubadmin, canManageAssets, open, onRefresh, onClose,
 }: AssetModalProps) {
+  const canUpload = canManageAssets ?? isAdminOrSubadmin
   const isEdit = !!asset
   const inputRef = useRef<HTMLInputElement>(null)
   const thumbnailBlobRef = useRef<Blob | null>(null)
@@ -291,14 +293,14 @@ export function AssetModal({
           )}
 
           <DialogFooter className="gap-2 pt-2">
-            {isEdit && isAdminOrSubadmin && (
+            {isEdit && canUpload && (
               <Button type="button" variant="ghost" onClick={handleDelete} disabled={isPending} className="text-destructive hover:text-destructive mr-auto">
                 <Trash2 className="w-3.5 h-3.5 mr-1" />
                 Eliminar
               </Button>
             )}
             <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
-            <Button type="submit" disabled={isPending || (!isEdit && !file) || !isAdminOrSubadmin}>
+            <Button type="submit" disabled={isPending || (!isEdit && !file) || !canUpload}>
               {isPending ? "Guardando…" : isEdit ? "Guardar" : "Subir"}
             </Button>
           </DialogFooter>

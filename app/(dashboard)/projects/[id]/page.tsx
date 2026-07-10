@@ -112,6 +112,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const accountsReceivable = projectValue - totalIncome
 
   const memberProfiles = members as Profile[]
+  const isProjectMember = memberProfiles.some((m) => m.id === user!.id)
 
   const hasContextSection = hasPhases || (isAdminOrSubadmin && phaseSets.length > 0) || isPaidMedia
 
@@ -336,6 +337,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               initialConcepts={initialConcepts as CreativeConcept[]}
               initialAssets={initialAssets as CreativeAsset[]}
               isAdminOrSubadmin={isAdminOrSubadmin}
+              isProjectMember={isProjectMember}
               brandBrains={brandBrains as any[]}
               brandLines={brandLines as any[]}
               savedAds={savedAds as any[]}

@@ -12,6 +12,7 @@ interface CreativesHubProps {
   initialConcepts: CreativeConcept[]
   initialAssets: CreativeAsset[]
   isAdminOrSubadmin: boolean
+  isProjectMember?: boolean
   brandBrains?: any[]
   brandLines?: any[]
   savedAds?: any[]
@@ -25,6 +26,7 @@ export function CreativesHub({
   initialConcepts,
   initialAssets,
   isAdminOrSubadmin,
+  isProjectMember = false,
   brandBrains = [],
   brandLines = [],
   savedAds = [],
@@ -40,7 +42,8 @@ export function CreativesHub({
 
   const selectedCycle = cycles.find((c) => c.id === selectedCycleId) ?? null
   const isActiveCycle = selectedCycle?.is_active ?? false
-  const canEdit       = isAdminOrSubadmin && isActiveCycle
+  const canEdit         = isAdminOrSubadmin && isActiveCycle
+  const canManageAssets = (isAdminOrSubadmin || isProjectMember) && isActiveCycle
 
   function reload() {
     if (!selectedCycleId) return
@@ -116,6 +119,7 @@ export function CreativesHub({
         projectId={projectId}
         cycleId={selectedCycleId}
         isAdminOrSubadmin={canEdit}
+        canManageAssets={canManageAssets}
         onRefresh={reload}
         brandBrains={brandBrains}
         brandLines={brandLines}

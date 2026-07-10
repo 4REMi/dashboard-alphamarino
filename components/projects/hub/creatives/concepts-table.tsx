@@ -160,6 +160,7 @@ interface ConceptsTableProps {
   projectId: string
   cycleId: string | null
   isAdminOrSubadmin: boolean
+  canManageAssets?: boolean
   onRefresh: () => void
   brandBrains?: any[]
   brandLines?: BrandLine[]
@@ -177,6 +178,7 @@ function ConceptDetailModal({
   projectId,
   cycleId,
   isAdminOrSubadmin,
+  canManageAssets,
   onEdit,
   onClose,
   onNewAsset,
@@ -190,6 +192,7 @@ function ConceptDetailModal({
   projectId: string
   cycleId: string | null
   isAdminOrSubadmin: boolean
+  canManageAssets: boolean
   onEdit: () => void
   onClose: () => void
   onNewAsset: () => void
@@ -445,11 +448,11 @@ function ConceptDetailModal({
         )}
 
         {/* ── Assets ── */}
-        {(conceptAssets.length > 0 || isAdminOrSubadmin) && (
+        {(conceptAssets.length > 0 || canManageAssets) && (
           <div className="border rounded-xl px-5 py-4">
             <div className="flex items-center justify-between mb-3">
               <p className={grpLabel + " mb-0"}>Assets {conceptAssets.length > 0 && `(${conceptAssets.length})`}</p>
-              {isAdminOrSubadmin && (
+              {canManageAssets && (
                 <button type="button" onClick={onNewAsset} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
                   <Plus className="w-3 h-3" />
                   Nuevo
@@ -559,7 +562,7 @@ function ConceptDetailModal({
                       <div className="flex items-center gap-2 text-sm">
                         {a.format && <span className="font-medium">{a.format}</span>}
                         {a.platform && <span className="text-muted-foreground">· {a.platform}</span>}
-                        {isAdminOrSubadmin && (
+                        {canManageAssets && (
                           <Button
                             type="button"
                             variant="ghost"
@@ -881,7 +884,7 @@ function MecanismoCell({
 
 // ── Main table ───────────────────────────────────────────────────────────────
 
-export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleId, isAdminOrSubadmin, onRefresh, brandBrains = [], brandLines = [], savedAds = [], boards = [], projectBrandBrainId }: ConceptsTableProps) {
+export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleId, isAdminOrSubadmin, canManageAssets = isAdminOrSubadmin, onRefresh, brandBrains = [], brandLines = [], savedAds = [], boards = [], projectBrandBrainId }: ConceptsTableProps) {
   const [detailConcept, setDetailConcept]   = useState<CreativeConcept | null>(null)
   const [editConcept,   setEditConcept]     = useState<CreativeConcept | null>(null)
   const [createForLineId, setCreateForLineId] = useState<string | null | undefined>(undefined)
@@ -1080,6 +1083,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
             conceptAssets={assets.filter((a) => a.concept_id === c.id)}
             conceptBriefs={briefs.filter((b) => b.concept_id === c.id)}
             isAdminOrSubadmin={isAdminOrSubadmin}
+            canManageAssets={canManageAssets}
             selected={selectedIds.has(c.id)}
             onToggleSelect={() => toggleSelect(c.id)}
             onClick={() => setDetailConcept(c)}
@@ -1094,6 +1098,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
             conceptAssets={assets.filter((a) => a.concept_id === c.id)}
             conceptBriefs={briefs.filter((b) => b.concept_id === c.id)}
             isAdminOrSubadmin={isAdminOrSubadmin}
+            canManageAssets={canManageAssets}
             selected={selectedIds.has(c.id)}
             onToggleSelect={() => toggleSelect(c.id)}
             onClick={() => setDetailConcept(c)}
@@ -1360,6 +1365,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
           projectId={projectId}
           cycleId={cycleId}
           isAdminOrSubadmin={isAdminOrSubadmin}
+          canManageAssets={canManageAssets}
           onEdit={openEditFromDetail}
           onClose={() => setDetailConcept(null)}
           onNewAsset={openDetailAsNewAsset}
@@ -1409,6 +1415,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
           cycleId={cycleId}
           conceptId={newAssetForConceptId}
           isAdminOrSubadmin={isAdminOrSubadmin}
+          canManageAssets={canManageAssets}
           open={!!newAssetForConceptId}
           onRefresh={onRefresh}
           onClose={() => setNewAssetForConceptId(null)}
@@ -1475,6 +1482,7 @@ function ConceptRow({
   conceptAssets,
   conceptBriefs,
   isAdminOrSubadmin,
+  canManageAssets = isAdminOrSubadmin,
   selected,
   onToggleSelect,
   onClick,
@@ -1485,6 +1493,7 @@ function ConceptRow({
   conceptAssets: CreativeAsset[]
   conceptBriefs: CreativeBrief[]
   isAdminOrSubadmin: boolean
+  canManageAssets?: boolean
   selected?: boolean
   onToggleSelect?: () => void
   onClick: () => void
@@ -1559,22 +1568,26 @@ function ConceptRow({
               {conceptAssets.length}
             </span>
           )}
-          {isAdminOrSubadmin && (
+          {(isAdminOrSubadmin || canManageAssets) && (
             <div className="flex gap-0.5 ml-1" onClick={(e) => e.stopPropagation()}>
-              <button
-                onClick={onNewBrief}
-                className="p-1 rounded hover:bg-violet-100 text-muted-foreground hover:text-violet-600 transition-colors"
-                title="Crear brief"
-              >
-                <FileText className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={onNewAsset}
-                className="p-1 rounded hover:bg-blue-100 text-muted-foreground hover:text-blue-600 transition-colors"
-                title="Subir asset"
-              >
-                <Upload className="w-3.5 h-3.5" />
-              </button>
+              {isAdminOrSubadmin && (
+                <button
+                  onClick={onNewBrief}
+                  className="p-1 rounded hover:bg-violet-100 text-muted-foreground hover:text-violet-600 transition-colors"
+                  title="Crear brief"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                </button>
+              )}
+              {canManageAssets && (
+                <button
+                  onClick={onNewAsset}
+                  className="p-1 rounded hover:bg-blue-100 text-muted-foreground hover:text-blue-600 transition-colors"
+                  title="Subir asset"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           )}
           {!isAdminOrSubadmin && conceptBriefs.length === 0 && conceptAssets.length === 0 && (

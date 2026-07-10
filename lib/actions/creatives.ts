@@ -34,6 +34,22 @@ function isAdminOrSubadmin(role: string) {
   return role === "admin" || role === "subadmin"
 }
 
+// Assets (the finished creative — video/image) can be produced and uploaded
+// by anyone assigned to the project, not just admin/subadmin — mirrors the
+// RLS on creative_assets (042_creative_assets_project_member_write.sql).
+// Concepts/briefs stay admin-only; this check is only for asset mutations.
+async function assertCanManageAssets(projectId: string, role: string, userId: string) {
+  if (isAdminOrSubadmin(role)) return
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from("project_members")
+    .select("project_id")
+    .eq("project_id", projectId)
+    .eq("profile_id", userId)
+    .maybeSingle()
+  if (!data) throw new Error("Permission denied")
+}
+
 // ── CONCEPTS (Ad Lab lookup) ─────────────────────────────────
 
 export async function getConceptsByBrandBrain(
@@ -250,8 +266,8 @@ export async function getCreativeAssets(
 
 export async function createAsset(projectId: string, formData: FormData): Promise<void> {
   const supabase = await createClient()
-  const { role } = await getRole()
-  if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
+  const { role, userId } = await getRole()
+  await assertCanManageAssets(projectId, role, userId)
 
   const { error } = await supabase.from("creative_assets").insert({
     project_id:     projectId,
@@ -275,8 +291,8 @@ export async function updateAsset(
   formData: FormData
 ): Promise<void> {
   const supabase = await createClient()
-  const { role } = await getRole()
-  if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
+  const { role, userId } = await getRole()
+  await assertCanManageAssets(projectId, role, userId)
 
   const { error } = await supabase.from("creative_assets").update({
     concept_id:     (formData.get("concept_id") as string) || null,
@@ -294,8 +310,8 @@ export async function updateAsset(
 
 export async function deleteAsset(id: string, projectId: string): Promise<void> {
   const supabase = await createClient()
-  const { role } = await getRole()
-  if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
+  const { role, userId } = await getRole()
+  await assertCanManageAssets(projectId, role, userId)
 
   const { error } = await supabase.from("creative_assets").delete().eq("id", id)
   if (error) throw error
