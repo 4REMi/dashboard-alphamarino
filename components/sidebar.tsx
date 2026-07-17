@@ -41,7 +41,7 @@ interface SidebarProps {
   onMobileClose?: () => void
 }
 
-type Permission = "view_global_finances" | "access_ad_lab" | "access_brand_brains"
+type Permission = "view_global_finances" | "view_domains" | "access_ad_lab" | "access_brand_brains"
 
 type NavChild = {
   href: string
@@ -69,8 +69,9 @@ export function Sidebar({ profile, logoUrl, mobileOpen = false, onMobileClose }:
     { href: "/", icon: LayoutDashboard, label: t("dashboard") },
     { href: "/customers", icon: Users, label: t("clients") },
     { href: "/projects", icon: FolderKanban, label: t("projects") },
-{ href: "/finances", icon: DollarSign, label: t("finances"), permission: "view_global_finances" },
-    { href: "/finances/domains", icon: Globe, label: t("domains"), permission: "view_global_finances" },
+    { href: "/tasks", icon: CheckSquare, label: t("tasks") },
+    { href: "/finances", icon: DollarSign, label: t("finances"), permission: "view_global_finances" },
+    { href: "/finances/domains", icon: Globe, label: t("domains"), permission: "view_domains" },
     { href: "/employees", icon: UserCircle, label: t("team") },
     { href: "/sops", icon: BookOpen, label: "SOPs" },
     {

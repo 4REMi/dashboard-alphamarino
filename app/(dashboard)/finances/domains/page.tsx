@@ -12,7 +12,7 @@ export default async function DomainsPage() {
   const { data: { user } } = await supabase.auth.getUser()
   const { data: profile } = await supabase.from("profiles").select("role, permissions").eq("id", user!.id).single()
 
-  if (!can(profile, "view_global_finances")) {
+  if (!can(profile, "view_domains")) {
     redirect("/")
   }
 

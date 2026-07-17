@@ -18,6 +18,11 @@ const PERMISSION_LABELS: { key: keyof UserPermissions; label: string; descriptio
     description: "Acceso completo a /finanzas con MRR, gastos fijos e ingresos",
   },
   {
+    key: "view_domains",
+    label: "Ver Dominios",
+    description: "Acceso a la sección de Dominios, independiente de Finanzas",
+  },
+  {
     key: "edit_projects",
     label: "Editar proyectos",
     description: "Crear, editar y archivar proyectos",
