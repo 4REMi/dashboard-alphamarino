@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { AlertTriangle, Plus, Pencil, Trash2, X, Check } from "lucide-react"
-import { formatCurrency, formatDate } from "@/lib/utils"
+import { formatDate } from "@/lib/utils"
 import type { Domain, Customer, DomainMaintenanceType } from "@/lib/types"
 
 const MAINTENANCE_TYPE_LABEL: Record<DomainMaintenanceType, string> = {
@@ -15,9 +15,31 @@ const MAINTENANCE_TYPE_LABEL: Record<DomainMaintenanceType, string> = {
   n_a: "N/A",
 }
 
+function formatMXN(amount: number) {
+  return amount.toLocaleString("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 0, maximumFractionDigits: 0 })
+}
+
+function formatUSD(amount: number) {
+  return amount.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 0 })
+}
+
+function DualCurrency({ amount, exchangeRate }: { amount: number; exchangeRate: number | null }) {
+  return (
+    <div>
+      <div>{formatMXN(amount)}</div>
+      {exchangeRate && (
+        <div className="text-xs font-normal text-muted-foreground">
+          ≈ {formatUSD(amount / exchangeRate)} USD
+        </div>
+      )}
+    </div>
+  )
+}
+
 interface DomainTableProps {
   initialDomains: Domain[]
   customers: Customer[]
+  exchangeRate: number | null
 }
 
 const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000
@@ -105,7 +127,7 @@ function DomainForm({ domain, customers, onSave, onCancel, isPending }: DomainFo
         />
       </div>
       <div className="space-y-1">
-        <label className="text-xs font-medium text-muted-foreground">Costo del dominio</label>
+        <label className="text-xs font-medium text-muted-foreground">Costo del dominio (MXN)</label>
         <input
           name="renewal_cost"
           type="number"
@@ -129,7 +151,7 @@ function DomainForm({ domain, customers, onSave, onCancel, isPending }: DomainFo
         </select>
       </div>
       <div className="space-y-1">
-        <label className="text-xs font-medium text-muted-foreground">Costo de mantenimiento</label>
+        <label className="text-xs font-medium text-muted-foreground">Costo de mantenimiento (MXN)</label>
         <input
           name="maintenance_cost"
           type="number"
@@ -181,7 +203,7 @@ function DomainForm({ domain, customers, onSave, onCancel, isPending }: DomainFo
   )
 }
 
-export function DomainTable({ initialDomains, customers }: DomainTableProps) {
+export function DomainTable({ initialDomains, customers, exchangeRate }: DomainTableProps) {
   const [domains, setDomains] = useState<Domain[]>(initialDomains)
   const [showAddForm, setShowAddForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -240,6 +262,12 @@ export function DomainTable({ initialDomains, customers }: DomainTableProps) {
         </Card>
       )}
 
+      {exchangeRate && (
+        <p className="text-xs text-muted-foreground">
+          Tipo de cambio del día: 1 USD ≈ {formatMXN(exchangeRate)}
+        </p>
+      )}
+
       {/* Add form */}
       {showAddForm ? (
         <DomainForm
@@ -267,8 +295,8 @@ export function DomainTable({ initialDomains, customers }: DomainTableProps) {
               <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Comprado en</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Hosteado en</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Vencimiento</th>
-              <th className="text-right px-4 py-3 font-medium text-muted-foreground">Costo dominio</th>
-              <th className="text-right px-4 py-3 font-medium text-muted-foreground">Mantenimiento</th>
+              <th className="text-right px-4 py-3 font-medium text-muted-foreground">Costo dominio (MXN)</th>
+              <th className="text-right px-4 py-3 font-medium text-muted-foreground">Mantenimiento (MXN)</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden lg:table-cell">Última mantención</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden lg:table-cell">Notas</th>
               <th className="px-4 py-3" />
@@ -330,11 +358,11 @@ export function DomainTable({ initialDomains, customers }: DomainTableProps) {
                     {domain.renewal_date ? formatDate(domain.renewal_date) : "—"}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    {domain.renewal_cost ? formatCurrency(domain.renewal_cost) : "—"}
+                    {domain.renewal_cost ? <DualCurrency amount={domain.renewal_cost} exchangeRate={exchangeRate} /> : "—"}
                   </td>
                   <td className="px-4 py-3 text-right">
                     {domain.maintenance_type === "client" ? (
-                      domain.maintenance_cost ? formatCurrency(domain.maintenance_cost) : "—"
+                      domain.maintenance_cost ? <DualCurrency amount={domain.maintenance_cost} exchangeRate={exchangeRate} /> : "—"
                     ) : (
                       <Badge variant="secondary" className="text-xs">
                         {MAINTENANCE_TYPE_LABEL[domain.maintenance_type]}
