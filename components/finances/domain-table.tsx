@@ -28,6 +28,21 @@ function daysUntil(dateStr: string | null): number | null {
   return Math.ceil(diff / (1000 * 60 * 60 * 24))
 }
 
+type ExpirationTier = "green" | "yellow" | "red"
+
+function expirationTier(days: number | null): ExpirationTier | null {
+  if (days === null) return null
+  if (days <= 60) return "red"
+  if (days <= 182) return "yellow"
+  return "green"
+}
+
+const EXPIRATION_TIER_CLASS: Record<ExpirationTier, string> = {
+  green: "bg-success-subtle text-success-subtle-foreground",
+  yellow: "bg-warning-subtle text-warning-subtle-foreground",
+  red: "bg-red-100 text-red-700",
+}
+
 interface DomainFormProps {
   domain?: Domain
   customers: Customer[]
@@ -271,6 +286,7 @@ export function DomainTable({ initialDomains, customers }: DomainTableProps) {
               const days = daysUntil(domain.renewal_date)
               const isExpiringSoon = days !== null && days <= 30 && days >= 0
               const isExpired = days !== null && days < 0
+              const tier = expirationTier(days)
 
               if (editingId === domain.id) {
                 return (
@@ -310,7 +326,7 @@ export function DomainTable({ initialDomains, customers }: DomainTableProps) {
                   </td>
                   <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">{domain.registrar ?? "—"}</td>
                   <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">{domain.hosted_at ?? "—"}</td>
-                  <td className={`px-4 py-3 ${isExpiringSoon ? "text-amber-600 font-medium" : isExpired ? "text-red-600" : "text-muted-foreground"}`}>
+                  <td className={`px-4 py-3 ${tier ? `${EXPIRATION_TIER_CLASS[tier]} font-medium` : "text-muted-foreground"}`}>
                     {domain.renewal_date ? formatDate(domain.renewal_date) : "—"}
                   </td>
                   <td className="px-4 py-3 text-right">
