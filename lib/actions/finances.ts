@@ -234,34 +234,39 @@ export async function getDomains() {
   }
 }
 
-export async function createDomain(formData: FormData) {
-  const supabase = await createClient()
+function domainFieldsFromForm(formData: FormData) {
   const customerId = formData.get("customer_id") as string
-  const { error } = await supabase.from("domains").insert({
+  const maintenanceType = (formData.get("maintenance_type") as string) || "client"
+  return {
     domain: formData.get("domain") as string,
     customer_id: customerId && customerId !== "none" ? customerId : null,
     registrar: (formData.get("registrar") as string) || null,
+    hosted_at: (formData.get("hosted_at") as string) || null,
     renewal_date: (formData.get("renewal_date") as string) || null,
     renewal_cost: formData.get("renewal_cost") ? Number(formData.get("renewal_cost")) : null,
+    maintenance_type: maintenanceType,
+    maintenance_cost:
+      maintenanceType === "client" && formData.get("maintenance_cost")
+        ? Number(formData.get("maintenance_cost"))
+        : null,
+    last_maintenance_date: (formData.get("last_maintenance_date") as string) || null,
+    last_maintenance_notes: (formData.get("last_maintenance_notes") as string) || null,
     notes: (formData.get("notes") as string) || null,
-  })
+  }
+}
+
+export async function createDomain(formData: FormData) {
+  const supabase = await createClient()
+  const { error } = await supabase.from("domains").insert(domainFieldsFromForm(formData))
   if (error) throw error
   revalidatePath("/finances/domains")
 }
 
 export async function updateDomain(id: string, formData: FormData) {
   const supabase = await createClient()
-  const customerId = formData.get("customer_id") as string
   const { error } = await supabase
     .from("domains")
-    .update({
-      domain: formData.get("domain") as string,
-      customer_id: customerId && customerId !== "none" ? customerId : null,
-      registrar: (formData.get("registrar") as string) || null,
-      renewal_date: (formData.get("renewal_date") as string) || null,
-      renewal_cost: formData.get("renewal_cost") ? Number(formData.get("renewal_cost")) : null,
-      notes: (formData.get("notes") as string) || null,
-    })
+    .update(domainFieldsFromForm(formData))
     .eq("id", id)
   if (error) throw error
   revalidatePath("/finances/domains")

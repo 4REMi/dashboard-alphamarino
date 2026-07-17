@@ -622,13 +622,20 @@ export interface RecurringExpense {
   created_at: string
 }
 
+export type DomainMaintenanceType = "client" | "own_project" | "n_a"
+
 export interface Domain {
   id: string
   customer_id: string | null
   domain: string
   registrar: string | null
+  hosted_at: string | null
   renewal_date: string | null
   renewal_cost: number | null
+  maintenance_type: DomainMaintenanceType
+  maintenance_cost: number | null
+  last_maintenance_date: string | null
+  last_maintenance_notes: string | null
   notes: string | null
   created_at: string
   customer?: Customer | null
