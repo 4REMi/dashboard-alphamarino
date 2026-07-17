@@ -52,6 +52,16 @@ const PERMISSION_LABELS: { key: keyof UserPermissions; label: string; descriptio
     label: "Asignar SOPs",
     description: "Asignar SOPs a tareas y plantillas del banco",
   },
+  {
+    key: "access_ad_lab",
+    label: "Acceso a Ad Lab",
+    description: "Acceso a la sección /ad-lab (creatives, boards, resize, discovery)",
+  },
+  {
+    key: "access_brand_brains",
+    label: "Acceso a Brand Brains",
+    description: "Acceso a la sección /brand-brains",
+  },
 ]
 
 interface Props {
