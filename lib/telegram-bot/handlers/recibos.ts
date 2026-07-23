@@ -148,6 +148,9 @@ export async function handleRecibo(
   const timestampRecepcion = new Date().toISOString().slice(0, 16).replace("T", " ")
 
   const payload = {
+    // No es columna de la hoja — se manda para que, al final del escenario de
+    // Make, el módulo que regresa el PDF sepa a qué chat de Telegram enviarlo.
+    telegram_chat_id: chatId,
     timestamp_recepcion: timestampRecepcion,
     fuente: `Telegram${context.senderName ? ` ${context.senderName}` : ""}`,
     dato_crudo: rawText,
