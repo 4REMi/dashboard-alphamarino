@@ -2,13 +2,13 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react"
 import type {
-  PendingChange, CanonicalPhaseSet, LabPhase, LabPhaseTask, LabProposedPhase,
+  PendingChange, CanonicalPhaseSet, CanonicalTask, LabPhase, LabPhaseTask, LabProposedPhase,
   LabProposedTask, LabProposedChecklistAddition, Sop, Position,
 } from "@/lib/types"
 import {
   GitFork, Layers, ListChecks, CheckSquare, ChevronDown, ChevronRight,
   LayoutList, Link2, Send, RotateCcw, Trash2, CheckCircle2, XCircle,
-  MessageSquare, AlertTriangle, Lock, Plus,
+  MessageSquare, AlertTriangle, Lock, Plus, ArrowRight,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getProjectTypeIcon } from "@/lib/project-type-icons"
@@ -282,6 +282,92 @@ function AnchorMissingBanner() {
   )
 }
 
+// ── Before/after diff for a task-edit proposal — only changed fields render ──
+
+function TaskEditDiff({ original, proposed }: { original: CanonicalTask; proposed: LabProposedTask }) {
+  const rows: { label: string; before: string; after: string }[] = []
+
+  if (original.title !== proposed.title) {
+    rows.push({ label: "Título", before: original.title, after: proposed.title })
+  }
+  if ((original.description ?? "") !== (proposed.description ?? "")) {
+    rows.push({ label: "Descripción", before: original.description || "—", after: proposed.description || "—" })
+  }
+  if (original.requires_deliverable !== proposed.requires_deliverable) {
+    rows.push({
+      label: "Entregable",
+      before: original.requires_deliverable ? "Requiere entregable" : "No requiere entregable",
+      after: proposed.requires_deliverable ? "Requiere entregable" : "No requiere entregable",
+    })
+  }
+  if ((original.default_position_name ?? "") !== (proposed.default_position?.name ?? "")) {
+    rows.push({ label: "Puesto", before: original.default_position_name || "Sin puesto", after: proposed.default_position?.name || "Sin puesto" })
+  }
+  if ((original.sop_title ?? "") !== (proposed.sop?.title ?? "")) {
+    rows.push({ label: "SOP", before: original.sop_title || "Sin SOP", after: proposed.sop?.title || "Sin SOP" })
+  }
+
+  const originalItems = original.checklist_items ?? []
+  const proposedItems = proposed.checklist_items ?? []
+  const checklistKey = (items: { text: string; is_blocking: boolean }[]) =>
+    items.map((i) => `${i.text}::${i.is_blocking}`).join("|")
+  const checklistChanged = checklistKey(originalItems) !== checklistKey(proposedItems)
+
+  if (rows.length === 0 && !checklistChanged) {
+    return (
+      <p className="text-xs text-muted-foreground italic">Sin cambios detectados respecto a la tarea original.</p>
+    )
+  }
+
+  return (
+    <div>
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
+        <ArrowRight className="w-3.5 h-3.5" /> Qué cambia
+      </p>
+      <div className="rounded-lg border border-border divide-y divide-border overflow-hidden">
+        {rows.map((row) => (
+          <div key={row.label} className="px-3 py-2">
+            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">{row.label}</p>
+            <div className="flex items-start gap-2 text-xs">
+              <span className="flex-1 min-w-0 text-muted-foreground line-through decoration-destructive/50">{row.before}</span>
+              <ArrowRight className="w-3 h-3 text-muted-foreground flex-shrink-0 mt-0.5" />
+              <span className="flex-1 min-w-0 font-medium text-primary">{row.after}</span>
+            </div>
+          </div>
+        ))}
+
+        {checklistChanged && (
+          <div className="px-3 py-2">
+            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Checklist</p>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div>
+                <p className="text-[10px] text-muted-foreground mb-1">Antes</p>
+                {originalItems.length === 0 && <p className="text-muted-foreground/60 italic">Sin checklist</p>}
+                {originalItems.map((item, i) => (
+                  <div key={i} className="flex items-center gap-1 text-muted-foreground line-through decoration-destructive/50">
+                    {item.is_blocking && <Lock className="w-2.5 h-2.5 flex-shrink-0" />}
+                    <span className="truncate">{item.text}</span>
+                  </div>
+                ))}
+              </div>
+              <div>
+                <p className="text-[10px] text-muted-foreground mb-1">Propuesto</p>
+                {proposedItems.length === 0 && <p className="text-muted-foreground/60 italic">Sin checklist</p>}
+                {proposedItems.map((item, i) => (
+                  <div key={i} className="flex items-center gap-1 font-medium text-primary">
+                    {item.is_blocking && <Lock className="w-2.5 h-2.5 flex-shrink-0" />}
+                    <span className="truncate">{item.text}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function lastReviewOf(reviews: { action: string; comment: string | null; created_at: string }[] | undefined) {
   if (!reviews?.length) return null
   return [...reviews].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
@@ -533,11 +619,13 @@ function ProposedTaskDetail({ change, task, canonicalTree, onChanged, onDeleted 
   const isEditable = status === "draft" || status === "rejected"
   const isEdit = !!task.anchor_task_set_task_id
 
-  let anchorTasks: { id: string; title: string }[] = []
+  let anchorPhaseTasks: CanonicalTask[] = []
   for (const ps of canonicalTree) {
     const ph = ps.phases.find((p) => p.id === task.anchor_phase_set_phase_id)
-    if (ph) { anchorTasks = ph.tasks.map((t) => ({ id: t.id, title: t.title })); break }
+    if (ph) { anchorPhaseTasks = ph.tasks; break }
   }
+  const anchorTasks = anchorPhaseTasks.map((t) => ({ id: t.id, title: t.title }))
+  const originalTask = isEdit ? anchorPhaseTasks.find((t) => t.id === task.anchor_task_set_task_id) ?? null : null
   const afterIndex = task.position_after_task_id ? anchorTasks.findIndex((t) => t.id === task.position_after_task_id) : -1
 
   function handleSubmit() {
@@ -614,7 +702,9 @@ function ProposedTaskDetail({ change, task, canonicalTree, onChanged, onDeleted 
             </p>
           )}
 
-          {items.length > 0 && (
+          {isEdit && originalTask && <TaskEditDiff original={originalTask} proposed={task} />}
+
+          {!isEdit && items.length > 0 && (
             <div>
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
                 <ListChecks className="w-3.5 h-3.5" /> Checklist propuesto

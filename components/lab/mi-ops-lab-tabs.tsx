@@ -95,6 +95,9 @@ export function MiOpsLabTabs({
           myProposedPhases={myPendingChanges
             .filter((c) => c.kind === "phase_new")
             .map((c) => c.raw as LabProposedPhase)}
+          myForkedPhases={myPendingChanges
+            .filter((c) => c.kind === "phase_fork")
+            .map((c) => c.raw as LabPhase)}
           positions={positions}
           sops={allSops}
           onJumpToProposal={jumpToProposal}

@@ -3,11 +3,11 @@
 import { useState, useTransition, useCallback } from "react"
 import type {
   CanonicalPhaseSet, CanonicalPhase, CanonicalTask,
-  LabProposedTask, LabProposedChecklistAddition, LabProposedPhase, Position, Sop,
+  LabProposedTask, LabProposedChecklistAddition, LabProposedPhase, LabPhase, Position, Sop,
 } from "@/lib/types"
 import {
   FolderKanban, ListChecks, Lock, Paperclip, BookOpen,
-  Plus, ChevronRight, Pencil, Layers, GitFork, Sparkles,
+  Plus, ChevronRight, Pencil, Layers, GitFork, Sparkles, ArrowUpRight,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getProjectTypeIcon } from "@/lib/project-type-icons"
@@ -23,13 +23,14 @@ interface Props {
   myProposedTasks: LabProposedTask[]
   myProposedChecklists: LabProposedChecklistAddition[]
   myProposedPhases: LabProposedPhase[]
+  myForkedPhases: LabPhase[]
   positions: Position[]
   sops: Sop[]
   onJumpToProposal: (id: string) => void
 }
 
 export function CanonicalTreeView({
-  phaseSets, myProposedTasks, myProposedChecklists, myProposedPhases, positions, sops, onJumpToProposal,
+  phaseSets, myProposedTasks, myProposedChecklists, myProposedPhases, myForkedPhases, positions, sops, onJumpToProposal,
 }: Props) {
   const [selectedPsId, setSelectedPsId] = useState<string | null>(null)
   const [selectedPhaseId, setSelectedPhaseId] = useState<string | null>(null)
@@ -46,6 +47,7 @@ export function CanonicalTreeView({
   const [localProposedTasks, setLocalProposedTasks] = useState<LabProposedTask[]>(myProposedTasks)
   const [localProposedChecklists, setLocalProposedChecklists] = useState<LabProposedChecklistAddition[]>(myProposedChecklists)
   const [localProposedPhases, setLocalProposedPhases] = useState<LabProposedPhase[]>(myProposedPhases)
+  const [localForkedPhases] = useState<LabPhase[]>(myForkedPhases)
   const [forking, setForking] = useState<string | null>(null)
   const [, startFork] = useTransition()
   const toast = useToast()
@@ -182,6 +184,9 @@ export function CanonicalTreeView({
                 const pendingCount = phaseProposals.filter(
                   (pt) => pt.status === "draft" || pt.status === "submitted"
                 ).length
+                const forkedPhase = localForkedPhases.find(
+                  (f) => f.source_phase_set_phase_id === phase.id && f.status !== "approved"
+                )
                 return (
                   <div
                     key={phase.id}
@@ -207,6 +212,11 @@ export function CanonicalTreeView({
                           {phase.tasks.length} tarea{phase.tasks.length !== 1 ? "s" : ""}
                         </p>
                       </div>
+                      {forkedPhase && (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 bg-emerald-500/15 flex-shrink-0">
+                          <GitFork className="w-2.5 h-2.5" /> En edición
+                        </span>
+                      )}
                       {pendingCount > 0 && (
                         <span className="inline-flex items-center rounded-full border border-amber-300 px-2 py-0.5 text-[10px] font-semibold text-amber-700 bg-amber-500/15 flex-shrink-0">
                           {pendingCount}
@@ -216,6 +226,15 @@ export function CanonicalTreeView({
                     </div>
                     {/* Hover actions — absolutely positioned so they don't affect layout */}
                     <div className="hidden group-hover:flex absolute right-2 top-1/2 -translate-y-1/2 items-center gap-1 bg-card/90 backdrop-blur-sm rounded-lg border border-border shadow-sm px-1 py-0.5">
+                      {forkedPhase && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onJumpToProposal(forkedPhase.id) }}
+                          title="Ver en Mis Propuestas"
+                          className="flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-700 px-2 py-1 rounded-md hover:bg-emerald-50 transition-colors"
+                        >
+                          <ArrowUpRight className="w-3 h-3" />
+                        </button>
+                      )}
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
@@ -230,14 +249,16 @@ export function CanonicalTreeView({
                       >
                         <Layers className="w-3 h-3" />
                       </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleFork(phase.id) }}
-                        disabled={forking === phase.id}
-                        title="Copiar a Mis Fases"
-                        className="flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-700 px-2 py-1 rounded-md hover:bg-emerald-50 disabled:opacity-50 transition-colors"
-                      >
-                        <GitFork className="w-3 h-3" />
-                      </button>
+                      {!forkedPhase && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleFork(phase.id) }}
+                          disabled={forking === phase.id}
+                          title="Copiar a Mis Fases"
+                          className="flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-700 px-2 py-1 rounded-md hover:bg-emerald-50 disabled:opacity-50 transition-colors"
+                        >
+                          <GitFork className="w-3 h-3" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 )
@@ -313,12 +334,17 @@ export function CanonicalTreeView({
                 const checklistProposals = localProposedChecklists.filter(
                   (cp) => cp.anchor_task_set_task_id === task.id
                 )
+                const editProposal = localProposedTasks.find(
+                  (pt) => pt.anchor_task_set_task_id === task.id && pt.status !== "approved"
+                )
                 return (
                   <CanonicalTaskRow
                     key={task.id}
                     task={task}
                     index={index}
                     checklistProposals={checklistProposals}
+                    editProposal={editProposal}
+                    onJumpToProposal={onJumpToProposal}
                     onProposeNewTask={() =>
                       setTaskModalTarget({
                         kind: "canonical-propose",
@@ -410,8 +436,14 @@ export function CanonicalTreeView({
 // actually submit/retract/delete it, which is what "Ver en Propuestas" is for.
 
 function GhostPhaseRow({ proposal, onJumpToProposal }: { proposal: LabProposedPhase; onJumpToProposal: (id: string) => void }) {
+  // Unlike a real phase, this one has nothing to browse in column 3 — the whole
+  // row IS the action, straight to Mis Propuestas, not just a hover-reveal link.
   return (
-    <div className="group flex items-center gap-2 px-5 py-3 border-b border-dashed border-primary/40 bg-primary/5">
+    <button
+      type="button"
+      onClick={() => onJumpToProposal(proposal.id)}
+      className="w-full flex items-center gap-2 px-5 py-3 border-b border-dashed border-primary/40 bg-primary/5 hover:bg-primary/10 transition-colors text-left"
+    >
       <span className="flex-shrink-0 w-6 h-6 rounded-full border border-dashed border-primary/50 flex items-center justify-center">
         <Sparkles className="w-3 h-3 text-primary" />
       </span>
@@ -422,18 +454,13 @@ function GhostPhaseRow({ proposal, onJumpToProposal }: { proposal: LabProposedPh
         )}
       </div>
       <span className={cn(
-        "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold flex-shrink-0",
+        "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold flex-shrink-0 whitespace-nowrap",
         PROPOSAL_STATUS_COLOR[proposal.status] ?? PROPOSAL_STATUS_COLOR.draft
       )}>
         {PROPOSAL_STATUS_LABEL[proposal.status] ?? proposal.status}
       </span>
-      <button
-        onClick={() => onJumpToProposal(proposal.id)}
-        className="opacity-0 group-hover:opacity-100 text-[11px] font-medium text-primary hover:underline transition-all flex-shrink-0"
-      >
-        Ver en Propuestas
-      </button>
-    </div>
+      <ArrowUpRight className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+    </button>
   )
 }
 
@@ -526,11 +553,13 @@ function GhostTaskRow({ proposal, onJumpToProposal }: { proposal: LabProposedTas
 // -- Task row (column 3) --
 
 function CanonicalTaskRow({
-  task, index, checklistProposals, onProposeNewTask, onProposeEdit, onProposeChecklist,
+  task, index, checklistProposals, editProposal, onJumpToProposal, onProposeNewTask, onProposeEdit, onProposeChecklist,
 }: {
   task: CanonicalTask
   index: number
   checklistProposals: LabProposedChecklistAddition[]
+  editProposal: LabProposedTask | undefined
+  onJumpToProposal: (id: string) => void
   onProposeNewTask: () => void
   onProposeEdit: () => void
   onProposeChecklist: () => void
@@ -581,11 +610,23 @@ function CanonicalTaskRow({
             +{pendingChecklistProposals.length}
           </span>
         )}
+        {editProposal && (
+          <span className="inline-flex items-center gap-1 rounded-full border border-blue-300 px-2 py-0.5 text-[10px] font-semibold text-blue-600 bg-blue-500/10 flex-shrink-0">
+            <Pencil className="w-2.5 h-2.5" /> Editada
+          </span>
+        )}
         <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-all">
-          <button onClick={onProposeEdit} title="Proponer edición"
-            className="p-1 rounded text-muted-foreground hover:text-foreground transition-all flex-shrink-0">
-            <Pencil className="w-3 h-3" />
-          </button>
+          {editProposal ? (
+            <button onClick={() => onJumpToProposal(editProposal.id)} title="Ver en Mis Propuestas"
+              className="p-1 rounded text-blue-600 hover:text-blue-700 transition-all flex-shrink-0">
+              <ArrowUpRight className="w-3 h-3" />
+            </button>
+          ) : (
+            <button onClick={onProposeEdit} title="Proponer edición"
+              className="p-1 rounded text-muted-foreground hover:text-foreground transition-all flex-shrink-0">
+              <Pencil className="w-3 h-3" />
+            </button>
+          )}
           <button onClick={onProposeNewTask} title="Proponer nueva tarea después de esta"
             className="p-1 rounded text-muted-foreground hover:text-primary transition-all flex-shrink-0">
             <Plus className="w-3 h-3" />
