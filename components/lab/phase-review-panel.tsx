@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react"
 import type {
-  LabPhase, LabPhaseTask, PhaseSet, PhaseSetPhase,
+  LabPhase, LabPhaseTask, PhaseSet, PhaseSetPhase, CanonicalPhaseSet, CanonicalTask,
   LabProposedTask, LabProposedChecklistAddition, LabProposedChecklistItem,
   LabProposedPhase,
 } from "@/lib/types"
@@ -20,6 +20,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils"
+import { PositionedTaskContext, PositionedPhaseContext, TaskEditDiff, ChecklistBeforeAfter } from "@/components/lab/proposal-context"
 
 type ProposalTab = "phases" | "tasks" | "checklists" | "new_phases"
 
@@ -29,6 +30,7 @@ interface Props {
   initialProposedTasks: LabProposedTask[]
   initialProposedChecklists: LabProposedChecklistAddition[]
   initialProposedPhases: LabProposedPhase[]
+  canonicalTree: CanonicalPhaseSet[]
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -42,7 +44,7 @@ const STATUS_STYLE: Record<string, string> = {
 }
 
 export function PhaseReviewPanel({
-  initialPhases, phaseSets, initialProposedTasks, initialProposedChecklists, initialProposedPhases,
+  initialPhases, phaseSets, initialProposedTasks, initialProposedChecklists, initialProposedPhases, canonicalTree,
 }: Props) {
   const [tab, setTab] = useState<ProposalTab>("phases")
   const [phases, setPhases] = useState<LabPhase[]>(initialPhases)
@@ -330,7 +332,7 @@ export function PhaseReviewPanel({
           !selectedTask ? (
             <EmptyDetail text="Selecciona una tarea propuesta" />
           ) : (
-            <ProposedTaskDetail task={selectedTask}
+            <ProposedTaskDetail task={selectedTask} canonicalTree={canonicalTree}
               onReviewed={(action) => onTaskReviewed(selectedTask.id, action)}
               onInjected={() => onTaskInjected(selectedTask.id)}
               onDismiss={() => handleDismiss(selectedTask.id)} />
@@ -341,7 +343,7 @@ export function PhaseReviewPanel({
           !selectedChecklist ? (
             <EmptyDetail text="Selecciona una propuesta de checklist" />
           ) : (
-            <ProposedChecklistDetail addition={selectedChecklist}
+            <ProposedChecklistDetail addition={selectedChecklist} canonicalTree={canonicalTree}
               onReviewed={(action) => onChecklistReviewed(selectedChecklist.id, action)}
               onInjected={() => onChecklistInjected(selectedChecklist.id)}
               onDismiss={() => handleDismiss(selectedChecklist.id)} />
@@ -352,7 +354,7 @@ export function PhaseReviewPanel({
           !selectedNewPhase ? (
             <EmptyDetail text="Selecciona una nueva fase propuesta" />
           ) : (
-            <ProposedNewPhaseDetail phase={selectedNewPhase}
+            <ProposedNewPhaseDetail phase={selectedNewPhase} canonicalTree={canonicalTree}
               onReviewed={(action) => onNewPhaseReviewed(selectedNewPhase.id, action)}
               onInjected={() => onNewPhaseInjected(selectedNewPhase.id)}
               onDismiss={() => handleDismiss(selectedNewPhase.id)} />
@@ -536,7 +538,11 @@ function PhaseDetail({ phase, onReviewed, onPromote, onDismiss }: {
     <>
       <DetailHeader
         title={phase.name}
-        subtitle={`Por ${author} · ${new Date(phase.created_at).toLocaleDateString("es-MX", { day: "numeric", month: "long" })}`}
+        subtitle={[
+          `Por ${author}`,
+          phase.source_phase_set?.project_type_name ?? phase.source_phase_set?.name,
+          new Date(phase.created_at).toLocaleDateString("es-MX", { day: "numeric", month: "long" }),
+        ].filter(Boolean).join(" · ")}
       />
       <div className="flex-1 overflow-y-auto">
         {tasks.length === 0 ? (
@@ -569,8 +575,9 @@ function PhaseDetail({ phase, onReviewed, onPromote, onDismiss }: {
 
 // ── Proposed task detail ─────────────────────────────────────────────────────
 
-function ProposedTaskDetail({ task, onReviewed, onInjected, onDismiss }: {
+function ProposedTaskDetail({ task, canonicalTree, onReviewed, onInjected, onDismiss }: {
   task: LabProposedTask
+  canonicalTree: CanonicalPhaseSet[]
   onReviewed: (action: string) => void
   onInjected: () => void
   onDismiss: () => void
@@ -580,9 +587,18 @@ function ProposedTaskDetail({ task, onReviewed, onInjected, onDismiss }: {
   const toast = useToast()
 
   const author = (task.author as { full_name?: string } | null)?.full_name ?? "Empleado"
-  const phaseName = (task.anchor_phase as { name?: string } | null)?.name ?? "Fase desconocida"
-  const sopTitle = (task.sop as { title?: string } | null)?.title ?? null
-  const positionName = (task.default_position as { name?: string } | null)?.name ?? null
+  const isEdit = !!task.anchor_task_set_task_id
+
+  let phaseSetName: string | null = null
+  let anchorPhaseTasks: CanonicalTask[] = []
+  let phaseName = (task.anchor_phase as { name?: string } | null)?.name ?? "Fase desconocida"
+  for (const ps of canonicalTree) {
+    const ph = ps.phases.find((p) => p.id === task.anchor_phase_set_phase_id)
+    if (ph) { anchorPhaseTasks = ph.tasks; phaseName = ph.name; phaseSetName = ps.project_type_name ?? ps.name; break }
+  }
+  const anchorTasks = anchorPhaseTasks.map((t) => ({ id: t.id, title: t.title }))
+  const originalTask = isEdit ? anchorPhaseTasks.find((t) => t.id === task.anchor_task_set_task_id) ?? null : null
+  const afterIndex = task.position_after_task_id ? anchorTasks.findIndex((t) => t.id === task.position_after_task_id) : -1
 
   function handleReview(action: "comment" | "approve" | "reject") {
     if (action === "reject" && !comment.trim()) {
@@ -604,35 +620,54 @@ function ProposedTaskDetail({ task, onReviewed, onInjected, onDismiss }: {
   }
 
   const items = task.checklist_items ?? []
+  const subtitleParts = [`Por ${author}`, phaseSetName ? `${phaseSetName} · ${phaseName}` : phaseName]
+  if (isEdit) subtitleParts.push("Edición de tarea existente")
 
   return (
     <>
-      <DetailHeader
-        title={task.title}
-        subtitle={task.anchor_task_set_task_id ? `Por ${author} · Fase: ${phaseName} · (Edición de tarea)` : `Por ${author} · Fase: ${phaseName}`}
-      />
+      <DetailHeader title={task.title} subtitle={subtitleParts.join(" · ")} />
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-        {task.description && (
+        {task.description && !isEdit && (
           <p className="text-sm text-muted-foreground">{task.description}</p>
         )}
-        <div className="flex flex-wrap gap-2">
-          {positionName && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
-              <UserCircle className="w-3 h-3" /> {positionName}
-            </span>
-          )}
-          {task.requires_deliverable && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs text-blue-700">
-              <Paperclip className="w-3 h-3" /> Requiere entregable
-            </span>
-          )}
-          {sopTitle && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/5 px-2.5 py-0.5 text-xs text-primary">
-              <BookOpen className="w-3 h-3" /> {sopTitle}
-            </span>
-          )}
-        </div>
-        {items.length > 0 && (
+        {!isEdit && (
+          <div className="flex flex-wrap gap-2">
+            {task.default_position?.name && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
+                <UserCircle className="w-3 h-3" /> {task.default_position.name}
+              </span>
+            )}
+            {task.requires_deliverable && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs text-blue-700">
+                <Paperclip className="w-3 h-3" /> Requiere entregable
+              </span>
+            )}
+            {task.sop?.title && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/5 px-2.5 py-0.5 text-xs text-primary">
+                <BookOpen className="w-3 h-3" /> {task.sop.title}
+              </span>
+            )}
+          </div>
+        )}
+
+        {anchorTasks.length > 0 && (
+          <PositionedTaskContext
+            anchorTasks={anchorTasks}
+            afterIndex={afterIndex}
+            isEdit={isEdit}
+            editTaskId={task.anchor_task_set_task_id}
+            proposedTitle={task.title}
+          />
+        )}
+        {anchorTasks.length === 0 && (
+          <p className="text-xs text-muted-foreground">
+            {task.position_after_task_id ? "Se insertará después de una tarea existente." : "Se insertará al final."}
+          </p>
+        )}
+
+        {isEdit && originalTask && <TaskEditDiff original={originalTask} proposed={task} />}
+
+        {!isEdit && items.length > 0 && (
           <div>
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
               <ListChecks className="w-3.5 h-3.5" /> Checklist propuesto
@@ -665,8 +700,9 @@ function ProposedTaskDetail({ task, onReviewed, onInjected, onDismiss }: {
 
 // ── Proposed checklist detail ────────────────────────────────────────────────
 
-function ProposedChecklistDetail({ addition, onReviewed, onInjected, onDismiss }: {
+function ProposedChecklistDetail({ addition, canonicalTree, onReviewed, onInjected, onDismiss }: {
   addition: LabProposedChecklistAddition
+  canonicalTree: CanonicalPhaseSet[]
   onReviewed: (action: string) => void
   onInjected: () => void
   onDismiss: () => void
@@ -677,7 +713,18 @@ function ProposedChecklistDetail({ addition, onReviewed, onInjected, onDismiss }
 
   const author = (addition.author as { full_name?: string } | null)?.full_name ?? "Empleado"
   const taskTitle = (addition.anchor_task as { title?: string } | null)?.title ?? "Tarea desconocida"
-  const items = (addition.items ?? []) as LabProposedChecklistItem[]
+  const items = ((addition.items ?? []) as LabProposedChecklistItem[]).slice().sort((a, b) => a.item_order - b.item_order)
+
+  let anchorItems: { id: string; text: string; is_blocking: boolean }[] = []
+  let phaseName: string | null = null
+  let phaseSetName: string | null = null
+  for (const ps of canonicalTree) {
+    for (const ph of ps.phases) {
+      const t = ph.tasks.find((t) => t.id === addition.anchor_task_set_task_id)
+      if (t) { anchorItems = t.checklist_items; phaseName = ph.name; phaseSetName = ps.project_type_name ?? ps.name; break }
+    }
+    if (phaseName) break
+  }
 
   function handleReview(action: "comment" | "approve" | "reject") {
     if (action === "reject" && !comment.trim()) {
@@ -698,31 +745,13 @@ function ProposedChecklistDetail({ addition, onReviewed, onInjected, onDismiss }
     })
   }
 
+  const subtitle = phaseName ? `Por ${author} · ${phaseSetName ? `${phaseSetName} · ` : ""}${phaseName}` : `Checklist por ${author}`
+
   return (
     <>
-      <DetailHeader title={taskTitle} subtitle={`Checklist por ${author}`} />
+      <DetailHeader title={taskTitle} subtitle={subtitle} />
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-        <div>
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
-            <ListChecks className="w-3.5 h-3.5" /> Ítems propuestos
-          </p>
-          {items.length === 0 ? (
-            <p className="text-xs text-muted-foreground italic">Sin ítems.</p>
-          ) : (
-            <div className="rounded-lg border border-border divide-y divide-border">
-              {items.sort((a, b) => a.item_order - b.item_order).map((item) => (
-                <div key={item.id} className="flex items-center gap-2 px-3 py-2 text-sm">
-                  <span className={cn("flex-1 min-w-0 truncate", item.is_blocking && "font-medium")}>{item.text}</span>
-                  {item.is_blocking && (
-                    <span className="inline-flex items-center gap-0.5 text-[10px] text-destructive">
-                      <Lock className="w-2.5 h-2.5" /> Bloquea
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <ChecklistBeforeAfter anchorItems={anchorItems} proposedItems={items} />
         <ReviewHistory reviews={addition.reviews ?? []} />
       </div>
       <ReviewActions
@@ -741,13 +770,24 @@ function ProposedChecklistDetail({ addition, onReviewed, onInjected, onDismiss }
 
 // ── Proposed new phase detail ────────────────────────────────────────────────
 
-function ProposedNewPhaseDetail({ phase, onReviewed, onInjected, onDismiss }: {
-  phase: LabProposedPhase; onReviewed: (action: string) => void; onInjected: () => void; onDismiss: () => void
+function ProposedNewPhaseDetail({ phase, canonicalTree, onReviewed, onInjected, onDismiss }: {
+  phase: LabProposedPhase
+  canonicalTree: CanonicalPhaseSet[]
+  onReviewed: (action: string) => void
+  onInjected: () => void
+  onDismiss: () => void
 }) {
   const [comment, setComment] = useState("")
   const [isPending, startTransition] = useTransition()
   const toast = useToast()
   const author = (phase.author as { full_name?: string } | null)?.full_name ?? "Empleado"
+
+  const ps = canonicalTree.find((p) => p.id === phase.phase_set_id)
+  const orderedPhases = ps ? [...ps.phases].sort((a, b) => a.phase_order - b.phase_order) : []
+  const afterIndex = phase.position_after_phase_id
+    ? orderedPhases.findIndex((p) => p.id === phase.position_after_phase_id)
+    : -1
+  const phaseSetLabel = ps ? (ps.project_type_name ?? ps.name) : (phase.phase_set?.name ?? "Tipo de proyecto desconocido")
 
   function handleReview(action: "comment" | "approve" | "reject") {
     if (action === "reject" && !comment.trim()) { toast("Agrega un comentario al rechazar.", "error"); return }
@@ -767,12 +807,19 @@ function ProposedNewPhaseDetail({ phase, onReviewed, onInjected, onDismiss }: {
 
   return (
     <>
-      <DetailHeader title={phase.name} subtitle={`Por ${author} · Nueva fase para el árbol canónico`} />
-      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+      <DetailHeader title={phase.name} subtitle={`Por ${author} · ${phaseSetLabel} · Nueva fase`} />
+      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
         {phase.description && <p className="text-sm text-muted-foreground">{phase.description}</p>}
-        {phase.position_after_phase_id && (
-          <p className="text-xs text-muted-foreground">Insertar después de la fase seleccionada.</p>
+        {ps ? (
+          <PositionedPhaseContext orderedPhases={orderedPhases} afterIndex={afterIndex} proposedName={phase.name} />
+        ) : (
+          <p className="text-xs text-muted-foreground p-3 border border-border rounded-lg">Tipo de proyecto no encontrado.</p>
         )}
+        <p className="text-xs text-muted-foreground">
+          {phase.position_after_phase_id
+            ? `Se insertará después de "${orderedPhases[afterIndex]?.name ?? "la fase seleccionada"}".`
+            : "Se insertará al principio."}
+        </p>
       </div>
       <ReviewActions
         status={phase.status}

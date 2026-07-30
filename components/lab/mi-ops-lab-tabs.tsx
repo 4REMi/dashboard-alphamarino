@@ -127,6 +127,7 @@ export function MiOpsLabTabs({
             initialProposedTasks={allProposedTasks}
             initialProposedChecklists={allProposedChecklists}
             initialProposedPhases={allProposedPhases}
+            canonicalTree={canonicalTree}
           />
         </TabsContent>
       )}
