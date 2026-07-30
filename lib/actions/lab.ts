@@ -6,7 +6,7 @@ import type {
   LabPhase, LabPhaseTask, LabPhaseTaskChecklistItem, LabReviewAction,
   LabProposedTask, LabProposedTaskChecklistItem, LabProposedTaskReview,
   LabProposedChecklistAddition, LabProposedChecklistItem, LabProposedChecklistAdditionReview,
-  CanonicalPhaseSet,
+  CanonicalPhaseSet, PendingChange, LabProposedPhase,
 } from "@/lib/types"
 
 async function assertAuth() {
@@ -51,6 +51,52 @@ function normalizePhase(p: Record<string, unknown>): LabPhase {
   return { ...p, tasks, reviews } as LabPhase
 }
 
+/** phase_set_id → { name, icon, color, projectTypeName }, resolved the same way
+ *  getCanonicalTree() resolves it: via project_types.default_phase_set_id, since
+ *  phase_sets doesn't reliably carry project_type_id. */
+async function resolvePhaseSetProjectTypeMeta(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  phaseSetIds: (string | null | undefined)[]
+): Promise<Record<string, { name: string; icon: string | null; color: string | null; projectTypeName: string | null }>> {
+  const ids = [...new Set(phaseSetIds.filter(Boolean) as string[])]
+  if (!ids.length) return {}
+  const [{ data: phaseSets }, { data: projectTypes }] = await Promise.all([
+    supabase.from("phase_sets").select("id, name").in("id", ids),
+    supabase.from("project_types").select("id, name, color, icon, default_phase_set_id").in("default_phase_set_id", ids),
+  ])
+  const ptByPs: Record<string, { name: string; color: string | null; icon: string | null }> = {}
+  for (const pt of projectTypes ?? []) {
+    if (pt.default_phase_set_id) ptByPs[pt.default_phase_set_id] = { name: pt.name, color: pt.color ?? null, icon: pt.icon ?? null }
+  }
+  const out: Record<string, { name: string; icon: string | null; color: string | null; projectTypeName: string | null }> = {}
+  for (const ps of phaseSets ?? []) {
+    const pt = ptByPs[ps.id]
+    out[ps.id] = { name: ps.name, icon: pt?.icon ?? null, color: pt?.color ?? null, projectTypeName: pt?.name ?? null }
+  }
+  return out
+}
+
+async function attachSourcePhaseSetMeta(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  phases: LabPhase[]
+): Promise<LabPhase[]> {
+  const meta = await resolvePhaseSetProjectTypeMeta(supabase, phases.map((p) => p.source_phase_set_id))
+  return phases.map((p) => {
+    if (!p.source_phase_set_id) return p
+    const m = meta[p.source_phase_set_id]
+    return {
+      ...p,
+      source_phase_set: {
+        id: p.source_phase_set_id,
+        name: p.source_phase_set?.name ?? m?.name ?? "",
+        project_type_name: m?.projectTypeName ?? null,
+        project_type_icon: m?.icon ?? null,
+        project_type_color: m?.color ?? null,
+      },
+    }
+  })
+}
+
 export async function getMyPhases(): Promise<LabPhase[]> {
   const { supabase, user } = await assertAuth()
   const { data, error } = await supabase
@@ -59,7 +105,7 @@ export async function getMyPhases(): Promise<LabPhase[]> {
     .eq("author_id", user.id)
     .order("phase_order", { ascending: true })
   if (error) return []
-  return (data ?? []).map(normalizePhase)
+  return attachSourcePhaseSetMeta(supabase, (data ?? []).map(normalizePhase))
 }
 
 export async function getAllSubmittedPhases(): Promise<LabPhase[]> {
@@ -504,7 +550,7 @@ const PROPOSED_TASK_SELECT = `
   *,
   sop:sops(id, title),
   default_position:positions(id, name),
-  anchor_phase:phase_set_phases(id, name),
+  anchor_phase:phase_set_phases(id, name, phase_set_id),
   checklist_items:lab_proposed_task_checklist_items(id, text, is_blocking, item_order),
   reviews:lab_proposed_task_reviews(id, action, comment, created_at, reviewer_id)
 `
@@ -757,7 +803,7 @@ export async function injectProposedTask(id: string): Promise<void> {
 
 // ── Proposed phases ───────────────────────────────────────────────────────────
 
-const PROPOSED_PHASE_SELECT = `*`
+const PROPOSED_PHASE_SELECT = `*, phase_set:phase_sets(id, name)`
 
 export async function getMyProposedPhases() {
   const { supabase, user } = await assertAuth()
@@ -879,7 +925,7 @@ export async function injectProposedPhase(id: string): Promise<void> {
 
 const PROPOSED_CHECKLIST_SELECT = `
   *,
-  anchor_task:task_set_tasks(id, title),
+  anchor_task:task_set_tasks(id, title, task_set_id),
   items:lab_proposed_checklist_items(id, text, is_blocking, item_order),
   reviews:lab_proposed_checklist_addition_reviews(id, action, comment, created_at, reviewer_id)
 `
@@ -1082,4 +1128,126 @@ export async function forkCanonicalPhase(phaseSetPhaseId: string): Promise<LabPh
 
   revalidatePath("/my-lab")
   return labPhase as LabPhase
+}
+
+// ============================================================
+// UNIFIED PENDING CHANGES — "Mis Propuestas" aggregation
+// ============================================================
+
+/** Aggregates all 4 kinds of proposal the current user owns into one normalized,
+ *  chronologically-sorted list. Application-layer only — no new table. */
+export async function getMyPendingChanges(): Promise<PendingChange[]> {
+  const { supabase } = await assertAuth()
+
+  const [phaseForks, proposedPhases, proposedTasks, proposedChecklists] = await Promise.all([
+    getMyPhases(),
+    getMyProposedPhases(),
+    getMyProposedTasks(),
+    getMyProposedChecklistAdditions(),
+  ])
+
+  // Resolve task_set_id → anchor phase for checklist proposals (default_task_set_id join)
+  const checklistTaskSetIds = [...new Set(
+    proposedChecklists.map((c) => c.anchor_task?.task_set_id).filter(Boolean) as string[]
+  )]
+  const checklistPhaseByTaskSet: Record<string, { id: string; name: string; phase_set_id: string }> = {}
+  if (checklistTaskSetIds.length) {
+    const { data } = await supabase
+      .from("phase_set_phases")
+      .select("id, name, phase_set_id, default_task_set_id")
+      .in("default_task_set_id", checklistTaskSetIds)
+    for (const row of data ?? []) {
+      if (row.default_task_set_id) checklistPhaseByTaskSet[row.default_task_set_id] = { id: row.id, name: row.name, phase_set_id: row.phase_set_id }
+    }
+  }
+
+  const psIds = [
+    ...proposedPhases.map((p) => p.phase_set_id),
+    ...proposedTasks.map((t) => t.anchor_phase?.phase_set_id),
+    ...Object.values(checklistPhaseByTaskSet).map((p) => p.phase_set_id),
+  ]
+  const meta = await resolvePhaseSetProjectTypeMeta(supabase, psIds)
+
+  const out: PendingChange[] = []
+
+  for (const p of phaseForks) {
+    out.push({
+      kind: "phase_fork",
+      id: p.id,
+      status: p.status,
+      title: p.name,
+      createdAt: p.created_at,
+      updatedAt: p.updated_at,
+      phaseSetId: p.source_phase_set_id,
+      phaseSetName: p.source_phase_set?.project_type_name ?? p.source_phase_set?.name ?? null,
+      phaseSetIcon: p.source_phase_set?.project_type_icon ?? null,
+      phaseSetColor: p.source_phase_set?.project_type_color ?? null,
+      phaseName: null,
+      anchorMissing: false,
+      raw: p,
+    })
+  }
+
+  for (const p of proposedPhases) {
+    const m = meta[p.phase_set_id]
+    out.push({
+      kind: "phase_new",
+      id: p.id,
+      status: p.status,
+      title: p.name,
+      createdAt: p.created_at,
+      updatedAt: p.updated_at,
+      phaseSetId: p.phase_set_id,
+      phaseSetName: m?.projectTypeName ?? m?.name ?? p.phase_set?.name ?? null,
+      phaseSetIcon: m?.icon ?? null,
+      phaseSetColor: m?.color ?? null,
+      phaseName: null,
+      anchorMissing: false,
+      raw: p,
+    })
+  }
+
+  for (const t of proposedTasks) {
+    const psId = t.anchor_phase?.phase_set_id ?? null
+    const m = psId ? meta[psId] : undefined
+    out.push({
+      kind: "task",
+      id: t.id,
+      status: t.status,
+      title: t.title,
+      createdAt: t.created_at,
+      updatedAt: t.updated_at,
+      phaseSetId: psId,
+      phaseSetName: m?.projectTypeName ?? m?.name ?? null,
+      phaseSetIcon: m?.icon ?? null,
+      phaseSetColor: m?.color ?? null,
+      phaseName: t.anchor_phase?.name ?? null,
+      anchorMissing: !t.anchor_phase,
+      raw: t,
+    })
+  }
+
+  for (const c of proposedChecklists) {
+    const taskSetId = c.anchor_task?.task_set_id ?? null
+    const phaseInfo = taskSetId ? checklistPhaseByTaskSet[taskSetId] : undefined
+    const m = phaseInfo ? meta[phaseInfo.phase_set_id] : undefined
+    out.push({
+      kind: "checklist",
+      id: c.id,
+      status: c.status,
+      title: c.anchor_task?.title ? `Checklist: ${c.anchor_task.title}` : "Checklist",
+      createdAt: c.created_at,
+      updatedAt: c.updated_at,
+      phaseSetId: phaseInfo?.phase_set_id ?? null,
+      phaseSetName: m?.projectTypeName ?? m?.name ?? null,
+      phaseSetIcon: m?.icon ?? null,
+      phaseSetColor: m?.color ?? null,
+      phaseName: phaseInfo?.name ?? null,
+      anchorMissing: !c.anchor_task,
+      raw: c,
+    })
+  }
+
+  out.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+  return out
 }

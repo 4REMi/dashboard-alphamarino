@@ -7,11 +7,11 @@ import type {
 } from "@/lib/types"
 import {
   FolderKanban, ListChecks, Lock, Paperclip, BookOpen,
-  Plus, ChevronRight, Pencil, Layers, Send, RotateCcw, Trash2, GitFork,
+  Plus, ChevronRight, Pencil, Layers, GitFork,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getProjectTypeIcon } from "@/lib/project-type-icons"
-import { submitProposedTask, retractProposedTask, deleteProposedTask, forkCanonicalPhase } from "@/lib/actions/lab"
+import { forkCanonicalPhase } from "@/lib/actions/lab"
 import { useToast } from "@/components/ui/toast"
 import { TaskFormModal, type TaskFormTarget } from "@/components/lab/task-form-modal"
 import { ProposedChecklistModal } from "@/components/lab/proposed-checklist-modal"
@@ -286,26 +286,18 @@ export function CanonicalTreeView({
               )
             })}
 
-            {/* My task proposals for the selected phase */}
+            {/* Non-interactive pointer to where proposals are now managed */}
             {selectedPhase && (() => {
               const myProposals = localProposedTasks.filter(
                 (pt) => pt.anchor_phase_set_phase_id === selectedPhase.id && pt.status !== "approved"
               )
               if (myProposals.length === 0) return null
               return (
-                <div className="border-t border-dashed border-border mt-2">
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-5 py-2">
-                    Mis propuestas de tarea
+                <div className="border-t border-dashed border-border mt-2 px-5 py-3">
+                  <p className="text-xs text-muted-foreground">
+                    Tienes {myProposals.length} propuesta{myProposals.length !== 1 ? "s" : ""} de tarea aquí —
+                    gestiónalas en <span className="font-medium text-foreground">Mis Propuestas</span>.
                   </p>
-                  {myProposals.map((pt) => (
-                    <ProposedTaskInlineRow
-                      key={pt.id}
-                      proposal={pt}
-                      onSubmit={() => setLocalProposedTasks((prev) => prev.map((t) => t.id === pt.id ? { ...t, status: "submitted" } : t))}
-                      onRetract={() => setLocalProposedTasks((prev) => prev.map((t) => t.id === pt.id ? { ...t, status: "draft" } : t))}
-                      onDelete={() => setLocalProposedTasks((prev) => prev.filter((t) => t.id !== pt.id))}
-                    />
-                  ))}
                 </div>
               )
             })()}
@@ -319,7 +311,10 @@ export function CanonicalTreeView({
           allPhases={proposingPhase.allPhases}
           defaultAfterPhaseId={proposingPhase.defaultAfterPhaseId}
           onClose={() => setProposingPhase(null)}
-          onCreated={() => setProposingPhase(null)}
+          onCreated={() => {
+            setProposingPhase(null)
+            toast("Fase propuesta guardada como borrador — gestiónala en Mis Propuestas", "success")
+          }}
         />
       )}
 
@@ -468,81 +463,3 @@ function CanonicalTaskRow({
   )
 }
 
-// -- Inline proposed task row (bottom of panel 3) --
-
-const STATUS_LABEL: Record<string, string> = {
-  draft: "Borrador", submitted: "En revisión", approved: "Aprobada", rejected: "Rechazada",
-}
-const STATUS_COLOR: Record<string, string> = {
-  draft:     "border-muted text-muted-foreground bg-muted",
-  submitted: "border-amber-300 text-amber-700 bg-amber-500/15",
-  approved:  "border-emerald-300 text-emerald-700 bg-emerald-500/15",
-  rejected:  "border-destructive/30 text-destructive bg-destructive/10",
-}
-
-function ProposedTaskInlineRow({ proposal, onSubmit, onRetract, onDelete }: {
-  proposal: LabProposedTask
-  onSubmit: () => void
-  onRetract: () => void
-  onDelete: () => void
-}) {
-  const [isPending, startTransition] = useTransition()
-
-  function handleSubmit() {
-    startTransition(async () => { await submitProposedTask(proposal.id); onSubmit() })
-  }
-  function handleRetract() {
-    startTransition(async () => { await retractProposedTask(proposal.id); onRetract() })
-  }
-  function handleDelete() {
-    startTransition(async () => { await deleteProposedTask(proposal.id); onDelete() })
-  }
-
-  return (
-    <div className="flex items-center gap-2 px-5 py-3 border-b border-dashed border-border bg-muted/20">
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5">
-          <p className="text-sm font-medium truncate text-muted-foreground">{proposal.title}</p>
-          {(proposal as { anchor_task_set_task_id?: string | null }).anchor_task_set_task_id && (
-            <span className="inline-flex items-center rounded-full border border-blue-300 px-2 py-0.5 text-[10px] font-semibold text-blue-600 bg-blue-500/10">Edición</span>
-          )}
-        </div>
-        {proposal.description && (
-          <p className="text-xs text-muted-foreground/70 truncate mt-0.5">{proposal.description}</p>
-        )}
-      </div>
-      <div className="flex items-center gap-1 flex-shrink-0">
-        <span className={cn(
-          "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold",
-          STATUS_COLOR[proposal.status] ?? STATUS_COLOR.draft
-        )}>
-          {STATUS_LABEL[proposal.status] ?? proposal.status}
-        </span>
-        {proposal.status === "draft" && (
-          <>
-            <button onClick={handleSubmit} disabled={isPending} title="Enviar a revisión"
-              className="p-1 rounded-md text-primary hover:bg-primary/10 disabled:opacity-50 transition-colors">
-              <Send className="w-3 h-3" />
-            </button>
-            <button onClick={handleDelete} disabled={isPending} title="Eliminar borrador"
-              className="p-1 rounded-md text-muted-foreground hover:text-destructive disabled:opacity-50 transition-colors">
-              <Trash2 className="w-3 h-3" />
-            </button>
-          </>
-        )}
-        {proposal.status === "submitted" && (
-          <button onClick={handleRetract} disabled={isPending} title="Retirar"
-            className="p-1 rounded-md text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors">
-            <RotateCcw className="w-3 h-3" />
-          </button>
-        )}
-        {proposal.status === "rejected" && (
-          <button onClick={handleDelete} disabled={isPending} title="Descartar"
-            className="p-1 rounded-md text-muted-foreground hover:text-destructive disabled:opacity-50 transition-colors">
-            <Trash2 className="w-3 h-3" />
-          </button>
-        )}
-      </div>
-    </div>
-  )
-}

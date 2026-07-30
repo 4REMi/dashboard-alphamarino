@@ -321,7 +321,13 @@ export interface LabPhase {
   author?: Profile | null
   tasks?: LabPhaseTask[]
   reviews?: LabPhaseReview[]
-  source_phase_set?: Pick<PhaseSet, "id" | "name"> | null
+  source_phase_set?: {
+    id: string
+    name: string
+    project_type_name: string | null
+    project_type_icon: string | null
+    project_type_color: string | null
+  } | null
 }
 
 export type LabProposedStatus = "draft" | "submitted" | "approved" | "rejected"
@@ -367,7 +373,7 @@ export interface LabProposedTask {
   default_position?: Position | null
   checklist_items?: LabProposedTaskChecklistItem[]
   reviews?: LabProposedTaskReview[]
-  anchor_phase?: Pick<PhaseSetPhase, "id" | "name"> | null
+  anchor_phase?: (Pick<PhaseSetPhase, "id" | "name"> & { phase_set_id?: string | null }) | null
 }
 
 // ── Proposed checklist addition (anchored to a canonical TaskSetTask) ─────────
@@ -401,7 +407,7 @@ export interface LabProposedChecklistAddition {
   author?: Pick<Profile, "id" | "full_name"> | null
   items?: LabProposedChecklistItem[]
   reviews?: LabProposedChecklistAdditionReview[]
-  anchor_task?: Pick<TaskSetTask, "id" | "title"> | null
+  anchor_task?: (Pick<TaskSetTask, "id" | "title"> & { task_set_id?: string | null }) | null
 }
 
 // ── Canonical tree (read-only snapshot for Mi Ops Lab) ───────────────────────
@@ -450,6 +456,32 @@ export interface LabProposedPhase {
   created_at: string
   updated_at: string
   author?: Pick<Profile, "id" | "full_name"> | null
+  phase_set?: Pick<PhaseSet, "id" | "name"> | null
+}
+
+// ── Unified pending-change aggregate (application-layer only) ─────────────────
+// Combines lab_phases (forks), lab_proposed_phases, lab_proposed_tasks and
+// lab_proposed_checklist_additions into one shape for the "Mis Propuestas" tab.
+// No new table — purely a normalized view over the 4 existing "get mine" queries.
+
+export type PendingChangeKind = "phase_fork" | "phase_new" | "task" | "checklist"
+
+export interface PendingChange {
+  kind: PendingChangeKind
+  id: string
+  status: LabProposedStatus
+  title: string
+  createdAt: string
+  updatedAt: string
+  phaseSetId: string | null
+  phaseSetName: string | null
+  phaseSetIcon: string | null
+  phaseSetColor: string | null
+  /** The canonical phase this change lives in/under. Null for phase_fork (it IS the phase) and phase_new (it becomes one). */
+  phaseName: string | null
+  /** True when the canonical row this proposal anchors to no longer exists. */
+  anchorMissing: boolean
+  raw: LabPhase | LabProposedPhase | LabProposedTask | LabProposedChecklistAddition
 }
 
 // ============================================================

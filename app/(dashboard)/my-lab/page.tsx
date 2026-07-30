@@ -2,15 +2,15 @@ export const dynamic = "force-dynamic"
 
 import { createClient } from "@/lib/supabase/server"
 import { getMyPendingSopRequests, getSops } from "@/lib/actions/sops"
-import { getMyPhases, getAllSubmittedPhases, getCanonicalTree, getMyProposedTasks, getAllSubmittedProposedTasks, getMyProposedChecklistAdditions, getAllSubmittedProposedChecklistAdditions, getAllSubmittedProposedPhases } from "@/lib/actions/lab"
+import { getAllSubmittedPhases, getCanonicalTree, getMyProposedTasks, getAllSubmittedProposedTasks, getMyProposedChecklistAdditions, getAllSubmittedProposedChecklistAdditions, getAllSubmittedProposedPhases, getMyPendingChanges } from "@/lib/actions/lab"
 import { getPhaseSets } from "@/lib/actions/config"
 import { getPositions } from "@/lib/actions/config"
 import { SopRequestInbox } from "@/components/lab/sop-request-inbox"
-import { PhaseEditor } from "@/components/lab/phase-editor"
+import { MyProposalsView } from "@/components/lab/my-proposals-view"
 import { PhaseReviewPanel } from "@/components/lab/phase-review-panel"
 import { CanonicalTreeView } from "@/components/lab/canonical-tree-view"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Lightbulb } from "lucide-react"
+import { Lightbulb, ClipboardEdit } from "lucide-react"
 import type { SopRequest, LabPhase, PhaseSet, Sop, LabProposedPhase } from "@/lib/types"
 
 export default async function MyLabPage() {
@@ -26,7 +26,7 @@ export default async function MyLabPage() {
 
   const [
     sopRequests,
-    myPhases,
+    myPendingChanges,
     allSops,
     submittedPhases,
     phaseSets,
@@ -39,7 +39,7 @@ export default async function MyLabPage() {
     allProposedPhases,
   ] = await Promise.all([
     getMyPendingSopRequests().catch(() => [] as SopRequest[]),
-    getMyPhases().catch(() => [] as LabPhase[]),
+    getMyPendingChanges().catch(() => []),
     getSops().catch(() => [] as Sop[]),
     isAdmin ? getAllSubmittedPhases().catch(() => [] as LabPhase[]) : Promise.resolve([] as LabPhase[]),
     isAdmin ? getPhaseSets().catch(() => [] as PhaseSet[]) : Promise.resolve([] as PhaseSet[]),
@@ -85,10 +85,11 @@ export default async function MyLabPage() {
             )}
           </TabsTrigger>
           <TabsTrigger value="phases">
-            Mis fases
-            {myPhases.length > 0 && (
+            <ClipboardEdit className="w-3.5 h-3.5 mr-1" />
+            Mis Propuestas
+            {myPendingChanges.filter((c) => c.status !== "approved").length > 0 && (
               <span className="ml-1.5 text-[10px] font-semibold bg-primary/15 text-primary rounded-full px-1.5 py-0.5">
-                {myPhases.length}
+                {myPendingChanges.filter((c) => c.status !== "approved").length}
               </span>
             )}
           </TabsTrigger>
@@ -123,8 +124,9 @@ export default async function MyLabPage() {
         </TabsContent>
 
         <TabsContent value="phases" className="mt-4">
-          <PhaseEditor
-            initialPhases={myPhases}
+          <MyProposalsView
+            initialPendingChanges={myPendingChanges}
+            canonicalTree={canonicalTree}
             sops={allSops as Sop[]}
             positions={positions}
           />

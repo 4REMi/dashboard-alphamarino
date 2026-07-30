@@ -71,6 +71,18 @@ export function PanelHeader({
   )
 }
 
+// Status labels/colors shared by any UI surfacing lab_phases / lab_proposed_*
+// statuses (draft/submitted/approved/rejected) — Árbol Canónico, Mis Propuestas.
+export const PROPOSAL_STATUS_LABEL: Record<string, string> = {
+  draft: "Borrador", submitted: "En revisión", approved: "Aprobada", rejected: "Rechazada",
+}
+export const PROPOSAL_STATUS_COLOR: Record<string, string> = {
+  draft:     "border-muted text-muted-foreground bg-muted",
+  submitted: "border-amber-300 text-amber-700 bg-amber-500/15",
+  approved:  "border-emerald-300 text-emerald-700 bg-emerald-500/15",
+  rejected:  "border-destructive/30 text-destructive bg-destructive/10",
+}
+
 export function EmptyPanel({ icon: Icon, text }: { icon: React.ElementType; text: string }) {
   return (
     <div className="flex flex-col items-center justify-center h-full text-center px-6 gap-3">
