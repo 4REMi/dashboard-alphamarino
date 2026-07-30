@@ -11,7 +11,7 @@ import { PhaseReviewPanel } from "@/components/lab/phase-review-panel"
 import { CanonicalTreeView } from "@/components/lab/canonical-tree-view"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Lightbulb, ClipboardEdit } from "lucide-react"
-import type { SopRequest, LabPhase, PhaseSet, Sop, LabProposedPhase } from "@/lib/types"
+import type { SopRequest, LabPhase, PhaseSet, Sop, LabProposedPhase, LabProposedTask } from "@/lib/types"
 
 export default async function MyLabPage() {
   const supabase = await createClient()
@@ -116,8 +116,11 @@ export default async function MyLabPage() {
         <TabsContent value="canonical" className="mt-4">
           <CanonicalTreeView
             phaseSets={canonicalTree}
-            myProposedTasks={myProposedTasks}
+            myProposedTasks={myProposedTasks as LabProposedTask[]}
             myProposedChecklists={myProposedChecklists}
+            myProposedPhases={myPendingChanges
+              .filter((c) => c.kind === "phase_new")
+              .map((c) => c.raw as LabProposedPhase)}
             positions={positions}
             sops={allSops as Sop[]}
           />

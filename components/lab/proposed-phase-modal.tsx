@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import type { CanonicalPhase } from "@/lib/types"
+import type { CanonicalPhase, LabProposedPhase } from "@/lib/types"
 import { createProposedPhase } from "@/lib/actions/lab"
 import { X } from "lucide-react"
 import { InlineInput } from "@/components/lab/shared"
@@ -12,7 +12,7 @@ interface Props {
   allPhases: CanonicalPhase[]
   defaultAfterPhaseId?: string
   onClose: () => void
-  onCreated: () => void
+  onCreated: (proposal: LabProposedPhase) => void
 }
 
 export function ProposedPhaseModal({ phaseSet, allPhases, defaultAfterPhaseId, onClose, onCreated }: Props) {
@@ -24,8 +24,8 @@ export function ProposedPhaseModal({ phaseSet, allPhases, defaultAfterPhaseId, o
     const fd = new FormData(e.currentTarget)
     fd.set("position_after_phase_id", afterPhaseId)
     startTransition(async () => {
-      await createProposedPhase(phaseSet.id, fd)
-      onCreated()
+      const proposal = await createProposedPhase(phaseSet.id, fd)
+      onCreated(proposal)
     })
   }
 

@@ -3,11 +3,11 @@
 import { useState, useTransition, useCallback } from "react"
 import type {
   CanonicalPhaseSet, CanonicalPhase, CanonicalTask,
-  LabProposedTask, LabProposedChecklistAddition, Position, Sop,
+  LabProposedTask, LabProposedChecklistAddition, LabProposedPhase, Position, Sop,
 } from "@/lib/types"
 import {
   FolderKanban, ListChecks, Lock, Paperclip, BookOpen,
-  Plus, ChevronRight, Pencil, Layers, GitFork,
+  Plus, ChevronRight, Pencil, Layers, GitFork, Sparkles,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getProjectTypeIcon } from "@/lib/project-type-icons"
@@ -21,12 +21,13 @@ interface Props {
   phaseSets: CanonicalPhaseSet[]
   myProposedTasks: LabProposedTask[]
   myProposedChecklists: LabProposedChecklistAddition[]
+  myProposedPhases: LabProposedPhase[]
   positions: Position[]
   sops: Sop[]
 }
 
 export function CanonicalTreeView({
-  phaseSets, myProposedTasks, myProposedChecklists, positions, sops,
+  phaseSets, myProposedTasks, myProposedChecklists, myProposedPhases, positions, sops,
 }: Props) {
   const [selectedPsId, setSelectedPsId] = useState<string | null>(null)
   const [selectedPhaseId, setSelectedPhaseId] = useState<string | null>(null)
@@ -42,6 +43,7 @@ export function CanonicalTreeView({
   } | null>(null)
   const [localProposedTasks, setLocalProposedTasks] = useState<LabProposedTask[]>(myProposedTasks)
   const [localProposedChecklists, setLocalProposedChecklists] = useState<LabProposedChecklistAddition[]>(myProposedChecklists)
+  const [localProposedPhases, setLocalProposedPhases] = useState<LabProposedPhase[]>(myProposedPhases)
   const [forking, setForking] = useState<string | null>(null)
   const [, startFork] = useTransition()
   const toast = useToast()
@@ -64,6 +66,30 @@ export function CanonicalTreeView({
   const phases = selectedPs?.phases ?? []
   const selectedPhase = phases.find((p) => p.id === selectedPhaseId) ?? null
   const tasks = selectedPhase?.tasks ?? []
+
+  // Ghost phases (new-phase proposals) for the selected Phase Set, interleaved by position_after_phase_id
+  const ghostPhases = selectedPs
+    ? localProposedPhases.filter((pp) => pp.phase_set_id === selectedPs.id && pp.status !== "approved")
+    : []
+  const phaseRows: ({ type: "phase"; data: CanonicalPhase } | { type: "phase_ghost"; data: LabProposedPhase })[] = []
+  ghostPhases.filter((pp) => !pp.position_after_phase_id).forEach((pp) => phaseRows.push({ type: "phase_ghost", data: pp }))
+  phases.forEach((phase) => {
+    phaseRows.push({ type: "phase", data: phase })
+    ghostPhases.filter((pp) => pp.position_after_phase_id === phase.id).forEach((pp) => phaseRows.push({ type: "phase_ghost", data: pp }))
+  })
+
+  // Ghost tasks (new-task proposals, not edits) for the selected phase, interleaved by position_after_task_id
+  const ghostTasks = selectedPhase
+    ? localProposedTasks.filter((pt) =>
+        pt.anchor_phase_set_phase_id === selectedPhase.id && pt.status !== "approved" && !pt.anchor_task_set_task_id
+      )
+    : []
+  const taskRows: ({ type: "task"; data: CanonicalTask } | { type: "task_ghost"; data: LabProposedTask })[] = []
+  ghostTasks.filter((pt) => !pt.position_after_task_id).forEach((pt) => taskRows.push({ type: "task_ghost", data: pt }))
+  tasks.forEach((task) => {
+    taskRows.push({ type: "task", data: task })
+    ghostTasks.filter((pt) => pt.position_after_task_id === task.id).forEach((pt) => taskRows.push({ type: "task_ghost", data: pt }))
+  })
 
   if (phaseSets.length === 0) {
     return (
@@ -138,74 +164,83 @@ export function CanonicalTreeView({
                 <p className="text-sm text-muted-foreground">Sin fases configuradas.</p>
               </div>
             )}
-            {selectedPs && phases.map((phase, i) => {
-              const isSelected = phase.id === selectedPhaseId
-              const phaseProposals = localProposedTasks.filter(
-                (pt) => pt.anchor_phase_set_phase_id === phase.id
-              )
-              const pendingCount = phaseProposals.filter(
-                (pt) => pt.status === "draft" || pt.status === "submitted"
-              ).length
-              return (
-                <div
-                  key={phase.id}
-                  onClick={() => setSelectedPhaseId(phase.id === selectedPhaseId ? null : phase.id)}
-                  className={cn(
-                    "group relative cursor-pointer border-b border-border transition-colors",
-                    isSelected ? "bg-primary/5 border-l-2 border-l-primary" : "hover:bg-muted/40"
-                  )}
-                >
-                  <div className="flex items-center gap-2 px-5 py-3">
-                    <span className={cn(
-                      "flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold",
-                      isSelected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-                    )}>
-                      {i + 1}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{phase.name}</p>
-                      {phase.description && (
-                        <p className="text-xs text-muted-foreground truncate mt-0.5">{phase.description}</p>
-                      )}
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {phase.tasks.length} tarea{phase.tasks.length !== 1 ? "s" : ""}
-                      </p>
-                    </div>
-                    {pendingCount > 0 && (
-                      <span className="inline-flex items-center rounded-full border border-amber-300 px-2 py-0.5 text-[10px] font-semibold text-amber-700 bg-amber-500/15 flex-shrink-0">
-                        {pendingCount}
-                      </span>
+            {selectedPs && (() => {
+              let phaseIndex = 0
+              return phaseRows.map((row) => {
+                if (row.type === "phase_ghost") {
+                  return <GhostPhaseRow key={`ghost-${row.data.id}`} proposal={row.data} />
+                }
+                const phase = row.data
+                phaseIndex += 1
+                const i = phaseIndex
+                const isSelected = phase.id === selectedPhaseId
+                const phaseProposals = localProposedTasks.filter(
+                  (pt) => pt.anchor_phase_set_phase_id === phase.id
+                )
+                const pendingCount = phaseProposals.filter(
+                  (pt) => pt.status === "draft" || pt.status === "submitted"
+                ).length
+                return (
+                  <div
+                    key={phase.id}
+                    onClick={() => setSelectedPhaseId(phase.id === selectedPhaseId ? null : phase.id)}
+                    className={cn(
+                      "group relative cursor-pointer border-b border-border transition-colors",
+                      isSelected ? "bg-primary/5 border-l-2 border-l-primary" : "hover:bg-muted/40"
                     )}
-                    {isSelected && <ChevronRight className="w-3.5 h-3.5 text-primary flex-shrink-0" />}
+                  >
+                    <div className="flex items-center gap-2 px-5 py-3">
+                      <span className={cn(
+                        "flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold",
+                        isSelected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                      )}>
+                        {i}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{phase.name}</p>
+                        {phase.description && (
+                          <p className="text-xs text-muted-foreground truncate mt-0.5">{phase.description}</p>
+                        )}
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {phase.tasks.length} tarea{phase.tasks.length !== 1 ? "s" : ""}
+                        </p>
+                      </div>
+                      {pendingCount > 0 && (
+                        <span className="inline-flex items-center rounded-full border border-amber-300 px-2 py-0.5 text-[10px] font-semibold text-amber-700 bg-amber-500/15 flex-shrink-0">
+                          {pendingCount}
+                        </span>
+                      )}
+                      {isSelected && <ChevronRight className="w-3.5 h-3.5 text-primary flex-shrink-0" />}
+                    </div>
+                    {/* Hover actions — absolutely positioned so they don't affect layout */}
+                    <div className="hidden group-hover:flex absolute right-2 top-1/2 -translate-y-1/2 items-center gap-1 bg-card/90 backdrop-blur-sm rounded-lg border border-border shadow-sm px-1 py-0.5">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setProposingPhase({
+                            phaseSet: { id: selectedPs.id, name: selectedPs.name },
+                            allPhases: phases,
+                            defaultAfterPhaseId: phase.id,
+                          })
+                        }}
+                        title="Proponer nueva fase"
+                        className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 px-2 py-1 rounded-md hover:bg-primary/10 transition-colors"
+                      >
+                        <Layers className="w-3 h-3" />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleFork(phase.id) }}
+                        disabled={forking === phase.id}
+                        title="Copiar a Mis Fases"
+                        className="flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-700 px-2 py-1 rounded-md hover:bg-emerald-50 disabled:opacity-50 transition-colors"
+                      >
+                        <GitFork className="w-3 h-3" />
+                      </button>
+                    </div>
                   </div>
-                  {/* Hover actions — absolutely positioned so they don't affect layout */}
-                  <div className="hidden group-hover:flex absolute right-2 top-1/2 -translate-y-1/2 items-center gap-1 bg-card/90 backdrop-blur-sm rounded-lg border border-border shadow-sm px-1 py-0.5">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setProposingPhase({
-                          phaseSet: { id: selectedPs.id, name: selectedPs.name },
-                          allPhases: phases,
-                          defaultAfterPhaseId: phase.id,
-                        })
-                      }}
-                      title="Proponer nueva fase"
-                      className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 px-2 py-1 rounded-md hover:bg-primary/10 transition-colors"
-                    >
-                      <Layers className="w-3 h-3" />
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleFork(phase.id) }}
-                      disabled={forking === phase.id}
-                      title="Copiar a Mis Fases"
-                      className="flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-700 px-2 py-1 rounded-md hover:bg-emerald-50 disabled:opacity-50 transition-colors"
-                    >
-                      <GitFork className="w-3 h-3" />
-                    </button>
-                  </div>
-                </div>
-              )
-            })}
+                )
+              })
+            })()}
           </div>
         </div>
 
@@ -240,7 +275,7 @@ export function CanonicalTreeView({
                 <p className="text-sm text-muted-foreground">Selecciona una fase</p>
               </div>
             )}
-            {selectedPhase && tasks.length === 0 && (
+            {selectedPhase && taskRows.length === 0 && (
               <div className="flex flex-col items-center justify-center py-16 gap-3">
                 <ListChecks className="w-10 h-10 text-muted-foreground/30 mb-3" />
                 <p className="text-sm text-muted-foreground">Sin tareas en esta fase.</p>
@@ -253,38 +288,58 @@ export function CanonicalTreeView({
                 </button>
               </div>
             )}
-            {selectedPhase && tasks.map((task, i) => {
-              const checklistProposals = localProposedChecklists.filter(
-                (cp) => cp.anchor_task_set_task_id === task.id
-              )
-              return (
-                <CanonicalTaskRow
-                  key={task.id}
-                  task={task}
-                  index={i + 1}
-                  checklistProposals={checklistProposals}
-                  onProposeNewTask={() =>
-                    setTaskModalTarget({
-                      kind: "canonical-propose",
-                      phase: selectedPhase,
-                      phaseSetName: selectedPs!.name,
-                      defaultAfterTaskId: task.id,
-                    })
-                  }
-                  onProposeEdit={() =>
-                    setTaskModalTarget({
-                      kind: "canonical-propose",
-                      phase: selectedPhase,
-                      phaseSetName: selectedPs!.name,
-                      existingTask: task,
-                    })
-                  }
-                  onProposeChecklist={() =>
-                    setProposingChecklist({ task, phaseName: selectedPhase.name })
-                  }
-                />
-              )
-            })}
+            {selectedPhase && tasks.length === 0 && taskRows.length > 0 && (
+              <div className="px-5 pt-3">
+                <button
+                  onClick={() => setTaskModalTarget({ kind: "canonical-propose", phase: selectedPhase, phaseSetName: selectedPs!.name })}
+                  className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 px-3 py-1.5 rounded-md border border-primary/30 hover:bg-primary/5 transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Proponer primera tarea
+                </button>
+              </div>
+            )}
+            {selectedPhase && (() => {
+              let taskIndex = 0
+              return taskRows.map((row) => {
+                if (row.type === "task_ghost") {
+                  return <GhostTaskRow key={`ghost-${row.data.id}`} proposal={row.data} />
+                }
+                const task = row.data
+                taskIndex += 1
+                const index = taskIndex
+                const checklistProposals = localProposedChecklists.filter(
+                  (cp) => cp.anchor_task_set_task_id === task.id
+                )
+                return (
+                  <CanonicalTaskRow
+                    key={task.id}
+                    task={task}
+                    index={index}
+                    checklistProposals={checklistProposals}
+                    onProposeNewTask={() =>
+                      setTaskModalTarget({
+                        kind: "canonical-propose",
+                        phase: selectedPhase,
+                        phaseSetName: selectedPs!.name,
+                        defaultAfterTaskId: task.id,
+                      })
+                    }
+                    onProposeEdit={() =>
+                      setTaskModalTarget({
+                        kind: "canonical-propose",
+                        phase: selectedPhase,
+                        phaseSetName: selectedPs!.name,
+                        existingTask: task,
+                      })
+                    }
+                    onProposeChecklist={() =>
+                      setProposingChecklist({ task, phaseName: selectedPhase.name })
+                    }
+                  />
+                )
+              })
+            })()}
 
             {/* Non-interactive pointer to where proposals are now managed */}
             {selectedPhase && (() => {
@@ -311,7 +366,8 @@ export function CanonicalTreeView({
           allPhases={proposingPhase.allPhases}
           defaultAfterPhaseId={proposingPhase.defaultAfterPhaseId}
           onClose={() => setProposingPhase(null)}
-          onCreated={() => {
+          onCreated={(proposal) => {
+            setLocalProposedPhases((prev) => [proposal, ...prev])
             setProposingPhase(null)
             toast("Fase propuesta guardada como borrador — gestiónala en Mis Propuestas", "success")
           }}
@@ -343,6 +399,46 @@ export function CanonicalTreeView({
         />
       )}
     </>
+  )
+}
+
+// -- Ghost rows: preview of a pending proposal, positioned in context, non-interactive --
+
+const GHOST_STATUS_LABEL: Record<string, string> = {
+  draft: "Borrador", submitted: "En revisión", rejected: "Rechazada",
+}
+
+function GhostPhaseRow({ proposal }: { proposal: LabProposedPhase }) {
+  return (
+    <div className="flex items-center gap-2 px-5 py-3 border-b border-dashed border-primary/30 bg-primary/5">
+      <span className="flex-shrink-0 w-6 h-6 rounded-full border border-dashed border-primary/40 flex items-center justify-center">
+        <Sparkles className="w-3 h-3 text-primary" />
+      </span>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium italic text-primary/90 truncate">{proposal.name}</p>
+        <p className="text-xs text-muted-foreground truncate mt-0.5">Fase propuesta — pendiente</p>
+      </div>
+      <span className="text-[10px] font-semibold text-primary/80 flex-shrink-0">
+        {GHOST_STATUS_LABEL[proposal.status] ?? proposal.status}
+      </span>
+    </div>
+  )
+}
+
+function GhostTaskRow({ proposal }: { proposal: LabProposedTask }) {
+  return (
+    <div className="flex items-center gap-2 px-3 py-3 border-b border-dashed border-primary/30 bg-primary/5">
+      <span className="w-5 h-5 rounded-full border border-dashed border-primary/40 flex items-center justify-center flex-shrink-0">
+        <Sparkles className="w-2.5 h-2.5 text-primary" />
+      </span>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium italic text-primary/90 truncate">{proposal.title}</p>
+        <p className="text-xs text-muted-foreground truncate mt-0.5">Tarea propuesta — pendiente</p>
+      </div>
+      <span className="text-[10px] font-semibold text-primary/80 flex-shrink-0">
+        {GHOST_STATUS_LABEL[proposal.status] ?? proposal.status}
+      </span>
+    </div>
   )
 }
 
