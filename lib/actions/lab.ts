@@ -32,7 +32,8 @@ const TASK_SELECT = `
 const PHASE_SELECT = `
   *,
   tasks:lab_phase_tasks(${TASK_SELECT}),
-  reviews:lab_phase_reviews(*, reviewer:profiles(id, full_name, avatar_url))
+  reviews:lab_phase_reviews(*, reviewer:profiles(id, full_name, avatar_url)),
+  source_phase_set:phase_sets(id, name)
 `
 
 function normalizeTasks(tasks: LabPhaseTask[]): LabPhaseTask[] {
@@ -158,8 +159,25 @@ export async function addPhaseTask(phaseId: string, formData: FormData): Promise
     default_position_id:  positionIdRaw || null,
   }).select(TASK_SELECT).single()
   if (error) throw error
+
+  const checklistRaw = (formData.get("checklist_items_json") as string) || "[]"
+  const checklistItems = JSON.parse(checklistRaw) as { text: string; is_blocking: boolean }[]
+  let insertedItems: LabPhaseTaskChecklistItem[] = []
+  if (checklistItems.length > 0) {
+    const { data: itemsData, error: itemsError } = await supabase.from("lab_phase_task_checklist_items").insert(
+      checklistItems.map((item, i) => ({
+        task_id:    (data as { id: string }).id,
+        text:       item.text,
+        is_blocking: item.is_blocking,
+        item_order:  i,
+      }))
+    ).select()
+    if (itemsError) throw itemsError
+    insertedItems = (itemsData ?? []) as LabPhaseTaskChecklistItem[]
+  }
+
   revalidate()
-  return { ...data, checklist_items: [] } as LabPhaseTask
+  return { ...data, checklist_items: insertedItems } as LabPhaseTask
 }
 
 export async function updatePhaseTask(id: string, formData: FormData): Promise<void> {
@@ -174,6 +192,27 @@ export async function updatePhaseTask(id: string, formData: FormData): Promise<v
     default_position_id:  positionIdRaw || null,
   }).eq("id", id)
   if (error) throw error
+
+  // Checklist items are only touched when the caller submits the field —
+  // callers that don't manage checklist state (e.g. old inline form) omit it.
+  if (formData.has("checklist_items_json")) {
+    const checklistRaw = (formData.get("checklist_items_json") as string) || "[]"
+    const checklistItems = JSON.parse(checklistRaw) as { text: string; is_blocking: boolean }[]
+    const { error: delError } = await supabase.from("lab_phase_task_checklist_items").delete().eq("task_id", id)
+    if (delError) throw delError
+    if (checklistItems.length > 0) {
+      const { error: insError } = await supabase.from("lab_phase_task_checklist_items").insert(
+        checklistItems.map((item, i) => ({
+          task_id:    id,
+          text:       item.text,
+          is_blocking: item.is_blocking,
+          item_order:  i,
+        }))
+      )
+      if (insError) throw insError
+    }
+  }
+
   revalidate()
 }
 
@@ -990,7 +1029,7 @@ export async function forkCanonicalPhase(phaseSetPhaseId: string): Promise<LabPh
   const { data: phase } = await supabase
     .from("phase_set_phases")
     .select(`
-      id, name, description,
+      id, name, description, phase_set_id,
       task_set:task_sets(
         id, name,
         tasks:task_set_tasks(
@@ -1010,6 +1049,8 @@ export async function forkCanonicalPhase(phaseSetPhaseId: string): Promise<LabPh
     description: phase.description ?? null,
     status:      "draft",
     phase_order: count ?? 0,
+    source_phase_set_id:       phase.phase_set_id ?? null,
+    source_phase_set_phase_id: phase.id,
   }).select().single()
   if (error || !labPhase) throw new Error("Error al crear fase en lab")
 

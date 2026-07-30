@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils"
 import { getProjectTypeIcon } from "@/lib/project-type-icons"
 import { submitProposedTask, retractProposedTask, deleteProposedTask, forkCanonicalPhase } from "@/lib/actions/lab"
 import { useToast } from "@/components/ui/toast"
-import { ProposedTaskModal } from "@/components/lab/proposed-task-modal"
+import { TaskFormModal, type TaskFormTarget } from "@/components/lab/task-form-modal"
 import { ProposedChecklistModal } from "@/components/lab/proposed-checklist-modal"
 import { ProposedPhaseModal } from "@/components/lab/proposed-phase-modal"
 
@@ -35,16 +35,7 @@ export function CanonicalTreeView({
     allPhases: CanonicalPhase[]
     defaultAfterPhaseId: string
   } | null>(null)
-  const [proposingNewTask, setProposingNewTask] = useState<{
-    phase: CanonicalPhase
-    phaseSetName: string
-    defaultAfterTaskId?: string
-  } | null>(null)
-  const [editingTaskProposal, setEditingTaskProposal] = useState<{
-    task: CanonicalTask
-    phase: CanonicalPhase
-    phaseSetName: string
-  } | null>(null)
+  const [taskModalTarget, setTaskModalTarget] = useState<TaskFormTarget | null>(null)
   const [proposingChecklist, setProposingChecklist] = useState<{
     task: CanonicalTask
     phaseName: string
@@ -220,11 +211,27 @@ export function CanonicalTreeView({
 
         {/* -- PANEL 3: Tasks -- */}
         <div className="flex-1 flex flex-col min-w-0">
-          <div className="px-5 py-4 border-b flex-shrink-0">
-            <p className="font-semibold text-sm">{selectedPhase ? selectedPhase.name : "Tareas"}</p>
-            <p className="text-xs text-muted-foreground">
-              {!selectedPhase ? "Selecciona una fase" : `${tasks.length} tarea${tasks.length !== 1 ? "s" : ""} plantilla`}
-            </p>
+          <div className="px-5 py-4 border-b flex-shrink-0 flex items-center justify-between">
+            <div>
+              <p className="font-semibold text-sm">{selectedPhase ? selectedPhase.name : "Tareas"}</p>
+              <p className="text-xs text-muted-foreground">
+                {!selectedPhase ? "Selecciona una fase" : `${tasks.length} tarea${tasks.length !== 1 ? "s" : ""} plantilla`}
+              </p>
+            </div>
+            {selectedPhase && (
+              <button
+                onClick={() => setTaskModalTarget({
+                  kind: "canonical-propose",
+                  phase: selectedPhase,
+                  phaseSetName: selectedPs!.name,
+                  defaultAfterTaskId: tasks.length > 0 ? tasks[tasks.length - 1].id : undefined,
+                })}
+                title="Proponer nueva tarea"
+                className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors flex-shrink-0"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            )}
           </div>
           <div className="flex-1 overflow-y-auto">
             {!selectedPhase && (
@@ -238,7 +245,7 @@ export function CanonicalTreeView({
                 <ListChecks className="w-10 h-10 text-muted-foreground/30 mb-3" />
                 <p className="text-sm text-muted-foreground">Sin tareas en esta fase.</p>
                 <button
-                  onClick={() => setProposingNewTask({ phase: selectedPhase, phaseSetName: selectedPs!.name })}
+                  onClick={() => setTaskModalTarget({ kind: "canonical-propose", phase: selectedPhase, phaseSetName: selectedPs!.name })}
                   className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 px-3 py-1.5 rounded-md border border-primary/30 hover:bg-primary/5 transition-colors"
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -257,14 +264,20 @@ export function CanonicalTreeView({
                   index={i + 1}
                   checklistProposals={checklistProposals}
                   onProposeNewTask={() =>
-                    setProposingNewTask({
+                    setTaskModalTarget({
+                      kind: "canonical-propose",
                       phase: selectedPhase,
                       phaseSetName: selectedPs!.name,
                       defaultAfterTaskId: task.id,
                     })
                   }
                   onProposeEdit={() =>
-                    setEditingTaskProposal({ task, phase: selectedPhase, phaseSetName: selectedPs!.name })
+                    setTaskModalTarget({
+                      kind: "canonical-propose",
+                      phase: selectedPhase,
+                      phaseSetName: selectedPs!.name,
+                      existingTask: task,
+                    })
                   }
                   onProposeChecklist={() =>
                     setProposingChecklist({ task, phaseName: selectedPhase.name })
@@ -310,32 +323,15 @@ export function CanonicalTreeView({
         />
       )}
 
-      {proposingNewTask && (
-        <ProposedTaskModal
-          phase={proposingNewTask.phase}
-          phaseSetName={proposingNewTask.phaseSetName}
+      {taskModalTarget && (
+        <TaskFormModal
+          target={taskModalTarget}
           positions={positions}
           sops={sops}
-          defaultAfterTaskId={proposingNewTask.defaultAfterTaskId}
-          onClose={() => setProposingNewTask(null)}
-          onCreated={(task) => {
-            setLocalProposedTasks((prev) => [task, ...prev])
-            setProposingNewTask(null)
-          }}
-        />
-      )}
-
-      {editingTaskProposal && (
-        <ProposedTaskModal
-          phase={editingTaskProposal.phase}
-          phaseSetName={editingTaskProposal.phaseSetName}
-          positions={positions}
-          sops={sops}
-          existingTask={editingTaskProposal.task}
-          onClose={() => setEditingTaskProposal(null)}
-          onCreated={(task) => {
-            setLocalProposedTasks((prev) => [task, ...prev])
-            setEditingTaskProposal(null)
+          onClose={() => setTaskModalTarget(null)}
+          onSaved={(result) => {
+            if (result.kind !== "canonical-propose") return
+            setLocalProposedTasks((prev) => [result.task, ...prev])
           }}
         />
       )}

@@ -316,9 +316,12 @@ export interface LabPhase {
   status: LabPhaseStatus
   created_at: string
   updated_at: string
+  source_phase_set_id: string | null
+  source_phase_set_phase_id: string | null
   author?: Profile | null
   tasks?: LabPhaseTask[]
   reviews?: LabPhaseReview[]
+  source_phase_set?: Pick<PhaseSet, "id" | "name"> | null
 }
 
 export type LabProposedStatus = "draft" | "submitted" | "approved" | "rejected"

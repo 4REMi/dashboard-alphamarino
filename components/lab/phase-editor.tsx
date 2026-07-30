@@ -4,17 +4,18 @@ import { useState, useTransition } from "react"
 import type { LabPhase, LabPhaseTask, Sop, Position } from "@/lib/types"
 import {
   createPhase, updatePhase, deletePhase, submitPhase, retractPhase,
-  addPhaseTask, deletePhaseTask, reorderPhaseTasks, reorderLabPhases,
+  deletePhaseTask, reorderPhaseTasks, reorderLabPhases,
 } from "@/lib/actions/lab"
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent,
 } from "@dnd-kit/core"
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import { Check, X, LayoutList, Link2, ChevronRight, Send, RotateCcw, Pencil, CheckCircle2, XCircle, MessageSquare, GripVertical, Plus } from "lucide-react"
+import { Check, X, LayoutList, Link2, ChevronRight, Send, RotateCcw, Pencil, CheckCircle2, XCircle, MessageSquare, GripVertical, Plus, GitBranch } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { LabSortableTaskRow, LabEditTaskModal } from "@/components/lab/task-editor"
+import { LabSortableTaskRow } from "@/components/lab/task-editor"
+import { TaskFormModal } from "@/components/lab/task-form-modal"
 
 interface Props {
   initialPhases: LabPhase[]
@@ -100,23 +101,6 @@ export function PhaseEditor({ initialPhases, sops, positions }: Props) {
 
   function getSelectedTasks(): LabPhaseTask[] {
     return selected?.tasks ?? []
-  }
-
-  function handleAddTask(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    if (!selected) return
-    const fd = new FormData(e.currentTarget)
-    if (!(fd.get("title") as string).trim()) return
-    fd.set("requires_deliverable", "false")
-    fd.set("sop_id", "")
-    startTransition(async () => {
-      const task = await addPhaseTask(selected.id, fd)
-      setPhases((prev) => prev.map((p) => p.id === selected.id
-        ? { ...p, tasks: [...(p.tasks ?? []), task] }
-        : p
-      ))
-      setShowAddTask(false)
-    })
   }
 
   function handleDeleteTask(taskId: string) {
@@ -260,17 +244,20 @@ export function PhaseEditor({ initialPhases, sops, positions }: Props) {
         {/* ── PANEL 2: Tareas ──────────────────────────────────────────────── */}
         <div className="flex-1 flex flex-col min-w-0">
           <div className="px-5 py-4 border-b flex items-center justify-between">
-            <div>
-              <h3 className="font-semibold text-sm">{selected ? selected.name : "Tareas"}</h3>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <h3 className="font-semibold text-sm truncate">{selected ? selected.name : "Tareas"}</h3>
+                {selected && <OriginBadge phase={selected} />}
+              </div>
               <p className="text-xs text-muted-foreground">
                 {!selected ? "Selecciona una fase" : `${tasks.length} tarea${tasks.length !== 1 ? "s" : ""}`}
               </p>
             </div>
-            {selected && isEditable && !showAddTask && (
+            {selected && isEditable && (
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7"
+                className="h-7 w-7 flex-shrink-0"
                 onClick={() => setShowAddTask(true)}
               >
                 <Plus className="w-4 h-4" />
@@ -302,7 +289,7 @@ export function PhaseEditor({ initialPhases, sops, positions }: Props) {
                 )}
 
                 {/* Task list */}
-                {tasks.length === 0 && !showAddTask && (
+                {tasks.length === 0 && (
                   <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
                     <LayoutList className="w-8 h-8 mb-2 opacity-40" />
                     <p className="text-sm">{isEditable ? "Usa + para agregar tareas" : "Sin tareas"}</p>
@@ -323,22 +310,6 @@ export function PhaseEditor({ initialPhases, sops, positions }: Props) {
                       ))}
                     </SortableContext>
                   </DndContext>
-                )}
-
-                {/* Add task form */}
-                {showAddTask && (
-                  <form onSubmit={handleAddTask} className="px-5 py-4 space-y-2 bg-muted/20 border-t border-border">
-                    <Input name="title" required autoFocus placeholder="Título de la tarea..." />
-                    <Input name="description" placeholder="Descripción (opcional)" />
-                    <div className="flex gap-2 justify-end">
-                      <Button type="button" variant="ghost" size="sm" onClick={() => setShowAddTask(false)}>
-                        Cancelar
-                      </Button>
-                      <Button type="submit" size="sm" disabled={isPending}>
-                        Agregar
-                      </Button>
-                    </div>
-                  </form>
                 )}
 
                 {/* Submit / retract footer */}
@@ -382,18 +353,63 @@ export function PhaseEditor({ initialPhases, sops, positions }: Props) {
         </div>
       </div>
 
-      {/* Edit task modal */}
-      {editingTask && (
-        <LabEditTaskModal
-          task={editingTask}
+      {/* Add / edit task modal */}
+      {showAddTask && selected && (
+        <TaskFormModal
+          target={{
+            kind: "lab-create",
+            phaseId: selected.id,
+            phaseName: selected.name,
+            sourcePhaseSetName: selected.source_phase_set?.name ?? null,
+          }}
           sops={sops}
           positions={positions}
-          isPending={isPending}
+          onClose={() => setShowAddTask(false)}
+          onSaved={(result) => {
+            if (result.kind !== "lab-create") return
+            setPhases((prev) => prev.map((p) => p.id === selected.id
+              ? { ...p, tasks: [...(p.tasks ?? []), result.task] }
+              : p
+            ))
+          }}
+        />
+      )}
+
+      {editingTask && selected && (
+        <TaskFormModal
+          target={{
+            kind: "lab-edit",
+            task: editingTask,
+            phaseName: selected.name,
+            sourcePhaseSetName: selected.source_phase_set?.name ?? null,
+          }}
+          sops={sops}
+          positions={positions}
           onClose={() => setEditingTask(null)}
-          onSave={handleTaskSaved}
+          onSaved={(result) => {
+            if (result.kind !== "lab-edit") return
+            handleTaskSaved(result.patch)
+          }}
         />
       )}
     </>
+  )
+}
+
+// ── Origin badge — shows the canonical phase set a forked phase came from ────
+
+function OriginBadge({ phase }: { phase: LabPhase }) {
+  if (!phase.source_phase_set_id) return null
+  return (
+    <span
+      title={`Copiada de ${phase.source_phase_set?.name ?? "un tipo de proyecto"}`}
+      className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 flex-shrink-0"
+    >
+      <GitBranch className="w-2.5 h-2.5" />
+      {phase.source_phase_set?.name ? (
+        <span className="max-w-[100px] truncate">{phase.source_phase_set.name}</span>
+      ) : null}
+    </span>
   )
 }
 
@@ -427,7 +443,10 @@ function SortablePhaseItem({ phase, isSelected, onSelect, onEdit, onDelete }: {
         <GripVertical className="w-3.5 h-3.5" />
       </button>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{phase.name}</p>
+        <div className="flex items-center gap-1.5">
+          <p className="text-sm font-medium truncate">{phase.name}</p>
+          <OriginBadge phase={phase} />
+        </div>
         <div className="flex items-center gap-2 mt-0.5">
           <p className="text-xs text-muted-foreground">{(phase.tasks ?? []).length} tareas</p>
           <span className={`text-[10px] font-semibold ${STATUS_COLOR[phase.status]}`}>

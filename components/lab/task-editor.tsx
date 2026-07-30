@@ -2,14 +2,14 @@
 
 // Lab-specific task components — same visual language as Operations Lab
 
-import { useState, useTransition } from "react"
-import type { LabPhaseTask, LabPhaseTaskChecklistItem, Sop, Position } from "@/lib/types"
+import { useState } from "react"
+import type { LabPhaseTask, LabPhaseTaskChecklistItem } from "@/lib/types"
 import {
   addTaskChecklistItem, updateTaskChecklistItem, deleteTaskChecklistItem,
-  reorderLabTaskChecklistItems, updatePhaseTask,
+  reorderLabTaskChecklistItems,
 } from "@/lib/actions/lab"
 import {
-  GripVertical, Pencil, X, BookOpen, Search, Lock, ListChecks,
+  GripVertical, Pencil, X, BookOpen, Lock, ListChecks,
   Paperclip, UserCircle,
 } from "lucide-react"
 import {
@@ -17,10 +17,6 @@ import {
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { cn } from "@/lib/utils"
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
-import { Label } from "@/components/ui/label"
-import { AutoTextarea } from "@/components/ui/auto-textarea"
 import { ChecklistEditorModal, type ChecklistModalItem } from "@/components/ui/checklist-editor-modal"
 
 // ── Lab checklist trigger (compact inline view + modal) ──────────────────────
@@ -217,222 +213,3 @@ export function LabSortableTaskRow({
   )
 }
 
-// ── Edit task modal ───────────────────────────────────────────────────────────
-
-export function LabEditTaskModal({
-  task,
-  sops,
-  positions,
-  isPending,
-  onClose,
-  onSave,
-}: {
-  task: LabPhaseTask
-  sops: Sop[]
-  positions: Position[]
-  isPending: boolean
-  onClose: () => void
-  onSave: (patch: Partial<LabPhaseTask>) => void
-}) {
-  const [sopId, setSopId] = useState(task.sop_id ?? "")
-  const [sopSearch, setSopSearch] = useState("")
-  const [positionId, setPositionId] = useState(task.default_position_id ?? "")
-  const [positionSearch, setPositionSearch] = useState("")
-  const [, startTransition] = useTransition()
-
-  const filteredSops = sops.filter((s) =>
-    s.title.toLowerCase().includes(sopSearch.toLowerCase()) ||
-    (s.category ?? "").toLowerCase().includes(sopSearch.toLowerCase())
-  )
-  const selectedSop = sops.find((s) => s.id === sopId) ?? null
-  const filteredPositions = positions.filter((p) =>
-    p.name.toLowerCase().includes(positionSearch.toLowerCase())
-  )
-  const selectedPosition = positions.find((p) => p.id === positionId) ?? null
-
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    const fd = new FormData(e.currentTarget)
-    fd.set("sop_id", sopId)
-    startTransition(async () => {
-      await updatePhaseTask(task.id, fd)
-      onSave({
-        title:                fd.get("title") as string,
-        description:          (fd.get("description") as string) || null,
-        requires_deliverable: fd.get("requires_deliverable") === "true",
-        sop_id:               sopId || null,
-        sop:                  selectedSop ? { id: selectedSop.id, title: selectedSop.title } : null,
-        default_position_id:  positionId || null,
-        default_position:     selectedPosition ? { id: selectedPosition.id, name: selectedPosition.name, created_at: selectedPosition.created_at } : null,
-      })
-      onClose()
-    })
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div
-        className="rounded-xl border bg-card shadow-xl w-full max-w-md mx-4 max-h-[90vh] flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
-          <h2 className="font-semibold text-sm">Editar tarea</h2>
-          <button onClick={onClose} className="p-1 rounded text-muted-foreground hover:text-foreground">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4 overflow-y-auto">
-          <div>
-            <Label htmlFor="task-title" className="text-xs font-medium text-muted-foreground mb-1.5 block">Titulo *</Label>
-            <Input id="task-title" name="title" required defaultValue={task.title} />
-          </div>
-          <div>
-            <Label htmlFor="task-description" className="text-xs font-medium text-muted-foreground mb-1.5 block">Descripcion</Label>
-            <AutoTextarea
-              id="task-description"
-              name="description"
-              rows={3}
-              defaultValue={task.description ?? ""}
-              placeholder="Descripcion detallada..."
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none"
-            />
-          </div>
-          <div>
-            <label className="flex items-center gap-2 px-3 py-2 rounded-md border border-input bg-background text-sm cursor-pointer select-none">
-              <input
-                type="checkbox"
-                name="requires_deliverable"
-                value="true"
-                defaultChecked={task.requires_deliverable}
-                className="accent-info"
-              />
-              Requiere entregable
-            </label>
-          </div>
-
-          {/* Position picker */}
-          {positions.length > 0 && (
-            <div>
-              <Label className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1.5">
-                <UserCircle className="w-3.5 h-3.5" />
-                Puesto predeterminado
-              </Label>
-              {selectedPosition ? (
-                <div className="flex items-center gap-2 px-3 py-2 rounded-md border border-primary/30 bg-primary/5 text-sm">
-                  <UserCircle className="w-3.5 h-3.5 text-primary flex-shrink-0" />
-                  <span className="flex-1 min-w-0 truncate font-medium text-primary">{selectedPosition.name}</span>
-                  <button
-                    type="button"
-                    onClick={() => { setPositionId(""); setPositionSearch("") }}
-                    className="p-0.5 rounded text-muted-foreground hover:text-destructive transition-colors flex-shrink-0"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-1.5">
-                  <div className="relative">
-                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                    <Input
-                      type="text"
-                      value={positionSearch}
-                      onChange={(e) => setPositionSearch(e.target.value)}
-                      placeholder="Buscar puesto..."
-                      className="pl-8"
-                    />
-                  </div>
-                  {filteredPositions.length > 0 && (
-                    <div className="max-h-28 overflow-y-auto rounded-md border border-border divide-y divide-border/50">
-                      {filteredPositions.map((pos) => (
-                        <button
-                          key={pos.id}
-                          type="button"
-                          onClick={() => { setPositionId(pos.id); setPositionSearch("") }}
-                          className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-muted/50 transition-colors"
-                        >
-                          <UserCircle className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                          <span className="text-sm truncate">{pos.name}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-              <input type="hidden" name="default_position_id" value={positionId} />
-            </div>
-          )}
-
-          {/* SOP picker */}
-          <div>
-            <Label className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1.5">
-              <BookOpen className="w-3.5 h-3.5" />
-              SOP asignado
-            </Label>
-            {selectedSop ? (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-md border border-primary/30 bg-primary/5 text-sm">
-                <BookOpen className="w-3.5 h-3.5 text-primary flex-shrink-0" />
-                <span className="flex-1 min-w-0 truncate font-medium text-primary">{selectedSop.title}</span>
-                {selectedSop.category && (
-                  <span className="text-xs text-muted-foreground flex-shrink-0">{selectedSop.category}</span>
-                )}
-                <button
-                  type="button"
-                  onClick={() => { setSopId(""); setSopSearch("") }}
-                  className="p-0.5 rounded text-muted-foreground hover:text-destructive transition-colors flex-shrink-0"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-1.5">
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                  <Input
-                    type="text"
-                    value={sopSearch}
-                    onChange={(e) => setSopSearch(e.target.value)}
-                    placeholder="Buscar SOP..."
-                    className="pl-8"
-                  />
-                </div>
-                {sops.length === 0 ? (
-                  <p className="text-xs text-muted-foreground px-1 py-1.5">No hay SOPs en el banco aun.</p>
-                ) : filteredSops.length === 0 ? (
-                  <p className="text-xs text-muted-foreground px-1 py-1.5">Sin resultados.</p>
-                ) : (
-                  <div className="max-h-36 overflow-y-auto rounded-md border border-border divide-y divide-border/50">
-                    {filteredSops.map((sop) => (
-                      <button
-                        key={sop.id}
-                        type="button"
-                        onClick={() => { setSopId(sop.id); setSopSearch("") }}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-muted/50 transition-colors"
-                      >
-                        <BookOpen className="w-3.5 h-3.5 text-primary flex-shrink-0" />
-                        <span className="flex-1 min-w-0 text-sm truncate">{sop.title}</span>
-                        {sop.category && (
-                          <span className="text-xs text-muted-foreground flex-shrink-0">{sop.category}</span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-            <input type="hidden" name="sop_id" value={sopId} />
-          </div>
-
-          <div className="flex gap-2 justify-end pt-1">
-            <Button type="button" variant="outline" onClick={onClose}>
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={isPending}>
-              {isPending ? "Guardando..." : "Guardar"}
-            </Button>
-          </div>
-        </form>
-      </div>
-    </div>
-  )
-}
