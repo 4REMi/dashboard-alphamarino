@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useTransition } from "react"
+import { useEffect, useMemo, useState, useTransition } from "react"
 import type {
   PendingChange, CanonicalPhaseSet, LabPhase, LabPhaseTask, LabProposedPhase,
   LabProposedTask, LabProposedChecklistAddition, Sop, Position,
@@ -33,6 +33,9 @@ interface Props {
   canonicalTree: CanonicalPhaseSet[]
   sops: Sop[]
   positions: Position[]
+  /** Set by a parent (e.g. "Ver en Propuestas" from Árbol Canónico) to jump to and select a specific proposal. */
+  focusChangeId?: string | null
+  onFocusHandled?: () => void
 }
 
 const KIND_ICON: Record<PendingChange["kind"], React.ElementType> = {
@@ -48,7 +51,7 @@ const KIND_LABEL: Record<PendingChange["kind"], string> = {
   checklist: "Checklist",
 }
 
-export function MyProposalsView({ initialPendingChanges, canonicalTree, sops, positions }: Props) {
+export function MyProposalsView({ initialPendingChanges, canonicalTree, sops, positions, focusChangeId, onFocusHandled }: Props) {
   const [changes, setChanges] = useState<PendingChange[]>(initialPendingChanges)
   const [selectedId, setSelectedId] = useState<string | null>(initialPendingChanges[0]?.id ?? null)
   const [view, setView] = useState<"pending" | "history">("pending")
@@ -76,6 +79,17 @@ export function MyProposalsView({ initialPendingChanges, canonicalTree, sops, po
     const g = selected?.phaseSetId ?? "none"
     return new Set(selected ? [g] : [])
   })
+
+  useEffect(() => {
+    if (!focusChangeId) return
+    const target = changes.find((c) => c.id === focusChangeId)
+    if (target) {
+      setView(target.status === "approved" ? "history" : "pending")
+      setSelectedId(target.id)
+      setExpanded((prev) => new Set(prev).add(target.phaseSetId ?? "none"))
+    }
+    onFocusHandled?.()
+  }, [focusChangeId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function toggleGroup(key: string) {
     setExpanded((prev) => {

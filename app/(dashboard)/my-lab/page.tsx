@@ -5,13 +5,9 @@ import { getMyPendingSopRequests, getSops } from "@/lib/actions/sops"
 import { getAllSubmittedPhases, getCanonicalTree, getMyProposedTasks, getAllSubmittedProposedTasks, getMyProposedChecklistAdditions, getAllSubmittedProposedChecklistAdditions, getAllSubmittedProposedPhases, getMyPendingChanges } from "@/lib/actions/lab"
 import { getPhaseSets } from "@/lib/actions/config"
 import { getPositions } from "@/lib/actions/config"
-import { SopRequestInbox } from "@/components/lab/sop-request-inbox"
-import { MyProposalsView } from "@/components/lab/my-proposals-view"
-import { PhaseReviewPanel } from "@/components/lab/phase-review-panel"
-import { CanonicalTreeView } from "@/components/lab/canonical-tree-view"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Lightbulb, ClipboardEdit } from "lucide-react"
-import type { SopRequest, LabPhase, PhaseSet, Sop, LabProposedPhase, LabProposedTask } from "@/lib/types"
+import { MiOpsLabTabs } from "@/components/lab/mi-ops-lab-tabs"
+import { Lightbulb } from "lucide-react"
+import type { SopRequest, LabPhase, PhaseSet, Sop, LabProposedPhase, LabProposedTask, LabProposedChecklistAddition } from "@/lib/types"
 
 export default async function MyLabPage() {
   const supabase = await createClient()
@@ -52,14 +48,6 @@ export default async function MyLabPage() {
     isAdmin ? getAllSubmittedProposedPhases().catch(() => [] as LabProposedPhase[]) : Promise.resolve([] as LabProposedPhase[]),
   ])
 
-  const pendingSopCount    = sopRequests.filter((r) => r.status === "pending").length
-  const pendingReviewCount = isAdmin
-    ? submittedPhases.filter((p) => p.status === "submitted").length
-      + allProposedTasks.filter((t) => t.status === "submitted").length
-      + allProposedChecklists.filter((c) => c.status === "submitted").length
-      + allProposedPhases.filter((p) => p.status === "submitted").length
-    : 0
-
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center gap-3">
@@ -76,81 +64,21 @@ export default async function MyLabPage() {
         </div>
       </div>
 
-      <Tabs defaultValue="canonical" className="mt-2">
-        <TabsList>
-          <TabsTrigger value="canonical">
-            Árbol canónico
-            {canonicalTree.length === 0 && (
-              <span className="ml-1.5 text-[10px] text-muted-foreground">vacío</span>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="phases">
-            <ClipboardEdit className="w-3.5 h-3.5 mr-1" />
-            Mis Propuestas
-            {myPendingChanges.filter((c) => c.status !== "approved").length > 0 && (
-              <span className="ml-1.5 text-[10px] font-semibold bg-primary/15 text-primary rounded-full px-1.5 py-0.5">
-                {myPendingChanges.filter((c) => c.status !== "approved").length}
-              </span>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="sop-requests">
-            Solicitudes de SOP
-            {pendingSopCount > 0 && (
-              <span className="ml-1.5 text-[10px] font-semibold bg-amber-500/15 text-amber-600 rounded-full px-1.5 py-0.5">
-                {pendingSopCount}
-              </span>
-            )}
-          </TabsTrigger>
-          {isAdmin && (
-            <TabsTrigger value="review">
-              Revisión
-              {pendingReviewCount > 0 && (
-                <span className="ml-1.5 text-[10px] font-semibold bg-amber-500/15 text-amber-600 rounded-full px-1.5 py-0.5">
-                  {pendingReviewCount}
-                </span>
-              )}
-            </TabsTrigger>
-          )}
-        </TabsList>
-
-        <TabsContent value="canonical" className="mt-4">
-          <CanonicalTreeView
-            phaseSets={canonicalTree}
-            myProposedTasks={myProposedTasks as LabProposedTask[]}
-            myProposedChecklists={myProposedChecklists}
-            myProposedPhases={myPendingChanges
-              .filter((c) => c.kind === "phase_new")
-              .map((c) => c.raw as LabProposedPhase)}
-            positions={positions}
-            sops={allSops as Sop[]}
-          />
-        </TabsContent>
-
-        <TabsContent value="phases" className="mt-4">
-          <MyProposalsView
-            initialPendingChanges={myPendingChanges}
-            canonicalTree={canonicalTree}
-            sops={allSops as Sop[]}
-            positions={positions}
-          />
-        </TabsContent>
-
-        <TabsContent value="sop-requests" className="mt-4">
-          <SopRequestInbox requests={sopRequests} isAdmin={isAdmin} />
-        </TabsContent>
-
-        {isAdmin && (
-          <TabsContent value="review" className="mt-4">
-            <PhaseReviewPanel
-              initialPhases={submittedPhases}
-              phaseSets={phaseSets as PhaseSet[]}
-              initialProposedTasks={allProposedTasks}
-              initialProposedChecklists={allProposedChecklists}
-              initialProposedPhases={allProposedPhases}
-            />
-          </TabsContent>
-        )}
-      </Tabs>
+      <MiOpsLabTabs
+        isAdmin={isAdmin}
+        sopRequests={sopRequests}
+        myPendingChanges={myPendingChanges}
+        allSops={allSops as Sop[]}
+        submittedPhases={submittedPhases}
+        phaseSets={phaseSets as PhaseSet[]}
+        canonicalTree={canonicalTree}
+        myProposedTasks={myProposedTasks as LabProposedTask[]}
+        allProposedTasks={allProposedTasks as LabProposedTask[]}
+        myProposedChecklists={myProposedChecklists as LabProposedChecklistAddition[]}
+        allProposedChecklists={allProposedChecklists as LabProposedChecklistAddition[]}
+        positions={positions}
+        allProposedPhases={allProposedPhases}
+      />
     </div>
   )
 }

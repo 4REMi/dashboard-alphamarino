@@ -11,6 +11,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getProjectTypeIcon } from "@/lib/project-type-icons"
+import { PROPOSAL_STATUS_LABEL, PROPOSAL_STATUS_COLOR } from "@/components/lab/shared"
 import { forkCanonicalPhase } from "@/lib/actions/lab"
 import { useToast } from "@/components/ui/toast"
 import { TaskFormModal, type TaskFormTarget } from "@/components/lab/task-form-modal"
@@ -24,10 +25,11 @@ interface Props {
   myProposedPhases: LabProposedPhase[]
   positions: Position[]
   sops: Sop[]
+  onJumpToProposal: (id: string) => void
 }
 
 export function CanonicalTreeView({
-  phaseSets, myProposedTasks, myProposedChecklists, myProposedPhases, positions, sops,
+  phaseSets, myProposedTasks, myProposedChecklists, myProposedPhases, positions, sops, onJumpToProposal,
 }: Props) {
   const [selectedPsId, setSelectedPsId] = useState<string | null>(null)
   const [selectedPhaseId, setSelectedPhaseId] = useState<string | null>(null)
@@ -168,7 +170,7 @@ export function CanonicalTreeView({
               let phaseIndex = 0
               return phaseRows.map((row) => {
                 if (row.type === "phase_ghost") {
-                  return <GhostPhaseRow key={`ghost-${row.data.id}`} proposal={row.data} />
+                  return <GhostPhaseRow key={`ghost-${row.data.id}`} proposal={row.data} onJumpToProposal={onJumpToProposal} />
                 }
                 const phase = row.data
                 phaseIndex += 1
@@ -303,7 +305,7 @@ export function CanonicalTreeView({
               let taskIndex = 0
               return taskRows.map((row) => {
                 if (row.type === "task_ghost") {
-                  return <GhostTaskRow key={`ghost-${row.data.id}`} proposal={row.data} />
+                  return <GhostTaskRow key={`ghost-${row.data.id}`} proposal={row.data} onJumpToProposal={onJumpToProposal} />
                 }
                 const task = row.data
                 taskIndex += 1
@@ -402,42 +404,121 @@ export function CanonicalTreeView({
   )
 }
 
-// -- Ghost rows: preview of a pending proposal, positioned in context, non-interactive --
+// -- Ghost rows: full-fidelity preview of a pending proposal, positioned in context --
+// Mirrors the real CanonicalTaskRow/phase-row layout exactly (including inline checklist)
+// so reviewing a proposal in place never requires a trip to Mis Propuestas — except to
+// actually submit/retract/delete it, which is what "Ver en Propuestas" is for.
 
-const GHOST_STATUS_LABEL: Record<string, string> = {
-  draft: "Borrador", submitted: "En revisión", rejected: "Rechazada",
-}
-
-function GhostPhaseRow({ proposal }: { proposal: LabProposedPhase }) {
+function GhostPhaseRow({ proposal, onJumpToProposal }: { proposal: LabProposedPhase; onJumpToProposal: (id: string) => void }) {
   return (
-    <div className="flex items-center gap-2 px-5 py-3 border-b border-dashed border-primary/30 bg-primary/5">
-      <span className="flex-shrink-0 w-6 h-6 rounded-full border border-dashed border-primary/40 flex items-center justify-center">
+    <div className="group flex items-center gap-2 px-5 py-3 border-b border-dashed border-primary/40 bg-primary/5">
+      <span className="flex-shrink-0 w-6 h-6 rounded-full border border-dashed border-primary/50 flex items-center justify-center">
         <Sparkles className="w-3 h-3 text-primary" />
       </span>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium italic text-primary/90 truncate">{proposal.name}</p>
-        <p className="text-xs text-muted-foreground truncate mt-0.5">Fase propuesta — pendiente</p>
+        <p className="text-sm font-medium truncate">{proposal.name}</p>
+        {proposal.description && (
+          <p className="text-xs text-muted-foreground truncate mt-0.5">{proposal.description}</p>
+        )}
       </div>
-      <span className="text-[10px] font-semibold text-primary/80 flex-shrink-0">
-        {GHOST_STATUS_LABEL[proposal.status] ?? proposal.status}
+      <span className={cn(
+        "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold flex-shrink-0",
+        PROPOSAL_STATUS_COLOR[proposal.status] ?? PROPOSAL_STATUS_COLOR.draft
+      )}>
+        {PROPOSAL_STATUS_LABEL[proposal.status] ?? proposal.status}
       </span>
+      <button
+        onClick={() => onJumpToProposal(proposal.id)}
+        className="opacity-0 group-hover:opacity-100 text-[11px] font-medium text-primary hover:underline transition-all flex-shrink-0"
+      >
+        Ver en Propuestas
+      </button>
     </div>
   )
 }
 
-function GhostTaskRow({ proposal }: { proposal: LabProposedTask }) {
+function GhostTaskRow({ proposal, onJumpToProposal }: { proposal: LabProposedTask; onJumpToProposal: (id: string) => void }) {
+  const items = proposal.checklist_items ?? []
+  const hasChecklist = items.length > 0
+  const blockingCount = items.filter((i) => i.is_blocking).length
+
   return (
-    <div className="flex items-center gap-2 px-3 py-3 border-b border-dashed border-primary/30 bg-primary/5">
-      <span className="w-5 h-5 rounded-full border border-dashed border-primary/40 flex items-center justify-center flex-shrink-0">
-        <Sparkles className="w-2.5 h-2.5 text-primary" />
-      </span>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium italic text-primary/90 truncate">{proposal.title}</p>
-        <p className="text-xs text-muted-foreground truncate mt-0.5">Tarea propuesta — pendiente</p>
+    <div className="group border-b border-dashed border-primary/40 bg-primary/5">
+      <div className="flex items-center gap-2 px-3 py-3">
+        <span className="w-5 h-5 rounded-full border border-dashed border-primary/50 flex items-center justify-center flex-shrink-0">
+          <Sparkles className="w-2.5 h-2.5 text-primary" />
+        </span>
+
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium">{proposal.title}</p>
+          {proposal.description && (
+            <p className="text-xs text-muted-foreground truncate mt-0.5">{proposal.description}</p>
+          )}
+        </div>
+
+        {hasChecklist && (
+          <span className={cn(
+            "flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full flex-shrink-0",
+            blockingCount > 0 ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"
+          )}>
+            {blockingCount > 0 && <Lock className="w-2.5 h-2.5" />}
+            {items.length}
+          </span>
+        )}
+        {proposal.requires_deliverable && <Paperclip className="w-3.5 h-3.5 text-info flex-shrink-0" />}
+        {proposal.default_position?.name && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 bg-violet-100 text-violet-700 max-w-[80px] truncate">
+            {proposal.default_position.name}
+          </span>
+        )}
+        {proposal.sop?.title && (
+          <span title={proposal.sop.title} className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded font-medium flex-shrink-0 bg-primary/10 text-primary">
+            <BookOpen className="w-3 h-3" />
+            <span className="hidden sm:inline max-w-[80px] truncate">{proposal.sop.title}</span>
+          </span>
+        )}
+        <span className={cn(
+          "inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-semibold flex-shrink-0",
+          PROPOSAL_STATUS_COLOR[proposal.status] ?? PROPOSAL_STATUS_COLOR.draft
+        )}>
+          {PROPOSAL_STATUS_LABEL[proposal.status] ?? proposal.status}
+        </span>
+        <button
+          onClick={() => onJumpToProposal(proposal.id)}
+          className="opacity-0 group-hover:opacity-100 text-[11px] font-medium text-primary hover:underline transition-all flex-shrink-0"
+        >
+          Ver en Propuestas
+        </button>
       </div>
-      <span className="text-[10px] font-semibold text-primary/80 flex-shrink-0">
-        {GHOST_STATUS_LABEL[proposal.status] ?? proposal.status}
-      </span>
+
+      {/* Inline checklist — same treatment as a real canonical task */}
+      <div className="mt-0 pl-8 pr-3 pb-2 border-t border-dashed border-primary/20 pt-2">
+        <div className="flex items-center gap-1.5 mb-1.5">
+          <ListChecks className="w-3 h-3 text-primary/70" />
+          <span className="text-[11px] font-medium text-primary/70">Checklist propuesto</span>
+          {blockingCount > 0 && (
+            <span className="text-[11px] text-destructive/70 flex items-center gap-0.5 ml-0.5">
+              <Lock className="w-2.5 h-2.5" />
+              {blockingCount}
+            </span>
+          )}
+        </div>
+
+        {hasChecklist ? (
+          <div className="space-y-0.5">
+            {items.map((item) => (
+              <div key={item.id} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span className={cn("truncate flex-1 min-w-0", item.is_blocking && "font-medium text-foreground")}>
+                  {item.text}
+                </span>
+                {item.is_blocking && <Lock className="w-2.5 h-2.5 text-destructive flex-shrink-0" />}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground/50">Sin checklist</p>
+        )}
+      </div>
     </div>
   )
 }
