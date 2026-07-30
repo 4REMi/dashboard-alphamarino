@@ -93,6 +93,7 @@ export function TaskEditDiff({ original, proposed }: {
     title: string
     description: string | null
     requires_deliverable: boolean
+    deliverable_instructions?: string | null
     default_position?: { name: string } | null
     sop?: { title: string } | null
     checklist_items?: { text: string; is_blocking: boolean }[]
@@ -111,6 +112,13 @@ export function TaskEditDiff({ original, proposed }: {
       label: "Entregable",
       before: original.requires_deliverable ? "Requiere entregable" : "No requiere entregable",
       after: proposed.requires_deliverable ? "Requiere entregable" : "No requiere entregable",
+    })
+  }
+  if ((original.deliverable_instructions ?? "") !== (proposed.deliverable_instructions ?? "")) {
+    rows.push({
+      label: "Instrucciones del entregable",
+      before: original.deliverable_instructions || "—",
+      after: proposed.deliverable_instructions || "—",
     })
   }
   if ((original.default_position_name ?? "") !== (proposed.default_position?.name ?? "")) {

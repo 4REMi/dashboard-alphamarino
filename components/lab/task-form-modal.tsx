@@ -8,9 +8,9 @@
 
 import { useState, useTransition } from "react"
 import type {
-  LabPhaseTask, LabProposedTask, Position, Sop, CanonicalPhase, CanonicalTask,
+  LabPhaseTask, LabProposedTask, LabProposedPhaseTask, Position, Sop, CanonicalPhase, CanonicalTask,
 } from "@/lib/types"
-import { addPhaseTask, updatePhaseTask, createProposedTask } from "@/lib/actions/lab"
+import { addPhaseTask, updatePhaseTask, createProposedTask, addProposedPhaseTask, updateProposedPhaseTask } from "@/lib/actions/lab"
 import {
   X, BookOpen, Search, UserCircle, Pencil, ListChecks, Lock, Plus, Trash2, Sparkles,
 } from "lucide-react"
@@ -32,6 +32,8 @@ export type TaskFormTarget =
       defaultAfterTaskId?: string
       existingTask?: CanonicalTask
     }
+  | { kind: "proposed-phase-task-create"; proposedPhaseId: string; proposedPhaseName: string; phaseSetName?: string | null }
+  | { kind: "proposed-phase-task-edit"; task: LabProposedPhaseTask; proposedPhaseName: string; phaseSetName?: string | null }
 
 interface Props {
   target: TaskFormTarget
@@ -39,13 +41,23 @@ interface Props {
   positions: Position[]
   onClose: () => void
   /** Called after a successful save. Payload shape depends on `target.kind`. */
-  onSaved: (result: { kind: "lab-create"; task: LabPhaseTask } | { kind: "lab-edit"; patch: Partial<LabPhaseTask> } | { kind: "canonical-propose"; task: LabProposedTask }) => void
+  onSaved: (result:
+    | { kind: "lab-create"; task: LabPhaseTask }
+    | { kind: "lab-edit"; patch: Partial<LabPhaseTask> }
+    | { kind: "canonical-propose"; task: LabProposedTask }
+    | { kind: "proposed-phase-task-create"; task: LabProposedPhaseTask }
+    | { kind: "proposed-phase-task-edit"; patch: Partial<LabProposedPhaseTask> }
+  ) => void
 }
 
 export function TaskFormModal({ target, sops, positions, onClose, onSaved }: Props) {
   const isCanonical = target.kind === "canonical-propose"
-  const existingTask = target.kind === "lab-edit" ? target.task : target.kind === "canonical-propose" ? target.existingTask : undefined
-  const isEditMode = target.kind === "lab-edit" || !!(target.kind === "canonical-propose" && target.existingTask)
+  const existingTask = target.kind === "lab-edit" ? target.task
+    : target.kind === "canonical-propose" ? target.existingTask
+    : target.kind === "proposed-phase-task-edit" ? target.task
+    : undefined
+  const isEditMode = target.kind === "lab-edit" || target.kind === "proposed-phase-task-edit"
+    || !!(target.kind === "canonical-propose" && target.existingTask)
 
   const [sopId, setSopId] = useState(existingTask?.sop_id ?? "")
   const [sopSearch, setSopSearch] = useState("")
@@ -57,6 +69,8 @@ export function TaskFormModal({ target, sops, positions, onClose, onSaved }: Pro
   const [title, setTitle] = useState(existingTask?.title ?? "")
   const [description, setDescription] = useState(existingTask?.description ?? "")
   const [requiresDeliverable, setRequiresDeliverable] = useState(existingTask?.requires_deliverable ?? false)
+  const [deliverableInstructions, setDeliverableInstructions] = useState(existingTask?.deliverable_instructions ?? "")
+  const [showSopPicker, setShowSopPicker] = useState(false)
   const [checklistItems, setChecklistItems] = useState<ChecklistDraft[]>(
     (existingTask?.checklist_items ?? []).map((i) => ({ text: i.text, is_blocking: i.is_blocking }))
   )
@@ -90,6 +104,7 @@ export function TaskFormModal({ target, sops, positions, onClose, onSaved }: Pro
     fd.set("title", title)
     fd.set("description", description ?? "")
     fd.set("requires_deliverable", requiresDeliverable ? "true" : "false")
+    fd.set("deliverable_instructions", requiresDeliverable ? deliverableInstructions : "")
     fd.set("sop_id", sopId)
     fd.set("default_position_id", positionId)
     fd.set("checklist_items_json", JSON.stringify(checklistItems))
@@ -106,6 +121,7 @@ export function TaskFormModal({ target, sops, positions, onClose, onSaved }: Pro
             title,
             description: description || null,
             requires_deliverable: requiresDeliverable,
+            deliverable_instructions: requiresDeliverable ? (deliverableInstructions || null) : null,
             sop_id: sopId || null,
             sop: selectedSop ? { id: selectedSop.id, title: selectedSop.title } : null,
             default_position_id: positionId || null,
@@ -120,11 +136,37 @@ export function TaskFormModal({ target, sops, positions, onClose, onSaved }: Pro
             })),
           },
         })
-      } else {
+      } else if (target.kind === "canonical-propose") {
         fd.set("position_after_task_id", isEditMode ? "" : positionAfterTaskId)
         if (isEditMode && target.existingTask) fd.set("anchor_task_set_task_id", target.existingTask.id)
         const task = await createProposedTask(target.phase.id, target.phase.task_set_id, fd)
         onSaved({ kind: "canonical-propose", task })
+      } else if (target.kind === "proposed-phase-task-create") {
+        const task = await addProposedPhaseTask(target.proposedPhaseId, fd)
+        onSaved({ kind: "proposed-phase-task-create", task })
+      } else {
+        await updateProposedPhaseTask(target.task.id, fd)
+        onSaved({
+          kind: "proposed-phase-task-edit",
+          patch: {
+            title,
+            description: description || null,
+            requires_deliverable: requiresDeliverable,
+            deliverable_instructions: requiresDeliverable ? (deliverableInstructions || null) : null,
+            sop_id: sopId || null,
+            sop: selectedSop ? { id: selectedSop.id, title: selectedSop.title } : null,
+            default_position_id: positionId || null,
+            default_position: selectedPosition ?? null,
+            checklist_items: checklistItems.map((c, i) => ({
+              id: crypto.randomUUID(),
+              task_id: target.task.id,
+              text: c.text,
+              is_blocking: c.is_blocking,
+              item_order: i,
+              created_at: new Date().toISOString(),
+            })),
+          },
+        })
       }
       onClose()
     })
@@ -134,19 +176,31 @@ export function TaskFormModal({ target, sops, positions, onClose, onSaved }: Pro
     ? "Nueva tarea"
     : target.kind === "lab-edit"
       ? "Editar tarea"
-      : isEditMode ? "Proponer edición de tarea" : "Proponer nueva tarea"
+      : target.kind === "proposed-phase-task-create"
+        ? "Nueva tarea de la fase propuesta"
+        : target.kind === "proposed-phase-task-edit"
+          ? "Editar tarea de la fase propuesta"
+          : isEditMode ? "Proponer edición de tarea" : "Proponer nueva tarea"
 
   const subtitle = target.kind === "lab-create" || target.kind === "lab-edit"
     ? (target.sourcePhaseSetName ? `${target.sourcePhaseSetName} → ${target.phaseName}` : target.phaseName)
-    : `${target.phaseSetName} → ${target.phase.name}${isEditMode && target.existingTask ? ` → ${target.existingTask.title}` : ""}`
+    : target.kind === "proposed-phase-task-create" || target.kind === "proposed-phase-task-edit"
+      ? (target.phaseSetName ? `${target.phaseSetName} → ${target.proposedPhaseName} (propuesta)` : `${target.proposedPhaseName} (propuesta)`)
+      : `${target.phaseSetName} → ${target.phase.name}${isEditMode && target.existingTask ? ` → ${target.existingTask.title}` : ""}`
 
   const aiContext = {
     projectTypeName: null as string | null,
     phaseSetName: target.kind === "canonical-propose"
       ? target.phaseSetName
-      : (target.sourcePhaseSetName ?? "Fase personalizada"),
-    allPhases: target.kind === "canonical-propose" ? [target.phase.name] : [target.phaseName],
-    currentPhaseName: target.kind === "canonical-propose" ? target.phase.name : target.phaseName,
+      : target.kind === "proposed-phase-task-create" || target.kind === "proposed-phase-task-edit"
+        ? (target.phaseSetName ?? "Fase propuesta")
+        : (target.sourcePhaseSetName ?? "Fase personalizada"),
+    allPhases: target.kind === "canonical-propose" ? [target.phase.name]
+      : target.kind === "proposed-phase-task-create" || target.kind === "proposed-phase-task-edit" ? [target.proposedPhaseName]
+      : [target.phaseName],
+    currentPhaseName: target.kind === "canonical-propose" ? target.phase.name
+      : target.kind === "proposed-phase-task-create" || target.kind === "proposed-phase-task-edit" ? target.proposedPhaseName
+      : target.phaseName,
     currentPhaseIndex: 0,
     existingTasks: target.kind === "canonical-propose" ? target.phase.tasks.map((t) => t.title) : [],
     availablePositions: positions.map((p) => p.name),
@@ -219,6 +273,19 @@ export function TaskFormModal({ target, sops, positions, onClose, onSaved }: Pro
               </label>
             </div>
 
+            {requiresDeliverable && (
+              <div>
+                <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">Instrucciones del entregable</Label>
+                <AutoTextarea
+                  rows={2}
+                  value={deliverableInstructions ?? ""}
+                  onChange={(e) => setDeliverableInstructions(e.target.value)}
+                  placeholder="Ej. Compartir link al Google Drive con los accesos del dominio y hosting…"
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+                />
+              </div>
+            )}
+
             {/* Position picker */}
             {positions.length > 0 && (
               <div>
@@ -290,13 +357,13 @@ export function TaskFormModal({ target, sops, positions, onClose, onSaved }: Pro
             )}
 
             {/* SOP picker */}
-            <div>
+            <div className="relative">
               <Label className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1.5">
                 <BookOpen className="w-3.5 h-3.5" />
                 SOP asignado
               </Label>
               {selectedSop ? (
-                <div className="flex items-center gap-2 px-3 py-2 rounded-md border border-primary/30 bg-primary/5 text-sm">
+                <div className="flex items-center gap-2 px-3 py-2 rounded-full border border-primary/30 bg-primary/5 text-sm w-fit max-w-full">
                   <BookOpen className="w-3.5 h-3.5 text-primary flex-shrink-0" />
                   <span className="flex-1 min-w-0 truncate font-medium text-primary">{selectedSop.title}</span>
                   {selectedSop.category && (
@@ -311,40 +378,53 @@ export function TaskFormModal({ target, sops, positions, onClose, onSaved }: Pro
                   </button>
                 </div>
               ) : (
-                <div className="space-y-1.5">
-                  <div className="relative">
-                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                    <Input
-                      type="text"
-                      value={sopSearch}
-                      onChange={(e) => setSopSearch(e.target.value)}
-                      placeholder="Buscar SOP..."
-                      className="pl-8"
-                    />
-                  </div>
-                  {sops.length === 0 ? (
-                    <p className="text-xs text-muted-foreground px-1 py-1.5">No hay SOPs en el banco aún.</p>
-                  ) : filteredSops.length === 0 ? (
-                    <p className="text-xs text-muted-foreground px-1 py-1.5">Sin resultados.</p>
-                  ) : (
-                    <div className="max-h-36 overflow-y-auto rounded-md border border-border divide-y divide-border/50">
-                      {filteredSops.map((sop) => (
-                        <button
-                          key={sop.id}
-                          type="button"
-                          onClick={() => { setSopId(sop.id); setSopSearch("") }}
-                          className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-muted/50 transition-colors"
-                        >
-                          <BookOpen className="w-3.5 h-3.5 text-primary flex-shrink-0" />
-                          <span className="flex-1 min-w-0 text-sm truncate">{sop.title}</span>
-                          {sop.category && (
-                            <span className="text-xs text-muted-foreground flex-shrink-0">{sop.category}</span>
-                          )}
-                        </button>
-                      ))}
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setShowSopPicker((v) => !v)}
+                    className="flex items-center gap-1.5 h-7 px-3 rounded-full border border-dashed border-border text-xs text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors"
+                  >
+                    <Plus className="w-3 h-3" />
+                    Asignar SOP
+                  </button>
+                  {showSopPicker && (
+                    <div className="absolute top-full left-0 mt-1 w-full bg-card border border-border rounded-xl shadow-lg z-10 p-2 space-y-1.5">
+                      <div className="relative">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                        <Input
+                          autoFocus
+                          type="text"
+                          value={sopSearch}
+                          onChange={(e) => setSopSearch(e.target.value)}
+                          placeholder="Buscar SOP..."
+                          className="pl-8"
+                        />
+                      </div>
+                      {sops.length === 0 ? (
+                        <p className="text-xs text-muted-foreground px-1 py-1.5">No hay SOPs en el banco aún.</p>
+                      ) : filteredSops.length === 0 ? (
+                        <p className="text-xs text-muted-foreground px-1 py-1.5">Sin resultados.</p>
+                      ) : (
+                        <div className="max-h-40 overflow-y-auto rounded-md border border-border divide-y divide-border/50">
+                          {filteredSops.map((sop) => (
+                            <button
+                              key={sop.id}
+                              type="button"
+                              onClick={() => { setSopId(sop.id); setSopSearch(""); setShowSopPicker(false) }}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-muted/50 transition-colors"
+                            >
+                              <BookOpen className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                              <span className="flex-1 min-w-0 text-sm truncate">{sop.title}</span>
+                              {sop.category && (
+                                <span className="text-xs text-muted-foreground flex-shrink-0">{sop.category}</span>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
-                </div>
+                </>
               )}
             </div>
 

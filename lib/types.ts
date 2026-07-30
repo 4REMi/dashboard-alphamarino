@@ -290,6 +290,7 @@ export interface LabPhaseTask {
   description: string | null
   task_order: number
   requires_deliverable: boolean
+  deliverable_instructions: string | null
   sop_id: string | null
   default_position_id: string | null
   sop?: Pick<Sop, "id" | "title"> | null
@@ -363,6 +364,7 @@ export interface LabProposedTask {
   title: string
   description: string | null
   requires_deliverable: boolean
+  deliverable_instructions: string | null
   sop_id: string | null
   default_position_id: string | null
   status: LabProposedStatus
@@ -418,6 +420,7 @@ export interface CanonicalTask {
   description: string | null
   task_order: number
   requires_deliverable: boolean
+  deliverable_instructions: string | null
   default_position_id: string | null
   default_position_name: string | null
   sop_id: string | null
@@ -445,6 +448,31 @@ export interface CanonicalPhaseSet {
 
 // ── Proposed phase (anchored to a canonical PhaseSet) ─────────────────────────
 
+export interface LabProposedPhaseTaskChecklistItem {
+  id: string
+  task_id: string
+  text: string
+  is_blocking: boolean
+  item_order: number
+  created_at: string
+}
+
+export interface LabProposedPhaseTask {
+  id: string
+  proposed_phase_id: string
+  title: string
+  description: string | null
+  task_order: number
+  requires_deliverable: boolean
+  deliverable_instructions: string | null
+  sop_id: string | null
+  default_position_id: string | null
+  sop?: Pick<Sop, "id" | "title"> | null
+  default_position?: Position | null
+  checklist_items?: LabProposedPhaseTaskChecklistItem[]
+  created_at: string
+}
+
 export interface LabProposedPhase {
   id: string
   user_id: string
@@ -457,6 +485,7 @@ export interface LabProposedPhase {
   updated_at: string
   author?: Pick<Profile, "id" | "full_name"> | null
   phase_set?: Pick<PhaseSet, "id" | "name"> | null
+  tasks?: LabProposedPhaseTask[]
 }
 
 // ── Unified pending-change aggregate (application-layer only) ─────────────────

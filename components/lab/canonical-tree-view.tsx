@@ -452,6 +452,9 @@ function GhostPhaseRow({ proposal, onJumpToProposal }: { proposal: LabProposedPh
         {proposal.description && (
           <p className="text-xs text-muted-foreground truncate mt-0.5">{proposal.description}</p>
         )}
+        <p className={cn("text-xs mt-0.5", (proposal.tasks?.length ?? 0) === 0 ? "text-amber-600 font-medium" : "text-muted-foreground")}>
+          {(proposal.tasks?.length ?? 0)} tarea{(proposal.tasks?.length ?? 0) !== 1 ? "s" : ""}
+        </p>
       </div>
       <span className={cn(
         "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold flex-shrink-0 whitespace-nowrap",

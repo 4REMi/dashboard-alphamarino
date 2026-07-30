@@ -4,7 +4,7 @@ import { useState, useTransition } from "react"
 import type {
   LabPhase, LabPhaseTask, PhaseSet, PhaseSetPhase, CanonicalPhaseSet, CanonicalTask,
   LabProposedTask, LabProposedChecklistAddition, LabProposedChecklistItem,
-  LabProposedPhase,
+  LabProposedPhase, LabProposedPhaseTask,
 } from "@/lib/types"
 import {
   reviewPhase, promotePhase,
@@ -15,7 +15,7 @@ import {
 import {
   CheckCircle2, XCircle, MessageSquare, ArrowUpRight,
   ChevronLeft, ChevronRight, LayoutList, Link2, Lock, Paperclip, BookOpen,
-  ListChecks, UserCircle,
+  ListChecks, UserCircle, AlertTriangle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/components/ui/toast"
@@ -808,18 +808,35 @@ function ProposedNewPhaseDetail({ phase, canonicalTree, onReviewed, onInjected, 
   return (
     <>
       <DetailHeader title={phase.name} subtitle={`Por ${author} · ${phaseSetLabel} · Nueva fase`} />
-      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
-        {phase.description && <p className="text-sm text-muted-foreground">{phase.description}</p>}
-        {ps ? (
-          <PositionedPhaseContext orderedPhases={orderedPhases} afterIndex={afterIndex} proposedName={phase.name} />
+      <div className="flex-1 overflow-y-auto">
+        <div className="px-5 py-4 space-y-3">
+          {phase.description && <p className="text-sm text-muted-foreground">{phase.description}</p>}
+          {ps ? (
+            <PositionedPhaseContext orderedPhases={orderedPhases} afterIndex={afterIndex} proposedName={phase.name} />
+          ) : (
+            <p className="text-xs text-muted-foreground p-3 border border-border rounded-lg">Tipo de proyecto no encontrado.</p>
+          )}
+          <p className="text-xs text-muted-foreground">
+            {phase.position_after_phase_id
+              ? `Se insertará después de "${orderedPhases[afterIndex]?.name ?? "la fase seleccionada"}".`
+              : "Se insertará al principio."}
+          </p>
+        </div>
+
+        <div className="px-5 pb-2 pt-1 border-t border-border">
+          <p className="text-xs text-muted-foreground">
+            {(phase.tasks ?? []).length} tarea{(phase.tasks ?? []).length !== 1 ? "s" : ""} propuesta{(phase.tasks ?? []).length !== 1 ? "s" : ""}
+          </p>
+        </div>
+        {(phase.tasks ?? []).length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 px-6">
+            <AlertTriangle className="w-8 h-8 text-amber-500/60 mb-2" />
+            <p className="text-sm text-muted-foreground text-center">Sin tareas — no hay suficiente contexto para evaluar esta fase.</p>
+          </div>
         ) : (
-          <p className="text-xs text-muted-foreground p-3 border border-border rounded-lg">Tipo de proyecto no encontrado.</p>
+          [...(phase.tasks ?? [])].sort((a, b) => a.task_order - b.task_order)
+            .map((task: LabProposedPhaseTask, i) => <TaskPreviewRow key={task.id} task={task} index={i} />)
         )}
-        <p className="text-xs text-muted-foreground">
-          {phase.position_after_phase_id
-            ? `Se insertará después de "${orderedPhases[afterIndex]?.name ?? "la fase seleccionada"}".`
-            : "Se insertará al principio."}
-        </p>
       </div>
       <ReviewActions
         status={phase.status}
@@ -837,7 +854,7 @@ function ProposedNewPhaseDetail({ phase, canonicalTree, onReviewed, onInjected, 
 
 // ── Task preview row (read-only) ─────────────────────────────────────────────
 
-function TaskPreviewRow({ task, index }: { task: LabPhaseTask; index: number }) {
+function TaskPreviewRow({ task, index }: { task: LabPhaseTask | LabProposedPhaseTask; index: number }) {
   const checklistItems = task.checklist_items ?? []
   const sopName = (task.sop as { title?: string } | null)?.title ?? null
   const positionName = (task.default_position as { name?: string } | null)?.name ?? null

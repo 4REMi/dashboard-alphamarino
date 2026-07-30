@@ -201,6 +201,7 @@ export async function addPhaseTask(phaseId: string, formData: FormData): Promise
     description:          (formData.get("description") as string) || null,
     task_order:           nextOrder,
     requires_deliverable: formData.get("requires_deliverable") === "true",
+    deliverable_instructions: (formData.get("deliverable_instructions") as string) || null,
     sop_id:               sopIdRaw || null,
     default_position_id:  positionIdRaw || null,
   }).select(TASK_SELECT).single()
@@ -234,6 +235,7 @@ export async function updatePhaseTask(id: string, formData: FormData): Promise<v
     title:                formData.get("title") as string,
     description:          (formData.get("description") as string) || null,
     requires_deliverable: formData.get("requires_deliverable") === "true",
+    deliverable_instructions: (formData.get("deliverable_instructions") as string) || null,
     sop_id:               sopIdRaw || null,
     default_position_id:  positionIdRaw || null,
   }).eq("id", id)
@@ -397,6 +399,7 @@ export async function promotePhase(
           task_order:           i,
           is_urgent:            false,
           requires_deliverable: t.requires_deliverable,
+          deliverable_instructions: t.deliverable_instructions ?? null,
           sop_id:               t.sop_id ?? null,
           default_position_id:  t.default_position_id ?? null,
         }))
@@ -476,7 +479,7 @@ export async function getCanonicalTree(): Promise<CanonicalPhaseSet[]> {
       .select(`
         id,
         tasks:task_set_tasks(
-          id, title, description, task_order, requires_deliverable,
+          id, title, description, task_order, requires_deliverable, deliverable_instructions,
           default_position_id, sop_id,
           sop:sops(id, title),
           default_position:positions(id, name),
@@ -507,7 +510,8 @@ export async function getCanonicalTree(): Promise<CanonicalPhaseSet[]> {
         const ts = p.default_task_set_id ? taskSetMap[p.default_task_set_id] : null
         const tasks = ((ts?.tasks ?? []) as {
           id: string; title: string; description: string | null; task_order: number
-          requires_deliverable: boolean; default_position_id: string | null; sop_id: string | null
+          requires_deliverable: boolean; deliverable_instructions: string | null
+          default_position_id: string | null; sop_id: string | null
           sop?: { title?: string } | null; default_position?: { name?: string } | null
           checklist_items: { id: string; text: string; is_blocking: boolean; item_order: number }[]
         }[]).map((t) => ({
@@ -516,6 +520,7 @@ export async function getCanonicalTree(): Promise<CanonicalPhaseSet[]> {
           description: t.description,
           task_order: t.task_order,
           requires_deliverable: t.requires_deliverable,
+          deliverable_instructions: t.deliverable_instructions,
           default_position_id: t.default_position_id,
           default_position_name: t.default_position?.name ?? null,
           sop_id: t.sop_id,
@@ -620,6 +625,7 @@ export async function createProposedTask(
     title:                      formData.get("title") as string,
     description:                (formData.get("description") as string) || null,
     requires_deliverable:       formData.get("requires_deliverable") === "true",
+    deliverable_instructions:   (formData.get("deliverable_instructions") as string) || null,
     sop_id:                     (formData.get("sop_id") as string) || null,
     default_position_id:        (formData.get("default_position_id") as string) || null,
   }).select(PROPOSED_TASK_SELECT).single()
@@ -647,6 +653,7 @@ export async function updateProposedTask(id: string, formData: FormData): Promis
     title:                  formData.get("title") as string,
     description:            (formData.get("description") as string) || null,
     requires_deliverable:   formData.get("requires_deliverable") === "true",
+    deliverable_instructions: (formData.get("deliverable_instructions") as string) || null,
     sop_id:                 (formData.get("sop_id") as string) || null,
     default_position_id:    (formData.get("default_position_id") as string) || null,
     updated_at:             new Date().toISOString(),
@@ -724,6 +731,7 @@ export async function injectProposedTask(id: string): Promise<void> {
       title:                proposal.title,
       description:          proposal.description,
       requires_deliverable: proposal.requires_deliverable,
+      deliverable_instructions: proposal.deliverable_instructions ?? null,
       sop_id:               proposal.sop_id,
       default_position_id:  proposal.default_position_id,
     }).eq("id", proposal.anchor_task_set_task_id)
@@ -778,6 +786,7 @@ export async function injectProposedTask(id: string): Promise<void> {
       task_order:           insertOrder,
       is_urgent:            false,
       requires_deliverable: proposal.requires_deliverable,
+      deliverable_instructions: proposal.deliverable_instructions ?? null,
       sop_id:               proposal.sop_id,
       default_position_id:  proposal.default_position_id,
     }).select("id").single()
@@ -803,7 +812,22 @@ export async function injectProposedTask(id: string): Promise<void> {
 
 // ── Proposed phases ───────────────────────────────────────────────────────────
 
-const PROPOSED_PHASE_SELECT = `*, phase_set:phase_sets(id, name)`
+const PROPOSED_PHASE_TASK_SELECT = `
+  *,
+  sop:sops(id, title),
+  default_position:positions(id, name),
+  checklist_items:lab_proposed_phase_task_checklist_items(id, text, is_blocking, item_order, created_at)
+`
+
+const PROPOSED_PHASE_SELECT = `*, phase_set:phase_sets(id, name), tasks:lab_proposed_phase_tasks(${PROPOSED_PHASE_TASK_SELECT})`
+
+function normalizeProposedPhase(p: Record<string, unknown>) {
+  const tasks = ((p.tasks ?? []) as import("@/lib/types").LabProposedPhaseTask[])
+    .slice()
+    .sort((a, b) => a.task_order - b.task_order)
+    .map((t) => ({ ...t, checklist_items: [...(t.checklist_items ?? [])].sort((a, b) => a.item_order - b.item_order) }))
+  return { ...p, tasks }
+}
 
 export async function getMyProposedPhases() {
   const { supabase, user } = await assertAuth()
@@ -812,7 +836,7 @@ export async function getMyProposedPhases() {
     .select(PROPOSED_PHASE_SELECT)
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
-  return (data ?? []) as unknown as import("@/lib/types").LabProposedPhase[]
+  return (data ?? []).map((p) => normalizeProposedPhase(p as Record<string, unknown>)) as unknown as import("@/lib/types").LabProposedPhase[]
 }
 
 export async function createProposedPhase(phaseSetId: string, formData: FormData) {
@@ -863,8 +887,90 @@ export async function getAllSubmittedProposedPhases() {
     .select(PROPOSED_PHASE_SELECT)
     .in("status", ["submitted", "approved", "rejected"])
     .order("created_at", { ascending: false })
-  const rows = (data ?? []) as unknown as WithProfiles[]
+  const rows = (data ?? []).map((p) => normalizeProposedPhase(p as Record<string, unknown>)) as unknown as WithProfiles[]
   return attachProfiles(supabase, rows) as unknown as Promise<import("@/lib/types").LabProposedPhase[]>
+}
+
+// ── Proposed phase tasks ──────────────────────────────────────────────────────
+
+export async function addProposedPhaseTask(proposedPhaseId: string, formData: FormData) {
+  const { supabase } = await assertAuth()
+  const { data: existing } = await supabase
+    .from("lab_proposed_phase_tasks").select("task_order")
+    .eq("proposed_phase_id", proposedPhaseId).order("task_order", { ascending: false }).limit(1)
+  const nextOrder = existing?.[0] ? existing[0].task_order + 1 : 0
+  const sopIdRaw = formData.get("sop_id") as string
+  const positionIdRaw = formData.get("default_position_id") as string
+  const { data, error } = await supabase.from("lab_proposed_phase_tasks").insert({
+    proposed_phase_id:    proposedPhaseId,
+    title:                formData.get("title") as string,
+    description:          (formData.get("description") as string) || null,
+    task_order:           nextOrder,
+    requires_deliverable: formData.get("requires_deliverable") === "true",
+    deliverable_instructions: (formData.get("deliverable_instructions") as string) || null,
+    sop_id:               sopIdRaw || null,
+    default_position_id:  positionIdRaw || null,
+  }).select(PROPOSED_PHASE_TASK_SELECT).single()
+  if (error) throw error
+
+  const checklistRaw = (formData.get("checklist_items_json") as string) || "[]"
+  const checklistItems = JSON.parse(checklistRaw) as { text: string; is_blocking: boolean }[]
+  if (checklistItems.length > 0) {
+    await supabase.from("lab_proposed_phase_task_checklist_items").insert(
+      checklistItems.map((item, i) => ({
+        task_id: (data as { id: string }).id, text: item.text, is_blocking: item.is_blocking, item_order: i,
+      }))
+    )
+  }
+  revalidate()
+  return {
+    ...(data as unknown as import("@/lib/types").LabProposedPhaseTask),
+    checklist_items: checklistItems.map((item, i) => ({ id: crypto.randomUUID(), task_id: (data as { id: string }).id, text: item.text, is_blocking: item.is_blocking, item_order: i, created_at: new Date().toISOString() })),
+  }
+}
+
+export async function updateProposedPhaseTask(id: string, formData: FormData): Promise<void> {
+  const { supabase } = await assertAuth()
+  const sopIdRaw = formData.get("sop_id") as string
+  const positionIdRaw = formData.get("default_position_id") as string
+  const { error } = await supabase.from("lab_proposed_phase_tasks").update({
+    title:                formData.get("title") as string,
+    description:          (formData.get("description") as string) || null,
+    requires_deliverable: formData.get("requires_deliverable") === "true",
+    deliverable_instructions: (formData.get("deliverable_instructions") as string) || null,
+    sop_id:               sopIdRaw || null,
+    default_position_id:  positionIdRaw || null,
+  }).eq("id", id)
+  if (error) throw error
+
+  if (formData.has("checklist_items_json")) {
+    const checklistRaw = formData.get("checklist_items_json") as string
+    const checklistItems = JSON.parse(checklistRaw) as { text: string; is_blocking: boolean }[]
+    await supabase.from("lab_proposed_phase_task_checklist_items").delete().eq("task_id", id)
+    if (checklistItems.length > 0) {
+      await supabase.from("lab_proposed_phase_task_checklist_items").insert(
+        checklistItems.map((item, i) => ({ task_id: id, text: item.text, is_blocking: item.is_blocking, item_order: i }))
+      )
+    }
+  }
+  revalidate()
+}
+
+export async function deleteProposedPhaseTask(id: string): Promise<void> {
+  const { supabase } = await assertAuth()
+  const { error } = await supabase.from("lab_proposed_phase_tasks").delete().eq("id", id)
+  if (error) throw error
+  revalidate()
+}
+
+export async function reorderProposedPhaseTasks(orderedIds: string[]): Promise<void> {
+  const { supabase } = await assertAuth()
+  await Promise.all(
+    orderedIds.map((id, index) =>
+      supabase.from("lab_proposed_phase_tasks").update({ task_order: index }).eq("id", id)
+    )
+  )
+  revalidate()
 }
 
 export async function reviewProposedPhase(id: string, action: import("@/lib/types").LabReviewAction, comment: string): Promise<void> {
@@ -880,8 +986,13 @@ export async function reviewProposedPhase(id: string, action: import("@/lib/type
 export async function injectProposedPhase(id: string): Promise<void> {
   const { supabase } = await assertAuth()
   const { data: proposal, error } = await supabase
-    .from("lab_proposed_phases").select("*").eq("id", id).single()
+    .from("lab_proposed_phases")
+    .select(`*, tasks:lab_proposed_phase_tasks(*, checklist_items:lab_proposed_phase_task_checklist_items(*))`)
+    .eq("id", id).single()
   if (error || !proposal) throw new Error("Propuesta no encontrada")
+
+  const draftTasks = ((proposal.tasks ?? []) as import("@/lib/types").LabProposedPhaseTask[])
+    .slice().sort((a, b) => a.task_order - b.task_order)
 
   // Determine insertion order
   let insertOrder = 0
@@ -907,12 +1018,56 @@ export async function injectProposedPhase(id: string): Promise<void> {
     insertOrder = last?.[0] ? (last[0] as { phase_order: number }).phase_order + 1 : 0
   }
 
-  await supabase.from("phase_set_phases").insert({
+  const { data: newPhase } = await supabase.from("phase_set_phases").insert({
     phase_set_id: proposal.phase_set_id,
     name:         proposal.name,
     description:  proposal.description,
     phase_order:  insertOrder,
-  })
+  }).select().single()
+
+  if (newPhase && draftTasks.length > 0) {
+    const { data: newTS } = await supabase
+      .from("task_sets")
+      .insert({ name: proposal.name })
+      .select().single()
+
+    if (newTS) {
+      const { data: insertedTasks } = await supabase.from("task_set_tasks").insert(
+        draftTasks.map((t, i) => ({
+          task_set_id:          newTS.id,
+          title:                t.title,
+          description:          t.description,
+          task_order:           i,
+          is_urgent:            false,
+          requires_deliverable: t.requires_deliverable,
+          deliverable_instructions: t.deliverable_instructions ?? null,
+          sop_id:               t.sop_id ?? null,
+          default_position_id:  t.default_position_id ?? null,
+        }))
+      ).select("id, title")
+
+      if (insertedTasks) {
+        for (let i = 0; i < draftTasks.length; i++) {
+          const srcTask = draftTasks[i]
+          const dstTask = insertedTasks[i]
+          const items = (srcTask.checklist_items ?? []) as import("@/lib/types").LabProposedPhaseTaskChecklistItem[]
+          if (items.length > 0 && dstTask) {
+            await supabase.from("task_set_checklist_items").insert(
+              items.map((item) => ({
+                task_set_task_id: dstTask.id,
+                text:             item.text,
+                is_blocking:      item.is_blocking,
+                item_order:       item.item_order,
+              }))
+            )
+          }
+        }
+      }
+
+      await supabase.from("phase_set_phases")
+        .update({ default_task_set_id: newTS.id }).eq("id", newPhase.id)
+    }
+  }
 
   await supabase.from("lab_proposed_phases")
     .update({ status: "approved", updated_at: new Date().toISOString() }).eq("id", id)

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react"
 import type {
-  PendingChange, CanonicalPhaseSet, CanonicalTask, LabPhase, LabPhaseTask, LabProposedPhase,
+  PendingChange, CanonicalPhaseSet, CanonicalTask, LabPhase, LabPhaseTask, LabProposedPhase, LabProposedPhaseTask,
   LabProposedTask, LabProposedChecklistAddition, Sop, Position,
 } from "@/lib/types"
 import {
@@ -16,7 +16,7 @@ import { PositionedTaskContext, PositionedPhaseContext, TaskEditDiff, ChecklistB
 import { PROPOSAL_STATUS_LABEL, PROPOSAL_STATUS_COLOR } from "@/components/lab/shared"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/components/ui/toast"
-import { LabSortableTaskRow } from "@/components/lab/task-editor"
+import { LabSortableTaskRow, ProposedPhaseTaskSortableRow } from "@/components/lab/task-editor"
 import { TaskFormModal } from "@/components/lab/task-form-modal"
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent,
@@ -27,6 +27,7 @@ import {
   submitProposedPhase, retractProposedPhase, deleteProposedPhase,
   submitProposedTask, retractProposedTask, deleteProposedTask,
   submitProposedChecklistAddition, retractProposedChecklistAddition, deleteProposedChecklistAddition,
+  deleteProposedPhaseTask, reorderProposedPhaseTasks,
 } from "@/lib/actions/lab"
 
 interface Props {
@@ -213,6 +214,8 @@ export function MyProposalsView({ initialPendingChanges, canonicalTree, sops, po
             change={selected}
             phase={selected.raw as LabProposedPhase}
             canonicalTree={canonicalTree}
+            sops={sops}
+            positions={positions}
             onChanged={(patch) => replaceChange(selected.id, patch)}
             onDeleted={() => removeChange(selected.id)}
           />
@@ -424,16 +427,22 @@ function PhaseForkDetail({ phase, sops, positions, onChanged, onDeleted }: {
 
 // ── Detail: phase_new — reconstruct phase set's phase list with the new one highlighted ──
 
-function ProposedPhaseDetail({ change, phase, canonicalTree, onChanged, onDeleted }: {
+function ProposedPhaseDetail({ change, phase, canonicalTree, sops, positions, onChanged, onDeleted }: {
   change: PendingChange
   phase: LabProposedPhase
   canonicalTree: CanonicalPhaseSet[]
+  sops: Sop[]
+  positions: Position[]
   onChanged: (patch: Partial<PendingChange>) => void
   onDeleted: () => void
 }) {
   const [status, setStatus] = useState(phase.status)
+  const [tasks, setTasks] = useState<LabProposedPhaseTask[]>(phase.tasks ?? [])
+  const [showAddTask, setShowAddTask] = useState(false)
+  const [editingTask, setEditingTask] = useState<LabProposedPhaseTask | null>(null)
   const [isPending, startTransition] = useTransition()
   const toast = useToast()
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
   const isEditable = status === "draft" || status === "rejected"
 
   const ps = canonicalTree.find((p) => p.id === phase.phase_set_id)
@@ -443,6 +452,7 @@ function ProposedPhaseDetail({ change, phase, canonicalTree, onChanged, onDelete
     : -1
 
   function handleSubmit() {
+    if (tasks.length === 0) return
     startTransition(async () => {
       await submitProposedPhase(phase.id)
       setStatus("submitted")
@@ -463,6 +473,21 @@ function ProposedPhaseDetail({ change, phase, canonicalTree, onChanged, onDelete
       toast("Propuesta eliminada", "success")
       onDeleted()
     })
+  }
+  function handleDeleteTask(id: string) {
+    startTransition(async () => {
+      await deleteProposedPhaseTask(id)
+      setTasks((prev) => prev.filter((t) => t.id !== id))
+    })
+  }
+  function handleTaskDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIndex = tasks.findIndex((t) => t.id === active.id)
+    const newIndex = tasks.findIndex((t) => t.id === over.id)
+    const reordered = arrayMove(tasks, oldIndex, newIndex)
+    setTasks(reordered)
+    startTransition(async () => { await reorderProposedPhaseTasks(reordered.map((t) => t.id)) })
   }
 
   return (
@@ -486,15 +511,77 @@ function ProposedPhaseDetail({ change, phase, canonicalTree, onChanged, onDelete
               : "Se insertará al principio."}
           </p>
         </div>
+
+        <div className="flex items-center justify-between px-5 pt-2 pb-1 border-t border-border">
+          <p className="text-xs text-muted-foreground">
+            Tareas {tasks.length === 0 && <span className="text-amber-600 font-medium">— agrega al menos una para que se pueda revisar</span>}
+          </p>
+          {isEditable && (
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setShowAddTask(true)}>
+              <Plus className="w-3.5 h-3.5" />
+            </Button>
+          )}
+        </div>
+
+        {tasks.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+            <LayoutList className="w-7 h-7 mb-2 opacity-40" />
+            <p className="text-sm">{isEditable ? "Usa + para agregar tareas" : "Sin tareas"}</p>
+          </div>
+        )}
+
+        {tasks.length > 0 && (
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleTaskDragEnd}>
+            <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+              {tasks.map((task, i) => (
+                <ProposedPhaseTaskSortableRow
+                  key={task.id}
+                  task={task}
+                  index={i}
+                  onEdit={isEditable ? setEditingTask : () => {}}
+                  onDelete={isEditable ? handleDeleteTask : () => {}}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
+        )}
       </div>
 
       <ProposalFooter
         status={status}
         isPending={isPending}
+        submitDisabled={tasks.length === 0}
         onSubmit={handleSubmit}
         onRetract={handleRetract}
         onDelete={handleDelete}
       />
+
+      {showAddTask && (
+        <TaskFormModal
+          target={{ kind: "proposed-phase-task-create", proposedPhaseId: phase.id, proposedPhaseName: phase.name, phaseSetName: ps?.name ?? null }}
+          sops={sops}
+          positions={positions}
+          onClose={() => setShowAddTask(false)}
+          onSaved={(result) => {
+            if (result.kind !== "proposed-phase-task-create") return
+            setTasks((prev) => [...prev, result.task])
+            setShowAddTask(false)
+          }}
+        />
+      )}
+      {editingTask && (
+        <TaskFormModal
+          target={{ kind: "proposed-phase-task-edit", task: editingTask, proposedPhaseName: phase.name, phaseSetName: ps?.name ?? null }}
+          sops={sops}
+          positions={positions}
+          onClose={() => setEditingTask(null)}
+          onSaved={(result) => {
+            if (result.kind !== "proposed-phase-task-edit") return
+            setTasks((prev) => prev.map((t) => t.id === editingTask.id ? { ...t, ...result.patch } : t))
+            setEditingTask(null)
+          }}
+        />
+      )}
     </>
   )
 }
@@ -667,9 +754,10 @@ function ProposedChecklistDetail({ change, addition, canonicalTree, onChanged, o
 
 // ── Shared submit/retract/delete footer for the 3 "proposed" kinds ─────────────
 
-function ProposalFooter({ status, isPending, onSubmit, onRetract, onDelete }: {
+function ProposalFooter({ status, isPending, submitDisabled, onSubmit, onRetract, onDelete }: {
   status: string
   isPending: boolean
+  submitDisabled?: boolean
   onSubmit: () => void
   onRetract: () => void
   onDelete: () => void
@@ -679,7 +767,7 @@ function ProposalFooter({ status, isPending, onSubmit, onRetract, onDelete }: {
     <div className="px-5 py-4 border-t flex items-center justify-between gap-3 flex-shrink-0">
       {isEditable && (
         <div className="flex items-center gap-2">
-          <Button onClick={onSubmit} disabled={isPending} size="sm">
+          <Button onClick={onSubmit} disabled={isPending || submitDisabled} size="sm">
             <Send className="w-3.5 h-3.5 mr-1.5" />
             {status === "rejected" ? "Reenviar a revisión" : "Enviar a revisión"}
           </Button>
