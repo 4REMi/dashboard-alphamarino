@@ -22,7 +22,7 @@ import {
 } from "@dnd-kit/core"
 import { SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable"
 import {
-  submitPhase, retractPhase, deletePhaseTask, reorderPhaseTasks,
+  submitPhase, retractPhase, deletePhase, deletePhaseTask, reorderPhaseTasks,
   submitProposedPhase, retractProposedPhase, deleteProposedPhase,
   submitProposedTask, retractProposedTask, deleteProposedTask,
   submitProposedChecklistAddition, retractProposedChecklistAddition, deleteProposedChecklistAddition,
@@ -189,6 +189,7 @@ export function MyProposalsView({ initialPendingChanges, canonicalTree, sops, po
             sops={sops}
             positions={positions}
             onChanged={(patch) => replaceChange(selected.id, patch)}
+            onDeleted={() => removeChange(selected.id)}
           />
         )}
 
@@ -275,11 +276,12 @@ function lastReviewOf(reviews: { action: string; comment: string | null; created
 
 // ── Detail: phase_fork — full phase editor (task list, add/edit, submit/retract) ──
 
-function PhaseForkDetail({ phase, sops, positions, onChanged }: {
+function PhaseForkDetail({ phase, sops, positions, onChanged, onDeleted }: {
   phase: LabPhase
   sops: Sop[]
   positions: Position[]
   onChanged: (patch: Partial<PendingChange>) => void
+  onDeleted: () => void
 }) {
   const [tasks, setTasks] = useState<LabPhaseTask[]>(phase.tasks ?? [])
   const [status, setStatus] = useState(phase.status)
@@ -292,6 +294,7 @@ function PhaseForkDetail({ phase, sops, positions, onChanged }: {
   const lastReview = lastReviewOf(phase.reviews)
 
   function handleSubmit() {
+    if (tasks.length === 0) return
     startTransition(async () => {
       await submitPhase(phase.id)
       setStatus("submitted")
@@ -309,6 +312,12 @@ function PhaseForkDetail({ phase, sops, positions, onChanged }: {
     startTransition(async () => {
       await deletePhaseTask(id)
       setTasks((prev) => prev.filter((t) => t.id !== id))
+    })
+  }
+  function handleDelete() {
+    startTransition(async () => {
+      await deletePhase(phase.id)
+      onDeleted()
     })
   }
   function handleTaskDragEnd(event: DragEndEvent) {
@@ -365,23 +374,7 @@ function PhaseForkDetail({ phase, sops, positions, onChanged }: {
         )}
       </div>
 
-      <div className="px-5 py-4 border-t flex items-center justify-between gap-3 flex-shrink-0">
-        {isEditable ? (
-          <Button onClick={handleSubmit} disabled={isPending || tasks.length === 0} size="sm">
-            <Send className="w-3.5 h-3.5 mr-1.5" />
-            {status === "rejected" ? "Reenviar a revisión" : "Enviar a revisión"}
-          </Button>
-        ) : status === "submitted" ? (
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-amber-600 font-medium flex items-center gap-1">
-              <MessageSquare className="w-3.5 h-3.5" /> Pendiente de revisión
-            </span>
-            <Button variant="outline" size="sm" onClick={handleRetract} disabled={isPending}>
-              <RotateCcw className="w-3 h-3 mr-1.5" /> Retirar para editar
-            </Button>
-          </div>
-        ) : null}
-      </div>
+      <ProposalFooter status={status} isPending={isPending} onSubmit={handleSubmit} onRetract={handleRetract} onDelete={handleDelete} />
 
       {showAddTask && (
         <TaskFormModal
