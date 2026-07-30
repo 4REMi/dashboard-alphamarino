@@ -58,9 +58,7 @@ export function TaskFormModal({ target, sops, positions, onClose, onSaved }: Pro
   const [description, setDescription] = useState(existingTask?.description ?? "")
   const [requiresDeliverable, setRequiresDeliverable] = useState(existingTask?.requires_deliverable ?? false)
   const [checklistItems, setChecklistItems] = useState<ChecklistDraft[]>(
-    target.kind === "lab-edit"
-      ? (target.task.checklist_items ?? []).map((i) => ({ text: i.text, is_blocking: i.is_blocking }))
-      : []
+    (existingTask?.checklist_items ?? []).map((i) => ({ text: i.text, is_blocking: i.is_blocking }))
   )
   const [newItemText, setNewItemText] = useState("")
   const [newItemBlocking, setNewItemBlocking] = useState(false)

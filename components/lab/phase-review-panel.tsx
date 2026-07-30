@@ -874,6 +874,19 @@ function TaskPreviewRow({ task, index }: { task: LabPhaseTask; index: number }) 
           </span>
         )}
       </div>
+
+      {checklistItems.length > 0 && (
+        <div className="pl-12 pr-5 pb-3 -mt-1">
+          <div className="rounded-lg border border-border/50 divide-y divide-border/30 bg-muted/10">
+            {checklistItems.map((item) => (
+              <div key={item.id} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted-foreground">
+                <span className={cn("truncate flex-1 min-w-0", item.is_blocking && "font-medium text-foreground")}>{item.text}</span>
+                {item.is_blocking && <Lock className="w-2.5 h-2.5 text-destructive flex-shrink-0" />}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
