@@ -204,6 +204,12 @@ function DomainForm({ domain, customers, onSave, onCancel, isPending }: DomainFo
   )
 }
 
+function addOneYear(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00")
+  d.setFullYear(d.getFullYear() + 1)
+  return d.toISOString().split("T")[0]
+}
+
 function DomainRenewModal({ domain, exchangeRate, onClose, onRenewed }: {
   domain: Domain
   exchangeRate: number | null
@@ -212,20 +218,31 @@ function DomainRenewModal({ domain, exchangeRate, onClose, onRenewed }: {
 }) {
   const [date, setDate] = useState(new Date().toISOString().split("T")[0])
   const [notes, setNotes] = useState("")
+  const [chargeDomain, setChargeDomain] = useState(!!domain.renewal_cost)
+  const [chargeMaintenance, setChargeMaintenance] = useState(domain.maintenance_type === "client" && !!domain.maintenance_cost)
+  const [extendYear, setExtendYear] = useState(!!domain.renewal_date)
   const [isPending, startTransition] = useTransition()
   const toast = useToast()
 
   const billsMaintenance = domain.maintenance_type === "client" && !!domain.maintenance_cost
+  const totalCharge = (chargeDomain ? domain.renewal_cost ?? 0 : 0) + (chargeMaintenance ? domain.maintenance_cost ?? 0 : 0)
 
   function handleConfirm() {
     startTransition(async () => {
       const fd = new FormData()
       fd.set("date", date)
       fd.set("notes", notes)
+      fd.set("charge_domain", chargeDomain ? "true" : "false")
+      fd.set("charge_maintenance", chargeMaintenance ? "true" : "false")
+      fd.set("extend_year", extendYear ? "true" : "false")
       await renewDomain(domain.id, fd)
-      onRenewed({ last_maintenance_date: date, last_maintenance_notes: notes || null })
+      onRenewed({
+        last_maintenance_date: date,
+        last_maintenance_notes: notes || null,
+        renewal_date: extendYear && domain.renewal_date ? addOneYear(domain.renewal_date) : domain.renewal_date,
+      })
       toast(
-        billsMaintenance ? "Mantenimiento registrado y enviado a Ingresos" : "Mantención registrada",
+        totalCharge > 0 ? "Cobro registrado y enviado a Ingresos" : "Mantención registrada",
         "success"
       )
       onClose()
@@ -237,7 +254,7 @@ function DomainRenewModal({ domain, exchangeRate, onClose, onRenewed }: {
       <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div>
-            <h2 className="font-semibold text-sm">Renovar / saldar mantención</h2>
+            <h2 className="font-semibold text-sm">Renovar dominio</h2>
             <p className="text-xs text-muted-foreground mt-0.5">{domain.domain}</p>
           </div>
           <button onClick={onClose} className="p-1 rounded text-muted-foreground hover:text-foreground">
@@ -246,26 +263,47 @@ function DomainRenewModal({ domain, exchangeRate, onClose, onRenewed }: {
         </div>
 
         <div className="px-5 py-4 space-y-4">
-          <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-1.5 text-xs">
-            <div className="flex justify-between items-start">
-              <span className="text-muted-foreground">Costo del dominio (informativo, no genera movimiento)</span>
-              <span className="font-medium text-right">
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-muted-foreground">¿Qué se cobró en esta renovación?</p>
+
+            <label className="flex items-center justify-between gap-2 px-3 py-2 rounded-md border border-input bg-background text-sm cursor-pointer select-none">
+              <span className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={chargeDomain}
+                  disabled={!domain.renewal_cost}
+                  onChange={(e) => setChargeDomain(e.target.checked)}
+                  className="accent-info"
+                />
+                Cuota de dominio
+              </span>
+              <span className="text-muted-foreground">
                 {domain.renewal_cost ? <DualCurrency amount={domain.renewal_cost} exchangeRate={exchangeRate} /> : "—"}
               </span>
-            </div>
-            <div className="flex justify-between items-start">
-              <span className="text-muted-foreground">Mantenimiento</span>
-              <span className="font-medium text-right">
+            </label>
+
+            <label className="flex items-center justify-between gap-2 px-3 py-2 rounded-md border border-input bg-background text-sm cursor-pointer select-none">
+              <span className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={chargeMaintenance}
+                  disabled={!billsMaintenance}
+                  onChange={(e) => setChargeMaintenance(e.target.checked)}
+                  className="accent-info"
+                />
+                Cuota de mantenimiento
+              </span>
+              <span className="text-muted-foreground">
                 {billsMaintenance
                   ? <DualCurrency amount={domain.maintenance_cost as number} exchangeRate={exchangeRate} />
                   : MAINTENANCE_TYPE_LABEL[domain.maintenance_type]}
               </span>
-            </div>
+            </label>
           </div>
 
-          {billsMaintenance && (
+          {totalCharge > 0 && (
             <p className="text-xs text-amber-700 bg-amber-50/60 border border-amber-200 rounded-md px-2.5 py-1.5">
-              Al confirmar, se creará un ingreso de {formatMXN(domain.maintenance_cost as number)} en Finanzas por este mantenimiento.
+              Al confirmar, se creará{chargeDomain && chargeMaintenance ? "n" : ""} un ingreso por {formatMXN(totalCharge)} en Finanzas.
             </p>
           )}
 
@@ -289,9 +327,23 @@ function DomainRenewModal({ domain, exchangeRate, onClose, onRenewed }: {
             />
           </div>
 
-          <p className="text-xs text-muted-foreground">
-            La fecha de vencimiento del dominio no cambia automáticamente — actualízala manualmente desde "Editar" cuando corresponda.
-          </p>
+          <label className="flex items-center justify-between gap-2 px-3 py-2 rounded-md border border-input bg-background text-sm cursor-pointer select-none">
+            <span className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={extendYear}
+                disabled={!domain.renewal_date}
+                onChange={(e) => setExtendYear(e.target.checked)}
+                className="accent-info"
+              />
+              Renovar vencimiento +1 año
+            </span>
+            {domain.renewal_date && (
+              <span className="text-xs text-muted-foreground">
+                {extendYear ? formatDate(addOneYear(domain.renewal_date)) : formatDate(domain.renewal_date)}
+              </span>
+            )}
+          </label>
         </div>
 
         <div className="flex gap-2 justify-end px-5 py-4 border-t border-border">

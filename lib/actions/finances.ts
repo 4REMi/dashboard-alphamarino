@@ -279,43 +279,64 @@ export async function deleteDomain(id: string) {
   revalidatePath("/finances/domains")
 }
 
-// Marca la mantención/renovación como saldada. El costo de renovación del
-// dominio (renewal_cost) es un pass-through y no genera ningún movimiento en
-// Finanzas. Solo la cuota de mantenimiento (maintenance_cost) cuando el
-// dominio es tipo "client" — o sea, se le cobra al cliente — se registra
-// como Income. renewal_date NO se toca: se actualiza manualmente aparte.
+function addOneYear(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00")
+  d.setFullYear(d.getFullYear() + 1)
+  return d.toISOString().split("T")[0]
+}
+
+// Marca la mantención/renovación como saldada. chargeDomain/chargeMaintenance
+// controlan, caso por caso, si el cobro correspondiente (renewal_cost /
+// maintenance_cost) crea un Income — no hay regla fija, el usuario decide en
+// el modal cuáles cuotas se cobraron en esta renovación. extendYear, si viene
+// true, empuja renewal_date un año a partir de su valor actual (no de la
+// fecha del modal), para no perder tiempo ya pagado si se renueva antes de
+// vencer.
 export async function renewDomain(domainId: string, formData: FormData) {
   const supabase = await createClient()
   const { data: domain, error: dErr } = await supabase
     .from("domains")
-    .select("domain, maintenance_type, maintenance_cost")
+    .select("domain, renewal_date, renewal_cost, maintenance_cost")
     .eq("id", domainId)
     .single()
   if (dErr || !domain) throw new Error("Dominio no encontrado")
 
   const date = formData.get("date") as string
   const notes = (formData.get("notes") as string) || null
+  const chargeDomain = formData.get("charge_domain") === "true"
+  const chargeMaintenance = formData.get("charge_maintenance") === "true"
+  const extendYear = formData.get("extend_year") === "true"
 
-  if (domain.maintenance_type === "client" && domain.maintenance_cost) {
+  const charges: { amount: number; description: string }[] = []
+  if (chargeDomain && domain.renewal_cost) {
+    charges.push({ amount: Number(domain.renewal_cost), description: `Renovación dominio ${domain.domain}` })
+  }
+  if (chargeMaintenance && domain.maintenance_cost) {
+    charges.push({ amount: Number(domain.maintenance_cost), description: `Mantenimiento ${domain.domain}` })
+  }
+
+  if (charges.length > 0) {
     const exchangeRate = await getExchangeRate(date)
-    const originalAmount = Number(domain.maintenance_cost)
-    const amount = exchangeRate ? originalAmount / exchangeRate : originalAmount
-    const { error: iErr } = await supabase.from("income").insert({
-      project_id: null,
-      amount,
-      currency: "MXN",
-      original_amount: originalAmount,
-      exchange_rate: exchangeRate,
-      date,
-      description: `Mantenimiento ${domain.domain}`,
-    })
+    const { error: iErr } = await supabase.from("income").insert(
+      charges.map((c) => ({
+        project_id: null,
+        amount: exchangeRate ? c.amount / exchangeRate : c.amount,
+        currency: "MXN",
+        original_amount: c.amount,
+        exchange_rate: exchangeRate,
+        date,
+        description: c.description,
+      }))
+    )
     if (iErr) throw iErr
   }
 
-  const { error: uErr } = await supabase
-    .from("domains")
-    .update({ last_maintenance_date: date, last_maintenance_notes: notes })
-    .eq("id", domainId)
+  const update: Record<string, string | null> = { last_maintenance_date: date, last_maintenance_notes: notes }
+  if (extendYear && domain.renewal_date) {
+    update.renewal_date = addOneYear(domain.renewal_date)
+  }
+
+  const { error: uErr } = await supabase.from("domains").update(update).eq("id", domainId)
   if (uErr) throw uErr
 
   revalidatePath("/finances/domains")
