@@ -18,6 +18,11 @@ const PERMISSION_LABELS: { key: keyof UserPermissions; label: string; descriptio
     description: "Acceso completo a /finanzas con MRR, gastos fijos e ingresos",
   },
   {
+    key: "view_domains",
+    label: "Ver Dominios",
+    description: "Acceso a la sección de Dominios, independiente de Finanzas",
+  },
+  {
     key: "edit_projects",
     label: "Editar proyectos",
     description: "Crear, editar y archivar proyectos",
@@ -46,6 +51,16 @@ const PERMISSION_LABELS: { key: keyof UserPermissions; label: string; descriptio
     key: "assign_sops",
     label: "Asignar SOPs",
     description: "Asignar SOPs a tareas y plantillas del banco",
+  },
+  {
+    key: "access_ad_lab",
+    label: "Acceso a Ad Lab",
+    description: "Acceso a la sección /ad-lab (creatives, boards, resize, discovery)",
+  },
+  {
+    key: "access_brand_brains",
+    label: "Acceso a Brand Brains",
+    description: "Acceso a la sección /brand-brains",
   },
 ]
 

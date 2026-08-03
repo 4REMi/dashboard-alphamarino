@@ -6,12 +6,40 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { AlertTriangle, Plus, Pencil, Trash2, X, Check } from "lucide-react"
-import { formatCurrency, formatDate } from "@/lib/utils"
-import type { Domain, Customer } from "@/lib/types"
+import { formatDate } from "@/lib/utils"
+import type { Domain, Customer, DomainMaintenanceType } from "@/lib/types"
+
+const MAINTENANCE_TYPE_LABEL: Record<DomainMaintenanceType, string> = {
+  client: "Cliente",
+  own_project: "Proyecto propio",
+  n_a: "N/A",
+}
+
+function formatMXN(amount: number) {
+  return amount.toLocaleString("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 0, maximumFractionDigits: 0 })
+}
+
+function formatUSD(amount: number) {
+  return amount.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 0 })
+}
+
+function DualCurrency({ amount, exchangeRate }: { amount: number; exchangeRate: number | null }) {
+  return (
+    <div>
+      <div>{formatMXN(amount)}</div>
+      {exchangeRate && (
+        <div className="text-xs font-normal text-muted-foreground">
+          ≈ {formatUSD(amount / exchangeRate)} USD
+        </div>
+      )}
+    </div>
+  )
+}
 
 interface DomainTableProps {
   initialDomains: Domain[]
   customers: Customer[]
+  exchangeRate: number | null
 }
 
 const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000
@@ -20,6 +48,21 @@ function daysUntil(dateStr: string | null): number | null {
   if (!dateStr) return null
   const diff = new Date(dateStr).getTime() - Date.now()
   return Math.ceil(diff / (1000 * 60 * 60 * 24))
+}
+
+type ExpirationTier = "green" | "yellow" | "red"
+
+function expirationTier(days: number | null): ExpirationTier | null {
+  if (days === null) return null
+  if (days <= 60) return "red"
+  if (days <= 182) return "yellow"
+  return "green"
+}
+
+const EXPIRATION_TIER_CLASS: Record<ExpirationTier, string> = {
+  green: "bg-success-subtle text-success-subtle-foreground",
+  yellow: "bg-warning-subtle text-warning-subtle-foreground",
+  red: "bg-red-100 text-red-700",
 }
 
 interface DomainFormProps {
@@ -57,16 +100,25 @@ function DomainForm({ domain, customers, onSave, onCancel, isPending }: DomainFo
         </select>
       </div>
       <div className="space-y-1">
-        <label className="text-xs font-medium text-muted-foreground">Registrador</label>
+        <label className="text-xs font-medium text-muted-foreground">Comprado en</label>
         <input
           name="registrar"
           defaultValue={domain?.registrar ?? ""}
-          placeholder="GoDaddy, Namecheap..."
+          placeholder="HostGator, GoDaddy..."
           className="w-full text-sm border rounded px-3 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-ring"
         />
       </div>
       <div className="space-y-1">
-        <label className="text-xs font-medium text-muted-foreground">Fecha de renovación</label>
+        <label className="text-xs font-medium text-muted-foreground">Hosteado en</label>
+        <input
+          name="hosted_at"
+          defaultValue={domain?.hosted_at ?? ""}
+          placeholder="HostGator, NixiHost..."
+          className="w-full text-sm border rounded px-3 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+        />
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-muted-foreground">Fecha de vencimiento</label>
         <input
           name="renewal_date"
           type="date"
@@ -75,7 +127,7 @@ function DomainForm({ domain, customers, onSave, onCancel, isPending }: DomainFo
         />
       </div>
       <div className="space-y-1">
-        <label className="text-xs font-medium text-muted-foreground">Costo de renovación</label>
+        <label className="text-xs font-medium text-muted-foreground">Costo del dominio (MXN)</label>
         <input
           name="renewal_cost"
           type="number"
@@ -83,6 +135,48 @@ function DomainForm({ domain, customers, onSave, onCancel, isPending }: DomainFo
           min="0"
           defaultValue={domain?.renewal_cost ?? ""}
           placeholder="0.00"
+          className="w-full text-sm border rounded px-3 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+        />
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-muted-foreground">Tipo de mantenimiento</label>
+        <select
+          name="maintenance_type"
+          defaultValue={domain?.maintenance_type ?? "client"}
+          className="w-full text-sm border rounded px-3 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+        >
+          <option value="client">Cliente</option>
+          <option value="own_project">Proyecto propio</option>
+          <option value="n_a">N/A</option>
+        </select>
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-muted-foreground">Costo de mantenimiento (MXN)</label>
+        <input
+          name="maintenance_cost"
+          type="number"
+          step="0.01"
+          min="0"
+          defaultValue={domain?.maintenance_cost ?? ""}
+          placeholder="0.00 (solo si el tipo es Cliente)"
+          className="w-full text-sm border rounded px-3 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+        />
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-muted-foreground">Fecha de último mantenimiento</label>
+        <input
+          name="last_maintenance_date"
+          type="date"
+          defaultValue={domain?.last_maintenance_date ?? ""}
+          className="w-full text-sm border rounded px-3 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+        />
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-muted-foreground">Último mantenimiento</label>
+        <input
+          name="last_maintenance_notes"
+          defaultValue={domain?.last_maintenance_notes ?? ""}
+          placeholder="Qué se hizo la última vez"
           className="w-full text-sm border rounded px-3 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-ring"
         />
       </div>
@@ -109,7 +203,7 @@ function DomainForm({ domain, customers, onSave, onCancel, isPending }: DomainFo
   )
 }
 
-export function DomainTable({ initialDomains, customers }: DomainTableProps) {
+export function DomainTable({ initialDomains, customers, exchangeRate }: DomainTableProps) {
   const [domains, setDomains] = useState<Domain[]>(initialDomains)
   const [showAddForm, setShowAddForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -168,6 +262,12 @@ export function DomainTable({ initialDomains, customers }: DomainTableProps) {
         </Card>
       )}
 
+      {exchangeRate && (
+        <p className="text-xs text-muted-foreground">
+          Tipo de cambio del día: 1 USD ≈ {formatMXN(exchangeRate)}
+        </p>
+      )}
+
       {/* Add form */}
       {showAddForm ? (
         <DomainForm
@@ -187,14 +287,17 @@ export function DomainTable({ initialDomains, customers }: DomainTableProps) {
 
       {/* Table */}
       <div className="border rounded-lg overflow-hidden bg-card overflow-x-auto">
-        <table className="w-full text-sm min-w-[540px]">
+        <table className="w-full text-sm min-w-[900px]">
           <thead className="bg-muted/50">
             <tr>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Dominio</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden sm:table-cell">Cliente</th>
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Registrador</th>
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Renovación</th>
-              <th className="text-right px-4 py-3 font-medium text-muted-foreground">Costo</th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Comprado en</th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Hosteado en</th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Vencimiento</th>
+              <th className="text-right px-4 py-3 font-medium text-muted-foreground">Costo dominio (MXN)</th>
+              <th className="text-right px-4 py-3 font-medium text-muted-foreground">Mantenimiento (MXN)</th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden lg:table-cell">Última mantención</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden lg:table-cell">Notas</th>
               <th className="px-4 py-3" />
             </tr>
@@ -202,7 +305,7 @@ export function DomainTable({ initialDomains, customers }: DomainTableProps) {
           <tbody>
             {domains.length === 0 && !showAddForm && (
               <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">
+                <td colSpan={10} className="px-4 py-10 text-center text-muted-foreground">
                   No hay dominios registrados
                 </td>
               </tr>
@@ -211,11 +314,12 @@ export function DomainTable({ initialDomains, customers }: DomainTableProps) {
               const days = daysUntil(domain.renewal_date)
               const isExpiringSoon = days !== null && days <= 30 && days >= 0
               const isExpired = days !== null && days < 0
+              const tier = expirationTier(days)
 
               if (editingId === domain.id) {
                 return (
                   <tr key={domain.id}>
-                    <td colSpan={7} className="p-0">
+                    <td colSpan={10} className="p-0">
                       <DomainForm
                         domain={domain}
                         customers={customers}
@@ -249,11 +353,27 @@ export function DomainTable({ initialDomains, customers }: DomainTableProps) {
                     {(domain.customer as { name: string } | null | undefined)?.name ?? "—"}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">{domain.registrar ?? "—"}</td>
-                  <td className={`px-4 py-3 ${isExpiringSoon ? "text-amber-600 font-medium" : isExpired ? "text-red-600" : "text-muted-foreground"}`}>
+                  <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">{domain.hosted_at ?? "—"}</td>
+                  <td className={`px-4 py-3 ${tier ? `${EXPIRATION_TIER_CLASS[tier]} font-medium` : "text-muted-foreground"}`}>
                     {domain.renewal_date ? formatDate(domain.renewal_date) : "—"}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    {domain.renewal_cost ? formatCurrency(domain.renewal_cost) : "—"}
+                    {domain.renewal_cost ? <DualCurrency amount={domain.renewal_cost} exchangeRate={exchangeRate} /> : "—"}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    {domain.maintenance_type === "client" ? (
+                      domain.maintenance_cost ? <DualCurrency amount={domain.maintenance_cost} exchangeRate={exchangeRate} /> : "—"
+                    ) : (
+                      <Badge variant="secondary" className="text-xs">
+                        {MAINTENANCE_TYPE_LABEL[domain.maintenance_type]}
+                      </Badge>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground text-xs hidden lg:table-cell">
+                    <div>{domain.last_maintenance_date ? formatDate(domain.last_maintenance_date) : "—"}</div>
+                    {domain.last_maintenance_notes && (
+                      <div className="max-w-[180px] truncate text-muted-foreground/80">{domain.last_maintenance_notes}</div>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground text-xs max-w-[200px] truncate hidden lg:table-cell">
                     {domain.notes ?? "—"}

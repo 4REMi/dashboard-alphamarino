@@ -3,6 +3,7 @@ import type { Profile } from "@/lib/types"
 export type UserPermissions = {
   view_project_financials?: boolean  // project value, income, expenses
   view_global_finances?: boolean     // /finances section
+  view_domains?: boolean             // /finances/domains section
   edit_projects?: boolean            // create, edit, archive projects
   manage_team?: boolean              // add/remove project members
   view_all_projects?: boolean        // see all projects vs only assigned ones
@@ -17,6 +18,7 @@ export type UserPermissions = {
 const SUBADMIN_DEFAULTS: Required<UserPermissions> = {
   view_project_financials: true,
   view_global_finances: true,
+  view_domains: true,
   edit_projects: true,
   manage_team: true,
   view_all_projects: true,
@@ -30,6 +32,7 @@ const SUBADMIN_DEFAULTS: Required<UserPermissions> = {
 const EMPLOYEE_DEFAULTS: Required<UserPermissions> = {
   view_project_financials: false,
   view_global_finances: false,
+  view_domains: false,
   edit_projects: false,
   manage_team: false,
   view_all_projects: false,

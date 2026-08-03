@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
-import { getDomains } from "@/lib/actions/finances"
+import { getDomains, getExchangeRate } from "@/lib/actions/finances"
 import { getCustomers } from "@/lib/actions/customers"
 import { DomainTable } from "@/components/finances/domain-table"
 import { Globe } from "lucide-react"
@@ -12,13 +12,14 @@ export default async function DomainsPage() {
   const { data: { user } } = await supabase.auth.getUser()
   const { data: profile } = await supabase.from("profiles").select("role, permissions").eq("id", user!.id).single()
 
-  if (!can(profile, "view_global_finances")) {
+  if (!can(profile, "view_domains")) {
     redirect("/")
   }
 
-  const [domains, customers] = await Promise.all([
+  const [domains, customers, exchangeRate] = await Promise.all([
     getDomains() as Promise<Domain[]>,
     getCustomers() as Promise<Customer[]>,
+    getExchangeRate(new Date().toISOString().split("T")[0]),
   ])
 
   const expiring = domains.filter((d) => {
@@ -47,7 +48,7 @@ export default async function DomainsPage() {
         </div>
       </div>
 
-      <DomainTable initialDomains={domains} customers={customers} />
+      <DomainTable initialDomains={domains} customers={customers} exchangeRate={exchangeRate} />
     </div>
   )
 }
