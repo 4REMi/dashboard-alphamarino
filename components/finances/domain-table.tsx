@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import { useRouter } from "next/navigation"
 import { createDomain, updateDomain, deleteDomain, renewDomain } from "@/lib/actions/finances"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -223,6 +224,7 @@ function DomainRenewModal({ domain, exchangeRate, onClose, onRenewed }: {
   const [extendYear, setExtendYear] = useState(!!domain.renewal_date)
   const [isPending, startTransition] = useTransition()
   const toast = useToast()
+  const router = useRouter()
 
   const billsMaintenance = domain.maintenance_type === "client" && !!domain.maintenance_cost
   const totalCharge = (chargeDomain ? domain.renewal_cost ?? 0 : 0) + (chargeMaintenance ? domain.maintenance_cost ?? 0 : 0)
@@ -245,6 +247,7 @@ function DomainRenewModal({ domain, exchangeRate, onClose, onRenewed }: {
         totalCharge > 0 ? "Cobro registrado y enviado a Ingresos" : "Mantención registrada",
         "success"
       )
+      router.refresh()
       onClose()
     })
   }
@@ -366,11 +369,13 @@ export function DomainTable({ initialDomains, customers, exchangeRate }: DomainT
   const [editingId, setEditingId] = useState<string | null>(null)
   const [renewingDomain, setRenewingDomain] = useState<Domain | null>(null)
   const [isPending, startTransition] = useTransition()
+  const router = useRouter()
 
   async function handleCreate(formData: FormData) {
     startTransition(async () => {
       await createDomain(formData)
       setShowAddForm(false)
+      router.refresh()
     })
   }
 
@@ -378,6 +383,7 @@ export function DomainTable({ initialDomains, customers, exchangeRate }: DomainT
     startTransition(async () => {
       await updateDomain(id, formData)
       setEditingId(null)
+      router.refresh()
     })
   }
 
@@ -386,6 +392,7 @@ export function DomainTable({ initialDomains, customers, exchangeRate }: DomainT
     startTransition(async () => {
       await deleteDomain(id)
       setDomains((prev) => prev.filter((d) => d.id !== id))
+      router.refresh()
     })
   }
 
