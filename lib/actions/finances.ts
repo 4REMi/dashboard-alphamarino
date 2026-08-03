@@ -279,6 +279,49 @@ export async function deleteDomain(id: string) {
   revalidatePath("/finances/domains")
 }
 
+// Marca la mantención/renovación como saldada. El costo de renovación del
+// dominio (renewal_cost) es un pass-through y no genera ningún movimiento en
+// Finanzas. Solo la cuota de mantenimiento (maintenance_cost) cuando el
+// dominio es tipo "client" — o sea, se le cobra al cliente — se registra
+// como Income. renewal_date NO se toca: se actualiza manualmente aparte.
+export async function renewDomain(domainId: string, formData: FormData) {
+  const supabase = await createClient()
+  const { data: domain, error: dErr } = await supabase
+    .from("domains")
+    .select("domain, maintenance_type, maintenance_cost")
+    .eq("id", domainId)
+    .single()
+  if (dErr || !domain) throw new Error("Dominio no encontrado")
+
+  const date = formData.get("date") as string
+  const notes = (formData.get("notes") as string) || null
+
+  if (domain.maintenance_type === "client" && domain.maintenance_cost) {
+    const exchangeRate = await getExchangeRate(date)
+    const originalAmount = Number(domain.maintenance_cost)
+    const amount = exchangeRate ? originalAmount / exchangeRate : originalAmount
+    const { error: iErr } = await supabase.from("income").insert({
+      project_id: null,
+      amount,
+      currency: "MXN",
+      original_amount: originalAmount,
+      exchange_rate: exchangeRate,
+      date,
+      description: `Mantenimiento ${domain.domain}`,
+    })
+    if (iErr) throw iErr
+  }
+
+  const { error: uErr } = await supabase
+    .from("domains")
+    .update({ last_maintenance_date: date, last_maintenance_notes: notes })
+    .eq("id", domainId)
+  if (uErr) throw uErr
+
+  revalidatePath("/finances/domains")
+  revalidatePath("/finances")
+}
+
 // ============================================================
 // FINANCIAL SUMMARY (for home + finances overview)
 // ============================================================

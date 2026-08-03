@@ -1,12 +1,13 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { createDomain, updateDomain, deleteDomain } from "@/lib/actions/finances"
+import { createDomain, updateDomain, deleteDomain, renewDomain } from "@/lib/actions/finances"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
-import { AlertTriangle, Plus, Pencil, Trash2, X, Check } from "lucide-react"
+import { AlertTriangle, Plus, Pencil, Trash2, X, Check, RefreshCw } from "lucide-react"
 import { formatDate } from "@/lib/utils"
+import { useToast } from "@/components/ui/toast"
 import type { Domain, Customer, DomainMaintenanceType } from "@/lib/types"
 
 const MAINTENANCE_TYPE_LABEL: Record<DomainMaintenanceType, string> = {
@@ -203,10 +204,115 @@ function DomainForm({ domain, customers, onSave, onCancel, isPending }: DomainFo
   )
 }
 
+function DomainRenewModal({ domain, exchangeRate, onClose, onRenewed }: {
+  domain: Domain
+  exchangeRate: number | null
+  onClose: () => void
+  onRenewed: (patch: Partial<Domain>) => void
+}) {
+  const [date, setDate] = useState(new Date().toISOString().split("T")[0])
+  const [notes, setNotes] = useState("")
+  const [isPending, startTransition] = useTransition()
+  const toast = useToast()
+
+  const billsMaintenance = domain.maintenance_type === "client" && !!domain.maintenance_cost
+
+  function handleConfirm() {
+    startTransition(async () => {
+      const fd = new FormData()
+      fd.set("date", date)
+      fd.set("notes", notes)
+      await renewDomain(domain.id, fd)
+      onRenewed({ last_maintenance_date: date, last_maintenance_notes: notes || null })
+      toast(
+        billsMaintenance ? "Mantenimiento registrado y enviado a Ingresos" : "Mantención registrada",
+        "success"
+      )
+      onClose()
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <div>
+            <h2 className="font-semibold text-sm">Renovar / saldar mantención</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">{domain.domain}</p>
+          </div>
+          <button onClick={onClose} className="p-1 rounded text-muted-foreground hover:text-foreground">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="px-5 py-4 space-y-4">
+          <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-1.5 text-xs">
+            <div className="flex justify-between items-start">
+              <span className="text-muted-foreground">Costo del dominio (informativo, no genera movimiento)</span>
+              <span className="font-medium text-right">
+                {domain.renewal_cost ? <DualCurrency amount={domain.renewal_cost} exchangeRate={exchangeRate} /> : "—"}
+              </span>
+            </div>
+            <div className="flex justify-between items-start">
+              <span className="text-muted-foreground">Mantenimiento</span>
+              <span className="font-medium text-right">
+                {billsMaintenance
+                  ? <DualCurrency amount={domain.maintenance_cost as number} exchangeRate={exchangeRate} />
+                  : MAINTENANCE_TYPE_LABEL[domain.maintenance_type]}
+              </span>
+            </div>
+          </div>
+
+          {billsMaintenance && (
+            <p className="text-xs text-amber-700 bg-amber-50/60 border border-amber-200 rounded-md px-2.5 py-1.5">
+              Al confirmar, se creará un ingreso de {formatMXN(domain.maintenance_cost as number)} en Finanzas por este mantenimiento.
+            </p>
+          )}
+
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Fecha</label>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Notas (opcional)</label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+            />
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            La fecha de vencimiento del dominio no cambia automáticamente — actualízala manualmente desde "Editar" cuando corresponda.
+          </p>
+        </div>
+
+        <div className="flex gap-2 justify-end px-5 py-4 border-t border-border">
+          <Button type="button" variant="outline" size="sm" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="button" size="sm" onClick={handleConfirm} disabled={isPending}>
+            <Check className="w-3.5 h-3.5 mr-1" />
+            {isPending ? "Guardando..." : "Confirmar"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function DomainTable({ initialDomains, customers, exchangeRate }: DomainTableProps) {
   const [domains, setDomains] = useState<Domain[]>(initialDomains)
   const [showAddForm, setShowAddForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [renewingDomain, setRenewingDomain] = useState<Domain | null>(null)
   const [isPending, startTransition] = useTransition()
 
   async function handleCreate(formData: FormData) {
@@ -380,6 +486,17 @@ export function DomainTable({ initialDomains, customers, exchangeRate }: DomainT
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
+                      {(tier === "red" || tier === "yellow") && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 text-xs"
+                          onClick={() => setRenewingDomain(domain)}
+                        >
+                          <RefreshCw className="w-3 h-3 mr-1" />
+                          Renovar
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
                         size="icon"
@@ -405,6 +522,17 @@ export function DomainTable({ initialDomains, customers, exchangeRate }: DomainT
           </tbody>
         </table>
       </div>
+
+      {renewingDomain && (
+        <DomainRenewModal
+          domain={renewingDomain}
+          exchangeRate={exchangeRate}
+          onClose={() => setRenewingDomain(null)}
+          onRenewed={(patch) => {
+            setDomains((prev) => prev.map((d) => d.id === renewingDomain.id ? { ...d, ...patch } : d))
+          }}
+        />
+      )}
     </div>
   )
 }
