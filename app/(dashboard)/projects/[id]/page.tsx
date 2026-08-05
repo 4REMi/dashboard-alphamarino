@@ -320,7 +320,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             )}
             <PaidMediaContextCard projectId={project.id} context={paidMediaContext} canEdit={isAdminOrSubadmin} />
             <IntegrationsCard     projectId={project.id} integrations={integrations as ProjectIntegration[]} canEdit={isAdminOrSubadmin} />
-            <PaidMediaCycleCard   projectId={project.id} activeCycle={activeCycle} context={paidMediaContext} canEdit={isAdminOrSubadmin} initialCampaigns={initialMetaCampaigns as MetaCampaign[]} hasMetaConnected={!!(integrations as ProjectIntegration[]).find((i) => i.platform === "meta")} />
+            <PaidMediaCycleCard   projectId={project.id} activeCycle={activeCycle} context={paidMediaContext} canEdit={isAdminOrSubadmin} initialCampaigns={initialMetaCampaigns as MetaCampaign[]} hasMetaConnected={!!(integrations as ProjectIntegration[]).find((i) => i.platform === "meta")} cycleStartDay={project.paid_media_cycle_start_day} />
             {historyCycles.length > 0 && <PaidMediaCycleHistory cycles={historyCycles} />}
           </section>
         )}

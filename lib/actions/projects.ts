@@ -558,9 +558,13 @@ export async function updateProject(id: string, formData: FormData) {
       end_date: (formData.get("end_date") as string) || null,
       description: (formData.get("description") as string) || null,
       brand_brain_id: (formData.get("brand_brain_id") as string) || null,
-      paid_media_cycle_start_day: formData.get("paid_media_cycle_start_day")
-        ? Number(formData.get("paid_media_cycle_start_day"))
-        : null,
+      ...(formData.has("paid_media_cycle_start_day")
+        ? {
+            paid_media_cycle_start_day: formData.get("paid_media_cycle_start_day")
+              ? Number(formData.get("paid_media_cycle_start_day"))
+              : null,
+          }
+        : {}),
     })
     .eq("id", id)
 
@@ -785,6 +789,19 @@ export async function suggestNextCycleStartDate(projectId: string): Promise<stri
 
   const today = new Date()
   return `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`
+}
+
+// Lightweight update for just the fixed cycle day, called from the Paid Media
+// hub card — avoids routing through the generic project-edit form for a
+// single field only relevant to paid media projects.
+export async function updateCycleStartDay(projectId: string, day: number | null): Promise<void> {
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from("projects")
+    .update({ paid_media_cycle_start_day: day })
+    .eq("id", projectId)
+  if (error) throw error
+  revalidatePath(`/projects/${projectId}`)
 }
 
 function addOneMonthMinusOneDay(startDate: string): string {

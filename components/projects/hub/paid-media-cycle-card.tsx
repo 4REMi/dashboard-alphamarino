@@ -4,7 +4,7 @@ import { useState, useTransition, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import type { PaidMediaCycle, PaidMediaContext, CycleDeliverableStatus, MetaCampaign } from "@/lib/types"
 import { CAMPAIGN_STATUS_LABELS, DELIVERABLE_STATUS_LABELS } from "@/lib/types"
-import { openNewCycle, updateCycle, closeCycle, suggestNextCycleStartDate } from "@/lib/actions/projects"
+import { openNewCycle, updateCycle, closeCycle, suggestNextCycleStartDate, updateCycleStartDay } from "@/lib/actions/projects"
 import { formatCycleRange } from "@/lib/utils"
 import { MetaCampaignsPanel } from "./meta-campaigns-panel"
 
@@ -15,6 +15,7 @@ interface Props {
   canEdit: boolean
   initialCampaigns?: MetaCampaign[]
   hasMetaConnected?: boolean
+  cycleStartDay?: number | null
 }
 
 function addOneMonthMinusOneDay(startDate: string): string {
@@ -58,7 +59,56 @@ function KpiEmpty({ label }: { label: string }) {
   )
 }
 
-export function PaidMediaCycleCard({ projectId, activeCycle, context, canEdit, initialCampaigns = [], hasMetaConnected = false }: Props) {
+function CycleStartDaySetting({ projectId, value, canEdit }: { projectId: string; value: number | null | undefined; canEdit: boolean }) {
+  const router = useRouter()
+  const [editing, setEditing] = useState(false)
+  const [day, setDay] = useState(value ? String(value) : "")
+  const [isPending, startTransition] = useTransition()
+
+  function handleSave() {
+    const parsed = day ? Number(day) : null
+    startTransition(async () => {
+      await updateCycleStartDay(projectId, parsed)
+      setEditing(false)
+      router.refresh()
+    })
+  }
+
+  if (!canEdit && !value) return null
+
+  return (
+    <div className="flex items-center gap-2 text-xs text-muted-foreground px-5 py-2 border-b border-border bg-muted/20">
+      <span>Día fijo de ciclo:</span>
+      {editing ? (
+        <>
+          <input
+            type="number" min="1" max="31" value={day}
+            onChange={(e) => setDay(e.target.value)}
+            placeholder="ej. 27"
+            className="w-16 rounded border border-input bg-background px-2 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+          <button onClick={handleSave} disabled={isPending} className="text-primary hover:underline disabled:opacity-50">
+            {isPending ? "Guardando…" : "Guardar"}
+          </button>
+          <button onClick={() => { setEditing(false); setDay(value ? String(value) : "") }} className="hover:text-foreground">
+            Cancelar
+          </button>
+        </>
+      ) : (
+        <>
+          <span className="font-medium text-foreground">{value ?? "sin definir"}</span>
+          {canEdit && (
+            <button onClick={() => setEditing(true)} className="text-primary hover:underline">
+              Editar
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+export function PaidMediaCycleCard({ projectId, activeCycle, context, canEdit, initialCampaigns = [], hasMetaConnected = false, cycleStartDay = null }: Props) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [showOpenForm, setShowOpenForm] = useState(false)
@@ -111,8 +161,9 @@ export function PaidMediaCycleCard({ projectId, activeCycle, context, canEdit, i
   // No active cycle
   if (!activeCycle) {
     return (
-      <div className="rounded-xl border border-dashed border-border bg-card p-5 space-y-3">
-        <div className="flex items-center justify-between">
+      <div className="rounded-xl border border-dashed border-border bg-card">
+        <CycleStartDaySetting projectId={projectId} value={cycleStartDay} canEdit={canEdit} />
+        <div className="flex items-center justify-between p-5 pb-3">
           <h3 className="font-semibold text-sm text-foreground">Ciclo Activo</h3>
           {canEdit && (
             <button onClick={() => setShowOpenForm(true)} className="text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded-md hover:bg-primary/90 transition-colors">
@@ -120,30 +171,33 @@ export function PaidMediaCycleCard({ projectId, activeCycle, context, canEdit, i
             </button>
           )}
         </div>
-        {showOpenForm ? (
-          <div className="flex items-end gap-3 flex-wrap">
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Fecha inicio</label>
-              <input type="date" value={newStartDate} onChange={(e) => handleStartDateChange(e.target.value)}
-                className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+        <div className="px-5 pb-5">
+          {showOpenForm ? (
+            <div className="flex items-end gap-3 flex-wrap">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Fecha inicio</label>
+                <input type="date" value={newStartDate} onChange={(e) => handleStartDateChange(e.target.value)}
+                  className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Fecha fin</label>
+                <input type="date" value={newEndDate} onChange={(e) => setNewEndDate(e.target.value)}
+                  className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+              </div>
+              <button onClick={handleOpenCycle} disabled={isPending || !newStartDate || !newEndDate} className="px-3 py-2 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 disabled:opacity-50 transition-colors">Abrir</button>
+              <button onClick={() => setShowOpenForm(false)} className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors">Cancelar</button>
             </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Fecha fin</label>
-              <input type="date" value={newEndDate} onChange={(e) => setNewEndDate(e.target.value)}
-                className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
-            </div>
-            <button onClick={handleOpenCycle} disabled={isPending || !newStartDate || !newEndDate} className="px-3 py-2 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 disabled:opacity-50 transition-colors">Abrir</button>
-            <button onClick={() => setShowOpenForm(false)} className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors">Cancelar</button>
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">Sin ciclo activo. Abre uno cuando el cliente realice el pago del mes.</p>
-        )}
+          ) : (
+            <p className="text-sm text-muted-foreground">Sin ciclo activo. Abre uno cuando el cliente realice el pago del mes.</p>
+          )}
+        </div>
       </div>
     )
   }
 
   return (
     <div className="rounded-xl border border-border bg-card">
+      <CycleStartDaySetting projectId={projectId} value={cycleStartDay} canEdit={canEdit} />
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-border">
         <div>
