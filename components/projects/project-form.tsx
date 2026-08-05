@@ -161,6 +161,12 @@ export function ProjectForm({ project, customers, projectTypes, brandBrains = []
           </div>
 
           <div className="space-y-2">
+            <Label htmlFor="paid_media_cycle_start_day">Día fijo de ciclo Paid Media (1-31)</Label>
+            <Input id="paid_media_cycle_start_day" name="paid_media_cycle_start_day" type="number" min="1" max="31"
+              defaultValue={project?.paid_media_cycle_start_day ?? ""} placeholder="Opcional — ej. 27" />
+          </div>
+
+          <div className="space-y-2">
             <Label htmlFor="description">Descripción</Label>
             <AutoTextarea
               id="description"

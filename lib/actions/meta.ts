@@ -22,16 +22,8 @@ interface MetaInsightRow {
   date_stop: string
 }
 
-function cycleRange(cycleMonth: string): { since: string; until: string } {
-  const d = new Date(cycleMonth + "T00:00:00")
-  const year = d.getFullYear()
-  const month = d.getMonth()
-  const lastDay = new Date(year, month + 1, 0).getDate()
-  const pad = (n: number) => String(n).padStart(2, "0")
-  return {
-    since: `${year}-${pad(month + 1)}-01`,
-    until: `${year}-${pad(month + 1)}-${pad(lastDay)}`,
-  }
+function cycleRange(cycle: { start_date: string; end_date: string }): { since: string; until: string } {
+  return { since: cycle.start_date, until: cycle.end_date }
 }
 
 // Maps a campaign's objective to the action_type(s) Meta itself counts as
@@ -140,7 +132,7 @@ export async function syncMetaCampaigns(projectId: string, cycleId: string): Pro
 
   const [integrationResult, cycleResult] = await Promise.all([
     supabase.from("project_integrations").select("account_id").eq("project_id", projectId).eq("platform", "meta").maybeSingle(),
-    supabase.from("paid_media_cycles").select("cycle_month").eq("id", cycleId).single(),
+    supabase.from("paid_media_cycles").select("start_date, end_date").eq("id", cycleId).single(),
   ])
 
   if (cycleResult.error || !cycleResult.data) return { synced: 0, error: "No se encontró el ciclo" }
@@ -150,7 +142,7 @@ export async function syncMetaCampaigns(projectId: string, cycleId: string): Pro
     return { synced: 0, error: "Configura el Ad Account ID de Meta en Conexiones" }
   }
 
-  const { since, until } = cycleRange(cycleResult.data.cycle_month)
+  const { since, until } = cycleRange(cycleResult.data)
   const fields = "campaign_id,campaign_name,spend,impressions,clicks,ctr,cpc,cpm,reach,actions,action_values"
 
   const url = new URL(`${META_BASE}/act_${meta_ad_account_id}/insights`)

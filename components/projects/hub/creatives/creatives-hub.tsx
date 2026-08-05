@@ -5,6 +5,7 @@ import { ConceptsTable } from "./concepts-table"
 import { getCreativeConcepts, getCreativeAssets, getBriefsForProject } from "@/lib/actions/creatives"
 import { getRequestsForProject } from "@/lib/actions/creative-requests"
 import type { CreativeConcept, CreativeAsset, CreativeBrief, CreativeRequest, PaidMediaCycle } from "@/lib/types"
+import { formatCycleRange } from "@/lib/utils"
 import { Loader2, ChevronDown } from "lucide-react"
 
 interface CreativesHubProps {
@@ -68,11 +69,6 @@ export function CreativesHub({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCycleId, projectId])
 
-  function formatCycleLabel(cycle: PaidMediaCycle) {
-    const d = new Date(cycle.cycle_month + "T12:00:00")
-    return d.toLocaleDateString("es-MX", { month: "long", year: "numeric" })
-  }
-
   if (cycles.length === 0) {
     return (
       <div className="text-center py-12 text-muted-foreground text-sm">
@@ -94,7 +90,7 @@ export function CreativesHub({
           >
             {cycles.map((cycle) => (
               <option key={cycle.id} value={cycle.id}>
-                {formatCycleLabel(cycle)}
+                {formatCycleRange(cycle.start_date, cycle.end_date)}
                 {cycle.is_active ? " (activo)" : ""}
               </option>
             ))}

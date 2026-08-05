@@ -1,10 +1,11 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useState, useTransition, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import type { PaidMediaCycle, PaidMediaContext, CycleDeliverableStatus, MetaCampaign } from "@/lib/types"
 import { CAMPAIGN_STATUS_LABELS, DELIVERABLE_STATUS_LABELS } from "@/lib/types"
-import { openNewCycle, updateCycle, closeCycle } from "@/lib/actions/projects"
+import { openNewCycle, updateCycle, closeCycle, suggestNextCycleStartDate } from "@/lib/actions/projects"
+import { formatCycleRange } from "@/lib/utils"
 import { MetaCampaignsPanel } from "./meta-campaigns-panel"
 
 interface Props {
@@ -16,11 +17,13 @@ interface Props {
   hasMetaConnected?: boolean
 }
 
-const MONTHS_ES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
-
-function formatCycleMonth(iso: string) {
-  const d = new Date(iso + "T00:00:00")
-  return `${MONTHS_ES[d.getMonth()]} ${d.getFullYear()}`
+function addOneMonthMinusOneDay(startDate: string): string {
+  if (!startDate) return ""
+  const d = new Date(startDate + "T00:00:00")
+  d.setMonth(d.getMonth() + 1)
+  d.setDate(d.getDate() - 1)
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
 const STATUS_PILL: Record<CycleDeliverableStatus, string> = {
@@ -60,18 +63,28 @@ export function PaidMediaCycleCard({ projectId, activeCycle, context, canEdit, i
   const [editing, setEditing] = useState(false)
   const [showOpenForm, setShowOpenForm] = useState(false)
 
-  const today = new Date()
-  const [newCycleYear, setNewCycleYear] = useState(String(today.getFullYear()))
-  const [newCycleMonthNum, setNewCycleMonthNum] = useState(String(today.getMonth() + 1).padStart(2, "0"))
+  const [newStartDate, setNewStartDate] = useState("")
+  const [newEndDate, setNewEndDate] = useState("")
 
   const [isPending, startTransition] = useTransition()
 
-  const MONTHS_LABEL = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
-  const years = Array.from({ length: 5 }, (_, i) => String(today.getFullYear() - 1 + i))
+  useEffect(() => {
+    if (!showOpenForm) return
+    suggestNextCycleStartDate(projectId).then((suggested) => {
+      setNewStartDate(suggested)
+      setNewEndDate(addOneMonthMinusOneDay(suggested))
+    })
+  }, [showOpenForm, projectId])
+
+  function handleStartDateChange(value: string) {
+    setNewStartDate(value)
+    setNewEndDate(addOneMonthMinusOneDay(value))
+  }
 
   function handleOpenCycle() {
+    if (!newStartDate || !newEndDate) return
     startTransition(async () => {
-      await openNewCycle(projectId, `${newCycleYear}-${newCycleMonthNum}`)
+      await openNewCycle(projectId, newStartDate, newEndDate)
       setShowOpenForm(false)
       router.refresh()
     })
@@ -110,22 +123,16 @@ export function PaidMediaCycleCard({ projectId, activeCycle, context, canEdit, i
         {showOpenForm ? (
           <div className="flex items-end gap-3 flex-wrap">
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Mes</label>
-              <select value={newCycleMonthNum} onChange={(e) => setNewCycleMonthNum(e.target.value)}
-                className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
-                {MONTHS_LABEL.map((name, i) => (
-                  <option key={i} value={String(i + 1).padStart(2, "0")}>{name}</option>
-                ))}
-              </select>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Fecha inicio</label>
+              <input type="date" value={newStartDate} onChange={(e) => handleStartDateChange(e.target.value)}
+                className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Año</label>
-              <select value={newCycleYear} onChange={(e) => setNewCycleYear(e.target.value)}
-                className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
-                {years.map((y) => <option key={y} value={y}>{y}</option>)}
-              </select>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Fecha fin</label>
+              <input type="date" value={newEndDate} onChange={(e) => setNewEndDate(e.target.value)}
+                className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
             </div>
-            <button onClick={handleOpenCycle} disabled={isPending} className="px-3 py-2 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 disabled:opacity-50 transition-colors">Abrir</button>
+            <button onClick={handleOpenCycle} disabled={isPending || !newStartDate || !newEndDate} className="px-3 py-2 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 disabled:opacity-50 transition-colors">Abrir</button>
             <button onClick={() => setShowOpenForm(false)} className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors">Cancelar</button>
           </div>
         ) : (
@@ -140,7 +147,7 @@ export function PaidMediaCycleCard({ projectId, activeCycle, context, canEdit, i
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-border">
         <div>
-          <h3 className="font-semibold text-sm text-foreground">Ciclo Activo — {formatCycleMonth(activeCycle.cycle_month)}</h3>
+          <h3 className="font-semibold text-sm text-foreground">Ciclo Activo — {formatCycleRange(activeCycle.start_date, activeCycle.end_date)}</h3>
           {activeCycle.campaign_status && (
             <span className="text-xs text-muted-foreground">{CAMPAIGN_STATUS_LABELS[activeCycle.campaign_status]}</span>
           )}

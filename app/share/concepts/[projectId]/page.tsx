@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { ANGLE_GUIDE, AWARENESS_LABELS } from "@/lib/constants/creatives"
 import { ClientPortalApp, type PortalData, type Servicio, type Concepto, type Pieza } from "@/components/share/client-portal-app"
 import type { AdCloneLine } from "@/lib/types"
+import { formatCycleRange } from "@/lib/utils"
 
 interface Props {
   params: Promise<{ projectId: string }>
@@ -12,12 +13,6 @@ const FUNNEL_LABELS: Record<string, string> = {
   TOF: "Audiencia fría",
   MOF: "Audiencia tibia",
   BOF: "Audiencia caliente",
-}
-
-function formatMonth(dateStr: string): string {
-  const d = new Date(dateStr + "T00:00:00")
-  const label = d.toLocaleDateString("es-MX", { month: "long", year: "numeric" })
-  return label.charAt(0).toUpperCase() + label.slice(1)
 }
 
 export default async function ShareConceptsPage({ params }: Props) {
@@ -57,7 +52,7 @@ export default async function ShareConceptsPage({ params }: Props) {
       .order("created_at", { ascending: true }),
     supabase
       .from("paid_media_cycles")
-      .select("id, cycle_month, is_active")
+      .select("id, start_date, end_date, is_active")
       .eq("project_id", projectId),
   ])
 
@@ -127,8 +122,9 @@ export default async function ShareConceptsPage({ params }: Props) {
       c.status === "Evergreen" ? "evergreen"
       : !c.cycle_id || c.cycle_id === activeCycle?.id ? "actual"
       : "archivado"
-    const mes = vigencia === "archivado" && c.cycle_id
-      ? formatMonth(cycleById.get(c.cycle_id)?.cycle_month ?? "")
+    const archivedCycle = vigencia === "archivado" && c.cycle_id ? cycleById.get(c.cycle_id) : null
+    const mes = archivedCycle
+      ? formatCycleRange(archivedCycle.start_date, archivedCycle.end_date)
       : null
 
     const piezas: Pieza[] = [
@@ -210,7 +206,7 @@ export default async function ShareConceptsPage({ params }: Props) {
   const data: PortalData = {
     clienteNombre: clientName ?? projectName,
     logoUrl,
-    cicloActualLabel: activeCycle ? formatMonth(activeCycle.cycle_month) : null,
+    cicloActualLabel: activeCycle ? formatCycleRange(activeCycle.start_date, activeCycle.end_date) : null,
     servicios,
   }
 

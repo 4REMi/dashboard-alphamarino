@@ -3,16 +3,10 @@
 import { useState } from "react"
 import type { PaidMediaCycle } from "@/lib/types"
 import { DELIVERABLE_STATUS_LABELS, CAMPAIGN_STATUS_LABELS } from "@/lib/types"
+import { formatCycleRange } from "@/lib/utils"
 
 interface Props {
   cycles: PaidMediaCycle[]
-}
-
-const MONTHS_ES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
-
-function formatCycleMonth(iso: string) {
-  const d = new Date(iso + "T00:00:00")
-  return `${MONTHS_ES[d.getMonth()]} ${d.getFullYear()}`
 }
 
 export function PaidMediaCycleHistory({ cycles }: Props) {
@@ -34,7 +28,7 @@ export function PaidMediaCycleHistory({ cycles }: Props) {
                 className="w-full flex items-center justify-between px-5 py-3 hover:bg-muted/30 transition-colors text-left"
                 onClick={() => setOpenId(isOpen ? null : cycle.id)}
               >
-                <span className="text-sm font-medium text-foreground">{formatCycleMonth(cycle.cycle_month)}</span>
+                <span className="text-sm font-medium text-foreground">{formatCycleRange(cycle.start_date, cycle.end_date)}</span>
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-muted-foreground">
                     {cycle.campaign_status ? CAMPAIGN_STATUS_LABELS[cycle.campaign_status] : "—"}

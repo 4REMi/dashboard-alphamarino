@@ -153,6 +153,7 @@ export interface Project {
   end_date: string | null
   description: string | null
   brand_brain_id: string | null
+  paid_media_cycle_start_day: number | null
   created_at: string
   // Relations
   customer?: Customer | null
@@ -566,7 +567,9 @@ export interface MetaCampaign {
 export interface PaidMediaCycle {
   id: string
   project_id: string
-  cycle_month: string // ISO date, first of month
+  cycle_month: string // ISO date, kept for backward compat — mirrors start_date, not the source of truth
+  start_date: string // ISO date, real cycle start
+  end_date: string // ISO date, real cycle end
   is_active: boolean
   campaign_status: CampaignStatus | null
   report_cutoff_date: string | null

@@ -378,6 +378,9 @@ export async function createProject(
       end_date: (formData.get("end_date") as string) || null,
       description: (formData.get("description") as string) || null,
       brand_brain_id: (formData.get("brand_brain_id") as string) || null,
+      paid_media_cycle_start_day: formData.get("paid_media_cycle_start_day")
+        ? Number(formData.get("paid_media_cycle_start_day"))
+        : null,
     })
     .select()
     .single()
@@ -555,6 +558,9 @@ export async function updateProject(id: string, formData: FormData) {
       end_date: (formData.get("end_date") as string) || null,
       description: (formData.get("description") as string) || null,
       brand_brain_id: (formData.get("brand_brain_id") as string) || null,
+      paid_media_cycle_start_day: formData.get("paid_media_cycle_start_day")
+        ? Number(formData.get("paid_media_cycle_start_day"))
+        : null,
     })
     .eq("id", id)
 
@@ -720,7 +726,7 @@ export async function getProjectCycles(projectId: string) {
       .from("paid_media_cycles")
       .select("*")
       .eq("project_id", projectId)
-      .order("cycle_month", { ascending: false })
+      .order("start_date", { ascending: false })
     if (error) return []
     return data ?? []
   } catch {
@@ -728,13 +734,72 @@ export async function getProjectCycles(projectId: string) {
   }
 }
 
-export async function openNewCycle(projectId: string, cycleMonth: string) {
+// Suggests a start date for a project's next paid media cycle:
+// 1. The project's fixed billing day (paid_media_cycle_start_day), applied to
+//    the appropriate month — the month after the previous cycle's start if one
+//    exists, otherwise the current month (or next month if that day already
+//    passed this month).
+// 2. Otherwise, the day after the previous cycle's end_date, if a previous
+//    cycle exists.
+// 3. Otherwise, today.
+export async function suggestNextCycleStartDate(projectId: string): Promise<string> {
   const supabase = await createClient()
 
-  // Normalize cycleMonth to "YYYY-MM-01" regardless of what the client sent
-  const match = cycleMonth.match(/^(\d{4})-(\d{1,2})/)
-  if (!match) throw new Error(`Formato de mes inválido: "${cycleMonth}"`)
-  const dateStr = `${match[1]}-${match[2].padStart(2, "0")}-01`
+  const [{ data: project }, { data: lastCycle }] = await Promise.all([
+    supabase.from("projects").select("paid_media_cycle_start_day").eq("id", projectId).maybeSingle(),
+    supabase
+      .from("paid_media_cycles")
+      .select("start_date, end_date")
+      .eq("project_id", projectId)
+      .order("start_date", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ])
+
+  const pad = (n: number) => String(n).padStart(2, "0")
+  const startDay = project?.paid_media_cycle_start_day ?? null
+
+  if (startDay) {
+    let year: number, month: number // month is 0-indexed, refers to the month the new cycle starts in
+    if (lastCycle?.start_date) {
+      const prev = new Date(lastCycle.start_date + "T00:00:00")
+      year = prev.getFullYear()
+      month = prev.getMonth() + 1
+    } else {
+      const today = new Date()
+      year = today.getFullYear()
+      month = today.getMonth()
+      if (today.getDate() > startDay) month += 1
+    }
+    if (month > 11) { month -= 12; year += 1 }
+    const lastDayOfMonth = new Date(year, month + 1, 0).getDate()
+    const day = Math.min(startDay, lastDayOfMonth)
+    return `${year}-${pad(month + 1)}-${pad(day)}`
+  }
+
+  if (lastCycle?.end_date) {
+    const next = new Date(lastCycle.end_date + "T00:00:00")
+    next.setDate(next.getDate() + 1)
+    return `${next.getFullYear()}-${pad(next.getMonth() + 1)}-${pad(next.getDate())}`
+  }
+
+  const today = new Date()
+  return `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`
+}
+
+function addOneMonthMinusOneDay(startDate: string): string {
+  const d = new Date(startDate + "T00:00:00")
+  d.setMonth(d.getMonth() + 1)
+  d.setDate(d.getDate() - 1)
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+export async function openNewCycle(projectId: string, startDate: string, endDate?: string) {
+  const supabase = await createClient()
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) throw new Error(`Formato de fecha inválido: "${startDate}"`)
+  const resolvedEndDate = endDate && /^\d{4}-\d{2}-\d{2}$/.test(endDate) ? endDate : addOneMonthMinusOneDay(startDate)
 
   // Close current active cycle
   await supabase
@@ -743,10 +808,12 @@ export async function openNewCycle(projectId: string, cycleMonth: string) {
     .eq("project_id", projectId)
     .eq("is_active", true)
 
-  // Open new cycle
+  // Open new cycle. cycle_month kept in sync with start_date for backward compat.
   const { error } = await supabase.from("paid_media_cycles").insert({
     project_id: projectId,
-    cycle_month: dateStr,
+    cycle_month: startDate,
+    start_date: startDate,
+    end_date: resolvedEndDate,
     is_active: true,
   })
   if (error) throw error

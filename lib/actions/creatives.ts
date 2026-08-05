@@ -10,6 +10,7 @@ import type {
 import { adaptWithClaude, aaiPost, aaiGet, writeScriptFromConcept } from "@/lib/actions/ad-clone"
 import type { ScriptStructureKey } from "@/lib/constants/creatives"
 import { linkAssetToRequest } from "@/lib/actions/creative-requests"
+import { formatCycleRange } from "@/lib/utils"
 
 // ── helpers ──────────────────────────────────────────────────
 
@@ -864,7 +865,7 @@ IMPORTANTE: Todos los conceptos deben enfocarse específicamente en "${line.name
   const userPrompt = `${brandBlock ?? contextBlock ?? "Sin contexto de marca disponible."}
 ${brandBlock && contextBlock ? `\n${contextBlock}` : ""}${lineBlock}
 
-Ciclo actual: ${cycle?.cycle_month ? new Date(cycle.cycle_month).toLocaleDateString("es-MX", { month: "long", year: "numeric" }) : "Activo"}
+Ciclo actual: ${cycle?.start_date && cycle?.end_date ? formatCycleRange(cycle.start_date, cycle.end_date) : "Activo"}
 
 Historial de conceptos previos (${prevConcepts.length} conceptos):
 ${prevConcepts.length === 0 ? "Sin historial — cliente nuevo." : prevConcepts.map((c, i) =>
