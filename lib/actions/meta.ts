@@ -22,8 +22,16 @@ interface MetaInsightRow {
   date_stop: string
 }
 
+// Meta's Insights API rejects any time_range whose `since` is in the future,
+// and effectively has nothing to return past today either. Cycles can now
+// have arbitrary start/end dates (not just the calendar month), so a cycle
+// opened ahead of its actual start date — or simply mid-cycle, where
+// end_date is naturally still in the future — needs both ends clamped
+// against today rather than sent to Meta as-is.
 function cycleRange(cycle: { start_date: string; end_date: string }): { since: string; until: string } {
-  return { since: cycle.start_date, until: cycle.end_date }
+  const today = new Date().toISOString().split("T")[0]
+  const until = cycle.end_date > today ? today : cycle.end_date
+  return { since: cycle.start_date, until }
 }
 
 // Maps a campaign's objective to the action_type(s) Meta itself counts as
@@ -136,6 +144,11 @@ export async function syncMetaCampaigns(projectId: string, cycleId: string): Pro
   ])
 
   if (cycleResult.error || !cycleResult.data) return { synced: 0, error: "No se encontró el ciclo" }
+
+  const today = new Date().toISOString().split("T")[0]
+  if (cycleResult.data.start_date > today) {
+    return { synced: 0, error: `Este ciclo empieza el ${cycleResult.data.start_date} — aún no hay datos que sincronizar.` }
+  }
 
   const meta_ad_account_id = integrationResult.data?.account_id
   if (!meta_ad_account_id) {
