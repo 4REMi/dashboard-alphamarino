@@ -591,7 +591,13 @@ El brief debe ser accionable: un editor o diseñador que lo lea debe poder empez
     updated_at: new Date().toISOString(),
   }).eq("id", briefId)
 
-  // Tropicalize video scripts for each video reference
+  // Tropicalize video scripts for each video reference. Videos are processed
+  // IN PARALLEL (not sequentially) — with several references, sequential
+  // transcription could push total runtime past the serverless function's
+  // execution limit, silently killing the whole request mid-loop before the
+  // final adapted_script write ever ran. Each video also gets its own polling
+  // budget instead of an unbounded do/while, so one slow/stuck AssemblyAI job
+  // can't stall — or starve — the rest.
   if (brief.attached_ad_ids?.length > 0) {
     try {
       const { data: ads } = await supabase
@@ -605,11 +611,12 @@ El brief debe ser accionable: un editor o diseñador que lo lea debe poder empez
           ? (await supabase.from("brand_lines").select("name, description, usps, pain_points, keywords").eq("id", brief.brand_line_id).single()).data
           : null
 
-        const scripts: Record<string, any[]> = {}
+        const POLL_INTERVAL_MS = 3000
+        const MAX_POLL_ATTEMPTS = 40 // ~120s ceiling per video
 
-        for (const videoAd of videoAds) {
+        async function transcribeAndAdapt(videoAd: { id: string; video_url: string | null; cached_video_url: string | null }) {
           const videoUrl = videoAd.cached_video_url || videoAd.video_url
-          if (!videoUrl) continue
+          if (!videoUrl) return null
 
           try {
             const transcript = await aaiPost("/transcript", {
@@ -617,18 +624,38 @@ El brief debe ser accionable: un editor o diseñador que lo lea debe poder empez
               language_detection: true,
             })
 
-            let result: { status: string; text?: string }
-            do {
-              await new Promise((r) => setTimeout(r, 3000))
+            let result: { status: string; text?: string } = { status: "queued" }
+            let attempts = 0
+            while (result.status !== "completed" && result.status !== "error") {
+              if (attempts >= MAX_POLL_ATTEMPTS) {
+                console.error(`Brief tropicalization timed out for ad ${videoAd.id} after ${MAX_POLL_ATTEMPTS * POLL_INTERVAL_MS / 1000}s (last status: ${result.status})`)
+                return null
+              }
+              await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
               result = await aaiGet(`/transcript/${transcript.id}`)
-            } while (result.status !== "completed" && result.status !== "error")
-
-            if (result.status === "completed" && result.text?.trim()) {
-              scripts[videoAd.id] = await adaptWithClaude(result.text, brain as any, lineData, c as any)
+              attempts++
             }
+
+            if (result.status === "error") {
+              console.error(`Brief tropicalization: AssemblyAI returned an error for ad ${videoAd.id}`)
+              return null
+            }
+
+            if (result.text?.trim()) {
+              const lines = await adaptWithClaude(result.text, brain as any, lineData, c as any)
+              return { id: videoAd.id, lines }
+            }
+            return null
           } catch (e) {
             console.error(`Brief tropicalization failed for ad ${videoAd.id}:`, e)
+            return null
           }
+        }
+
+        const results = await Promise.allSettled(videoAds.map(transcribeAndAdapt))
+        const scripts: Record<string, any[]> = {}
+        for (const r of results) {
+          if (r.status === "fulfilled" && r.value) scripts[r.value.id] = r.value.lines
         }
 
         if (Object.keys(scripts).length > 0) {
