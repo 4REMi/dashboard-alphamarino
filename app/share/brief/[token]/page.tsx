@@ -2,7 +2,7 @@ import { notFound } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import { getBriefByToken } from "@/lib/actions/creatives"
 import { can } from "@/lib/permissions"
-import type { AdCloneLine, BriefContent } from "@/lib/types"
+import type { AdCloneLine } from "@/lib/types"
 import { ANGLE_GUIDE } from "@/lib/constants/creatives"
 import { BriefReferences } from "@/components/share/brief-references"
 import { BriefNotes } from "@/components/share/brief-notes"
@@ -42,7 +42,6 @@ export default async function ShareBriefPage({ params }: Props) {
 
   const concept = brief.concept as Record<string, string | number | null> | null
   const brain = brief.brand_brain as Record<string, string | string[] | null> | null
-  const content = brief.brief_content as BriefContent | null
   const rawScript = brief.adapted_script as Record<string, AdCloneLine[]> | AdCloneLine[] | null
   const scriptMap = rawScript && !Array.isArray(rawScript) ? rawScript : null
   const legacyScript = rawScript && Array.isArray(rawScript) ? rawScript : null
@@ -120,150 +119,31 @@ export default async function ShareBriefPage({ params }: Props) {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-6 py-10 space-y-8">
-        {/* ── Important notes — free text from the admin, highest priority ── */}
-        <BriefNotes
-          briefId={brief.id}
-          projectId={brief.project_id}
-          initialNotes={brief.important_notes}
-          editable={canEdit}
-        />
+      <main className="max-w-6xl mx-auto px-6 py-10">
+        <div className="lg:grid lg:grid-cols-[300px_1fr] lg:gap-6 lg:items-start">
 
-        {/* ── Concept Angle Card ── */}
-        {concept && (
-          <section className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-            <div className="px-6 py-5 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
-              <div className="flex items-center gap-3 flex-wrap">
-                {angleEntry && (
-                  <span className="inline-flex items-center gap-1.5 text-sm font-semibold bg-gray-900 text-white px-3 py-1 rounded-lg">
-                    <span className="text-base">{angleEntry.emoji}</span>
-                    {concept.angle_type}
-                  </span>
-                )}
-                {concept.funnel_stage && (
-                  <span className="text-xs font-medium px-2.5 py-1 rounded-lg bg-violet-50 text-violet-700 ring-1 ring-inset ring-violet-200/60">
-                    {FUNNEL_LABELS[concept.funnel_stage as string] ?? concept.funnel_stage}
-                  </span>
-                )}
-                {concept.awareness_stage && (
-                  <span className="text-xs text-gray-500">
-                    Stage {concept.awareness_stage} · {AWARENESS_LABELS[concept.awareness_stage as string] ?? ""}
-                  </span>
-                )}
-              </div>
-            </div>
+          {/* ── Sidebar: notes + brand context — compact, sticky, out of the main reading flow ── */}
+          <aside className="lg:sticky lg:top-[88px] space-y-4 mb-6 lg:mb-0">
+            <BriefNotes
+              briefId={brief.id}
+              projectId={brief.project_id}
+              initialNotes={brief.important_notes}
+              editable={canEdit}
+            />
 
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-0 divide-y sm:divide-y-0 sm:divide-x divide-gray-100">
-              {concept.target_persona && (
-                <AngleField label="Persona objetivo" value={concept.target_persona as string} />
-              )}
-              {concept.pain_point && (
-                <AngleField label="Pain Point" value={concept.pain_point as string} accent="rose" />
-              )}
-              {concept.transformation && (
-                <AngleField label="Transformación" value={concept.transformation as string} accent="emerald" />
-              )}
-              {concept.why_it_works && (
-                <AngleField label="Por qué funciona" value={concept.why_it_works as string} />
-              )}
-              {concept.product_service && (
-                <AngleField label="Producto / Servicio" value={concept.product_service as string} />
-              )}
-              {concept.organizing_principle && (
-                <AngleField label="Principio organizador" value={concept.organizing_principle as string} />
-              )}
-            </div>
-          </section>
-        )}
-
-        {/* ── Strategy (AI-generated brief content) + Brand context — side by side on desktop ── */}
-        {(content || brain) && (
-          <div className="grid lg:grid-cols-3 gap-6 items-start">
-            {content && (
-              <section className="lg:col-span-2 bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-                <div className="px-6 py-5 border-b border-gray-100">
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 mb-2">Estrategia</p>
-                  {content.summary && <p className="text-sm text-gray-800 leading-relaxed">{content.summary}</p>}
-                  {content.strategy_rationale && (
-                    <p className="text-sm text-gray-500 leading-relaxed mt-2">{content.strategy_rationale}</p>
-                  )}
-                </div>
-
-                <div className="grid sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-gray-100">
-                  {content.tone_direction && <AngleField label="Tono" value={content.tone_direction} />}
-                  {content.visual_direction && <AngleField label="Dirección visual" value={content.visual_direction} />}
-                </div>
-
-                {content.key_messages?.length > 0 && (
-                  <div className="px-6 py-4 border-t border-gray-100">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-500 mb-2">Mensajes clave</p>
-                    <ul className="space-y-1.5">
-                      {content.key_messages.map((m, i) => (
-                        <li key={i} className="text-[13px] text-gray-700 leading-relaxed flex gap-2">
-                          <span className="text-gray-300">—</span>{m}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {(content.do_list?.length > 0 || content.dont_list?.length > 0) && (
-                  <div className="grid sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-gray-100 border-t border-gray-100">
-                    {content.do_list?.length > 0 && (
-                      <div className="px-6 py-4">
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-600 mb-2">Sí hacer</p>
-                        <ul className="space-y-1.5">
-                          {content.do_list.map((d, i) => (
-                            <li key={i} className="text-[13px] text-gray-700 leading-relaxed flex gap-2">
-                              <span className="text-emerald-400">✓</span>{d}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    {content.dont_list?.length > 0 && (
-                      <div className="px-6 py-4">
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-rose-500 mb-2">No hacer</p>
-                        <ul className="space-y-1.5">
-                          {content.dont_list.map((d, i) => (
-                            <li key={i} className="text-[13px] text-gray-700 leading-relaxed flex gap-2">
-                              <span className="text-rose-400">✕</span>{d}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {content.suggested_formats?.length > 0 && (
-                  <div className="px-6 py-4 border-t border-gray-100 flex flex-wrap items-center gap-2">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-500 mr-1">Formatos sugeridos</p>
-                    {content.suggested_formats.map((f, i) => (
-                      <span key={i} className="text-xs font-medium px-2.5 py-1 rounded-lg bg-gray-50 text-gray-600 ring-1 ring-inset ring-gray-200">
-                        {f}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </section>
-            )}
-
-            {/* ── Brand context — for people outside the agency (UGC creators, freelancers) ── */}
             {brain && (
               <section className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-                <div className="px-6 py-5 border-b border-gray-100 flex items-center gap-3">
+                <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2.5">
                   {brain.logo_url && (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={brain.logo_url as string} alt="" className="w-9 h-9 rounded-lg object-contain bg-gray-50 border border-gray-100" />
+                    <img src={brain.logo_url as string} alt="" className="w-8 h-8 rounded-lg object-contain bg-gray-50 border border-gray-100 flex-shrink-0" />
                   )}
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-500">Sobre la marca</p>
-                    <p className="text-sm font-semibold text-gray-900">{brain.name}</p>
-                    {brain.industry && <p className="text-xs text-gray-400">{brain.industry as string}</p>}
+                    <p className="text-sm font-semibold text-gray-900 truncate">{brain.name}</p>
                   </div>
                 </div>
-                <div className="px-6 py-4 space-y-4">
+                <div className="px-5 py-4 space-y-3">
                   {brain.description && (
                     <p className="text-[13px] text-gray-700 leading-relaxed">{brain.description as string}</p>
                   )}
@@ -288,25 +168,74 @@ export default async function ShareBriefPage({ params }: Props) {
                 </div>
               </section>
             )}
-          </div>
-        )}
+          </aside>
 
-        {/* ── References — open by default so all can be compared at once ── */}
-        {references.length > 0 ? (
-          <section>
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-1 h-6 rounded-full bg-gray-300" />
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500">
-                Referencias ({references.length})
-              </p>
-            </div>
-            <BriefReferences references={references} briefId={canEdit ? brief.id : undefined} editable={canEdit} />
-          </section>
-        ) : (
-          <div className="text-center py-16">
-            <p className="text-sm text-gray-400">Brief sin referencias multimedia.</p>
+          {/* ── Main column: concept + references ── */}
+          <div className="space-y-6 min-w-0">
+            {concept && (
+              <section className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                <div className="px-6 py-5 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    {angleEntry && (
+                      <span className="inline-flex items-center gap-1.5 text-sm font-semibold bg-gray-900 text-white px-3 py-1 rounded-lg">
+                        <span className="text-base">{angleEntry.emoji}</span>
+                        {concept.angle_type}
+                      </span>
+                    )}
+                    {concept.funnel_stage && (
+                      <span className="text-xs font-medium px-2.5 py-1 rounded-lg bg-violet-50 text-violet-700 ring-1 ring-inset ring-violet-200/60">
+                        {FUNNEL_LABELS[concept.funnel_stage as string] ?? concept.funnel_stage}
+                      </span>
+                    )}
+                    {concept.awareness_stage && (
+                      <span className="text-xs text-gray-500">
+                        Stage {concept.awareness_stage} · {AWARENESS_LABELS[concept.awareness_stage as string] ?? ""}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-0 divide-y sm:divide-y-0 sm:divide-x divide-gray-100">
+                  {concept.target_persona && (
+                    <AngleField label="Persona objetivo" value={concept.target_persona as string} />
+                  )}
+                  {concept.pain_point && (
+                    <AngleField label="Pain Point" value={concept.pain_point as string} accent="rose" />
+                  )}
+                  {concept.transformation && (
+                    <AngleField label="Transformación" value={concept.transformation as string} accent="emerald" />
+                  )}
+                  {concept.why_it_works && (
+                    <AngleField label="Por qué funciona" value={concept.why_it_works as string} />
+                  )}
+                  {concept.product_service && (
+                    <AngleField label="Producto / Servicio" value={concept.product_service as string} />
+                  )}
+                  {concept.organizing_principle && (
+                    <AngleField label="Principio organizador" value={concept.organizing_principle as string} />
+                  )}
+                </div>
+              </section>
+            )}
+
+            {/* ── References — open by default so all can be compared at once ── */}
+            {references.length > 0 ? (
+              <section>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-1 h-6 rounded-full bg-gray-300" />
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500">
+                    Referencias ({references.length})
+                  </p>
+                </div>
+                <BriefReferences references={references} briefId={canEdit ? brief.id : undefined} editable={canEdit} />
+              </section>
+            ) : (
+              <div className="text-center py-16">
+                <p className="text-sm text-gray-400">Brief sin referencias multimedia.</p>
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </main>
 
       <footer className="border-t border-gray-200 bg-white mt-8">
