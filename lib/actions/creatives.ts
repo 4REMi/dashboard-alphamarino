@@ -385,12 +385,30 @@ export async function updateBriefTitle(briefId: string, projectId: string, title
   const { role } = await getRole()
   if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
   const supabase = await createClient()
-  const { error } = await supabase
+  const { data: brief, error } = await supabase
     .from("creative_briefs")
     .update({ title: title.trim() || null, updated_at: new Date().toISOString() })
     .eq("id", briefId)
+    .select("share_token")
+    .single()
   if (error) throw error
   revalidateProject(projectId)
+  if (brief?.share_token) revalidatePath(`/share/brief/${brief.share_token}`)
+}
+
+export async function updateBriefNotes(briefId: string, projectId: string, notes: string): Promise<void> {
+  const { role } = await getRole()
+  if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
+  const supabase = await createClient()
+  const { data: brief, error } = await supabase
+    .from("creative_briefs")
+    .update({ important_notes: notes.trim() || null, updated_at: new Date().toISOString() })
+    .eq("id", briefId)
+    .select("share_token")
+    .single()
+  if (error) throw error
+  revalidateProject(projectId)
+  if (brief?.share_token) revalidatePath(`/share/brief/${brief.share_token}`)
 }
 
 // Quick Create, step 1 — writes N script variants from scratch using only the
@@ -733,7 +751,7 @@ export async function getBriefByToken(token: string): Promise<(CreativeBrief & {
     .select(`
       *,
       concept:creative_concepts!concept_id(id, name, angle_type, organizing_principle, target_persona, pain_point, why_it_works, objection, transformation, funnel_stage, awareness_stage, product_service),
-      brand_brain:brand_brains!brand_brain_id(id, name, industry, language, logo_url, tone_of_voice, usps, key_benefits, pain_points, target_audience, ctas)
+      brand_brain:brand_brains!brand_brain_id(id, name, industry, language, logo_url, description, tone_of_voice, usps, key_benefits, pain_points, target_audience, ctas)
     `)
     .eq("share_token", token)
     .single()

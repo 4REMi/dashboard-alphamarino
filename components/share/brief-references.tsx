@@ -30,16 +30,23 @@ interface Props {
 }
 
 export function BriefReferences({ references, briefId, editable = false }: Props) {
-  const [openId, setOpenId] = useState<string | null>(null)
+  // Independently toggleable, open by default — a designer/editor needs to
+  // compare multiple references at once on desktop, not click through an
+  // accordion one at a time. Collapsing one just hides that one panel.
+  const [closedIds, setClosedIds] = useState<Set<string>>(new Set())
 
   function toggle(id: string) {
-    setOpenId((prev) => (prev === id ? null : id))
+    setClosedIds((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
   }
 
   return (
     <div className="space-y-3">
       {references.map((ref) => {
-        const isOpen = openId === ref.id
+        const isOpen = !closedIds.has(ref.id)
         const isVideo = ref.type === "video"
 
         return (
@@ -125,7 +132,6 @@ export function BriefReferences({ references, briefId, editable = false }: Props
                       poster={ref.thumbSrc}
                       className="w-full max-h-[500px] object-contain"
                       style={{ display: "block" }}
-                      autoPlay
                     >
                       <source src={ref.videoSrc} />
                     </video>
