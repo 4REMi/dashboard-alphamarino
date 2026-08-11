@@ -105,7 +105,7 @@ export default async function ShareBriefPage({ params }: Props) {
               Alpha Marino · Creative Brief
             </p>
             <h1 className="text-lg font-bold text-gray-900">
-              {concept?.name ?? concept?.angle_type ?? "Brief Creativo"}
+              {brief.title || concept?.name || concept?.angle_type || "Brief Creativo"}
             </h1>
           </div>
           {brain && (

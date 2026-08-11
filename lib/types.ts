@@ -761,6 +761,7 @@ export interface CreativeBrief {
   concept_id: string
   brand_brain_id: string | null
   brand_line_id: string | null
+  title: string | null
   brief_content: BriefContent
   attached_ad_ids: string[]
   attached_board_ids: string[]

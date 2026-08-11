@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { ConceptModal } from "./concept-modal"
 import { AssetModal } from "./asset-modal"
 import { RequestAssetModal } from "./request-asset-modal"
-import { generateCreativeConcepts, confirmAIDrafts, promoteConcept, demoteConcept, deleteConcept, bulkDeleteConcepts, deleteBrief, deleteAsset, toggleClientVisible } from "@/lib/actions/creatives"
+import { generateCreativeConcepts, confirmAIDrafts, promoteConcept, demoteConcept, deleteConcept, bulkDeleteConcepts, deleteBrief, deleteAsset, toggleClientVisible, updateBriefTitle } from "@/lib/actions/creatives"
 import { CONCEPT_STATUS_COLORS, AWARENESS_LABELS, ANGLE_GUIDE, PRODUCTION_STATUS_COLORS, VERDICT_COLORS } from "@/lib/constants/creatives"
 import type { CreativeConcept, CreativeAsset, CreativeBrief, CreativeRequest, BrandLine, AdCloneLine } from "@/lib/types"
 import type { AIDraftConcept } from "@/lib/actions/creatives"
@@ -269,6 +269,8 @@ function ConceptDetailModal({
   const [isPending, startTransition] = useTransition()
   const [activeTab, setActiveTab] = useState<"id" | "angle" | "mech">("id")
   const [lightboxAsset, setLightboxAsset] = useState<CreativeAsset | null>(null)
+  const [editingBriefId, setEditingBriefId] = useState<string | null>(null)
+  const [briefTitleDraft, setBriefTitleDraft] = useState("")
   const activeRequests = conceptRequests.filter((r) => r.status !== "cancelled")
   const fulfilledCount = activeRequests.filter((r) => r.status === "fulfilled").length
   const angleEntry  = ANGLE_GUIDE.find((a) => a.name === concept.angle_type)
@@ -492,38 +494,89 @@ function ConceptDetailModal({
                     key={b.id}
                     className="text-xs py-2 px-3 rounded-lg bg-violet-50/60 border border-violet-100 group"
                   >
-                    <div className="flex items-center justify-between">
-                      <a
-                        href={`/share/brief/${b.share_token}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2 min-w-0 flex-1 hover:opacity-80 transition-opacity"
-                      >
+                    {editingBriefId === b.id ? (
+                      <div className="flex items-center gap-1.5">
                         <FileText className="w-3.5 h-3.5 text-violet-500 flex-shrink-0" />
-                        <span className="font-medium text-violet-900 truncate">
-                          {b.brand_brain?.name ?? "Brief"}
-                        </span>
-                        <span className="text-violet-500">
-                          {new Date(b.created_at).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}
-                        </span>
-                        <span className="text-violet-400 text-[10px] font-medium">Abrir ↗</span>
-                      </a>
-                      {isAdminOrSubadmin && (
+                        <input
+                          autoFocus
+                          value={briefTitleDraft}
+                          onChange={(e) => setBriefTitleDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              startTransition(async () => {
+                                await updateBriefTitle(b.id, projectId, briefTitleDraft)
+                                setEditingBriefId(null)
+                                onRefresh()
+                              })
+                            }
+                            if (e.key === "Escape") setEditingBriefId(null)
+                          }}
+                          placeholder="Ej. Escasez — Black Friday"
+                          className="flex-1 min-w-0 text-xs bg-white border border-violet-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                        />
                         <button
                           type="button"
-                          className="ml-2 p-1 rounded text-violet-300 hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100"
+                          className="p-1 rounded text-violet-500 hover:text-violet-700"
                           onClick={() => {
-                            if (!confirm("¿Eliminar este brief?")) return
                             startTransition(async () => {
-                              await deleteBrief(b.id, projectId)
+                              await updateBriefTitle(b.id, projectId, briefTitleDraft)
+                              setEditingBriefId(null)
                               onRefresh()
                             })
                           }}
                         >
-                          <Trash2 className="w-3 h-3" />
+                          <Check className="w-3.5 h-3.5" />
                         </button>
-                      )}
-                    </div>
+                        <button type="button" className="p-1 rounded text-muted-foreground hover:text-foreground" onClick={() => setEditingBriefId(null)}>
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <a
+                          href={`/share/brief/${b.share_token}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2 min-w-0 flex-1 hover:opacity-80 transition-opacity"
+                        >
+                          <FileText className="w-3.5 h-3.5 text-violet-500 flex-shrink-0" />
+                          <span className="font-medium text-violet-900 truncate">
+                            {b.title || b.brand_brain?.name || "Brief"}
+                          </span>
+                          <span className="text-violet-500">
+                            {new Date(b.created_at).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}
+                          </span>
+                          <span className="text-violet-400 text-[10px] font-medium">Abrir ↗</span>
+                        </a>
+                        {isAdminOrSubadmin && (
+                          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100">
+                            <button
+                              type="button"
+                              className="ml-2 p-1 rounded text-violet-300 hover:text-violet-600 hover:bg-violet-100 transition-colors"
+                              onClick={() => {
+                                setBriefTitleDraft(b.title ?? "")
+                                setEditingBriefId(b.id)
+                              }}
+                            >
+                              <Pencil className="w-3 h-3" />
+                            </button>
+                            <button
+                              type="button"
+                              className="p-1 rounded text-violet-300 hover:text-destructive hover:bg-destructive/10 transition-colors"
+                              onClick={() => {
+                                if (!confirm("¿Eliminar este brief?")) return
+                                startTransition(async () => {
+                                  await deleteBrief(b.id, projectId)
+                                  onRefresh()
+                                })
+                              }}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <BriefScriptStatus brief={b} />
                   </div>
                 ))}

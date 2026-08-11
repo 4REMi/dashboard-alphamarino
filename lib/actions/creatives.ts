@@ -360,6 +360,7 @@ export async function createBrief(
   attachedAdIds: string[] = [],
   attachedBoardIds: string[] = [],
   brandLineId?: string,
+  title?: string,
 ): Promise<CreativeBrief> {
   const supabase = await createClient()
   const { userId, role } = await getRole()
@@ -372,11 +373,24 @@ export async function createBrief(
     brand_line_id: brandLineId || null,
     attached_ad_ids: attachedAdIds,
     attached_board_ids: attachedBoardIds,
+    title: title?.trim() || null,
     created_by: userId,
   }).select("*").single()
   if (error) throw error
   revalidateProject(projectId)
   return data as CreativeBrief
+}
+
+export async function updateBriefTitle(briefId: string, projectId: string, title: string): Promise<void> {
+  const { role } = await getRole()
+  if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from("creative_briefs")
+    .update({ title: title.trim() || null, updated_at: new Date().toISOString() })
+    .eq("id", briefId)
+  if (error) throw error
+  revalidateProject(projectId)
 }
 
 // Quick Create, step 1 — writes N script variants from scratch using only the

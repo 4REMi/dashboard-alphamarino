@@ -3,6 +3,8 @@
 import { useState, useTransition } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
 import {
   Brain, Sparkles, Link2, Copy, Check,
@@ -50,6 +52,7 @@ function getThumb(ad: SavedAdRef) {
 export function BriefCreator({
   concept, projectId, brandBrains, savedAds, boards, onClose, onCreated,
 }: Props) {
+  const [title, setTitle] = useState(concept.name ?? concept.angle_type ?? "")
   const [selectedBrainId, setSelectedBrainId] = useState("")
   const [selectedAdIds, setSelectedAdIds] = useState<string[]>([])
   const [selectedBoardIds, setSelectedBoardIds] = useState<string[]>([])
@@ -63,7 +66,7 @@ export function BriefCreator({
   function handleGenerate() {
     if (!selectedBrainId) return
     startTransition(async () => {
-      const brief = await createBrief(projectId, concept.id, selectedBrainId, selectedAdIds, selectedBoardIds, concept.brand_line_id ?? undefined)
+      const brief = await createBrief(projectId, concept.id, selectedBrainId, selectedAdIds, selectedBoardIds, concept.brand_line_id ?? undefined, title)
       setGeneratedBrief(brief)
       await generateBriefContent(brief.id)
     })
@@ -135,6 +138,19 @@ export function BriefCreator({
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto py-4 space-y-6">
+
+          {/* ── Título del brief ── */}
+          <section>
+            <Label htmlFor="brief-title" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 block">
+              Nombre del brief
+            </Label>
+            <Input
+              id="brief-title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Ej. Escasez — Black Friday"
+            />
+          </section>
 
           {/* ── Brand Brain selector ── */}
           <section>
