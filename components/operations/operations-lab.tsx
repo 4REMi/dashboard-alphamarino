@@ -1611,36 +1611,34 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
               }}
               positions={positions}
               onAccept={async (proposal) => {
-                startTransition(async () => {
-                  const fd = new FormData()
-                  fd.set("title", proposal.title)
-                  fd.set("description", proposal.description)
-                  if (proposal.is_urgent) fd.set("is_urgent", "true")
-                  if (proposal.requires_deliverable) fd.set("requires_deliverable", "true")
-                  if (proposal.default_position_id) fd.set("default_position_id", proposal.default_position_id)
-                  const task = await addTaskToSet(linkedTS.id, fd) as TaskSetTask
-                  // Add checklist items sequentially
-                  for (const item of proposal.checklist) {
-                    if (item.text.trim()) {
-                      await addChecklistItemToSetTask(task.id, item.text, item.is_blocking)
-                    }
+                const fd = new FormData()
+                fd.set("title", proposal.title)
+                fd.set("description", proposal.description)
+                if (proposal.is_urgent) fd.set("is_urgent", "true")
+                if (proposal.requires_deliverable) fd.set("requires_deliverable", "true")
+                if (proposal.default_position_id) fd.set("default_position_id", proposal.default_position_id)
+                const task = await addTaskToSet(linkedTS.id, fd) as TaskSetTask
+                // Add checklist items sequentially
+                for (const item of proposal.checklist) {
+                  if (item.text.trim()) {
+                    await addChecklistItemToSetTask(task.id, item.text, item.is_blocking)
                   }
-                  setPhaseSets((prev) => prev.map((ps) =>
-                    ps.id !== linkedPS!.id ? ps : {
-                      ...ps,
-                      phases: (ps.phases ?? []).map((ph) =>
-                        ph.id !== selectedPhase.id ? ph : ph
-                      ),
-                    }
-                  ))
-                  setTaskSets((prev) => prev.map((ts) =>
-                    ts.id !== linkedTS.id ? ts : {
-                      ...ts,
-                      tasks: [...(ts.tasks ?? []), { ...task, checklist_items: proposal.checklist.map((c, i) => ({ id: crypto.randomUUID(), task_set_task_id: task.id, text: c.text, is_blocking: c.is_blocking, item_order: i, created_at: "" })) }],
-                    }
-                  ))
-                  setShowAI(false)
-                })
+                }
+                setPhaseSets((prev) => prev.map((ps) =>
+                  ps.id !== linkedPS!.id ? ps : {
+                    ...ps,
+                    phases: (ps.phases ?? []).map((ph) =>
+                      ph.id !== selectedPhase.id ? ph : ph
+                    ),
+                  }
+                ))
+                setTaskSets((prev) => prev.map((ts) =>
+                  ts.id !== linkedTS.id ? ts : {
+                    ...ts,
+                    tasks: [...(ts.tasks ?? []), { ...task, checklist_items: proposal.checklist.map((c, i) => ({ id: crypto.randomUUID(), task_set_task_id: task.id, text: c.text, is_blocking: c.is_blocking, item_order: i, created_at: "" })) }],
+                  }
+                ))
+                setShowAI(false)
               }}
               onClose={() => setShowAI(false)}
             />

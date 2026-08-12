@@ -44,7 +44,7 @@ interface Props {
     requires_deliverable: boolean
     default_position_id: string
     checklist: ChecklistItem[]
-  }) => void
+  }) => void | Promise<void>
   onClose: () => void
 }
 
@@ -55,6 +55,7 @@ export function AiTaskSuggester({ context, positions, onAccept, onClose }: Props
   const [activeProposal, setActiveProposal] = useState<TaskProposal | null>(null)
   const [editedProposal, setEditedProposal] = useState<TaskProposal | null>(null)
   const [showChecklist, setShowChecklist] = useState(true)
+  const [saving, setSaving] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -105,17 +106,22 @@ export function AiTaskSuggester({ context, positions, onAccept, onClose }: Props
     }
   }
 
-  function handleAccept() {
-    if (!editedProposal) return
+  async function handleAccept() {
+    if (!editedProposal || saving) return
+    setSaving(true)
     const pos = positions.find((p) => p.name === editedProposal.suggested_position)
-    onAccept({
-      title: editedProposal.title,
-      description: editedProposal.description ?? "",
-      is_urgent: editedProposal.is_urgent ?? false,
-      requires_deliverable: editedProposal.requires_deliverable ?? false,
-      default_position_id: pos?.id ?? "",
-      checklist: editedProposal.checklist,
-    })
+    try {
+      await onAccept({
+        title: editedProposal.title,
+        description: editedProposal.description ?? "",
+        is_urgent: editedProposal.is_urgent ?? false,
+        requires_deliverable: editedProposal.requires_deliverable ?? false,
+        default_position_id: pos?.id ?? "",
+        checklist: editedProposal.checklist,
+      })
+    } finally {
+      setSaving(false)
+    }
   }
 
   function updateChecklist(i: number, field: "text" | "is_blocking", value: string | boolean) {
@@ -291,14 +297,16 @@ export function AiTaskSuggester({ context, positions, onAccept, onClose }: Props
                   <div className="flex gap-2 pt-1">
                     <button
                       onClick={handleAccept}
-                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                      disabled={saving}
+                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
                     >
-                      <Check className="w-3 h-3" /> Guardar tarea
+                      <Check className="w-3 h-3" /> {saving ? "Guardando…" : "Guardar tarea"}
                     </button>
                     <button
                       onClick={() => setEditedProposal(JSON.parse(JSON.stringify(activeProposal)))}
+                      disabled={saving}
                       title="Descartar cambios"
-                      className="flex items-center gap-1.5 text-xs px-2 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground transition-colors"
+                      className="flex items-center gap-1.5 text-xs px-2 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors"
                     >
                       <RotateCcw className="w-3 h-3" />
                     </button>
