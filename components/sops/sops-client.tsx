@@ -1,13 +1,18 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { createSop, updateSop, deleteSop } from "@/lib/actions/sops"
 import { getProjectTypes } from "@/lib/actions/config"
-import { BookOpen, ExternalLink, Plus, Pencil, Trash2, X, Search, Video, FileText, Tag } from "lucide-react"
+import { getProjectTypeIcon } from "@/lib/project-type-icons"
+import { BookOpen, ExternalLink, Plus, Pencil, Trash2, X, Search, Video, FileText, Tag, ChevronLeft, LayoutGrid } from "lucide-react"
 import type { Sop, Profile, ProjectType } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { formatDate } from "@/lib/utils"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
+
+const ALL_KEY = "__all__"
+const NONE_KEY = "__sin_categoria__"
 
 // ── SOP form (shared by create + edit) ───────────────────────────────────────
 
@@ -172,22 +177,148 @@ function SopModal({
   )
 }
 
+// ── Categories screen ────────────────────────────────────────────────────────
+
+function CategoriesScreen({
+  categoryNames,
+  categoryCounts,
+  uncategorizedCount,
+  totalCount,
+  projectTypeBadges,
+  onSelect,
+  onNewSop,
+}: {
+  categoryNames: string[]
+  categoryCounts: Map<string, number>
+  uncategorizedCount: number
+  totalCount: number
+  projectTypeBadges: ProjectTypeBadge[]
+  onSelect: (key: string) => void
+  onNewSop: () => void
+}) {
+  const badgeByName = new Map(projectTypeBadges.map((b) => [b.name, b]))
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <button
+          onClick={onNewSop}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+        >
+          <Plus className="w-4 h-4" />
+          Nuevo SOP
+        </button>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+        {/* Todos */}
+        <CategoryTile
+          label="Todos"
+          count={totalCount}
+          icon={<LayoutGrid className="w-5 h-5" />}
+          color={null}
+          onClick={() => onSelect(ALL_KEY)}
+        />
+
+        {categoryNames.map((name) => {
+          const badge = badgeByName.get(name)
+          const Icon = getProjectTypeIcon(badge?.icon ?? null) ?? Tag
+          return (
+            <CategoryTile
+              key={name}
+              label={name}
+              count={categoryCounts.get(name) ?? 0}
+              icon={<Icon className="w-5 h-5" />}
+              color={badge?.color ?? null}
+              onClick={() => onSelect(name)}
+            />
+          )
+        })}
+
+        {uncategorizedCount > 0 && (
+          <CategoryTile
+            label="Sin categoría"
+            count={uncategorizedCount}
+            icon={<Tag className="w-5 h-5" />}
+            color={null}
+            onClick={() => onSelect(NONE_KEY)}
+          />
+        )}
+      </div>
+    </div>
+  )
+}
+
+function CategoryTile({
+  label,
+  count,
+  icon,
+  color,
+  onClick,
+}: {
+  label: string
+  count: number
+  icon: React.ReactNode
+  color: string | null
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex flex-col items-start gap-3 p-5 rounded-xl border border-border bg-card hover:border-primary/40 hover:shadow-sm transition-all text-left"
+    >
+      <div
+        className="w-10 h-10 rounded-lg flex items-center justify-center"
+        style={{
+          backgroundColor: color ? `${color}1a` : "hsl(var(--muted))",
+          color: color ?? "hsl(var(--muted-foreground))",
+        }}
+      >
+        {icon}
+      </div>
+      <div>
+        <p className="font-medium text-sm">{label}</p>
+        <p className="text-xs text-muted-foreground mt-0.5">{count} SOP{count !== 1 ? "s" : ""}</p>
+      </div>
+    </button>
+  )
+}
+
 // ── main component ────────────────────────────────────────────────────────────
+
+interface ProjectTypeBadge {
+  id: string
+  name: string
+  icon: string | null
+  color: string | null
+}
 
 interface Props {
   sops: Sop[]
   currentUser: Profile
   isAdmin: boolean
+  projectTypeBadges: ProjectTypeBadge[]
 }
 
-export function SopsClient({ sops: initSops, currentUser, isAdmin }: Props) {
+export function SopsClient({ sops: initSops, currentUser, isAdmin, projectTypeBadges }: Props) {
   const [sops, setSops] = useState<Sop[]>(initSops)
   const [showCreate, setShowCreate] = useState(false)
   const [editingSop, setEditingSop] = useState<Sop | null>(null)
   const [search, setSearch] = useState("")
-  const [categoryFilter, setCategoryFilter] = useState<string>("all")
   const [visibilityFilter, setVisibilityFilter] = useState<"all" | "public" | "restricted">("all")
   const [isPending, startTransition] = useTransition()
+
+  // Category is URL-driven (?category=…) instead of local state — same single
+  // data fetch either way, but the selected category is shareable/bookmarkable
+  // and the browser back button naturally returns to the categories screen.
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const selectedCategory = searchParams.get("category") // null = show categories screen
+  function selectCategory(key: string) {
+    router.push(`?category=${encodeURIComponent(key)}`, { scroll: false })
+  }
+  function backToCategories() {
+    router.push("?", { scroll: false })
+  }
 
   // Only needed to populate the create/edit form's project-type dropdown —
   // fetched lazily the first time that form opens instead of on every page
@@ -202,10 +333,18 @@ export function SopsClient({ sops: initSops, currentUser, isAdmin }: Props) {
     startTransition(async () => { try { await fn() } catch { /* ignore */ } })
   }
 
-  // ── categories derived from data ─────────────────────────────────────────
-  const categories = Array.from(new Set(sops.map((s) => s.category).filter(Boolean))).sort() as string[]
+  // ── categories derived from data — grouped client-side from the SOPs we
+  // already fetched, no extra query. One tile per distinct category, plus
+  // "Sin categoría" for SOPs without one. ─────────────────────────────────
+  const categoryNames = Array.from(new Set(sops.map((s) => s.category).filter(Boolean))).sort() as string[]
+  const categoryCounts = new Map<string, number>()
+  let uncategorizedCount = 0
+  for (const s of sops) {
+    if (s.category) categoryCounts.set(s.category, (categoryCounts.get(s.category) ?? 0) + 1)
+    else uncategorizedCount++
+  }
 
-  // ── filtered list ────────────────────────────────────────────────────────
+  // ── filtered list — scoped to the selected category from the URL ────────
   const filtered = sops.filter((s) => {
     const q = search.toLowerCase()
     const matchesSearch = !q ||
@@ -213,7 +352,10 @@ export function SopsClient({ sops: initSops, currentUser, isAdmin }: Props) {
       (s.description ?? "").toLowerCase().includes(q) ||
       (s.category ?? "").toLowerCase().includes(q) ||
       s.tags.some((t) => t.toLowerCase().includes(q))
-    const matchesCategory = categoryFilter === "all" || s.category === categoryFilter
+    const matchesCategory =
+      selectedCategory === ALL_KEY ? true :
+      selectedCategory === NONE_KEY ? !s.category :
+      s.category === selectedCategory
     const matchesVisibility = visibilityFilter === "all" || s.visibility === visibilityFilter
     return matchesSearch && matchesCategory && matchesVisibility
   })
@@ -251,6 +393,29 @@ export function SopsClient({ sops: initSops, currentUser, isAdmin }: Props) {
     return isAdmin || sop.author_id === currentUser.id
   }
 
+  if (selectedCategory === null) {
+    return (
+      <>
+        <CategoriesScreen
+          categoryNames={categoryNames}
+          categoryCounts={categoryCounts}
+          uncategorizedCount={uncategorizedCount}
+          totalCount={sops.length}
+          projectTypeBadges={projectTypeBadges}
+          onSelect={selectCategory}
+          onNewSop={() => { ensureProjectTypes(); setShowCreate(true) }}
+        />
+
+        {/* Create modal — reachable from the categories screen too */}
+        {showCreate && (
+          <SopModal title="Nuevo SOP" onClose={() => setShowCreate(false)}>
+            <SopForm isPending={isPending} onSubmit={handleCreate} onClose={() => setShowCreate(false)} projectTypes={projectTypes ?? []} />
+          </SopModal>
+        )}
+      </>
+    )
+  }
+
   return (
     <div className="space-y-4">
       {/* Toolbar */}
@@ -267,17 +432,14 @@ export function SopsClient({ sops: initSops, currentUser, isAdmin }: Props) {
           />
         </div>
 
-        {/* Category filter */}
-        {categories.length > 0 && (
-          <select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            className="rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-          >
-            <option value="all">Todas las categorías</option>
-            {categories.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        )}
+        {/* Back to categories */}
+        <button
+          onClick={backToCategories}
+          className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted transition-colors flex-shrink-0"
+        >
+          <ChevronLeft className="w-4 h-4" />
+          Categorías
+        </button>
 
         {/* Visibility pills (admin only) */}
         {isAdmin && (

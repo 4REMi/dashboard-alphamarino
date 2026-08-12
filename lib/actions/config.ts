@@ -39,6 +39,19 @@ export async function getProjectTypes() {
   }))
 }
 
+// Lightweight — just what's needed to render a category tile/badge (icon +
+// color), no phase_sets join. Safe to fetch eagerly where getProjectTypes()
+// (which does 2 queries + a nested join) would be overkill.
+export async function getProjectTypeBadges(): Promise<{ id: string; name: string; icon: string | null; color: string | null }[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from("project_types")
+    .select("id, name, icon, color")
+    .order("name")
+  if (error) return []
+  return data ?? []
+}
+
 export async function createProjectType(formData: FormData) {
   const supabase = await createClient()
   const { data, error } = await supabase.from("project_types").insert({

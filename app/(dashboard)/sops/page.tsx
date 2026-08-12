@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { createClient } from "@/lib/supabase/server"
 import { getSops } from "@/lib/actions/sops"
+import { getProjectTypeBadges } from "@/lib/actions/config"
 import { SopsClient } from "@/components/sops/sops-client"
 import { BookOpen } from "lucide-react"
 import type { Profile, Sop } from "@/lib/types"
@@ -18,11 +19,14 @@ async function getCurrentProfile() {
 }
 
 export default async function SopsPage() {
-  // profile and sops don't depend on each other — fetch in parallel instead
-  // of waiting on auth.getUser() -> profiles -> *then* sops in sequence.
-  const [profile, sops] = await Promise.all([
+  // None of these three depend on each other — fetch in parallel. Note this
+  // is the lightweight getProjectTypeBadges() (id/name/icon/color only), not
+  // the heavier getProjectTypes() (which also joins phase_sets) — that one
+  // stays lazy-loaded only when the create/edit SOP modal opens.
+  const [profile, sops, projectTypeBadges] = await Promise.all([
     getCurrentProfile(),
     getSops().catch(() => []),
+    getProjectTypeBadges().catch(() => []),
   ])
   const isAdmin = profile?.role === "admin" || profile?.role === "subadmin"
 
@@ -42,6 +46,7 @@ export default async function SopsPage() {
         sops={sops as Sop[]}
         currentUser={profile as Profile}
         isAdmin={isAdmin}
+        projectTypeBadges={projectTypeBadges}
       />
     </div>
   )
