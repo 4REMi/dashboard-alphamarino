@@ -4,6 +4,7 @@ import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { updateBriefScript } from "@/lib/actions/creatives"
 import { CopyScriptButton } from "@/components/share/copy-script-button"
+import { cn } from "@/lib/utils"
 import type { AdCloneLine } from "@/lib/types"
 
 interface Reference {
@@ -43,8 +44,13 @@ export function BriefReferences({ references, briefId, editable = false }: Props
     })
   }
 
+  // Wide desktops have room to compare references side by side instead of
+  // scrolling through one long column — grid kicks in only with 2+ refs.
   return (
-    <div className="space-y-3">
+    <div className={cn(
+      "flex flex-col gap-3",
+      references.length > 1 && "xl:grid xl:grid-cols-2 xl:items-start"
+    )}>
       {references.map((ref) => {
         const isOpen = !closedIds.has(ref.id)
         const isVideo = ref.type === "video"

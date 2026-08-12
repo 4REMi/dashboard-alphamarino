@@ -100,7 +100,7 @@ export default async function ShareBriefPage({ params }: Props) {
   return (
     <div className="min-h-screen bg-[#f8f9fb]">
       <header className="border-b border-gray-200 bg-white sticky top-0 z-20">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="max-w-[1400px] mx-auto px-6 py-4 flex items-center justify-between">
           <div>
             <p className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-0.5">
               Alpha Marino · Creative Brief
@@ -119,8 +119,8 @@ export default async function ShareBriefPage({ params }: Props) {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-6 py-10">
-        <div className="lg:grid lg:grid-cols-[300px_1fr] lg:gap-6 lg:items-start">
+      <main className="max-w-[1400px] mx-auto px-6 py-10">
+        <div className="lg:grid lg:grid-cols-[320px_1fr] lg:gap-6 lg:items-start">
 
           {/* ── Sidebar: notes + brand context — compact, sticky, out of the main reading flow ── */}
           <aside className="lg:sticky lg:top-[88px] space-y-4 mb-6 lg:mb-0">
@@ -241,7 +241,7 @@ export default async function ShareBriefPage({ params }: Props) {
       </main>
 
       <footer className="border-t border-gray-200 bg-white mt-8">
-        <div className="max-w-6xl mx-auto px-6 py-4 text-center">
+        <div className="max-w-[1400px] mx-auto px-6 py-4 text-center">
           <p className="text-xs text-gray-400">Brief generado por Alpha Marino · Paint Media</p>
         </div>
       </footer>
