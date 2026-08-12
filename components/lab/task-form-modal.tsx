@@ -72,7 +72,9 @@ export function TaskFormModal({ target, sops, positions, onClose, onSaved }: Pro
   const [deliverableInstructions, setDeliverableInstructions] = useState(existingTask?.deliverable_instructions ?? "")
   const [showSopPicker, setShowSopPicker] = useState(false)
   const [checklistItems, setChecklistItems] = useState<ChecklistDraft[]>(
-    (existingTask?.checklist_items ?? []).map((i) => ({ text: i.text, is_blocking: i.is_blocking }))
+    [...(existingTask?.checklist_items ?? [])]
+      .sort((a, b) => a.item_order - b.item_order)
+      .map((i) => ({ text: i.text, is_blocking: i.is_blocking }))
   )
   const [newItemText, setNewItemText] = useState("")
   const [newItemBlocking, setNewItemBlocking] = useState(false)

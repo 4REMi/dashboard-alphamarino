@@ -633,7 +633,7 @@ function ProposedTaskDetail({ change, task, canonicalTree, onChanged, onDeleted 
     })
   }
 
-  const items = task.checklist_items ?? []
+  const items = [...(task.checklist_items ?? [])].sort((a, b) => a.item_order - b.item_order)
 
   return (
     <>
@@ -707,10 +707,10 @@ function ProposedChecklistDetail({ change, addition, canonicalTree, onChanged, o
   for (const ps of canonicalTree) {
     for (const ph of ps.phases) {
       const t = ph.tasks.find((t) => t.id === addition.anchor_task_set_task_id)
-      if (t) { anchorItems = t.checklist_items; break }
+      if (t) { anchorItems = [...t.checklist_items].sort((a, b) => a.item_order - b.item_order); break }
     }
   }
-  const items = addition.items ?? []
+  const items = [...(addition.items ?? [])].sort((a, b) => a.item_order - b.item_order)
 
   function handleSubmit() {
     startTransition(async () => {

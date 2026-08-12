@@ -128,7 +128,7 @@ export function TaskEditDiff({ original, proposed }: {
     rows.push({ label: "SOP", before: original.sop_title || "Sin SOP", after: proposed.sop?.title || "Sin SOP" })
   }
 
-  const originalItems = original.checklist_items ?? []
+  const originalItems = [...(original.checklist_items ?? [])].sort((a, b) => a.item_order - b.item_order)
   const proposedItems = proposed.checklist_items ?? []
   const checklistKey = (items: { text: string; is_blocking: boolean }[]) =>
     items.map((i) => `${i.text}::${i.is_blocking}`).join("|")

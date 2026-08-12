@@ -468,7 +468,7 @@ function GhostPhaseRow({ proposal, onJumpToProposal }: { proposal: LabProposedPh
 }
 
 function GhostTaskRow({ proposal, onJumpToProposal }: { proposal: LabProposedTask; onJumpToProposal: (id: string) => void }) {
-  const items = proposal.checklist_items ?? []
+  const items = [...(proposal.checklist_items ?? [])].sort((a, b) => a.item_order - b.item_order)
   const hasChecklist = items.length > 0
   const blockingCount = items.filter((i) => i.is_blocking).length
 
@@ -567,8 +567,9 @@ function CanonicalTaskRow({
   onProposeEdit: () => void
   onProposeChecklist: () => void
 }) {
-  const hasChecklist = task.checklist_items.length > 0
-  const blockingCount = task.checklist_items.filter((i) => i.is_blocking).length
+  const sortedChecklistItems = [...task.checklist_items].sort((a, b) => a.item_order - b.item_order)
+  const hasChecklist = sortedChecklistItems.length > 0
+  const blockingCount = sortedChecklistItems.filter((i) => i.is_blocking).length
   const pendingChecklistProposals = checklistProposals.filter(
     (cp) => cp.status === "draft" || cp.status === "submitted"
   )
@@ -593,7 +594,7 @@ function CanonicalTaskRow({
             blockingCount > 0 ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"
           )}>
             {blockingCount > 0 && <Lock className="w-2.5 h-2.5" />}
-            {task.checklist_items.length}
+            {sortedChecklistItems.length}
           </span>
         )}
         {task.requires_deliverable && <Paperclip className="w-3.5 h-3.5 text-info flex-shrink-0" />}
@@ -659,7 +660,7 @@ function CanonicalTaskRow({
 
         {hasChecklist && (
           <div className="space-y-0.5">
-            {task.checklist_items.map((item) => (
+            {sortedChecklistItems.map((item) => (
               <div key={item.id} className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <span className={cn("truncate flex-1 min-w-0", item.is_blocking && "font-medium text-foreground")}>
                   {item.text}

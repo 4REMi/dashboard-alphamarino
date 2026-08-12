@@ -96,7 +96,7 @@ export function ProposedChecklistModal({ task, phaseName, onClose, onCreated }: 
                 Checklist actual (solo lectura)
               </p>
               <div className="rounded-lg border border-border/50 divide-y divide-border/30 bg-muted/20">
-                {task.checklist_items.map((item) => (
+                {[...task.checklist_items].sort((a, b) => a.item_order - b.item_order).map((item) => (
                   <div key={item.id} className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
                     <span className={cn("flex-1 min-w-0 truncate", item.is_blocking && "font-medium text-foreground")}>
                       {item.text}

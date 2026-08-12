@@ -126,7 +126,7 @@ export function LabSortableTaskRow({
     zIndex: isDragging ? 10 : undefined,
   }
 
-  const checklistItems = task.checklist_items ?? []
+  const checklistItems = [...(task.checklist_items ?? [])].sort((a, b) => a.item_order - b.item_order)
   const sopName = (task.sop as { title?: string } | null)?.title ?? null
   const positionName = (task.default_position as { name?: string } | null)?.name ?? null
 
@@ -236,7 +236,7 @@ export function ProposedPhaseTaskSortableRow({
     zIndex: isDragging ? 10 : undefined,
   }
 
-  const checklistItems = task.checklist_items ?? []
+  const checklistItems = [...(task.checklist_items ?? [])].sort((a, b) => a.item_order - b.item_order)
   const sopName = (task.sop as { title?: string } | null)?.title ?? null
   const positionName = (task.default_position as { name?: string } | null)?.name ?? null
   const blockingCount = checklistItems.filter((i) => i.is_blocking).length

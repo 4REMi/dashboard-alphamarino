@@ -619,7 +619,7 @@ function ProposedTaskDetail({ task, canonicalTree, onReviewed, onInjected, onDis
     })
   }
 
-  const items = task.checklist_items ?? []
+  const items = [...(task.checklist_items ?? [])].sort((a, b) => a.item_order - b.item_order)
   const subtitleParts = [`Por ${author}`, phaseSetName ? `${phaseSetName} · ${phaseName}` : phaseName]
   if (isEdit) subtitleParts.push("Edición de tarea existente")
 
@@ -721,7 +721,7 @@ function ProposedChecklistDetail({ addition, canonicalTree, onReviewed, onInject
   for (const ps of canonicalTree) {
     for (const ph of ps.phases) {
       const t = ph.tasks.find((t) => t.id === addition.anchor_task_set_task_id)
-      if (t) { anchorItems = t.checklist_items; phaseName = ph.name; phaseSetName = ps.project_type_name ?? ps.name; break }
+      if (t) { anchorItems = [...t.checklist_items].sort((a, b) => a.item_order - b.item_order); phaseName = ph.name; phaseSetName = ps.project_type_name ?? ps.name; break }
     }
     if (phaseName) break
   }
@@ -855,7 +855,7 @@ function ProposedNewPhaseDetail({ phase, canonicalTree, onReviewed, onInjected, 
 // ── Task preview row (read-only) ─────────────────────────────────────────────
 
 function TaskPreviewRow({ task, index }: { task: LabPhaseTask | LabProposedPhaseTask; index: number }) {
-  const checklistItems = task.checklist_items ?? []
+  const checklistItems = [...(task.checklist_items ?? [])].sort((a, b) => a.item_order - b.item_order)
   const sopName = (task.sop as { title?: string } | null)?.title ?? null
   const positionName = (task.default_position as { name?: string } | null)?.name ?? null
 
