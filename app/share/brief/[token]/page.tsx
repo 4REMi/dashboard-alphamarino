@@ -148,21 +148,21 @@ export default async function ShareBriefPage({ params }: Props) {
                     <p className="text-[13px] text-gray-700 leading-relaxed">{brain.description as string}</p>
                   )}
                   {brain.tone_of_voice && (
-                    <div>
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-500 mb-1">Tono de voz</p>
+                    <div className="rounded-lg bg-indigo-50/70 border border-indigo-100 px-3 py-2.5">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-indigo-600 mb-1">🎙 Tono de voz</p>
                       <p className="text-[13px] text-gray-700 leading-relaxed">{brain.tone_of_voice as string}</p>
                     </div>
                   )}
                   {Array.isArray(brain.usps) && brain.usps.length > 0 && (
                     <div>
                       <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-500 mb-1.5">Puntos únicos de venta</p>
-                      <ul className="space-y-1">
+                      <div className="flex flex-wrap gap-1.5">
                         {(brain.usps as string[]).map((u, i) => (
-                          <li key={i} className="text-[13px] text-gray-700 leading-relaxed flex gap-2">
-                            <span className="text-gray-300">—</span>{u}
-                          </li>
+                          <span key={i} className="text-[11px] font-medium leading-snug px-2 py-1 rounded-md bg-teal-50 text-teal-700 border border-teal-100">
+                            {u}
+                          </span>
                         ))}
-                      </ul>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -175,7 +175,7 @@ export default async function ShareBriefPage({ params }: Props) {
             {concept && (
               <section className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
                 <div className="px-6 py-5 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
-                  <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap">
                     {angleEntry && (
                       <span className="inline-flex items-center gap-1.5 text-sm font-semibold bg-gray-900 text-white px-3 py-1 rounded-lg">
                         <span className="text-base">{angleEntry.emoji}</span>
@@ -183,36 +183,38 @@ export default async function ShareBriefPage({ params }: Props) {
                       </span>
                     )}
                     {concept.funnel_stage && (
-                      <span className="text-xs font-medium px-2.5 py-1 rounded-lg bg-violet-50 text-violet-700 ring-1 ring-inset ring-violet-200/60">
+                      <span className="text-xs font-medium px-2.5 py-1 rounded-lg bg-violet-100 text-violet-700">
                         {FUNNEL_LABELS[concept.funnel_stage as string] ?? concept.funnel_stage}
                       </span>
                     )}
+                    {concept.organizing_principle && (
+                      <span className="text-xs font-medium px-2.5 py-1 rounded-lg bg-indigo-100 text-indigo-700">
+                        {concept.organizing_principle}
+                      </span>
+                    )}
                     {concept.awareness_stage && (
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs font-medium px-2.5 py-1 rounded-lg bg-gray-100 text-gray-600">
                         Stage {concept.awareness_stage} · {AWARENESS_LABELS[concept.awareness_stage as string] ?? ""}
                       </span>
                     )}
                   </div>
                 </div>
 
-                <div className="grid sm:grid-cols-2 gap-0 divide-y sm:divide-y-0 sm:divide-x divide-gray-100">
+                <div className="flex flex-wrap items-start gap-3 p-4">
                   {concept.target_persona && (
-                    <AngleField label="Persona objetivo" value={concept.target_persona as string} />
+                    <AngleField label="Persona objetivo" value={concept.target_persona as string} accent="sky" icon="👤" />
                   )}
                   {concept.pain_point && (
-                    <AngleField label="Pain Point" value={concept.pain_point as string} accent="rose" />
+                    <AngleField label="Pain Point" value={concept.pain_point as string} accent="rose" icon="⚡" />
                   )}
                   {concept.transformation && (
-                    <AngleField label="Transformación" value={concept.transformation as string} accent="emerald" />
+                    <AngleField label="Transformación" value={concept.transformation as string} accent="emerald" icon="✦" />
                   )}
                   {concept.why_it_works && (
-                    <AngleField label="Por qué funciona" value={concept.why_it_works as string} />
+                    <AngleField label="Por qué funciona" value={concept.why_it_works as string} accent="amber" icon="💡" />
                   )}
                   {concept.product_service && (
-                    <AngleField label="Producto / Servicio" value={concept.product_service as string} />
-                  )}
-                  {concept.organizing_principle && (
-                    <AngleField label="Principio organizador" value={concept.organizing_principle as string} />
+                    <AngleField label="Producto / Servicio" value={concept.product_service as string} accent="slate" icon="🛍" />
                   )}
                 </div>
               </section>
@@ -247,12 +249,26 @@ export default async function ShareBriefPage({ params }: Props) {
   )
 }
 
-function AngleField({ label, value, accent }: { label: string; value: string; accent?: "rose" | "emerald" }) {
-  const dot = accent === "rose" ? "bg-rose-400" : accent === "emerald" ? "bg-emerald-400" : "bg-gray-300"
+type Accent = "sky" | "rose" | "emerald" | "amber" | "slate"
+
+const ACCENT_STYLE: Record<Accent, { bg: string; border: string; label: string }> = {
+  sky:     { bg: "bg-sky-50/70",     border: "border-sky-200",     label: "text-sky-700" },
+  rose:    { bg: "bg-rose-50/70",    border: "border-rose-200",    label: "text-rose-700" },
+  emerald: { bg: "bg-emerald-50/70", border: "border-emerald-200", label: "text-emerald-700" },
+  amber:   { bg: "bg-amber-50/70",   border: "border-amber-200",   label: "text-amber-700" },
+  slate:   { bg: "bg-slate-50",      border: "border-slate-200",   label: "text-slate-600" },
+}
+
+// Independently-bordered cards in a flex-wrap (not a shared-height grid) — a
+// short field like "Transformación" no longer stretches to match a long
+// neighbor like "Por qué funciona" in the same row, which used to leave a
+// slab of dead white space under the shorter one.
+function AngleField({ label, value, accent, icon }: { label: string; value: string; accent: Accent; icon: string }) {
+  const s = ACCENT_STYLE[accent]
   return (
-    <div className="px-6 py-4">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-500 mb-1 flex items-center gap-1.5">
-        <span className={`w-1 h-1 rounded-full ${dot}`} />
+    <div className={`flex-1 min-w-[240px] rounded-xl border ${s.border} ${s.bg} px-4 py-3.5`}>
+      <p className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${s.label} mb-1.5 flex items-center gap-1.5`}>
+        <span className="text-xs leading-none">{icon}</span>
         {label}
       </p>
       <p className="text-[13px] leading-relaxed text-gray-700">{value}</p>
