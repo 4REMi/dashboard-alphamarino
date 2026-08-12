@@ -2,12 +2,11 @@ export const dynamic = "force-dynamic"
 
 import { createClient } from "@/lib/supabase/server"
 import { getSops } from "@/lib/actions/sops"
-import { getProjectTypes } from "@/lib/actions/config"
 import { SopsClient } from "@/components/sops/sops-client"
 import { BookOpen } from "lucide-react"
-import type { Profile, ProjectType, Sop } from "@/lib/types"
+import type { Profile, Sop } from "@/lib/types"
 
-export default async function SopsPage() {
+async function getCurrentProfile() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   const { data: profile } = await supabase
@@ -15,10 +14,15 @@ export default async function SopsPage() {
     .select("*")
     .eq("id", user!.id)
     .single()
+  return profile
+}
 
-  const [sops, projectTypes] = await Promise.all([
+export default async function SopsPage() {
+  // profile and sops don't depend on each other — fetch in parallel instead
+  // of waiting on auth.getUser() -> profiles -> *then* sops in sequence.
+  const [profile, sops] = await Promise.all([
+    getCurrentProfile(),
     getSops().catch(() => []),
-    getProjectTypes().catch(() => []),
   ])
   const isAdmin = profile?.role === "admin" || profile?.role === "subadmin"
 
@@ -38,7 +42,6 @@ export default async function SopsPage() {
         sops={sops as Sop[]}
         currentUser={profile as Profile}
         isAdmin={isAdmin}
-        projectTypes={projectTypes as ProjectType[]}
       />
     </div>
   )

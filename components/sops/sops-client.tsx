@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react"
 import { createSop, updateSop, deleteSop } from "@/lib/actions/sops"
+import { getProjectTypes } from "@/lib/actions/config"
 import { BookOpen, ExternalLink, Plus, Pencil, Trash2, X, Search, Video, FileText, Tag } from "lucide-react"
 import type { Sop, Profile, ProjectType } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -177,10 +178,9 @@ interface Props {
   sops: Sop[]
   currentUser: Profile
   isAdmin: boolean
-  projectTypes: ProjectType[]
 }
 
-export function SopsClient({ sops: initSops, currentUser, isAdmin, projectTypes }: Props) {
+export function SopsClient({ sops: initSops, currentUser, isAdmin }: Props) {
   const [sops, setSops] = useState<Sop[]>(initSops)
   const [showCreate, setShowCreate] = useState(false)
   const [editingSop, setEditingSop] = useState<Sop | null>(null)
@@ -188,6 +188,15 @@ export function SopsClient({ sops: initSops, currentUser, isAdmin, projectTypes 
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
   const [visibilityFilter, setVisibilityFilter] = useState<"all" | "public" | "restricted">("all")
   const [isPending, startTransition] = useTransition()
+
+  // Only needed to populate the create/edit form's project-type dropdown —
+  // fetched lazily the first time that form opens instead of on every page
+  // load, since it's unused whenever the modal stays closed.
+  const [projectTypes, setProjectTypes] = useState<ProjectType[] | null>(null)
+  function ensureProjectTypes() {
+    if (projectTypes) return
+    getProjectTypes().then((pt) => setProjectTypes(pt as ProjectType[])).catch(() => setProjectTypes([]))
+  }
 
   function run(fn: () => Promise<void>) {
     startTransition(async () => { try { await fn() } catch { /* ignore */ } })
@@ -291,7 +300,7 @@ export function SopsClient({ sops: initSops, currentUser, isAdmin, projectTypes 
         )}
 
         <button
-          onClick={() => setShowCreate(true)}
+          onClick={() => { ensureProjectTypes(); setShowCreate(true) }}
           className="ml-auto flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors flex-shrink-0"
         >
           <Plus className="w-4 h-4" />
@@ -401,7 +410,7 @@ export function SopsClient({ sops: initSops, currentUser, isAdmin, projectTypes 
                     {canEdit(sop) && (
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
-                          onClick={() => setEditingSop(sop)}
+                          onClick={() => { ensureProjectTypes(); setEditingSop(sop) }}
                           className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                           title="Editar"
                         >
@@ -427,7 +436,7 @@ export function SopsClient({ sops: initSops, currentUser, isAdmin, projectTypes 
       {/* Create modal */}
       {showCreate && (
         <SopModal title="Nuevo SOP" onClose={() => setShowCreate(false)}>
-          <SopForm isPending={isPending} onSubmit={handleCreate} onClose={() => setShowCreate(false)} projectTypes={projectTypes} />
+          <SopForm isPending={isPending} onSubmit={handleCreate} onClose={() => setShowCreate(false)} projectTypes={projectTypes ?? []} />
         </SopModal>
       )}
 
@@ -439,7 +448,7 @@ export function SopsClient({ sops: initSops, currentUser, isAdmin, projectTypes 
             isPending={isPending}
             onSubmit={(e) => handleUpdate(editingSop.id, e)}
             onClose={() => setEditingSop(null)}
-            projectTypes={projectTypes}
+            projectTypes={projectTypes ?? []}
           />
         </SopModal>
       )}
