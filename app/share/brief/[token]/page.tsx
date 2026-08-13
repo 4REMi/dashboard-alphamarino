@@ -50,7 +50,7 @@ export default async function ShareBriefPage({ params }: Props) {
 
   const angleEntry = concept?.angle_type ? ANGLE_GUIDE.find((a) => a.name === concept.angle_type) : null
 
-  const references: { id: string; type: "video" | "image"; name: string; videoSrc?: string; thumbSrc?: string; script?: AdCloneLine[]; clientStatus?: string | null; clientFeedback?: string | null }[] = []
+  const references: { id: string; type: "video" | "image" | "text"; name: string; videoSrc?: string; thumbSrc?: string; script?: AdCloneLine[]; clientStatus?: string | null; clientFeedback?: string | null }[] = []
 
   const videoAds = attachedAds?.filter((a) => a.format === "video" || a.cached_video_url || a.video_url) ?? []
   const imageAds = attachedAds?.filter((a) => a.format !== "video" && !a.cached_video_url && !a.video_url) ?? []
@@ -90,7 +90,7 @@ export default async function ShareBriefPage({ params }: Props) {
       const review = scriptReviews[key]
       references.push({
         id: key,
-        type: "video",
+        type: "text",
         name: key === "manual" ? "Guión manual" : `Guión generado — opción ${++genIndex}`,
         script: lines,
         clientStatus: review?.client_status ?? null,

@@ -9,7 +9,7 @@ import type { AdCloneLine } from "@/lib/types"
 
 interface Reference {
   id: string
-  type: "video" | "image"
+  type: "video" | "image" | "text"
   name: string
   videoSrc?: string
   thumbSrc?: string
@@ -54,6 +54,7 @@ export function BriefReferences({ references, briefId, editable = false }: Props
       {references.map((ref) => {
         const isOpen = !closedIds.has(ref.id)
         const isVideo = ref.type === "video"
+        const isText = ref.type === "text"
 
         return (
           <div
@@ -81,6 +82,11 @@ export function BriefReferences({ references, briefId, editable = false }: Props
                       <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
                         <path d="M8 5v14l11-7z" />
                       </svg>
+                    ) : isText ? (
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
+                        <path d="M8 4h6l4 4v12a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z" />
+                        <path d="M9.5 12h5M9.5 15.5h5M9.5 8.5h2" />
+                      </svg>
                     ) : (
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
                         <rect x="3" y="3" width="18" height="18" rx="3" />
@@ -97,11 +103,11 @@ export function BriefReferences({ references, briefId, editable = false }: Props
                 <p className="text-sm font-semibold text-gray-900 truncate">{ref.name}</p>
                 <div className="flex items-center gap-2 mt-0.5">
                   <span className={`text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded ${
-                    isVideo ? "bg-indigo-50 text-indigo-600" : "bg-amber-50 text-amber-600"
+                    isVideo ? "bg-indigo-50 text-indigo-600" : isText ? "bg-violet-50 text-violet-600" : "bg-amber-50 text-amber-600"
                   }`}>
-                    {isVideo ? "Video" : "Imagen"}
+                    {isVideo ? "Video" : isText ? "Guión" : "Imagen"}
                   </span>
-                  {isVideo && ref.script && ref.script.length > 0 && (
+                  {(isVideo || isText) && ref.script && ref.script.length > 0 && (
                     <span className="text-[10px] text-gray-400">
                       · {ref.script.length} líneas de guión
                     </span>
@@ -164,7 +170,7 @@ export function BriefReferences({ references, briefId, editable = false }: Props
                 )}
 
                 {/* Script */}
-                {isVideo && ref.script && ref.script.length > 0 && (
+                {(isVideo || isText) && ref.script && ref.script.length > 0 && (
                   editable && briefId ? (
                     <EditableScript
                       briefId={briefId}
@@ -186,34 +192,46 @@ export function BriefReferences({ references, briefId, editable = false }: Props
 }
 
 function ReadOnlyScript({ lines }: { lines: AdCloneLine[] }) {
+  // Scripts with no source to adapt from (Quick Create AI drafts, manual
+  // pastes) never populate `original` — showing an empty strikethrough
+  // column next to them just wastes space, so collapse to one column.
+  const hasOriginal = lines.some((l) => l.original?.trim())
+
   return (
     <div>
       <div className="px-5 py-3 bg-gray-50/80 border-t border-b border-gray-100 flex items-center justify-between">
         <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-500">
-          Guión tropicalizado
+          {hasOriginal ? "Guión tropicalizado" : "Guión"}
         </p>
         <CopyScriptButton lines={lines} brandName={null} />
       </div>
       <div className="divide-y divide-gray-100">
         {lines.map((line, i) => (
-          <div key={i} className="grid sm:grid-cols-2">
-            <div className="px-5 py-3.5 sm:border-r border-gray-100">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+          <div key={i} className={cn("grid", hasOriginal && "sm:grid-cols-2")}>
+            {hasOriginal && (
+              <div className="px-5 py-3.5 sm:border-r border-gray-100">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+                    {i + 1}
+                  </span>
+                  {line.speaker && (
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                      {line.speaker}
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm text-gray-400 line-through leading-relaxed">
+                  {line.original}
+                </p>
+              </div>
+            )}
+            <div className="px-5 py-3.5 bg-indigo-50/30">
+              {!hasOriginal && (
+                <span className="w-5 h-5 rounded-full bg-white/60 text-gray-500 text-[10px] font-bold flex items-center justify-center flex-shrink-0 mb-1.5">
                   {i + 1}
                 </span>
-                {line.speaker && (
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-                    {line.speaker}
-                  </span>
-                )}
-              </div>
-              <p className="text-sm text-gray-400 line-through leading-relaxed">
-                {line.original}
-              </p>
-            </div>
-            <div className="px-5 py-3.5 bg-indigo-50/30">
-              <p className="text-sm text-gray-900 font-medium leading-relaxed">
+              )}
+              <p className="text-sm text-gray-900 font-medium leading-relaxed whitespace-pre-wrap">
                 {line.adapted}
               </p>
             </div>
@@ -231,6 +249,7 @@ function EditableScript({ briefId, adId, initialLines, hadClientFeedback }: { br
   const [saved, setSaved] = useState(false)
 
   const hasChanges = JSON.stringify(lines) !== JSON.stringify(initialLines)
+  const hasOriginal = lines.some((l) => l.original?.trim())
 
   function updateLine(index: number, adapted: string) {
     setLines((prev) => {
@@ -256,7 +275,7 @@ function EditableScript({ briefId, adId, initialLines, hadClientFeedback }: { br
     <div>
       <div className="px-5 py-3 bg-gray-50/80 border-t border-b border-gray-100 flex items-center justify-between">
         <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-500">
-          Guión tropicalizado
+          {hasOriginal ? "Guión tropicalizado" : "Guión"}
         </p>
         <div className="flex items-center gap-2">
           <CopyScriptButton lines={lines} brandName={null} />
@@ -279,23 +298,30 @@ function EditableScript({ briefId, adId, initialLines, hadClientFeedback }: { br
       </div>
       <div className="divide-y divide-gray-100">
         {lines.map((line, i) => (
-          <div key={i} className="grid sm:grid-cols-2">
-            <div className="px-5 py-3.5 sm:border-r border-gray-100">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+          <div key={i} className={cn("grid", hasOriginal && "sm:grid-cols-2")}>
+            {hasOriginal && (
+              <div className="px-5 py-3.5 sm:border-r border-gray-100">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+                    {i + 1}
+                  </span>
+                  {line.speaker && (
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                      {line.speaker}
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm text-gray-400 line-through leading-relaxed">
+                  {line.original}
+                </p>
+              </div>
+            )}
+            <div className="px-5 py-3.5 bg-indigo-50/30">
+              {!hasOriginal && (
+                <span className="w-5 h-5 rounded-full bg-white/60 text-gray-500 text-[10px] font-bold flex items-center justify-center flex-shrink-0 mb-1.5">
                   {i + 1}
                 </span>
-                {line.speaker && (
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-                    {line.speaker}
-                  </span>
-                )}
-              </div>
-              <p className="text-sm text-gray-400 line-through leading-relaxed">
-                {line.original}
-              </p>
-            </div>
-            <div className="px-5 py-3.5 bg-indigo-50/30">
+              )}
               <textarea
                 value={line.adapted}
                 onChange={(e) => updateLine(i, e.target.value)}
