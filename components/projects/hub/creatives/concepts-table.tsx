@@ -247,6 +247,7 @@ function ConceptDetailModal({
   onNewAsset,
   onNewBrief,
   onQuickScript,
+  onAddScriptToBrief,
   onRequestAssets,
   onRefresh,
 }: {
@@ -263,6 +264,7 @@ function ConceptDetailModal({
   onNewAsset: () => void
   onNewBrief: () => void
   onQuickScript: () => void
+  onAddScriptToBrief: (brief: CreativeBrief) => void
   onRequestAssets: () => void
   onRefresh: () => void
 }) {
@@ -552,7 +554,15 @@ function ConceptDetailModal({
                           <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100">
                             <button
                               type="button"
+                              title="Agregar guión a este brief"
                               className="ml-2 p-1 rounded text-violet-300 hover:text-violet-600 hover:bg-violet-100 transition-colors"
+                              onClick={() => onAddScriptToBrief(b)}
+                            >
+                              <Plus className="w-3 h-3" />
+                            </button>
+                            <button
+                              type="button"
+                              className="p-1 rounded text-violet-300 hover:text-violet-600 hover:bg-violet-100 transition-colors"
                               onClick={() => {
                                 setBriefTitleDraft(b.title ?? "")
                                 setEditingBriefId(b.id)
@@ -1040,6 +1050,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], requests = [], pr
   const [requestForConceptId, setRequestForConceptId] = useState<string | null>(null)
   const [briefForConcept, setBriefForConcept] = useState<CreativeConcept | null>(null)
   const [quickScriptForConcept, setQuickScriptForConcept] = useState<CreativeConcept | null>(null)
+  const [addScriptToBrief, setAddScriptToBrief] = useState<CreativeBrief | null>(null)
   const [copied,        setCopied]          = useState(false)
   const [showBrainPicker, setShowBrainPicker] = useState(false)
   const [generateForLineId, setGenerateForLineId] = useState<string | null>(null)
@@ -1549,6 +1560,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], requests = [], pr
           onNewAsset={openDetailAsNewAsset}
           onNewBrief={() => { const c = detailConcept; setDetailConcept(null); setBriefForConcept(c) }}
           onQuickScript={() => { const c = detailConcept; setDetailConcept(null); setQuickScriptForConcept(c) }}
+          onAddScriptToBrief={(b) => { setDetailConcept(null); setAddScriptToBrief(b) }}
           onRequestAssets={() => setRequestForConceptId(detailConcept.id)}
           onRefresh={onRefresh}
         />
@@ -1636,6 +1648,22 @@ export function ConceptsTable({ concepts, assets, briefs = [], requests = [], pr
           onCreated={() => { setQuickScriptForConcept(null); onRefresh(); }}
         />
       )}
+
+      {/* Add another script (manual or AI) to a brief that already exists */}
+      {addScriptToBrief && (() => {
+        const scriptConcept = concepts.find((c) => c.id === addScriptToBrief.concept_id)
+        if (!scriptConcept) return null
+        return (
+          <QuickScriptModal
+            concept={scriptConcept}
+            projectId={projectId}
+            brandBrains={brandBrains}
+            existingBrief={addScriptToBrief}
+            onClose={() => setAddScriptToBrief(null)}
+            onCreated={() => { setAddScriptToBrief(null); onRefresh(); }}
+          />
+        )
+      })()}
 
       {/* Floating bulk action bar */}
       {selectedIds.size > 0 && (

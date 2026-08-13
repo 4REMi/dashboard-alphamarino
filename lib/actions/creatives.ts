@@ -534,6 +534,83 @@ export async function saveManualScript(
   return fresh as CreativeBrief
 }
 
+// Appends one more manual script to a brief that already exists, instead of
+// creating a new brief — lets an admin build up several script options
+// (manual and/or AI) under a single share link over time.
+export async function addManualScriptToBrief(
+  briefId: string,
+  projectId: string,
+  scriptText: string,
+): Promise<CreativeBrief> {
+  const supabase = await createClient()
+  const { role } = await getRole()
+  if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
+  const text = scriptText.trim()
+  if (!text) throw new Error("El guión no puede estar vacío")
+
+  const { data: existing } = await supabase.from("creative_briefs").select("adapted_script").eq("id", briefId).single()
+  if (!existing) throw new Error("Brief not found")
+  const scripts = normalizeScriptMap(existing.adapted_script)
+  const key = nextScriptKey(scripts, "manual")
+
+  const line: AdCloneLine = { speaker: null, original: "", adapted: text }
+  scripts[key] = [line]
+
+  await supabase.from("creative_briefs").update({
+    adapted_script: scripts,
+    updated_at: new Date().toISOString(),
+  }).eq("id", briefId)
+
+  revalidateProject(projectId)
+  const { data: fresh } = await supabase.from("creative_briefs").select("*, brand_brain:brand_brains!brand_brain_id(id, name, industry)").eq("id", briefId).single()
+  return fresh as CreativeBrief
+}
+
+// Same idea as addManualScriptToBrief, but for one or more AI-generated
+// drafts (Quick Create's kept variants) appended to an existing brief.
+export async function addScriptDraftsToBrief(
+  briefId: string,
+  projectId: string,
+  drafts: AdCloneLine[][],
+): Promise<CreativeBrief> {
+  const supabase = await createClient()
+  const { role } = await getRole()
+  if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
+  if (drafts.length === 0) throw new Error("No hay guiones para guardar")
+
+  const { data: existing } = await supabase.from("creative_briefs").select("adapted_script").eq("id", briefId).single()
+  if (!existing) throw new Error("Brief not found")
+  const scripts = normalizeScriptMap(existing.adapted_script)
+
+  drafts.forEach((lines) => { scripts[nextScriptKey(scripts, "gen")] = lines })
+
+  await supabase.from("creative_briefs").update({
+    adapted_script: scripts,
+    updated_at: new Date().toISOString(),
+  }).eq("id", briefId)
+
+  revalidateProject(projectId)
+  const { data: fresh } = await supabase.from("creative_briefs").select("*, brand_brain:brand_brains!brand_brain_id(id, name, industry)").eq("id", briefId).single()
+  return fresh as CreativeBrief
+}
+
+// A brief's adapted_script can be null, a legacy flat AdCloneLine[] (pre
+// multi-reference briefs), or the current Record<string, AdCloneLine[]> —
+// normalize to the record shape so appends have a stable place to write to.
+function normalizeScriptMap(raw: unknown): Record<string, AdCloneLine[]> {
+  if (!raw) return {}
+  if (Array.isArray(raw)) return { _single: raw as AdCloneLine[] }
+  return { ...(raw as Record<string, AdCloneLine[]>) }
+}
+
+// Finds the next unused "<prefix>_N" key so repeated appends never clobber
+// an earlier script (or the legacy "manual"/"gen_N" keys with no suffix).
+function nextScriptKey(scripts: Record<string, AdCloneLine[]>, prefix: "manual" | "gen"): string {
+  let n = 1
+  while (scripts[`${prefix}_${n}`] !== undefined || (n === 1 && scripts[prefix] !== undefined)) n++
+  return `${prefix}_${n}`
+}
+
 export async function generateBriefContent(briefId: string): Promise<BriefContent> {
   const supabase = await createClient()
   const { role } = await getRole()

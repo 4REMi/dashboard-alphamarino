@@ -6,7 +6,10 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { Brain, Sparkles, Copy, Check, Loader2, ExternalLink, RotateCcw, PenLine, ChevronLeft } from "lucide-react"
 import type { CreativeConcept, BrandBrain, CreativeBrief, AdCloneLine } from "@/lib/types"
-import { generateScriptDrafts, saveScriptDrafts, saveManualScript } from "@/lib/actions/creatives"
+import {
+  generateScriptDrafts, saveScriptDrafts, saveManualScript,
+  addScriptDraftsToBrief, addManualScriptToBrief,
+} from "@/lib/actions/creatives"
 import { SCRIPT_STRUCTURES, type ScriptStructureKey } from "@/lib/constants/creatives"
 
 interface Props {
@@ -14,15 +17,19 @@ interface Props {
   projectId: string
   brandBrains: BrandBrain[]
   projectBrandBrainId?: string
+  // When set, scripts are appended to this brief instead of creating a new
+  // one — lets an admin build up several script options (manual and/or AI)
+  // under a single share link.
+  existingBrief?: CreativeBrief
   onClose: () => void
   onCreated: (brief: CreativeBrief) => void
 }
 
 type Step = "choice" | "config" | "manual" | "preview" | "success"
 
-export function QuickScriptModal({ concept, projectId, brandBrains, projectBrandBrainId, onClose, onCreated }: Props) {
+export function QuickScriptModal({ concept, projectId, brandBrains, projectBrandBrainId, existingBrief, onClose, onCreated }: Props) {
   const [step, setStep] = useState<Step>("choice")
-  const [selectedBrainId, setSelectedBrainId] = useState(projectBrandBrainId ?? "")
+  const [selectedBrainId, setSelectedBrainId] = useState(existingBrief?.brand_brain_id ?? projectBrandBrainId ?? "")
   const [structureKey, setStructureKey] = useState<ScriptStructureKey | null>(null)
   const [drafts, setDrafts] = useState<AdCloneLine[][]>([])
   const [keep, setKeep] = useState<boolean[]>([])
@@ -53,7 +60,9 @@ export function QuickScriptModal({ concept, projectId, brandBrains, projectBrand
     setError(null)
     startTransition(async () => {
       try {
-        const brief = await saveScriptDrafts(projectId, concept.id, selectedBrainId, kept)
+        const brief = existingBrief
+          ? await addScriptDraftsToBrief(existingBrief.id, projectId, kept)
+          : await saveScriptDrafts(projectId, concept.id, selectedBrainId, kept)
         setGeneratedBrief(brief)
         setStep("success")
       } catch (e) {
@@ -67,7 +76,9 @@ export function QuickScriptModal({ concept, projectId, brandBrains, projectBrand
     setError(null)
     startTransition(async () => {
       try {
-        const brief = await saveManualScript(projectId, concept.id, selectedBrainId, manualText)
+        const brief = existingBrief
+          ? await addManualScriptToBrief(existingBrief.id, projectId, manualText)
+          : await saveManualScript(projectId, concept.id, selectedBrainId, manualText)
         setGeneratedBrief(brief)
         setStep("success")
       } catch (e) {
@@ -98,9 +109,9 @@ export function QuickScriptModal({ concept, projectId, brandBrains, projectBrand
               <Check className="w-6 h-6 text-emerald-600" />
             </div>
             <div className="text-center space-y-1">
-              <p className="text-sm font-semibold">Brief creado</p>
+              <p className="text-sm font-semibold">{existingBrief ? "Guión agregado" : "Brief creado"}</p>
               <p className="text-xs text-muted-foreground">
-                {step === "success" && keptCount > 0
+                {keptCount > 0
                   ? `${keptCount} guión${keptCount !== 1 ? "es" : ""} listo${keptCount !== 1 ? "s" : ""} para revisar y aprobar`
                   : "Guión listo para revisar y aprobar"}
               </p>
@@ -137,7 +148,7 @@ export function QuickScriptModal({ concept, projectId, brandBrains, projectBrand
             </DialogTitle>
           </DialogHeader>
           <p className="text-xs text-muted-foreground">
-            Nada se ha guardado todavía. Desmarca las opciones que no te convencen antes de crear el brief.
+            Nada se ha guardado todavía. Desmarca las opciones que no te convencen antes de {existingBrief ? "agregarlas al brief" : "crear el brief"}.
           </p>
 
           <div className="flex-1 overflow-y-auto space-y-3 py-2">
@@ -175,7 +186,7 @@ export function QuickScriptModal({ concept, projectId, brandBrains, projectBrand
             </Button>
             <Button onClick={handleSave} disabled={keptCount === 0 || isPending}>
               {isPending ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Check className="w-3.5 h-3.5 mr-1.5" />}
-              Crear brief con {keptCount} guión{keptCount !== 1 ? "es" : ""}
+              {existingBrief ? "Agregar" : "Crear brief con"} {keptCount} guión{keptCount !== 1 ? "es" : ""}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -243,7 +254,7 @@ export function QuickScriptModal({ concept, projectId, brandBrains, projectBrand
           </DialogHeader>
 
           <div className="space-y-4">
-            {!projectBrandBrainId && (
+            {!projectBrandBrainId && !existingBrief && (
               <section>
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Brand Brain</p>
                 {brandBrains.length === 0 ? (
@@ -298,7 +309,7 @@ export function QuickScriptModal({ concept, projectId, brandBrains, projectBrand
               {isPending ? (
                 <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Guardando…</>
               ) : (
-                <><Check className="w-3.5 h-3.5 mr-1.5" />Crear brief</>
+                <><Check className="w-3.5 h-3.5 mr-1.5" />{existingBrief ? "Agregar al brief" : "Crear brief"}</>
               )}
             </Button>
           </DialogFooter>
@@ -326,7 +337,7 @@ export function QuickScriptModal({ concept, projectId, brandBrains, projectBrand
             Se generarán <strong>3 guiones</strong> desde cero usando la estrategia ya cargada de este concepto (persona, dolor, transformación, objeción) — sin necesidad de un video de referencia.
           </p>
 
-          {!projectBrandBrainId && (
+          {!projectBrandBrainId && !existingBrief && (
             <section>
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Brand Brain</p>
               {brandBrains.length === 0 ? (
