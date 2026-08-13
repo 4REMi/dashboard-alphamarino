@@ -478,7 +478,7 @@ function ConceptDetailModal({
                   </button>
                   <button type="button" onClick={onQuickScript} className="flex items-center gap-1 text-xs text-violet-600 hover:text-violet-800 transition-colors">
                     <Sparkles className="w-3 h-3" />
-                    Guión rápido
+                    Agregar guión
                   </button>
                   <button type="button" onClick={onNewBrief} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
                     <Plus className="w-3 h-3" />

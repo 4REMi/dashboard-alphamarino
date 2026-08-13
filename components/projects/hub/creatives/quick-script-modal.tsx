@@ -4,9 +4,9 @@ import { useState, useTransition } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { Brain, Sparkles, Copy, Check, Loader2, ExternalLink, RotateCcw } from "lucide-react"
+import { Brain, Sparkles, Copy, Check, Loader2, ExternalLink, RotateCcw, PenLine, ChevronLeft } from "lucide-react"
 import type { CreativeConcept, BrandBrain, CreativeBrief, AdCloneLine } from "@/lib/types"
-import { generateScriptDrafts, saveScriptDrafts } from "@/lib/actions/creatives"
+import { generateScriptDrafts, saveScriptDrafts, saveManualScript } from "@/lib/actions/creatives"
 import { SCRIPT_STRUCTURES, type ScriptStructureKey } from "@/lib/constants/creatives"
 
 interface Props {
@@ -18,14 +18,15 @@ interface Props {
   onCreated: (brief: CreativeBrief) => void
 }
 
-type Step = "config" | "preview" | "success"
+type Step = "choice" | "config" | "manual" | "preview" | "success"
 
 export function QuickScriptModal({ concept, projectId, brandBrains, projectBrandBrainId, onClose, onCreated }: Props) {
-  const [step, setStep] = useState<Step>("config")
+  const [step, setStep] = useState<Step>("choice")
   const [selectedBrainId, setSelectedBrainId] = useState(projectBrandBrainId ?? "")
   const [structureKey, setStructureKey] = useState<ScriptStructureKey | null>(null)
   const [drafts, setDrafts] = useState<AdCloneLine[][]>([])
   const [keep, setKeep] = useState<boolean[]>([])
+  const [manualText, setManualText] = useState("")
   const [generatedBrief, setGeneratedBrief] = useState<CreativeBrief | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -61,6 +62,20 @@ export function QuickScriptModal({ concept, projectId, brandBrains, projectBrand
     })
   }
 
+  function handleSaveManual() {
+    if (!selectedBrainId || !manualText.trim()) return
+    setError(null)
+    startTransition(async () => {
+      try {
+        const brief = await saveManualScript(projectId, concept.id, selectedBrainId, manualText)
+        setGeneratedBrief(brief)
+        setStep("success")
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "No se pudo guardar el brief")
+      }
+    })
+  }
+
   function handleCopyLink() {
     if (!generatedBrief) return
     const url = `${window.location.origin}/share/brief/${generatedBrief.share_token}`
@@ -84,7 +99,11 @@ export function QuickScriptModal({ concept, projectId, brandBrains, projectBrand
             </div>
             <div className="text-center space-y-1">
               <p className="text-sm font-semibold">Brief creado</p>
-              <p className="text-xs text-muted-foreground">{keptCount} guión{keptCount !== 1 ? "es" : ""} listo{keptCount !== 1 ? "s" : ""} para revisar y aprobar</p>
+              <p className="text-xs text-muted-foreground">
+                {step === "success" && keptCount > 0
+                  ? `${keptCount} guión${keptCount !== 1 ? "es" : ""} listo${keptCount !== 1 ? "s" : ""} para revisar y aprobar`
+                  : "Guión listo para revisar y aprobar"}
+              </p>
             </div>
             <div className="w-full flex items-center gap-1.5 p-2 rounded-lg bg-muted/50 border">
               <input readOnly value={shareUrl} className="flex-1 text-xs bg-transparent border-0 outline-none truncate" />
@@ -164,14 +183,141 @@ export function QuickScriptModal({ concept, projectId, brandBrains, projectBrand
     )
   }
 
+  // ── Choice ──
+  if (step === "choice") {
+    return (
+      <Dialog open onOpenChange={onClose}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base">
+              Agregar guión — {concept.name ?? concept.angle_type ?? "Concepto"}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => setStep("config")}
+              className="w-full flex items-start gap-3 text-left px-4 py-3 rounded-lg border border-border hover:border-violet-300 hover:bg-violet-50/40 transition-all"
+            >
+              <Sparkles className="w-4 h-4 text-violet-500 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold">Guión con IA</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Genera 3 variantes desde cero usando la estrategia del concepto.</p>
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setStep("manual")}
+              className="w-full flex items-start gap-3 text-left px-4 py-3 rounded-lg border border-border hover:border-primary/40 hover:bg-muted/40 transition-all"
+            >
+              <PenLine className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold">Guión manual</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Pega o escribe un guión ya redactado, sin generación por IA.</p>
+              </div>
+            </button>
+          </div>
+
+          <DialogFooter className="pt-2 border-t">
+            <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    )
+  }
+
+  // ── Manual ──
+  if (step === "manual") {
+    return (
+      <Dialog open onOpenChange={onClose}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <button type="button" onClick={() => setStep("choice")} className="text-muted-foreground hover:text-foreground -ml-1">
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <PenLine className="w-4 h-4 text-muted-foreground" />
+              Guión manual — {concept.name ?? concept.angle_type ?? "Concepto"}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {!projectBrandBrainId && (
+              <section>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Brand Brain</p>
+                {brandBrains.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-4 text-center border rounded-lg">
+                    No hay Brand Brains. Crea uno en Ad Lab.
+                  </p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {brandBrains.map((brain) => (
+                      <button
+                        key={brain.id}
+                        type="button"
+                        onClick={() => setSelectedBrainId(brain.id)}
+                        className={cn(
+                          "flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all",
+                          selectedBrainId === brain.id
+                            ? "border-primary bg-primary/5 ring-1 ring-primary font-medium"
+                            : "border-border hover:border-primary/30"
+                        )}
+                      >
+                        {brain.logo_square_url || brain.logo_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={brain.logo_square_url || brain.logo_url!} alt="" className="w-5 h-5 rounded object-contain" />
+                        ) : (
+                          <Brain className="w-3.5 h-3.5 text-primary/60" />
+                        )}
+                        {brain.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
+
+            <section>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Guión</p>
+              <textarea
+                value={manualText}
+                onChange={(e) => setManualText(e.target.value)}
+                rows={10}
+                placeholder="Pega o escribe el guión completo aquí…"
+                className="w-full text-sm rounded-lg border border-input bg-background px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+              />
+            </section>
+
+            {error && <p className="text-xs text-destructive">{error}</p>}
+          </div>
+
+          <DialogFooter className="gap-2 pt-2 border-t">
+            <Button variant="outline" onClick={onClose}>Cancelar</Button>
+            <Button onClick={handleSaveManual} disabled={!selectedBrainId || !manualText.trim() || isPending}>
+              {isPending ? (
+                <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Guardando…</>
+              ) : (
+                <><Check className="w-3.5 h-3.5 mr-1.5" />Crear brief</>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    )
+  }
+
   // ── Config ──
   return (
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
+            <button type="button" onClick={() => setStep("choice")} className="text-muted-foreground hover:text-foreground -ml-1">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
             <Sparkles className="w-4 h-4 text-violet-500" />
-            Guión rápido — {concept.name ?? concept.angle_type ?? "Concepto"}
+            Guión con IA — {concept.name ?? concept.angle_type ?? "Concepto"}
           </DialogTitle>
         </DialogHeader>
 

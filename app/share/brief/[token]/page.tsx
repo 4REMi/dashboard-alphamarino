@@ -79,17 +79,19 @@ export default async function ShareBriefPage({ params }: Props) {
     })
   })
 
-  // Scripts written from scratch (Quick Create) have no attached reference ad —
-  // surface them as their own entry so editors can still see them here.
+  // Scripts written from scratch (Quick Create AI drafts, or a manual paste)
+  // have no attached reference ad — surface them as their own entry so
+  // editors can still see them here.
   if (scriptMap) {
     const coveredIds = new Set(references.map((r) => r.id))
-    Object.entries(scriptMap).forEach(([key, lines], i) => {
+    let genIndex = 0
+    Object.entries(scriptMap).forEach(([key, lines]) => {
       if (coveredIds.has(key) || !lines?.length) return
       const review = scriptReviews[key]
       references.push({
         id: key,
         type: "video",
-        name: `Guión generado — opción ${i + 1}`,
+        name: key === "manual" ? "Guión manual" : `Guión generado — opción ${++genIndex}`,
         script: lines,
         clientStatus: review?.client_status ?? null,
         clientFeedback: review?.client_feedback ?? null,

@@ -499,6 +499,41 @@ export async function saveScriptDrafts(
   return fresh as CreativeBrief
 }
 
+// Manual script entry — no AI involved. The admin pastes/writes the full
+// script as a single free-text block, stored as one AdCloneLine so it slots
+// into the same adapted_script shape (and the same share-page / editable
+// script UI) as AI-generated scripts.
+export async function saveManualScript(
+  projectId: string,
+  conceptId: string,
+  brandBrainId: string,
+  scriptText: string,
+): Promise<CreativeBrief> {
+  const supabase = await createClient()
+  const { role } = await getRole()
+  if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
+  const text = scriptText.trim()
+  if (!text) throw new Error("El guión no puede estar vacío")
+
+  const { data: concept } = await supabase
+    .from("creative_concepts")
+    .select("brand_line_id")
+    .eq("id", conceptId)
+    .single()
+
+  const brief = await createBrief(projectId, conceptId, brandBrainId, [], [], concept?.brand_line_id ?? undefined)
+
+  const line: AdCloneLine = { speaker: null, original: "", adapted: text }
+  await supabase.from("creative_briefs").update({
+    adapted_script: { manual: [line] },
+    updated_at: new Date().toISOString(),
+  }).eq("id", brief.id)
+
+  revalidateProject(projectId)
+  const { data: fresh } = await supabase.from("creative_briefs").select("*, brand_brain:brand_brains!brand_brain_id(id, name, industry)").eq("id", brief.id).single()
+  return fresh as CreativeBrief
+}
+
 export async function generateBriefContent(briefId: string): Promise<BriefContent> {
   const supabase = await createClient()
   const { role } = await getRole()
