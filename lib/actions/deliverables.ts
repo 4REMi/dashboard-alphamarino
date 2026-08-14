@@ -38,7 +38,7 @@ export async function submitDeliverable(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error("Not authenticated")
 
-  const projectId    = formData.get("project_id") as string
+  const projectId    = (formData.get("project_id") as string) || null
   const taskId       = formData.get("task_id") as string
   const deliverableId = (formData.get("deliverable_id") as string) || null
   const type         = formData.get("type") as DeliverableType
@@ -69,10 +69,11 @@ export async function submitDeliverable(formData: FormData) {
     if (error) throw error
   }
 
-  revalidatePath(`/projects/${projectId}`)
+  if (projectId) revalidatePath(`/projects/${projectId}`)
+  revalidatePath("/tasks")
 }
 
-export async function deleteDeliverable(id: string, projectId: string) {
+export async function deleteDeliverable(id: string, projectId: string | null) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error("Not authenticated")
@@ -89,13 +90,14 @@ export async function deleteDeliverable(id: string, projectId: string) {
   const { error } = await admin.from("deliverables").delete().eq("id", id)
   if (error) throw error
 
-  revalidatePath(`/projects/${projectId}`)
+  if (projectId) revalidatePath(`/projects/${projectId}`)
+  revalidatePath("/tasks")
 }
 
 export async function toggleRequiresDeliverable(
   taskId: string,
   requires: boolean,
-  projectId: string
+  projectId: string | null
 ) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -116,5 +118,6 @@ export async function toggleRequiresDeliverable(
     .eq("id", taskId)
 
   if (error) throw error
-  revalidatePath(`/projects/${projectId}`)
+  if (projectId) revalidatePath(`/projects/${projectId}`)
+  revalidatePath("/tasks")
 }

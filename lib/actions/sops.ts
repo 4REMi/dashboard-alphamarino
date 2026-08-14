@@ -99,15 +99,16 @@ export async function assignSopToTaskSetTask(taskSetTaskId: string, sopId: strin
   revalidatePath("/operations")
 }
 
-// Assign or override a SOP on a project task
-export async function assignSopToTask(taskId: string, sopId: string | null, projectId: string): Promise<void> {
+// Assign or override a SOP on a task (standalone tasks pass projectId = null)
+export async function assignSopToTask(taskId: string, sopId: string | null, projectId: string | null): Promise<void> {
   const supabase = createAdminClient()
   const { error } = await supabase
     .from("tasks")
     .update({ sop_id: sopId })
     .eq("id", taskId)
   if (error) throw error
-  revalidatePath(`/projects/${projectId}`)
+  if (projectId) revalidatePath(`/projects/${projectId}`)
+  revalidatePath("/tasks")
 }
 
 // ============================================================

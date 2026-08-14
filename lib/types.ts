@@ -196,7 +196,7 @@ export type DeliverableType = "text" | "document" | "image"
 export interface Deliverable {
   id: string
   task_id: string
-  project_id: string
+  project_id: string | null
   type: DeliverableType
   title: string
   content: string | null      // for type = 'text'
@@ -212,7 +212,7 @@ export interface Deliverable {
 
 export interface Task {
   id: string
-  project_id: string
+  project_id: string | null
   title: string
   description: string | null
   status: TaskStatus

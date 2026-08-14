@@ -6,7 +6,9 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { can } from "@/lib/permissions"
 import type { TaskStatus, TaskChecklistItem, PhaseStatus } from "@/lib/types"
 
-async function requireTaskPermission(projectId: string) {
+// projectId is null for standalone tasks (not tied to any project) — the
+// project-existence check only applies when a project is actually claimed.
+async function requireTaskPermission(projectId: string | null) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error("Not authenticated")
@@ -19,22 +21,29 @@ async function requireTaskPermission(projectId: string) {
 
   if (!can(profile, "manage_tasks")) throw new Error("Permission denied")
 
-  const { data: project } = await supabase
-    .from("projects")
-    .select("id")
-    .eq("id", projectId)
-    .single()
+  if (projectId) {
+    const { data: project } = await supabase
+      .from("projects")
+      .select("id")
+      .eq("id", projectId)
+      .single()
 
-  if (!project) throw new Error("Project not found or access denied")
+    if (!project) throw new Error("Project not found or access denied")
+  }
 
   return user
+}
+
+function revalidateTaskPaths(projectId: string | null) {
+  if (projectId) revalidatePath(`/projects/${projectId}`)
+  revalidatePath("/tasks")
 }
 
 export async function getTasks(projectId?: string) {
   const supabase = await createClient()
   let query = supabase
     .from("tasks")
-    .select("*, project:projects(id, name), assignee:profiles(id, full_name, avatar_url), phase:project_phases(id, name, phase_order), checklist_items:task_checklist_items(id, text, is_blocking, is_checked, item_order)")
+    .select("*, project:projects(id, name, status), assignee:profiles(id, full_name, avatar_url), phase:project_phases(id, name, phase_order), checklist_items:task_checklist_items(id, text, is_blocking, is_checked, item_order)")
     .order("created_at", { ascending: false })
 
   if (projectId) {
@@ -47,7 +56,7 @@ export async function getTasks(projectId?: string) {
 }
 
 export async function createTask(formData: FormData) {
-  const projectId = formData.get("project_id") as string
+  const projectId = (formData.get("project_id") as string) || null
   await requireTaskPermission(projectId)
 
   const admin = createAdminClient()
@@ -63,12 +72,11 @@ export async function createTask(formData: FormData) {
   } as Record<string, unknown>)
 
   if (error) throw error
-  revalidatePath(`/projects/${projectId}`)
-  revalidatePath("/tasks")
+  revalidateTaskPaths(projectId)
 }
 
 export async function updateTask(id: string, formData: FormData) {
-  const projectId = formData.get("project_id") as string
+  const projectId = (formData.get("project_id") as string) || null
   await requireTaskPermission(projectId)
 
   const admin = createAdminClient()
@@ -86,11 +94,10 @@ export async function updateTask(id: string, formData: FormData) {
     .eq("id", id)
 
   if (error) throw error
-  revalidatePath(`/projects/${projectId}`)
-  revalidatePath("/tasks")
+  revalidateTaskPaths(projectId)
 }
 
-export async function updateTaskUrgent(id: string, isUrgent: boolean, projectId: string) {
+export async function updateTaskUrgent(id: string, isUrgent: boolean, projectId: string | null) {
   await requireTaskPermission(projectId)
 
   const admin = createAdminClient()
@@ -100,11 +107,10 @@ export async function updateTaskUrgent(id: string, isUrgent: boolean, projectId:
     .eq("id", id)
 
   if (error) throw error
-  revalidatePath(`/projects/${projectId}`)
-  revalidatePath("/tasks")
+  revalidateTaskPaths(projectId)
 }
 
-export async function updateTaskAssignee(id: string, assigneeId: string | null, projectId: string) {
+export async function updateTaskAssignee(id: string, assigneeId: string | null, projectId: string | null) {
   await requireTaskPermission(projectId)
 
   const admin = createAdminClient()
@@ -114,11 +120,10 @@ export async function updateTaskAssignee(id: string, assigneeId: string | null, 
     .eq("id", id)
 
   if (error) throw error
-  revalidatePath(`/projects/${projectId}`)
-  revalidatePath("/tasks")
+  revalidateTaskPaths(projectId)
 }
 
-export async function updateTaskStatus(id: string, status: TaskStatus, projectId: string) {
+export async function updateTaskStatus(id: string, status: TaskStatus, projectId: string | null) {
   await requireTaskPermission(projectId)
 
   const admin = createAdminClient()
@@ -148,11 +153,10 @@ export async function updateTaskStatus(id: string, status: TaskStatus, projectId
     await syncPhaseStatusFromTasks(admin, data.phase_id)
   }
 
-  revalidatePath(`/projects/${projectId}`)
-  revalidatePath("/tasks")
+  revalidateTaskPaths(projectId)
 }
 
-export async function deleteTask(id: string, projectId: string) {
+export async function deleteTask(id: string, projectId: string | null) {
   await requireTaskPermission(projectId)
 
   const admin = createAdminClient()
@@ -165,8 +169,7 @@ export async function deleteTask(id: string, projectId: string) {
     await syncPhaseStatusFromTasks(admin, task.phase_id)
   }
 
-  revalidatePath(`/projects/${projectId}`)
-  revalidatePath("/tasks")
+  revalidateTaskPaths(projectId)
 }
 
 // Keep task status in sync with checklist completion: fully checked -> Done,
@@ -251,7 +254,7 @@ export async function createChecklistItem(
   taskId: string,
   text: string,
   isBlocking: boolean,
-  projectId: string
+  projectId: string | null
 ): Promise<TaskChecklistItem> {
   await requireTaskPermission(projectId)
   const admin = createAdminClient()
@@ -270,15 +273,14 @@ export async function createChecklistItem(
     .select()
     .single()
   if (error) throw error
-  revalidatePath(`/projects/${projectId}`)
-  revalidatePath("/tasks")
+  revalidateTaskPaths(projectId)
   return data as TaskChecklistItem
 }
 
 export async function toggleChecklistItem(
   itemId: string,
   isChecked: boolean,
-  projectId: string
+  projectId: string | null
 ) {
   await requireTaskPermission(projectId)
   const admin = createAdminClient()
@@ -292,14 +294,13 @@ export async function toggleChecklistItem(
 
   await syncTaskStatusFromChecklist(admin, data.task_id)
 
-  revalidatePath(`/projects/${projectId}`)
-  revalidatePath("/tasks")
+  revalidateTaskPaths(projectId)
 }
 
 export async function updateChecklistItem(
   itemId: string,
   fields: { text?: string; is_blocking?: boolean },
-  projectId: string
+  projectId: string | null
 ) {
   await requireTaskPermission(projectId)
   const admin = createAdminClient()
@@ -308,11 +309,10 @@ export async function updateChecklistItem(
     .update(fields)
     .eq("id", itemId)
   if (error) throw error
-  revalidatePath(`/projects/${projectId}`)
-  revalidatePath("/tasks")
+  revalidateTaskPaths(projectId)
 }
 
-export async function deleteChecklistItem(itemId: string, projectId: string) {
+export async function deleteChecklistItem(itemId: string, projectId: string | null) {
   await requireTaskPermission(projectId)
   const admin = createAdminClient()
   const { error } = await admin
@@ -320,13 +320,12 @@ export async function deleteChecklistItem(itemId: string, projectId: string) {
     .delete()
     .eq("id", itemId)
   if (error) throw error
-  revalidatePath(`/projects/${projectId}`)
-  revalidatePath("/tasks")
+  revalidateTaskPaths(projectId)
 }
 
 export async function reorderChecklistItems(
   orderedIds: string[],
-  projectId: string
+  projectId: string | null
 ) {
   await requireTaskPermission(projectId)
   const admin = createAdminClient()
@@ -335,6 +334,5 @@ export async function reorderChecklistItems(
       admin.from("task_checklist_items").update({ item_order: index }).eq("id", id)
     )
   )
-  revalidatePath(`/projects/${projectId}`)
-  revalidatePath("/tasks")
+  revalidateTaskPaths(projectId)
 }

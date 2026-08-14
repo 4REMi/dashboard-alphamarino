@@ -43,7 +43,7 @@ function typeIcon(t: DeliverableType) {
 
 interface DeliverableDrawerProps {
   task: Task | null
-  projectId: string
+  projectId: string | null
   deliverable: Deliverable | null
   isAdmin: boolean
   onClose: () => void
@@ -82,7 +82,7 @@ export function DeliverableDrawer({
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const fd = new FormData(e.currentTarget)
-    fd.set("project_id", projectId)
+    fd.set("project_id", projectId ?? "")
     fd.set("task_id", task!.id)
     fd.set("type", type)
     if (deliverable) fd.set("deliverable_id", deliverable.id)

@@ -19,7 +19,12 @@ export default async function TasksPage() {
   const isAdmin = profile?.role === "admin"
 
   const allTasks = (await getTasks()) as Task[]
-  const tasks = isAdmin ? allTasks : allTasks.filter((t) => t.assignee_id === user!.id)
+  // Tasks with no project (standalone) always show. Tasks tied to a project
+  // only show while that project is still Active — a finished/archived
+  // project's leftover tasks were the biggest part of what made this page
+  // huge and slow to begin with.
+  const liveTasks = allTasks.filter((t) => !t.project || t.project.status === "Active")
+  const tasks = isAdmin ? liveTasks : liveTasks.filter((t) => t.assignee_id === user!.id)
 
   const [employees, rawProjects, sops, rawDeliverables] = await Promise.all([
     getEmployees() as Promise<Profile[]>,
@@ -27,7 +32,9 @@ export default async function TasksPage() {
     getSops().catch(() => []),
     getDeliverablesForTasks(tasks.map((t) => t.id)).catch(() => []),
   ])
-  const projects = (rawProjects as { id: string; name: string }[]).map((p) => ({ id: p.id, name: p.name }))
+  const projects = (rawProjects as { id: string; name: string; status: string }[])
+    .filter((p) => p.status === "Active")
+    .map((p) => ({ id: p.id, name: p.name }))
   const deliverablesByTaskId = Object.fromEntries(
     (rawDeliverables as Deliverable[]).map((d) => [d.task_id, d])
   ) as Record<string, Deliverable>
@@ -87,14 +94,16 @@ export default async function TasksPage() {
         </div>
       </div>
 
-      {projectEntries.map(([projectId, projectTasks]) => {
-        const projectName = (projectTasks[0]?.project as { name: string } | undefined)?.name ?? t("project")
+      {projectEntries.map(([projectKey, projectTasks]) => {
+        const projectName = projectKey === "no-project"
+          ? "Sin proyecto"
+          : (projectTasks[0]?.project as { name: string } | undefined)?.name ?? t("project")
         return (
-          <section key={projectId}>
+          <section key={projectKey}>
             <h2 className="text-base font-semibold mb-3 border-b pb-2">{projectName}</h2>
             <TaskTable
               tasks={projectTasks}
-              projectId={projectId}
+              projectId={projectKey === "no-project" ? null : projectKey}
               employees={employees}
               isAdmin={isAdmin}
               deliverablesByTaskId={deliverablesByTaskId}

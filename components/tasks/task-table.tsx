@@ -63,7 +63,7 @@ function StatusPicker({
   onStatusChange,
 }: {
   task: Task
-  projectId: string
+  projectId: string | null
   checklistItems?: TaskChecklistItem[]
   onStatusChange?: (status: TaskStatus) => void
 }) {
@@ -196,7 +196,7 @@ function StatusPicker({
 
 // ─── Urgent Flag ──────────────────────────────────────────────────────────────
 
-function UrgentFlag({ task, projectId }: { task: Task; projectId: string }) {
+function UrgentFlag({ task, projectId }: { task: Task; projectId: string | null }) {
   const [optimistic, setOptimistic] = useState(task.is_urgent ?? false)
   const [isPending, startTransition] = useTransition()
 
@@ -230,7 +230,7 @@ function UrgentFlag({ task, projectId }: { task: Task; projectId: string }) {
 
 // ─── Assignee Picker ──────────────────────────────────────────────────────────
 
-function AssigneePicker({ task, projectId, employees, onAssigneeChange }: { task: Task; projectId: string; employees: Profile[]; onAssigneeChange?: (id: string | null) => void }) {
+function AssigneePicker({ task, projectId, employees, onAssigneeChange }: { task: Task; projectId: string | null; employees: Profile[]; onAssigneeChange?: (id: string | null) => void }) {
   const tCommon = useTranslations("common")
   const [open, setOpen] = useState(false)
   const [dropPos, setDropPos] = useState({ top: 0, left: 0 })
@@ -380,7 +380,7 @@ function SopBlock({
   isAdmin,
 }: {
   task: Task
-  projectId: string
+  projectId: string | null
   sops: Sop[]
   isAdmin: boolean
 }) {
@@ -608,7 +608,7 @@ function ChecklistEditor({
   onItemsChange,
 }: {
   taskId: string
-  projectId: string
+  projectId: string | null
   initialItems: TaskChecklistItem[]
   onItemsChange: (items: TaskChecklistItem[]) => void
 }) {
@@ -782,7 +782,7 @@ function TaskDetailModal({
   onTaskUpdate,
 }: {
   task: Task
-  projectId: string
+  projectId: string | null
   employees: Profile[]
   isAdmin: boolean
   sops: Sop[]
@@ -811,7 +811,7 @@ function TaskDetailModal({
   function handleSave(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const fd = new FormData(e.currentTarget)
-    fd.set("project_id", projectId)
+    fd.set("project_id", projectId ?? "")
     // include current status/assignee so they're preserved
     fd.set("status", currentStatus)
     fd.set("assignee_id", currentAssigneeId ?? "")
@@ -983,7 +983,7 @@ function TaskDetailModal({
 
 function TaskCard({ task, projectId, deliverable, onDeliverableClick, onCardClick }: {
   task: Task
-  projectId: string
+  projectId: string | null
   deliverable: Deliverable | null
   onDeliverableClick: (task: Task) => void
   onCardClick: (task: Task) => void
@@ -1086,7 +1086,7 @@ function TaskCard({ task, projectId, deliverable, onDeliverableClick, onCardClic
 
 function TaskRow({ task, projectId, employees, isAdmin, deliverable, onDeliverableClick, onRowClick, onTaskUpdate, showPhaseCol = true }: {
   task: Task
-  projectId: string
+  projectId: string | null
   employees: Profile[]
   isAdmin: boolean
   deliverable: Deliverable | null
@@ -1267,7 +1267,7 @@ type GroupMode   = "status" | "phase"
 
 interface TaskTableProps {
   tasks: Task[]
-  projectId: string
+  projectId: string | null
   employees: Profile[]
   isAdmin: boolean
   deliverablesByTaskId?: Record<string, Deliverable>

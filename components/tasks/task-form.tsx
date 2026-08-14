@@ -32,21 +32,22 @@ export function TaskForm({ projectId, projects, task, employees, trigger, onCrea
   const [assigneeId, setAssigneeId] = useState<string>(task?.assignee_id ?? "none")
   const [isUrgent, setIsUrgent] = useState(task?.is_urgent ?? false)
   const [requiresDeliverable, setRequiresDeliverable] = useState(task?.requires_deliverable ?? false)
-  const [selectedProjectId, setSelectedProjectId] = useState<string>(projectId ?? task?.project_id ?? "")
+  // "none" is a sentinel — Radix Select can't use an empty string value.
+  // Maps to a null project_id (standalone task) on submit.
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(projectId ?? task?.project_id ?? "none")
   const [loading, setLoading] = useState(false)
 
   const needsProjectPicker = !projectId && !!projects
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
-    if (!selectedProjectId) return
     setLoading(true)
     const formData = new FormData(e.currentTarget)
     formData.set("status", status)
     formData.set("is_urgent", String(isUrgent))
     formData.set("requires_deliverable", String(requiresDeliverable))
     formData.set("assignee_id", assigneeId === "none" ? "" : assigneeId)
-    formData.set("project_id", selectedProjectId)
+    formData.set("project_id", selectedProjectId === "none" ? "" : selectedProjectId)
 
     try {
       if (task) {
@@ -79,12 +80,13 @@ export function TaskForm({ projectId, projects, task, employees, trigger, onCrea
         <form onSubmit={handleSubmit} className="space-y-4">
           {needsProjectPicker && (
             <div className="space-y-2">
-              <Label>Proyecto *</Label>
+              <Label>Proyecto</Label>
               <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
                 <SelectTrigger>
                   <SelectValue placeholder="Selecciona un proyecto" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="none">Sin proyecto</SelectItem>
                   {projects!.map((p) => (
                     <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
                   ))}
@@ -202,7 +204,7 @@ export function TaskForm({ projectId, projects, task, employees, trigger, onCrea
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-            <Button type="submit" disabled={loading || !selectedProjectId}>
+            <Button type="submit" disabled={loading}>
               {loading ? "Guardando..." : task ? "Actualizar" : "Crear"}
             </Button>
           </DialogFooter>
