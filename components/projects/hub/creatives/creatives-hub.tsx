@@ -3,8 +3,7 @@
 import { useState, useEffect, useTransition } from "react"
 import { ConceptsTable } from "./concepts-table"
 import { getCreativeConcepts, getCreativeAssets, getBriefsForProject } from "@/lib/actions/creatives"
-import { getRequestsForProject } from "@/lib/actions/creative-requests"
-import type { CreativeConcept, CreativeAsset, CreativeBrief, CreativeRequest, PaidMediaCycle } from "@/lib/types"
+import type { CreativeConcept, CreativeAsset, CreativeBrief, PaidMediaCycle } from "@/lib/types"
 import { formatCycleRange } from "@/lib/utils"
 import { Loader2, ChevronDown } from "lucide-react"
 
@@ -40,7 +39,6 @@ export function CreativesHub({
   const [concepts, setConcepts] = useState<CreativeConcept[]>(initialConcepts)
   const [assets, setAssets]     = useState<CreativeAsset[]>(initialAssets)
   const [briefs, setBriefs]     = useState<CreativeBrief[]>([])
-  const [requests, setRequests] = useState<CreativeRequest[]>([])
   const [isLoading, startLoad]  = useTransition()
 
   const selectedCycle = cycles.find((c) => c.id === selectedCycleId) ?? null
@@ -51,16 +49,14 @@ export function CreativesHub({
   function reload() {
     if (!selectedCycleId) return
     startLoad(async () => {
-      const [c, a, b, r] = await Promise.all([
+      const [c, a, b] = await Promise.all([
         getCreativeConcepts(projectId, selectedCycleId),
         getCreativeAssets(projectId, selectedCycleId),
         getBriefsForProject(projectId),
-        getRequestsForProject(projectId).catch(() => [] as CreativeRequest[]),
       ])
       setConcepts(c)
       setAssets(a)
       setBriefs(b)
-      setRequests(r)
     })
   }
 
@@ -116,7 +112,6 @@ export function CreativesHub({
         concepts={concepts}
         assets={assets}
         briefs={briefs}
-        requests={requests}
         projectId={projectId}
         cycleId={selectedCycleId}
         isAdminOrSubadmin={canEdit}

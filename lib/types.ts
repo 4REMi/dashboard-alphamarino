@@ -798,7 +798,6 @@ export interface CreativeAsset {
   file_path: string | null
   thumbnail_path: string | null
   file_type: string | null
-  script_key: string | null
   production_status: ProductionStatus
   client_visible: boolean
   client_status: ClientReviewStatus | null
@@ -1060,36 +1059,6 @@ export interface ImageClone {
   updated_at: string
   brand_brain?: Pick<BrandBrain, "id" | "name"> | null
   saved_ad?: Pick<SavedAd, "id" | "page_name" | "cached_image_url" | "image_url"> | null
-}
-
-// ============================================================
-// CREATIVE REQUESTS
-// ============================================================
-
-export type CreativeRequestTipo = "video" | "imagen"
-export type CreativeRequestStatus = "pending" | "fulfilled" | "cancelled"
-
-export interface CreativeRequest {
-  id: string
-  project_id: string
-  concept_id: string
-  brief_id: string | null
-  tipo: CreativeRequestTipo
-  assigned_to: string | null
-  status: CreativeRequestStatus
-  notes: string | null
-  script_key: string | null
-  image_clone_id: string | null
-  fulfilled_by_asset_id: string | null
-  created_by: string | null
-  created_at: string
-  updated_at: string
-  // relations
-  assigned_to_profile?: Pick<Profile, "id" | "full_name" | "avatar_url"> | null
-  image_clone?: Pick<ImageClone, "id" | "generated_image_urls" | "status"> | null
-  fulfilled_by_asset?: Pick<CreativeAsset, "id" | "asset_url" | "thumbnail_path" | "file_type"> | null
-  project?: { id: string; name: string } | null
-  concept?: Pick<CreativeConcept, "id" | "name" | "angle_type"> | null
 }
 
 // ============================================================

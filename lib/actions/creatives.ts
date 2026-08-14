@@ -9,7 +9,6 @@ import type {
 } from "@/lib/types"
 import { adaptWithClaude, aaiPost, aaiGet, writeScriptFromConcept } from "@/lib/actions/ad-clone"
 import type { ScriptStructureKey } from "@/lib/constants/creatives"
-import { linkAssetToRequest } from "@/lib/actions/creative-requests"
 import { formatCycleRange } from "@/lib/utils"
 
 // ── helpers ──────────────────────────────────────────────────
@@ -271,7 +270,7 @@ export async function createAsset(projectId: string, formData: FormData): Promis
   const { role, userId } = await getRole()
   await assertCanManageAssets(projectId, role, userId)
 
-  const { data, error } = await supabase.from("creative_assets").insert({
+  const { error } = await supabase.from("creative_assets").insert({
     project_id:     projectId,
     cycle_id:       (formData.get("cycle_id") as string) || null,
     concept_id:     (formData.get("concept_id") as string) || null,
@@ -282,19 +281,13 @@ export async function createAsset(projectId: string, formData: FormData): Promis
     file_type:      (formData.get("file_type") as string) || null,
     format:         (formData.get("format") as string) || null,
     platform:       (formData.get("platform") as string) || null,
-    script_key:     (formData.get("script_key") as string) || null,
     // Every new asset starts hidden from the client, regardless of whatever
     // the column's default happens to be — a project manager has to
     // deliberately publish it (toggleClientVisible) before the client sees
     // it. This is the review gate between "editor uploaded" and "client can see."
     client_visible: false,
-  }).select("id").single()
+  })
   if (error) throw error
-
-  const fulfillsRequestId = (formData.get("fulfills_request_id") as string) || null
-  if (fulfillsRequestId && data) {
-    await linkAssetToRequest(fulfillsRequestId, data.id)
-  }
 
   revalidateProject(projectId)
 }
@@ -317,7 +310,6 @@ export async function updateAsset(
     file_type:      (formData.get("file_type") as string) || null,
     format:         (formData.get("format") as string) || null,
     platform:       (formData.get("platform") as string) || null,
-    script_key:     (formData.get("script_key") as string) || null,
   }).eq("id", id)
   if (error) throw error
   revalidateProject(projectId)
