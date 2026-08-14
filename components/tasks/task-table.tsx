@@ -47,6 +47,13 @@ const TASK_STATUS_KEY: Record<TaskStatus, "todo" | "inProgress" | "done"> = {
   "Done":        "done",
 }
 
+// Sortable due-date key: sooner is smaller, no due date always sorts last —
+// used as a tiebreaker so ad-hoc tasks (which share task_order 0) still
+// surface in a sensible order instead of falling straight to created_at.
+function dueDateRank(t: Task): number {
+  return t.due_date ? new Date(t.due_date).getTime() : Infinity
+}
+
 // ─── Status Picker ────────────────────────────────────────────────────────────
 
 function StatusPicker({
@@ -1318,6 +1325,8 @@ export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesBy
         if (aOrder !== bOrder) return aOrder - bOrder
         const diff = (a.task_order ?? 0) - (b.task_order ?? 0)
         if (diff !== 0) return diff
+        const dueDiff = dueDateRank(a) - dueDateRank(b)
+        if (dueDiff !== 0) return dueDiff
         return a.created_at.localeCompare(b.created_at)
       }),
   })).filter((g) => g.tasks.length > 0)
@@ -1348,10 +1357,11 @@ export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesBy
       map.get(key)!.tasks.push(t)
     }
 
-    // Sort within each group by task_order then created_at
+    // Sort within each group by task_order, then soonest due date, then created_at
     for (const g of map.values()) {
       g.tasks.sort((a, b) =>
         (a.task_order ?? 0) - (b.task_order ?? 0) ||
+        dueDateRank(a) - dueDateRank(b) ||
         a.created_at.localeCompare(b.created_at)
       )
     }

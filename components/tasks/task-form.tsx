@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { createTask, updateTask } from "@/lib/actions/tasks"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,37 +14,49 @@ import type { Task, Profile } from "@/lib/types"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
 
 interface TaskFormProps {
-  projectId: string
+  // Fixed project context (project hub). Omit and pass `projects` instead
+  // when the caller spans multiple projects (the standalone Tasks page) and
+  // the user needs to pick which project the new task belongs to.
+  projectId?: string
+  projects?: { id: string; name: string }[]
   task?: Task
   employees: Profile[]
   trigger?: React.ReactNode
+  onCreated?: () => void
 }
 
-export function TaskForm({ projectId, task, employees, trigger }: TaskFormProps) {
+export function TaskForm({ projectId, projects, task, employees, trigger, onCreated }: TaskFormProps) {
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   const [status, setStatus] = useState<string>(task?.status ?? "Todo")
   const [assigneeId, setAssigneeId] = useState<string>(task?.assignee_id ?? "none")
   const [isUrgent, setIsUrgent] = useState(task?.is_urgent ?? false)
   const [requiresDeliverable, setRequiresDeliverable] = useState(task?.requires_deliverable ?? false)
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(projectId ?? task?.project_id ?? "")
   const [loading, setLoading] = useState(false)
+
+  const needsProjectPicker = !projectId && !!projects
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
+    if (!selectedProjectId) return
     setLoading(true)
     const formData = new FormData(e.currentTarget)
     formData.set("status", status)
     formData.set("is_urgent", String(isUrgent))
     formData.set("requires_deliverable", String(requiresDeliverable))
     formData.set("assignee_id", assigneeId === "none" ? "" : assigneeId)
-    formData.set("project_id", projectId)
+    formData.set("project_id", selectedProjectId)
 
     try {
       if (task) {
         await updateTask(task.id, formData)
       } else {
         await createTask(formData)
+        onCreated?.()
       }
       setOpen(false)
+      router.refresh()
     } finally {
       setLoading(false)
     }
@@ -64,6 +77,21 @@ export function TaskForm({ projectId, task, employees, trigger }: TaskFormProps)
           <DialogTitle>{task ? "Editar Tarea" : "Nueva Tarea"}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {needsProjectPicker && (
+            <div className="space-y-2">
+              <Label>Proyecto *</Label>
+              <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecciona un proyecto" />
+                </SelectTrigger>
+                <SelectContent>
+                  {projects!.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="space-y-2">
             <Label htmlFor="title">Título *</Label>
             <Input id="title" name="title" defaultValue={task?.title} required />
@@ -174,7 +202,7 @@ export function TaskForm({ projectId, task, employees, trigger }: TaskFormProps)
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-            <Button type="submit" disabled={loading}>
+            <Button type="submit" disabled={loading || !selectedProjectId}>
               {loading ? "Guardando..." : task ? "Actualizar" : "Crear"}
             </Button>
           </DialogFooter>

@@ -1,9 +1,13 @@
 import { createClient } from "@/lib/supabase/server"
 import { getTasks } from "@/lib/actions/tasks"
 import { getEmployees } from "@/lib/actions/employees"
+import { getProjects } from "@/lib/actions/projects"
+import { getSops } from "@/lib/actions/sops"
+import { getDeliverablesForTasks } from "@/lib/actions/deliverables"
 import { TaskTable } from "@/components/tasks/task-table"
+import { TaskForm } from "@/components/tasks/task-form"
 import { Badge } from "@/components/ui/badge"
-import type { Task, Profile } from "@/lib/types"
+import type { Task, Profile, Deliverable } from "@/lib/types"
 import { getTranslations } from "next-intl/server"
 
 export default async function TasksPage() {
@@ -14,17 +18,22 @@ export default async function TasksPage() {
   const { data: profile } = await supabase.from("profiles").select("role, id").eq("id", user!.id).single()
   const isAdmin = profile?.role === "admin"
 
-  let tasks: Task[] = []
+  const allTasks = (await getTasks()) as Task[]
+  const tasks = isAdmin ? allTasks : allTasks.filter((t) => t.assignee_id === user!.id)
 
-  if (isAdmin) {
-    tasks = (await getTasks()) as Task[]
-  } else {
-    const allTasks = (await getTasks()) as Task[]
-    tasks = allTasks.filter((t) => t.assignee_id === user!.id)
-  }
+  const [employees, rawProjects, sops, rawDeliverables] = await Promise.all([
+    getEmployees() as Promise<Profile[]>,
+    getProjects().catch(() => []),
+    getSops().catch(() => []),
+    getDeliverablesForTasks(tasks.map((t) => t.id)).catch(() => []),
+  ])
+  const projects = (rawProjects as { id: string; name: string }[]).map((p) => ({ id: p.id, name: p.name }))
+  const deliverablesByTaskId = Object.fromEntries(
+    (rawDeliverables as Deliverable[]).map((d) => [d.task_id, d])
+  ) as Record<string, Deliverable>
 
-  const employees = (await getEmployees()) as Profile[]
-
+  const today = new Date().toISOString().slice(0, 10)
+  const overdue = tasks.filter((t) => t.status !== "Done" && t.due_date && t.due_date < today)
   const todo = tasks.filter((t) => t.status === "Todo")
   const inProgress = tasks.filter((t) => t.status === "In Progress")
   const done = tasks.filter((t) => t.status === "Done")
@@ -36,16 +45,34 @@ export default async function TasksPage() {
     return acc
   }, {})
 
+  // Projects with an overdue task surface first — that's what an
+  // individual agenda actually needs to draw the eye to.
+  const projectEntries = Object.entries(byProject).sort(([, a], [, b]) => {
+    const aOverdue = a.some((t) => t.status !== "Done" && t.due_date && t.due_date < today)
+    const bOverdue = b.some((t) => t.status !== "Done" && t.due_date && t.due_date < today)
+    if (aOverdue !== bOverdue) return aOverdue ? -1 : 1
+    return 0
+  })
+
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">{t("title")}</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          {isAdmin ? t("title") : t("noTasks")}
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">{t("title")}</h1>
+          <p className="text-muted-foreground text-sm mt-1">
+            {isAdmin ? t("title") : t("noTasks")}
+          </p>
+        </div>
+        <TaskForm projects={projects} employees={employees} />
       </div>
 
-      <div className="flex gap-3">
+      <div className="flex flex-wrap gap-3">
+        {overdue.length > 0 && (
+          <div className="flex items-center gap-2 bg-destructive/10 rounded-lg px-3 py-2">
+            <span className="text-sm font-medium text-destructive">Vencidas</span>
+            <Badge variant="destructive">{overdue.length}</Badge>
+          </div>
+        )}
         <div className="flex items-center gap-2 bg-muted rounded-lg px-3 py-2">
           <span className="text-sm font-medium">{tStatus("todo")}</span>
           <Badge variant="secondary">{todo.length}</Badge>
@@ -60,7 +87,7 @@ export default async function TasksPage() {
         </div>
       </div>
 
-      {Object.entries(byProject).map(([projectId, projectTasks]) => {
+      {projectEntries.map(([projectId, projectTasks]) => {
         const projectName = (projectTasks[0]?.project as { name: string } | undefined)?.name ?? t("project")
         return (
           <section key={projectId}>
@@ -70,6 +97,9 @@ export default async function TasksPage() {
               projectId={projectId}
               employees={employees}
               isAdmin={isAdmin}
+              deliverablesByTaskId={deliverablesByTaskId}
+              currentUserId={user!.id}
+              sops={sops}
             />
           </section>
         )

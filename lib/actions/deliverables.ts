@@ -18,6 +18,21 @@ export async function getProjectDeliverables(projectId: string) {
   return data ?? []
 }
 
+// Cross-project lookup — used by the standalone Tasks page, which lists
+// tasks from many projects at once instead of one project's deliverables.
+export async function getDeliverablesForTasks(taskIds: string[]) {
+  if (taskIds.length === 0) return []
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from("deliverables")
+    .select("*, uploader:profiles(id, full_name, avatar_url)")
+    .in("task_id", taskIds)
+    .order("created_at", { ascending: false })
+
+  if (error) throw error
+  return data ?? []
+}
+
 export async function submitDeliverable(formData: FormData) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
