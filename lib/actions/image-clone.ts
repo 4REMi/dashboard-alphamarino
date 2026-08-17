@@ -599,7 +599,10 @@ export async function generateImages(
     }
     await supabase
       .from("image_clones")
-      .update({ fal_request_id: JSON.stringify(ids) })
+      // generation_input is kept so pollImageGeneration() can resubmit any
+      // prediction that comes back failed/canceled with the exact same
+      // payload, instead of quietly returning fewer variants than asked.
+      .update({ fal_request_id: JSON.stringify(ids), generation_input: submissionInput, retry_count: 0 })
       .eq("id", cloneId)
   } catch (err) {
     await supabase
@@ -658,7 +661,37 @@ export async function pollImageGeneration(cloneId: string): Promise<ImageClone> 
     return clone as ImageClone
   }
 
-  const urls = results.flatMap((r) => r.urls ?? [])
+  const succeededResults = results.filter((r) => r.status === "succeeded")
+  const shortfall = ids.length - succeededResults.length
+
+  // Some predictions came back failed/canceled — this happens for real
+  // (not just transient poll errors, already filtered out above), most
+  // likely the underlying model rejecting/erroring under concurrent load
+  // when several variants are submitted close together. Give the missing
+  // ones exactly one retry, resubmitted with the same payload, before
+  // accepting fewer images than the user asked for.
+  if (shortfall > 0 && clone.retry_count < 1 && clone.generation_input) {
+    const reasons = results.filter((r) => r.status !== "succeeded").map((r) => r.error ?? r.status).join("; ")
+    console.warn(`[image-clone] ${shortfall}/${ids.length} prediction(s) failed for clone ${cloneId} — retrying once. Reasons: ${reasons}`)
+    try {
+      const newIds: string[] = []
+      for (let i = 0; i < shortfall; i++) {
+        if (i > 0) await sleep(300)
+        newIds.push(await replicateSubmitWithRetry(clone.generation_input as Record<string, unknown>))
+      }
+      const succeededIds = ids.filter((_, idx) => results[idx].status === "succeeded")
+      await supabase
+        .from("image_clones")
+        .update({ fal_request_id: JSON.stringify([...succeededIds, ...newIds]), retry_count: clone.retry_count + 1 })
+        .eq("id", cloneId)
+      return clone as ImageClone // keep polling — new predictions are still in flight
+    } catch (err) {
+      console.error("[image-clone] retry submission failed:", err)
+      // fall through and finalize with whatever succeeded the first time
+    }
+  }
+
+  const urls = succeededResults.flatMap((r) => r.urls ?? [])
   if (urls.length > 0) {
     const stableUrls = await mirrorGeneratedImages(cloneId, urls)
     await supabase
