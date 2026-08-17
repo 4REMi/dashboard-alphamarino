@@ -833,7 +833,7 @@ export function ImageCloneModal({ ad, recloneSource, onClose }: Props) {
               {isGenerating && (
                 <div className="flex items-center gap-3 bg-violet-50 rounded-xl px-4 py-3 text-sm text-violet-700">
                   <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />
-                  Generando… puede tomar 30–90 s.
+                  Generando imágenes… puede tomar 30–90 s.
                 </div>
               )}
             </div>
