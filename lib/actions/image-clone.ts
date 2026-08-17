@@ -87,12 +87,17 @@ async function replicateSubmit(input: Record<string, unknown>): Promise<string> 
   return data.id
 }
 
+// "poll_error" marks a transient failure of the polling GET itself (network
+// blip, rate limit, 5xx) — distinct from Replicate's own "failed" status.
+// Treating the two the same used to finalize a multi-variant clone as "done"
+// with whatever URLs had succeeded so far the instant ANY one prediction hit
+// a bad poll response, silently dropping the rest of the variants.
 async function replicatePoll(predictionId: string): Promise<{ status: string; urls?: string[]; error?: string }> {
   const res = await fetch(`${REPLICATE_BASE}/predictions/${predictionId}`, {
     headers: replicateHeaders(),
     cache: "no-store",
   })
-  if (!res.ok) return { status: "failed" }
+  if (!res.ok) return { status: "poll_error" }
   const data = await res.json() as {
     status: string
     output?: string | string[] | null
@@ -507,8 +512,8 @@ export async function updateImageAdaptedLines(
 }
 
 /**
- * Submits N parallel generation jobs to Replicate (Flux 2 Pro).
- * Flux 2 Pro generates 1 image per prediction, so numImages = N submissions.
+ * Submits N generation jobs to Replicate (google/nano-banana-pro).
+ * This model generates 1 image per prediction, so numImages = N submissions.
  * Stores all prediction IDs as a JSON array in fal_request_id.
  */
 export async function generateImages(
@@ -638,7 +643,18 @@ export async function pollImageGeneration(cloneId: string): Promise<ImageClone> 
 
   const allSettled = results.every((r) => r.status === "succeeded" || r.status === "failed" || r.status === "canceled")
   if (!allSettled) {
-    // Still in progress — keep polling
+    // Still in progress (or hitting transient poll_error) — keep polling,
+    // but give up after 5 minutes so a permanently-broken prediction
+    // doesn't leave the clone stuck "generating" forever.
+    const ageMs = Date.now() - new Date(clone.created_at).getTime()
+    if (ageMs > 5 * 60 * 1000) {
+      const msg = "Tiempo de espera agotado generando las imágenes"
+      await supabase
+        .from("image_clones")
+        .update({ status: "error", error_message: msg })
+        .eq("id", cloneId)
+      return { ...clone, status: "error", error_message: msg } as ImageClone
+    }
     return clone as ImageClone
   }
 
