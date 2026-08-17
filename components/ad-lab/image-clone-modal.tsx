@@ -295,9 +295,21 @@ export function ImageCloneModal({ ad, recloneSource, onClose }: Props) {
     ? `${typeof window !== "undefined" ? window.location.origin : ""}/share/image-clone/${shareToken}`
     : ""
 
+  // Once there's anything to lose (a brand picked, an angle typed, reference
+  // images attached, or a generation in flight/done), closing needs a
+  // deliberate confirmation instead of a stray click outside the modal.
+  const hasProgress =
+    !!selectedBrainId || angulo.trim() !== "" || refFiles.length > 0 ||
+    additionalContext.trim() !== "" || isGenerating || generatedUrls.length > 0
+
+  function requestClose() {
+    if (hasProgress && !confirm("¿Cerrar y perder el progreso de esta clonación?")) return
+    onClose()
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={requestClose} />
 
       <div className="relative w-full max-w-4xl bg-background rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
         {/* Header */}
@@ -347,7 +359,7 @@ export function ImageCloneModal({ ad, recloneSource, onClose }: Props) {
             )}
           </div>
 
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground">
+          <button onClick={requestClose} className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground">
             <X className="w-4 h-4" />
           </button>
         </div>
