@@ -1030,7 +1030,7 @@ export interface AdClone {
   saved_ad?: Pick<SavedAd, "id" | "page_name" | "cached_video_url" | "video_url" | "cached_image_url" | "image_url"> | null
 }
 
-export type ImageCloneStatus = "pending" | "extracting" | "ready" | "generating" | "done" | "error"
+export type ImageCloneStatus = "pending" | "extracting" | "ready" | "generating" | "reviewing" | "done" | "error"
 
 export interface ImageCloneLine {
   element: string    // e.g. "Headline", "CTA", "Body"

@@ -44,6 +44,22 @@ async function mirrorGeneratedImages(cloneId: string, sourceUrls: string[]): Pro
   return mirrored
 }
 
+// Extracts the "ad-lab" bucket storage path from a public URL produced by
+// mirrorGeneratedImages(), or null for anything else (e.g. a Replicate URL
+// we fell back to keeping because the mirror upload itself failed).
+function extractStoragePath(publicUrl: string): string | null {
+  const marker = "/storage/v1/object/public/ad-lab/"
+  const idx = publicUrl.indexOf(marker)
+  return idx === -1 ? null : publicUrl.slice(idx + marker.length)
+}
+
+async function deleteMirroredImages(urls: string[]): Promise<void> {
+  const paths = urls.map(extractStoragePath).filter((p): p is string => !!p)
+  if (paths.length === 0) return
+  const adminStorage = createAdminClient()
+  await adminStorage.storage.from("ad-lab").remove(paths)
+}
+
 // ── Replicate helpers ─────────────────────────────────────────
 
 async function sleep(ms: number) {
@@ -629,7 +645,7 @@ export async function pollImageGeneration(cloneId: string): Promise<ImageClone> 
     .single()
   if (error) throw error
 
-  if (clone.status === "done" || clone.status === "error" || !clone.fal_request_id) {
+  if (clone.status === "done" || clone.status === "reviewing" || clone.status === "error" || !clone.fal_request_id) {
     return clone as ImageClone
   }
 
@@ -697,16 +713,20 @@ export async function pollImageGeneration(cloneId: string): Promise<ImageClone> 
 
   const urls = succeededResults.flatMap((r) => r.urls ?? [])
   if (urls.length > 0) {
+    // "reviewing", not "done" — not every generated variant is a keeper.
+    // The clone only becomes "done" (and shows up in the ad's gallery /
+    // share link) once finalizeImageClone() records which ones the user
+    // actually chose to keep.
     const stableUrls = await mirrorGeneratedImages(cloneId, urls)
     await supabase
       .from("image_clones")
       .update({
-        status:               "done",
+        status:               "reviewing",
         generated_image_urls: stableUrls,
         updated_at:           new Date().toISOString(),
       })
       .eq("id", cloneId)
-    return { ...clone, status: "done", generated_image_urls: stableUrls } as ImageClone
+    return { ...clone, status: "reviewing", generated_image_urls: stableUrls } as ImageClone
   }
 
   // All predictions failed
@@ -758,9 +778,46 @@ export async function deleteImageClone(cloneId: string): Promise<void> {
     .from("image_clones")
     .delete()
     .eq("id", cloneId)
-    .select("id")
+    .select("id, generated_image_urls")
   if (error) throw error
   if (!data || data.length === 0) throw new Error("No se pudo eliminar el clon — verifica permisos")
+  await deleteMirroredImages((data[0].generated_image_urls as string[] | null) ?? [])
+}
+
+/**
+ * Called when the user finishes reviewing a "reviewing" clone's variants —
+ * keepUrls is the subset of generated_image_urls they chose to keep.
+ * Discarded variants are removed from storage. If nothing was kept, the
+ * whole clone is deleted rather than left as an empty "done" row.
+ */
+export async function finalizeImageClone(cloneId: string, keepUrls: string[]): Promise<ImageClone | null> {
+  const { supabase } = await assertAuth()
+
+  const { data: clone, error } = await supabase
+    .from("image_clones")
+    .select("generated_image_urls")
+    .eq("id", cloneId)
+    .single()
+  if (error) throw error
+
+  const allUrls = (clone.generated_image_urls as string[] | null) ?? []
+  const discarded = allUrls.filter((u) => !keepUrls.includes(u))
+
+  if (keepUrls.length === 0) {
+    await deleteMirroredImages(allUrls)
+    await supabase.from("image_clones").delete().eq("id", cloneId)
+    return null
+  }
+
+  await deleteMirroredImages(discarded)
+  const { data: updated, error: updateError } = await supabase
+    .from("image_clones")
+    .update({ status: "done", generated_image_urls: keepUrls, updated_at: new Date().toISOString() })
+    .eq("id", cloneId)
+    .select("*")
+    .single()
+  if (updateError) throw updateError
+  return updated as ImageClone
 }
 
 export async function getAllImageClones(limit = 12): Promise<ImageClone[]> {

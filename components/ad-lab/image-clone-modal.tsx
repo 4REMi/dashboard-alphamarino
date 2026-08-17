@@ -8,6 +8,7 @@ import {
   uploadReferenceImages,
   generateImages,
   pollImageGeneration,
+  finalizeImageClone,
   updateImageAdaptedLines,
   checkAnguloCompatibility,
 } from "@/lib/actions/image-clone"
@@ -85,9 +86,14 @@ export function ImageCloneModal({ ad, recloneSource, onClose }: Props) {
   const [aspectRatio, setAspectRatio]           = useState<string>("1:1")
   const [numImages, setNumImages]               = useState(2)
 
-  // Generation result
+  // Generation result — generatedUrls holds every variant Replicate produced;
+  // not every one is necessarily a keeper, so they sit in "reviewing" until
+  // the user picks which to actually save (isFinalized flips to true then).
   const [isGenerating, setIsGenerating]         = useState(false)
   const [generatedUrls, setGeneratedUrls]       = useState<string[]>([])
+  const [keptUrls, setKeptUrls]                 = useState<Set<string>>(new Set())
+  const [isFinalized, setIsFinalized]           = useState(false)
+  const [isFinalizing, setIsFinalizing]         = useState(false)
   const [copied, setCopied]                     = useState(false)
   const [showAllColors, setShowAllColors]       = useState(false)
 
@@ -262,10 +268,12 @@ export function ImageCloneModal({ ad, recloneSource, onClose }: Props) {
         if (!cloneId) return
         try {
           const result = await pollImageGeneration(cloneId)
-          if (result.status === "done") {
+          if (result.status === "reviewing") {
             clearInterval(pollingRef.current!)
             const urls = result.generated_image_urls
-            setGeneratedUrls(Array.isArray(urls) ? urls : urls ? [String(urls)] : [])
+            const list = Array.isArray(urls) ? urls : urls ? [String(urls)] : []
+            setGeneratedUrls(list)
+            setKeptUrls(new Set(list)) // all kept by default — user deselects the ones to discard
             setIsGenerating(false)
           } else if (result.status === "error") {
             clearInterval(pollingRef.current!)
@@ -282,6 +290,32 @@ export function ImageCloneModal({ ad, recloneSource, onClose }: Props) {
     }
   }
 
+  function toggleKept(url: string) {
+    setKeptUrls((prev) => {
+      const next = new Set(prev)
+      next.has(url) ? next.delete(url) : next.add(url)
+      return next
+    })
+  }
+
+  function handleFinalize() {
+    if (!cloneId) return
+    setIsFinalizing(true)
+    setError(null)
+    const kept = generatedUrls.filter((u) => keptUrls.has(u))
+    finalizeImageClone(cloneId, kept)
+      .then((updated) => {
+        if (updated) {
+          setGeneratedUrls(kept)
+          setIsFinalized(true)
+        } else {
+          onClose() // nothing kept — clone was deleted
+        }
+      })
+      .catch((err) => setError(String(err)))
+      .finally(() => setIsFinalizing(false))
+  }
+
   function copyLink() {
     if (!shareToken) return
     const url = `${window.location.origin}/share/image-clone/${shareToken}`
@@ -296,14 +330,22 @@ export function ImageCloneModal({ ad, recloneSource, onClose }: Props) {
     : ""
 
   // Once there's anything to lose (a brand picked, an angle typed, reference
-  // images attached, or a generation in flight/done), closing needs a
-  // deliberate confirmation instead of a stray click outside the modal.
-  const hasProgress =
+  // images attached, a generation in flight, or unreviewed variants),
+  // closing needs a deliberate confirmation instead of a stray click
+  // outside the modal. Once finalized there's nothing left to lose — the
+  // kept variants are already saved.
+  const hasProgress = !isFinalized && (
     !!selectedBrainId || angulo.trim() !== "" || refFiles.length > 0 ||
     additionalContext.trim() !== "" || isGenerating || generatedUrls.length > 0
+  )
 
   function requestClose() {
     if (hasProgress && !confirm("¿Cerrar y perder el progreso de esta clonación?")) return
+    // Any variants still sitting unreviewed (never saved via "Guardar
+    // seleccionadas") get discarded rather than left as clutter.
+    if (generatedUrls.length > 0 && !isFinalized && cloneId) {
+      finalizeImageClone(cloneId, []).catch(() => {})
+    }
     onClose()
   }
 
@@ -853,11 +895,53 @@ export function ImageCloneModal({ ad, recloneSource, onClose }: Props) {
         )}
 
         {/* ── Step 3: Generated results ── */}
-        {step === 3 && generatedUrls.length > 0 && (
+        {step === 3 && generatedUrls.length > 0 && !isFinalized && (
+          <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            <div>
+              <p className="text-sm font-semibold text-violet-700">Elige cuáles guardar</p>
+              <p className="text-xs text-muted-foreground">
+                {keptUrls.size} de {generatedUrls.length} seleccionada{generatedUrls.length !== 1 ? "s" : ""} — las que desmarques se descartan.
+              </p>
+            </div>
+
+            <div className={`grid gap-3 ${generatedUrls.length > 1 ? "grid-cols-2" : "grid-cols-1 max-w-xs"}`}>
+              {generatedUrls.map((url, i) => {
+                const kept = keptUrls.has(url)
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => toggleKept(url)}
+                    className={`text-left rounded-xl overflow-hidden border-2 transition-all ${
+                      kept ? "border-violet-500" : "border-transparent opacity-50 hover:opacity-80"
+                    }`}
+                  >
+                    <div className="relative">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={url} alt={`Generated ${i + 1}`} className="w-full object-cover" />
+                      <div className={`absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center border-2 ${
+                        kept ? "bg-violet-600 border-violet-600" : "bg-white/80 border-white"
+                      }`}>
+                        {kept && <Check className="w-3.5 h-3.5 text-white" />}
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between px-3 py-2 bg-card border-t border-border">
+                      <span className="text-xs text-muted-foreground">Opción {i + 1}</span>
+                      <span className="text-xs font-semibold text-muted-foreground">{kept ? "Guardar" : "Descartar"}</span>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ── Step 3: Finalized (saved) ── */}
+        {step === 3 && isFinalized && (
           <div className="flex-1 overflow-y-auto p-6 space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-semibold text-emerald-700">¡Imágenes generadas!</p>
+                <p className="text-sm font-semibold text-emerald-700">¡Imágenes guardadas!</p>
                 <p className="text-xs text-muted-foreground">
                   {generatedUrls.length} imagen{generatedUrls.length > 1 ? "es" : ""} lista{generatedUrls.length > 1 ? "s" : ""}
                 </p>
@@ -966,7 +1050,26 @@ export function ImageCloneModal({ ad, recloneSource, onClose }: Props) {
             </button>
           )}
 
-          {step === 3 && generatedUrls.length > 0 && (
+          {step === 3 && generatedUrls.length > 0 && !isFinalized && (
+            <button
+              onClick={handleFinalize}
+              disabled={isFinalizing}
+              className={`inline-flex items-center gap-2 h-9 px-5 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 ${
+                keptUrls.size > 0
+                  ? "bg-violet-600 text-white hover:bg-violet-700"
+                  : "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              }`}
+            >
+              {isFinalizing
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> Guardando…</>
+                : keptUrls.size > 0
+                  ? <><Check className="w-4 h-4" /> Guardar seleccionadas ({keptUrls.size})</>
+                  : <><Trash2 className="w-4 h-4" /> Descartar todo</>
+              }
+            </button>
+          )}
+
+          {step === 3 && isFinalized && (
             <button
               onClick={onClose}
               className="inline-flex items-center gap-2 h-9 px-5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 transition-colors"
