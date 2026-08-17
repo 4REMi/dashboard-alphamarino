@@ -18,6 +18,7 @@ import { useRecentAngulos } from "@/lib/hooks/use-recent-angulos"
 import {
   X, ImageIcon, Loader2, Check, ChevronRight, ChevronLeft,
   AlertCircle, Upload, Trash2, Link as LinkIcon, Copy, Compass, CheckCircle2,
+  EyeOff,
 } from "lucide-react"
 
 export interface RecloneSource {
@@ -34,7 +35,13 @@ interface Props {
 }
 
 type Step = 1 | 2 | 3
-type BrainOption = Pick<BrandBrain, "id" | "name" | "brand_colors">
+type BrainOption = Pick<BrandBrain, "id" | "name" | "brand_colors" | "logo_url" | "logo_square_url">
+
+function brandInitials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean)
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase()
+  return (words[0][0] + words[1][0]).toUpperCase()
+}
 
 const ASPECT_RATIOS = ["1:1", "9:16", "16:9", "4:5"] as const
 const RATIO_LABELS: Record<string, string> = {
@@ -48,6 +55,9 @@ export function ImageCloneModal({ ad, recloneSource, onClose }: Props) {
   const [step, setStep]                         = useState<Step>(1)
   const [brains, setBrains]                     = useState<BrainOption[]>([])
   const [selectedBrainId, setSelectedBrainId]   = useState("")
+  // Resets every time the modal opens — hides real brand names/logos behind
+  // initials for live demos, without touching what's actually stored.
+  const [demoMode, setDemoMode]                 = useState(false)
   const [cloneId, setCloneId]                   = useState<string | null>(null)
   const [shareToken, setShareToken]             = useState<string | null>(null)
   const [adaptedLines, setAdaptedLines]         = useState<ImageCloneLine[]>([])
@@ -93,7 +103,7 @@ export function ImageCloneModal({ ad, recloneSource, onClose }: Props) {
 
   useEffect(() => {
     getBrandBrains().then((all) =>
-      setBrains(all.map((b) => ({ id: b.id, name: b.name, brand_colors: b.brand_colors })))
+      setBrains(all.map((b) => ({ id: b.id, name: b.name, brand_colors: b.brand_colors, logo_url: b.logo_url, logo_square_url: b.logo_square_url })))
     )
   }, [])
 
@@ -357,11 +367,26 @@ export function ImageCloneModal({ ad, recloneSource, onClose }: Props) {
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              <div>
-                <p className="text-sm font-medium mb-1">Selecciona un Brand Brain</p>
-                <p className="text-xs text-muted-foreground">
-                  Claude analizará el anuncio y adaptará el copy a la marca.
-                </p>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium mb-1">Selecciona un Brand Brain</p>
+                  <p className="text-xs text-muted-foreground">
+                    Claude analizará el anuncio y adaptará el copy a la marca.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDemoMode((v) => !v)}
+                  title="Oculta nombres y logos reales — útil para demos en vivo"
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors flex-shrink-0 ${
+                    demoMode
+                      ? "border-violet-400 bg-violet-50 text-violet-700"
+                      : "border-border text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  <EyeOff className="w-3.5 h-3.5" />
+                  Modo demo
+                </button>
               </div>
 
               {brains.length === 0 ? (
@@ -370,32 +395,38 @@ export function ImageCloneModal({ ad, recloneSource, onClose }: Props) {
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-2">
-                  {brains.map((b) => (
-                    <button
-                      key={b.id}
-                      onClick={() => selectBrain(b)}
-                      className={`p-3 rounded-xl border text-left transition-all ${
-                        selectedBrainId === b.id
-                          ? "border-violet-500 bg-violet-50 ring-1 ring-violet-400"
-                          : "border-border hover:border-violet-300 bg-card hover:bg-violet-50/40"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-semibold">{b.name}</p>
-                        {(b.brand_colors ?? []).length > 0 && (
-                          <div className="flex flex-wrap gap-1 flex-shrink-0">
-                            {b.brand_colors.map((c) => (
-                              <span
-                                key={c.hex}
-                                className="w-3 h-3 rounded-full border border-black/10 flex-shrink-0"
-                                style={{ background: c.hex }}
-                              />
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </button>
-                  ))}
+                  {brains.map((b) => {
+                    const logo = b.logo_square_url || b.logo_url
+                    return (
+                      <button
+                        key={b.id}
+                        onClick={() => selectBrain(b)}
+                        className={`p-3 rounded-xl border text-left transition-all ${
+                          selectedBrainId === b.id
+                            ? "border-violet-500 bg-violet-50 ring-1 ring-violet-400"
+                            : "border-border hover:border-violet-300 bg-card hover:bg-violet-50/40"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          {demoMode ? (
+                            <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center flex-shrink-0 text-[11px] font-semibold text-muted-foreground">
+                              {brandInitials(b.name)}
+                            </div>
+                          ) : logo ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={logo} alt="" className="w-7 h-7 rounded-full object-contain bg-muted flex-shrink-0" />
+                          ) : (
+                            <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center flex-shrink-0 text-[11px] font-semibold text-muted-foreground">
+                              {brandInitials(b.name)}
+                            </div>
+                          )}
+                          <p className="text-sm font-semibold truncate">
+                            {demoMode ? brandInitials(b.name) : b.name}
+                          </p>
+                        </div>
+                      </button>
+                    )
+                  })}
                 </div>
               )}
 
