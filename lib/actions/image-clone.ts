@@ -648,8 +648,12 @@ export async function pollImageGeneration(cloneId: string): Promise<ImageClone> 
   if (!allSettled) {
     // Still in progress (or hitting transient poll_error) — keep polling,
     // but give up after 5 minutes so a permanently-broken prediction
-    // doesn't leave the clone stuck "generating" forever.
-    const ageMs = Date.now() - new Date(clone.created_at).getTime()
+    // doesn't leave the clone stuck "generating" forever. Measured from
+    // updated_at (bumped by generateImages() when it kicks off, and again
+    // on each retry submission) rather than created_at — the clone row is
+    // created back in step 1, and the user can spend several minutes
+    // picking a brand/uploading references before ever starting generation.
+    const ageMs = Date.now() - new Date(clone.updated_at).getTime()
     if (ageMs > 5 * 60 * 1000) {
       const msg = "Tiempo de espera agotado generando las imágenes"
       await supabase
