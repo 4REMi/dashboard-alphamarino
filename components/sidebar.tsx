@@ -23,6 +23,9 @@ import {
   Brain,
   ImagePlay,
   Expand,
+  LayoutGrid,
+  FolderOpen,
+  Radio,
 } from "lucide-react"
 import { useState } from "react"
 import Image from "next/image"
@@ -76,7 +79,10 @@ export function Sidebar({ profile, logoUrl, mobileOpen = false, onMobileClose }:
     {
       href: "/ad-lab", icon: Tv2, label: "Ad Lab", permission: "access_ad_lab",
       children: [
-        { href: "/ad-lab/creatives", icon: ImagePlay,  label: "Creatives"    },
+        { href: "/ad-lab/discovery", icon: LayoutGrid, label: "Discovery"     },
+        { href: "/ad-lab/boards",    icon: FolderOpen, label: "Boards"        },
+        { href: "/ad-lab/brands",    icon: Radio,      label: "Marcas"        },
+        { href: "/ad-lab/creatives", icon: ImagePlay,  label: "Creatives"     },
         { href: "/ad-lab/resize",    icon: Expand,     label: "Image Resize"  },
         { href: "/brand-brains",     icon: Brain,      label: "Brand Brains", permission: "access_brand_brains" },
       ],
