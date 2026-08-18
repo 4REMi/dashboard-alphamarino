@@ -197,10 +197,20 @@ export function CloneModal({ ad, onClose }: Props) {
 
   const shareUrl = shareToken ? `${typeof window !== "undefined" ? window.location.origin : ""}/share/clone/${shareToken}` : ""
 
+  // Once there's anything to lose (a brand picked, an angle typed, or a
+  // clone started/generated), closing needs a deliberate confirmation
+  // instead of a stray click outside the modal.
+  const hasProgress = !!selectedBrainId || angulo.trim() !== "" || !!cloneId || adaptedLines.length > 0
+
+  function requestClose() {
+    if (hasProgress && !confirm("¿Cerrar y perder el progreso de esta clonación?")) return
+    onClose()
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={requestClose} />
 
       {/* Panel */}
       <div className="relative w-full max-w-4xl bg-background rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
@@ -234,7 +244,7 @@ export function CloneModal({ ad, onClose }: Props) {
             ))}
           </div>
 
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground">
+          <button onClick={requestClose} className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground">
             <X className="w-4 h-4" />
           </button>
         </div>
