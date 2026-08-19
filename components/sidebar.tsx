@@ -26,6 +26,7 @@ import {
   LayoutGrid,
   FolderOpen,
   Radio,
+  Tag,
 } from "lucide-react"
 import { useState } from "react"
 import Image from "next/image"
@@ -70,6 +71,7 @@ export function Sidebar({ profile, logoUrl, mobileOpen = false, onMobileClose }:
   const navItems: NavItem[] = [
     { href: "/", icon: LayoutDashboard, label: t("dashboard") },
     { href: "/customers", icon: Users, label: t("clients") },
+    { href: "/services", icon: Tag, label: "Servicios", adminOnly: true },
     { href: "/projects", icon: FolderKanban, label: t("projects") },
     { href: "/tasks", icon: CheckSquare, label: t("tasks") },
     { href: "/finances", icon: DollarSign, label: t("finances"), permission: "view_global_finances" },

@@ -1062,6 +1062,45 @@ export interface ImageClone {
 }
 
 // ============================================================
+// SERVICE CATALOG (offers & addons)
+// ============================================================
+
+export type ServiceStatus = "active" | "archived"
+
+export interface ServiceAddon {
+  id: string
+  name: string
+  description: string | null
+  price: number | null
+  price_note: string | null
+  status: ServiceStatus
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ServiceOffer {
+  id: string
+  category: string
+  name: string
+  description: string | null
+  deliverables: string[]
+  is_base: boolean
+  based_on_offer_id: string | null
+  default_project_type_id: string | null
+  price: number | null
+  price_note: string | null
+  status: ServiceStatus
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  // relations
+  based_on_offer?: Pick<ServiceOffer, "id" | "name"> | null
+  default_project_type?: Pick<ProjectType, "id" | "name" | "color" | "icon"> | null
+  addons?: ServiceAddon[]
+}
+
+// ============================================================
 // HELPERS
 // ============================================================
 
