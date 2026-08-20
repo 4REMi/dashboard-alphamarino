@@ -46,6 +46,7 @@ export default async function ShareBriefPage({ params }: Props) {
   const scriptMap = rawScript && !Array.isArray(rawScript) ? rawScript : null
   const legacyScript = rawScript && Array.isArray(rawScript) ? rawScript : null
   const scriptReviews = (brief.script_reviews ?? {}) as Record<string, { client_status?: string | null; client_feedback?: string | null }>
+  const scriptTitles = brief.script_titles ?? {}
   const attachedAds = (brief as any).attached_ads as any[] | undefined
 
   const angleEntry = concept?.angle_type ? ANGLE_GUIDE.find((a) => a.name === concept.angle_type) : null
@@ -61,7 +62,7 @@ export default async function ShareBriefPage({ params }: Props) {
     references.push({
       id: ad.id,
       type: "video",
-      name: ad.page_name ?? "Video",
+      name: scriptTitles[ad.id] || ad.page_name || "Video",
       videoSrc: ad.cached_video_url || ad.video_url || undefined,
       thumbSrc: ad.cached_image_url || ad.image_url || undefined,
       script: scriptMap?.[ad.id] ?? legacyScript ?? undefined,
@@ -88,10 +89,14 @@ export default async function ShareBriefPage({ params }: Props) {
     Object.entries(scriptMap).forEach(([key, lines]) => {
       if (coveredIds.has(key) || !lines?.length) return
       const review = scriptReviews[key]
+      // Always advance genIndex for non-manual keys (even when a custom
+      // title overrides the display name) so later untitled entries keep
+      // consistent numbering instead of skipping ahead.
+      const fallbackName = key === "manual" ? "Guión manual" : `Guión generado — opción ${++genIndex}`
       references.push({
         id: key,
         type: "text",
-        name: key === "manual" ? "Guión manual" : `Guión generado — opción ${++genIndex}`,
+        name: scriptTitles[key] || fallbackName,
         script: lines,
         clientStatus: review?.client_status ?? null,
         clientFeedback: review?.client_feedback ?? null,
@@ -231,7 +236,7 @@ export default async function ShareBriefPage({ params }: Props) {
                     Referencias ({references.length})
                   </p>
                 </div>
-                <BriefReferences references={references} briefId={canEdit ? brief.id : undefined} editable={canEdit} />
+                <BriefReferences references={references} briefId={canEdit ? brief.id : undefined} projectId={canEdit ? brief.project_id : undefined} editable={canEdit} />
               </section>
             ) : (
               <div className="text-center py-16">

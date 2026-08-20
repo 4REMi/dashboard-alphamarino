@@ -2,9 +2,10 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { updateBriefScript } from "@/lib/actions/creatives"
+import { updateBriefScript, updateScriptTitle } from "@/lib/actions/creatives"
 import { CopyScriptButton } from "@/components/share/copy-script-button"
 import { cn } from "@/lib/utils"
+import { Pencil, Check, X } from "lucide-react"
 import type { AdCloneLine } from "@/lib/types"
 
 interface Reference {
@@ -27,20 +28,33 @@ const CLIENT_STATUS_STYLE: Record<string, { label: string; className: string }> 
 interface Props {
   references: Reference[]
   briefId?: string
+  projectId?: string | null
   editable?: boolean
 }
 
-export function BriefReferences({ references, briefId, editable = false }: Props) {
+export function BriefReferences({ references, briefId, projectId, editable = false }: Props) {
   // Independently toggleable, open by default — a designer/editor needs to
   // compare multiple references at once on desktop, not click through an
   // accordion one at a time. Collapsing one just hides that one panel.
   const [closedIds, setClosedIds] = useState<Set<string>>(new Set())
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [isPending, startTransition] = useTransition()
+  const router = useRouter()
 
   function toggle(id: string) {
     setClosedIds((prev) => {
       const next = new Set(prev)
       next.has(id) ? next.delete(id) : next.add(id)
       return next
+    })
+  }
+
+  function saveRename(scriptKey: string, title: string) {
+    if (!briefId || !projectId) return
+    startTransition(async () => {
+      await updateScriptTitle(briefId, projectId, scriptKey, title)
+      setRenamingId(null)
+      router.refresh()
     })
   }
 
@@ -62,10 +76,12 @@ export function BriefReferences({ references, briefId, editable = false }: Props
             className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)] transition-shadow hover:shadow-md"
           >
             {/* ── Collapsed header ── */}
-            <button
-              type="button"
+            <div
+              role="button"
+              tabIndex={0}
               onClick={() => toggle(ref.id)}
-              className="w-full flex items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-gray-50/60"
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(ref.id) } }}
+              className="w-full flex items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-gray-50/60 cursor-pointer"
             >
               {/* Thumbnail */}
               <div className="flex-shrink-0 w-14 h-14 rounded-xl overflow-hidden bg-gray-100 border border-gray-200">
@@ -100,7 +116,28 @@ export function BriefReferences({ references, briefId, editable = false }: Props
 
               {/* Info */}
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-gray-900 truncate">{ref.name}</p>
+                {editable && briefId && projectId && renamingId === ref.id ? (
+                  <RenameField
+                    initial={ref.name}
+                    isPending={isPending}
+                    onCancel={() => setRenamingId(null)}
+                    onSave={(title) => saveRename(ref.id, title)}
+                  />
+                ) : (
+                  <div className="flex items-center gap-1.5 group/name">
+                    <p className="text-sm font-semibold text-gray-900 truncate">{ref.name}</p>
+                    {editable && briefId && projectId && (isVideo || isText) && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setRenamingId(ref.id) }}
+                        className="opacity-0 group-hover/name:opacity-100 flex-shrink-0 text-gray-400 hover:text-gray-600 transition-opacity"
+                        title="Renombrar"
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                )}
                 <div className="flex items-center gap-2 mt-0.5">
                   <span className={`text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded ${
                     isVideo ? "bg-indigo-50 text-indigo-600" : isText ? "bg-violet-50 text-violet-600" : "bg-amber-50 text-amber-600"
@@ -130,7 +167,7 @@ export function BriefReferences({ references, briefId, editable = false }: Props
               >
                 <path d="m6 9 6 6 6-6" />
               </svg>
-            </button>
+            </div>
 
             {/* ── Expanded content ── */}
             {isOpen && (
@@ -332,6 +369,44 @@ function EditableScript({ briefId, adId, initialLines, hadClientFeedback }: { br
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+function RenameField({ initial, isPending, onSave, onCancel }: {
+  initial: string
+  isPending: boolean
+  onSave: (title: string) => void
+  onCancel: () => void
+}) {
+  const [value, setValue] = useState(initial)
+  return (
+    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+      <input
+        autoFocus
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") { e.preventDefault(); onSave(value) }
+          if (e.key === "Escape") onCancel()
+        }}
+        className="flex-1 min-w-0 text-sm font-semibold text-gray-900 bg-white border border-indigo-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+      />
+      <button
+        type="button"
+        disabled={isPending}
+        onClick={() => onSave(value)}
+        className="flex-shrink-0 p-1 rounded text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"
+      >
+        <Check className="w-3.5 h-3.5" />
+      </button>
+      <button
+        type="button"
+        onClick={onCancel}
+        className="flex-shrink-0 p-1 rounded text-gray-400 hover:bg-gray-100"
+      >
+        <X className="w-3.5 h-3.5" />
+      </button>
     </div>
   )
 }

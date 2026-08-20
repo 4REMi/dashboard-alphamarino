@@ -29,16 +29,18 @@ function scriptReviewEntries(brief: CreativeBrief): ScriptReviewEntry[] {
   const raw = brief.adapted_script as Record<string, AdCloneLine[]> | AdCloneLine[] | null
   if (!raw) return []
   const reviews = brief.script_reviews ?? {}
+  const titles = brief.script_titles ?? {}
   if (Array.isArray(raw)) {
     if (!raw.length) return []
     const r = reviews["_single"]
-    return [{ key: "_single", label: "Guión", status: r?.client_status ?? "pending_review", feedback: r?.client_feedback ?? null }]
+    return [{ key: "_single", label: titles["_single"] || "Guión", status: r?.client_status ?? "pending_review", feedback: r?.client_feedback ?? null }]
   }
   return Object.entries(raw)
     .filter(([, lines]) => lines?.length)
     .map(([key, ], i) => {
       const r = reviews[key]
-      return { key, label: `Guión ${Object.keys(raw).length > 1 ? `#${i + 1}` : ""}`.trim(), status: r?.client_status ?? "pending_review", feedback: r?.client_feedback ?? null }
+      const label = titles[key] || `Guión ${Object.keys(raw).length > 1 ? `#${i + 1}` : ""}`.trim()
+      return { key, label, status: r?.client_status ?? "pending_review", feedback: r?.client_feedback ?? null }
     })
 }
 
@@ -82,7 +84,7 @@ function BriefScriptStatus({ brief }: { brief: CreativeBrief }) {
 // scripts awaiting client review, and assets uploaded but not yet published
 // to the client (the review gate for point 9 of the operational audit).
 function AttentionBanner({ scriptRows, assetRows, projectId, onRefresh, canManageAssets }: {
-  scriptRows: { key: string; conceptName: string; lineName: string | null; shareToken: string; status: "pending_review" | "changes_requested"; feedback: string | null }[]
+  scriptRows: { key: string; conceptName: string; scriptLabel: string; lineName: string | null; shareToken: string; status: "pending_review" | "changes_requested"; feedback: string | null }[]
   assetRows: { id: string; conceptName: string; lineName: string | null; thumb: string | null; fileType: string | null; format: string | null }[]
   projectId: string
   onRefresh: () => void
@@ -130,7 +132,10 @@ function AttentionBanner({ scriptRows, assetRows, projectId, onRefresh, canManag
                     {r.lineName && (
                       <span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded flex-shrink-0">{r.lineName}</span>
                     )}
-                    <span className="text-xs font-medium truncate flex-1">{r.conceptName}</span>
+                    <span className="text-xs font-medium truncate flex-1">
+                      {r.conceptName}
+                      {r.scriptLabel && <span className="text-muted-foreground font-normal"> — {r.scriptLabel}</span>}
+                    </span>
                     <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded border flex-shrink-0", SCRIPT_STATUS_STYLE[r.status].className)}>
                       {SCRIPT_STATUS_STYLE[r.status].label}
                     </span>
@@ -1247,6 +1252,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
     const rows: {
       key: string
       conceptName: string
+      scriptLabel: string
       lineName: string | null
       shareToken: string
       status: "pending_review" | "changes_requested"
@@ -1254,11 +1260,16 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
     }[] = []
     for (const b of briefs) {
       const concept = conceptById.get(b.concept_id)
-      for (const e of scriptReviewEntries(b)) {
+      const entries = scriptReviewEntries(b)
+      for (const e of entries) {
         if (e.status !== "pending_review" && e.status !== "changes_requested") continue
         rows.push({
           key: `${b.id}:${e.key}`,
           conceptName: concept?.name || concept?.angle_type || "Concepto",
+          // Only show the per-script label when it actually distinguishes
+          // something (a custom name, or more than one script in this brief)
+          // — otherwise it'd just repeat "Guión" next to every row.
+          scriptLabel: e.label !== "Guión" ? e.label : "",
           lineName: concept?.brand_line_id ? lineNameById.get(concept.brand_line_id) ?? null : null,
           shareToken: b.share_token,
           status: e.status,

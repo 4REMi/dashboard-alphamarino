@@ -388,6 +388,38 @@ export async function updateBriefTitle(briefId: string, projectId: string, title
   if (brief?.share_token) revalidatePath(`/share/brief/${brief.share_token}`)
 }
 
+// Names one script inside a brief's adapted_script (e.g. "Ana testimonial",
+// "Bajada de precio") — briefs can hold several tropicalizations of the
+// same concept, and they all read as the same generic "Guión #N" without
+// this, everywhere the brief's scripts are listed.
+export async function updateScriptTitle(briefId: string, projectId: string, scriptKey: string, title: string): Promise<void> {
+  const { role } = await getRole()
+  if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
+  const supabase = await createClient()
+
+  const { data: existing, error: fetchError } = await supabase
+    .from("creative_briefs")
+    .select("script_titles")
+    .eq("id", briefId)
+    .single()
+  if (fetchError) throw fetchError
+
+  const titles = { ...(existing?.script_titles as Record<string, string> | null ?? {}) }
+  const trimmed = title.trim()
+  if (trimmed) titles[scriptKey] = trimmed
+  else delete titles[scriptKey]
+
+  const { data: brief, error } = await supabase
+    .from("creative_briefs")
+    .update({ script_titles: titles, updated_at: new Date().toISOString() })
+    .eq("id", briefId)
+    .select("share_token")
+    .single()
+  if (error) throw error
+  revalidateProject(projectId)
+  if (brief?.share_token) revalidatePath(`/share/brief/${brief.share_token}`)
+}
+
 export async function updateBriefNotes(briefId: string, projectId: string, notes: string): Promise<void> {
   const { role } = await getRole()
   if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
