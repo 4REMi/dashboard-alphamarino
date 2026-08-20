@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
-import type { ServiceOffer, ServiceAddon } from "@/lib/types"
+import type { ServiceOffer, ServiceAddon, Currency } from "@/lib/types"
 
 function revalidateServices() {
   revalidatePath("/services")
@@ -18,6 +18,10 @@ function parsePrice(formData: FormData): number | null {
   if (!raw || raw.trim() === "") return null
   const n = Number(raw)
   return Number.isFinite(n) ? n : null
+}
+
+function parseCurrency(formData: FormData): Currency {
+  return (formData.get("currency") as string) === "USD" ? "USD" : "MXN"
 }
 
 // ============================================================
@@ -62,6 +66,7 @@ export async function createServiceOffer(formData: FormData): Promise<ServiceOff
       based_on_offer_id:       basedOnId,
       default_project_type_id: projectTypeId,
       price:                   parsePrice(formData),
+      currency:                parseCurrency(formData),
       price_note:              (formData.get("price_note") as string) || null,
       created_by:              user?.id ?? null,
     })
@@ -88,6 +93,7 @@ export async function updateServiceOffer(id: string, formData: FormData): Promis
       based_on_offer_id:       basedOnId,
       default_project_type_id: projectTypeId,
       price:                   parsePrice(formData),
+      currency:                parseCurrency(formData),
       price_note:              (formData.get("price_note") as string) || null,
     })
     .eq("id", id)
@@ -152,6 +158,7 @@ export async function createServiceAddon(formData: FormData): Promise<ServiceAdd
       name:        formData.get("name") as string,
       description: (formData.get("description") as string) || null,
       price:       parsePrice(formData),
+      currency:    parseCurrency(formData),
       price_note:  (formData.get("price_note") as string) || null,
       created_by:  user?.id ?? null,
     })
@@ -170,6 +177,7 @@ export async function updateServiceAddon(id: string, formData: FormData): Promis
       name:        formData.get("name") as string,
       description: (formData.get("description") as string) || null,
       price:       parsePrice(formData),
+      currency:    parseCurrency(formData),
       price_note:  (formData.get("price_note") as string) || null,
     })
     .eq("id", id)

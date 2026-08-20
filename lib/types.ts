@@ -1072,6 +1072,7 @@ export interface ServiceAddon {
   name: string
   description: string | null
   price: number | null
+  currency: Currency
   price_note: string | null
   status: ServiceStatus
   created_by: string | null
@@ -1089,6 +1090,7 @@ export interface ServiceOffer {
   based_on_offer_id: string | null
   default_project_type_id: string | null
   price: number | null
+  currency: Currency
   price_note: string | null
   status: ServiceStatus
   created_by: string | null

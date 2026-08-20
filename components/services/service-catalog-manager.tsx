@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import type { ServiceOffer, ServiceAddon } from "@/lib/types"
+import type { ServiceOffer, ServiceAddon, Currency } from "@/lib/types"
 import {
   createServiceOffer, updateServiceOffer, archiveServiceOffer, deleteServiceOffer, setOfferAddons,
   createServiceAddon, updateServiceAddon, archiveServiceAddon, deleteServiceAddon,
@@ -23,9 +23,29 @@ interface Props {
   projectTypes: ProjectTypeBadge[]
 }
 
-function money(n: number | null) {
+function money(n: number | null, currency: Currency) {
   if (n === null) return null
-  return n.toLocaleString("es-MX", { style: "currency", currency: "USD", maximumFractionDigits: 0 })
+  return currency === "MXN"
+    ? n.toLocaleString("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 0 })
+    : n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })
+}
+
+function CurrencySwitch({ value, onChange }: { value: Currency; onChange: (c: Currency) => void }) {
+  return (
+    <div className="inline-flex items-center rounded-md border border-input bg-background p-0.5 flex-shrink-0">
+      {(["MXN", "USD"] as Currency[]).map((c) => (
+        <button
+          key={c} type="button" onClick={() => onChange(c)}
+          className={cn(
+            "px-2.5 py-1.5 text-xs font-medium rounded transition-colors",
+            value === c ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          {c}
+        </button>
+      ))}
+    </div>
+  )
 }
 
 // ── Offer form (create + edit) ────────────────────────────────────────────
@@ -45,6 +65,7 @@ function OfferForm({
   const base = initial ?? prefillFrom
   const [isBase, setIsBase] = useState(initial?.is_base ?? false)
   const [basedOn, setBasedOn] = useState(initial?.based_on_offer_id ?? prefillFrom?.id ?? "")
+  const [currency, setCurrency] = useState<Currency>(initial?.currency ?? prefillFrom?.currency ?? "MXN")
 
   return (
     <form onSubmit={onSubmit} className="space-y-4">
@@ -94,13 +115,17 @@ function OfferForm({
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-muted-foreground block">Precio (USD)</label>
-          <input
-            name="price" type="number" step="0.01" min="0"
-            defaultValue={initial?.price ?? prefillFrom?.price ?? ""}
-            placeholder="1500"
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-          />
+          <label className="text-xs font-medium text-muted-foreground block">Precio</label>
+          <div className="flex gap-1.5">
+            <input
+              name="price" type="number" step="0.01" min="0"
+              defaultValue={initial?.price ?? prefillFrom?.price ?? ""}
+              placeholder="1500"
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+            <CurrencySwitch value={currency} onChange={setCurrency} />
+            <input type="hidden" name="currency" value={currency} />
+          </div>
         </div>
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground block">Nota de precio</label>
@@ -176,6 +201,7 @@ function AddonForm({ initial, isPending, onSubmit, onClose }: {
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void
   onClose: () => void
 }) {
+  const [currency, setCurrency] = useState<Currency>(initial?.currency ?? "MXN")
   return (
     <form onSubmit={onSubmit} className="space-y-4">
       <div className="space-y-1.5">
@@ -191,9 +217,13 @@ function AddonForm({ initial, isPending, onSubmit, onClose }: {
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-muted-foreground block">Precio (USD)</label>
-          <input name="price" type="number" step="0.01" min="0" defaultValue={initial?.price ?? ""}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring" />
+          <label className="text-xs font-medium text-muted-foreground block">Precio</label>
+          <div className="flex gap-1.5">
+            <input name="price" type="number" step="0.01" min="0" defaultValue={initial?.price ?? ""}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring" />
+            <CurrencySwitch value={currency} onChange={setCurrency} />
+            <input type="hidden" name="currency" value={currency} />
+          </div>
         </div>
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground block">Nota de precio</label>
@@ -308,7 +338,7 @@ function OfferCard({
       <div className="flex items-center gap-2 flex-wrap">
         {(offer.price !== null || offer.price_note) && (
           <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
-            {money(offer.price) ?? offer.price_note}
+            {money(offer.price, offer.currency) ?? offer.price_note}
           </span>
         )}
         {projectType && ProjectIcon && (
@@ -502,7 +532,7 @@ export function ServiceCatalogManager({ initialOffers, initialAddons, projectTyp
                   <p className="font-medium text-sm">{addon.name}</p>
                   {(addon.price !== null || addon.price_note) && (
                     <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
-                      {money(addon.price) ?? addon.price_note}
+                      {money(addon.price, addon.currency) ?? addon.price_note}
                     </span>
                   )}
                 </div>
@@ -590,7 +620,7 @@ function AddonPickerModal({ offer, addons, onClose, onSave, isPending }: {
             <input type="checkbox" checked={selected.has(a.id)} onChange={() => toggle(a.id)} className="accent-primary" />
             <span className="text-sm flex-1">{a.name}</span>
             {(a.price !== null || a.price_note) && (
-              <span className="text-xs text-muted-foreground">{money(a.price) ?? a.price_note}</span>
+              <span className="text-xs text-muted-foreground">{money(a.price, a.currency) ?? a.price_note}</span>
             )}
           </label>
         ))}
