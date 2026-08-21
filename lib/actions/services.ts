@@ -1,6 +1,7 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
+import Anthropic from "@anthropic-ai/sdk"
 import { createClient } from "@/lib/supabase/server"
 import type { ServiceOffer, ServiceAddon, Currency } from "@/lib/types"
 
@@ -203,4 +204,65 @@ export async function deleteServiceAddon(id: string): Promise<void> {
   const { error } = await supabase.from("service_addons").delete().eq("id", id)
   if (error) throw error
   revalidateServices()
+}
+
+// ============================================================
+// AI AUTOFILL — one-shot, on demand. Fills description + deliverables
+// (and suggests a project type) from category/name/hint the admin
+// already typed. Never touches price, is_base, or based_on — those
+// stay deliberate human calls, never a model's guess.
+// ============================================================
+
+export async function suggestServiceOffer(input: {
+  category: string
+  name: string
+  hint?: string
+  projectTypes: { id: string; name: string }[]
+}): Promise<{ description: string; deliverables: string[]; project_type_id: string | null }> {
+  if (!input.category.trim() || !input.name.trim()) {
+    throw new Error("Escribe al menos la categoría y el nombre antes de autorrellenar")
+  }
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY no configurado")
+  const client = new Anthropic({ apiKey })
+
+  const typeList = input.projectTypes.map((t) => `- ${t.name} (id: ${t.id})`).join("\n") || "(sin tipos de proyecto registrados)"
+
+  const msg = await client.messages.create({
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 500,
+    messages: [{
+      role: "user",
+      content: `Eres estratega de una agencia de marketing/desarrollo armando su catálogo interno de servicios. Redacta una oferta de servicio a partir de estos datos:
+
+Categoría: ${input.category}
+Nombre de la oferta: ${input.name}
+${input.hint?.trim() ? `Contexto adicional dado por el admin: ${input.hint.trim()}` : ""}
+
+Escribe:
+1. Una descripción corta (1-2 oraciones) que sea la promesa de valor de la oferta — qué resultado obtiene el cliente, no una lista de tareas.
+2. Entre 3 y 7 entregables concretos y verificables (cosas que el cliente puede ver/recibir), cada uno una frase corta.
+3. De esta lista de tipos de proyecto ya existentes en el sistema, cuál (si alguno) es el más relevante para esta oferta — o null si ninguno aplica bien:
+${typeList}
+
+Responde ÚNICAMENTE con JSON válido (sin markdown, sin explicación):
+{"description": "...", "deliverables": ["...", "..."], "project_type_id": "<id o null>"}`,
+    }],
+  })
+
+  const raw = (msg.content[0] as { type: string; text: string }).text.trim()
+  const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim()
+  let parsed: { description?: string; deliverables?: string[]; project_type_id?: string | null }
+  try {
+    parsed = JSON.parse(cleaned)
+  } catch {
+    throw new Error("La IA no devolvió una respuesta válida — intenta de nuevo")
+  }
+
+  const validTypeId = input.projectTypes.some((t) => t.id === parsed.project_type_id) ? parsed.project_type_id! : null
+  return {
+    description: parsed.description?.trim() || "",
+    deliverables: (parsed.deliverables ?? []).map((d) => d.trim()).filter(Boolean),
+    project_type_id: validTypeId,
+  }
 }

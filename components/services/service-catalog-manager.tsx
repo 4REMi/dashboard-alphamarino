@@ -4,10 +4,10 @@ import { useState, useTransition } from "react"
 import type { ServiceOffer, ServiceAddon, Currency } from "@/lib/types"
 import {
   createServiceOffer, updateServiceOffer, archiveServiceOffer, deleteServiceOffer, setOfferAddons,
-  createServiceAddon, updateServiceAddon, archiveServiceAddon, deleteServiceAddon,
+  createServiceAddon, updateServiceAddon, archiveServiceAddon, deleteServiceAddon, suggestServiceOffer,
 } from "@/lib/actions/services"
 import { getProjectTypeIcon } from "@/lib/project-type-icons"
-import { Plus, Pencil, Trash2, Archive, ArchiveRestore, X, Tag, Layers, ChevronRight } from "lucide-react"
+import { Plus, Pencil, Trash2, Archive, ArchiveRestore, X, Tag, Layers, ChevronRight, Sparkles } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface ProjectTypeBadge {
@@ -67,6 +67,34 @@ function OfferForm({
   const [basedOn, setBasedOn] = useState(initial?.based_on_offer_id ?? prefillFrom?.id ?? "")
   const [currency, setCurrency] = useState<Currency>(initial?.currency ?? prefillFrom?.currency ?? "MXN")
 
+  // Controlled only where the AI autofill needs to write into them —
+  // everything else stays uncontrolled (defaultValue) like before.
+  const [category, setCategory] = useState(base?.category ?? "")
+  const [name, setName] = useState(initial?.name ?? (prefillFrom ? `${prefillFrom.name} — tropicalización` : ""))
+  const [description, setDescription] = useState(initial?.description ?? prefillFrom?.description ?? "")
+  const [deliverables, setDeliverables] = useState((initial?.deliverables ?? prefillFrom?.deliverables ?? []).join("\n"))
+  const [projectTypeId, setProjectTypeId] = useState(initial?.default_project_type_id ?? "")
+  const [aiHint, setAiHint] = useState("")
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError, setAiError] = useState<string | null>(null)
+
+  function handleAutofill() {
+    if (!category.trim() || !name.trim()) {
+      setAiError("Escribe categoría y nombre antes de autorrellenar")
+      return
+    }
+    setAiError(null)
+    setAiLoading(true)
+    suggestServiceOffer({ category, name, hint: aiHint, projectTypes })
+      .then((result) => {
+        setDescription(result.description)
+        setDeliverables(result.deliverables.join("\n"))
+        if (result.project_type_id) setProjectTypeId(result.project_type_id)
+      })
+      .catch((err) => setAiError(err instanceof Error ? err.message : "No se pudo autorrellenar"))
+      .finally(() => setAiLoading(false))
+  }
+
   return (
     <form onSubmit={onSubmit} className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
@@ -74,7 +102,7 @@ function OfferForm({
           <label className="text-xs font-medium text-muted-foreground block">Categoría *</label>
           <input
             name="category" required list="service-categories"
-            defaultValue={base?.category ?? ""}
+            value={category} onChange={(e) => setCategory(e.target.value)}
             placeholder="Paid Media"
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
           />
@@ -86,18 +114,42 @@ function OfferForm({
           <label className="text-xs font-medium text-muted-foreground block">Nombre *</label>
           <input
             name="name" required autoFocus
-            defaultValue={initial?.name ?? (prefillFrom ? `${prefillFrom.name} — tropicalización` : "")}
+            value={name} onChange={(e) => setName(e.target.value)}
             placeholder="Oferta base"
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
           />
         </div>
       </div>
 
+      {/* AI autofill — one shot, on demand. Fills description + deliverables
+          (and suggests a project type below) from what's already typed above;
+          never touches price/is_base/based_on. */}
+      <div className="rounded-lg border border-dashed border-primary/30 bg-primary/[0.03] p-3 space-y-2">
+        <div className="flex items-center gap-2">
+          <input
+            value={aiHint}
+            onChange={(e) => setAiHint(e.target.value)}
+            placeholder="Opcional: contexto extra para la IA (ej. incluye A/B testing semanal)"
+            className="flex-1 min-w-0 rounded-md border border-input bg-background px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+          <button
+            type="button"
+            onClick={handleAutofill}
+            disabled={aiLoading}
+            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 disabled:opacity-50 transition-colors"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            {aiLoading ? "Pensando…" : "Autorrellenar con IA"}
+          </button>
+        </div>
+        {aiError && <p className="text-[11px] text-destructive">{aiError}</p>}
+      </div>
+
       <div className="space-y-1.5">
         <label className="text-xs font-medium text-muted-foreground block">Descripción</label>
         <textarea
           name="description" rows={2}
-          defaultValue={initial?.description ?? prefillFrom?.description ?? ""}
+          value={description} onChange={(e) => setDescription(e.target.value)}
           placeholder="La promesa / resumen de esta oferta…"
           className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none"
         />
@@ -107,7 +159,7 @@ function OfferForm({
         <label className="text-xs font-medium text-muted-foreground block">Entregables (uno por línea)</label>
         <textarea
           name="deliverables" rows={4}
-          defaultValue={(initial?.deliverables ?? prefillFrom?.deliverables ?? []).join("\n")}
+          value={deliverables} onChange={(e) => setDeliverables(e.target.value)}
           placeholder={"Configuración de campañas\nReporte semanal\n..."}
           className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none font-mono"
         />
@@ -144,7 +196,7 @@ function OfferForm({
         </label>
         <select
           name="default_project_type_id"
-          defaultValue={initial?.default_project_type_id ?? ""}
+          value={projectTypeId} onChange={(e) => setProjectTypeId(e.target.value)}
           className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
         >
           <option value="">Sin referencia</option>
