@@ -1067,6 +1067,12 @@ export interface ImageClone {
 // ============================================================
 
 export type ServiceStatus = "active" | "archived"
+export type DeliverableCadence = "once" | "monthly" | "quarterly" | "biannual"
+
+export interface ServiceDeliverable {
+  text: string
+  cadence: DeliverableCadence
+}
 
 export interface ServiceAddon {
   id: string
@@ -1086,7 +1092,7 @@ export interface ServiceOffer {
   category: string
   name: string
   description: string | null
-  deliverables: string[]
+  deliverables: ServiceDeliverable[]
   is_base: boolean
   based_on_offer_id: string | null
   default_project_type_id: string | null

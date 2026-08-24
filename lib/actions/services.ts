@@ -3,15 +3,31 @@
 import { revalidatePath } from "next/cache"
 import Anthropic from "@anthropic-ai/sdk"
 import { createClient } from "@/lib/supabase/server"
-import type { ServiceOffer, ServiceAddon, Currency } from "@/lib/types"
+import type { ServiceOffer, ServiceAddon, Currency, ServiceDeliverable, DeliverableCadence } from "@/lib/types"
+
+const CADENCES: DeliverableCadence[] = ["once", "monthly", "quarterly", "biannual"]
 
 function revalidateServices() {
   revalidatePath("/services")
 }
 
-function parseDeliverables(formData: FormData): string[] {
-  const raw = (formData.get("deliverables") as string) ?? ""
-  return raw.split("\n").map((l) => l.trim()).filter(Boolean)
+// The form serializes its deliverable-list editor to JSON into a hidden
+// "deliverables_json" field — no more relying on the user pressing Enter
+// in a textarea to separate items.
+function parseDeliverables(formData: FormData): ServiceDeliverable[] {
+  const raw = (formData.get("deliverables_json") as string) ?? "[]"
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .map((d) => ({
+        text: String(d?.text ?? "").trim(),
+        cadence: (CADENCES as string[]).includes(d?.cadence) ? d.cadence as DeliverableCadence : "once",
+      }))
+      .filter((d) => d.text)
+  } catch {
+    return []
+  }
 }
 
 function parsePrice(formData: FormData): number | null {
@@ -218,7 +234,7 @@ export async function suggestServiceOffer(input: {
   name: string
   hint?: string
   projectTypes: { id: string; name: string }[]
-}): Promise<{ description: string; deliverables: string[]; project_type_id: string | null }> {
+}): Promise<{ description: string; deliverables: ServiceDeliverable[]; project_type_id: string | null }> {
   if (!input.category.trim() || !input.name.trim()) {
     throw new Error("Escribe al menos la categoría y el nombre antes de autorrellenar")
   }
@@ -241,18 +257,18 @@ ${input.hint?.trim() ? `Contexto adicional dado por el admin: ${input.hint.trim(
 
 Escribe:
 1. Una descripción corta (1-2 oraciones) que sea la promesa de valor de la oferta — qué resultado obtiene el cliente, no una lista de tareas.
-2. Entre 3 y 7 entregables concretos y verificables (cosas que el cliente puede ver/recibir), cada uno una frase corta.
+2. Entre 3 y 7 entregables concretos y verificables (cosas que el cliente puede ver/recibir), cada uno una frase corta. Para cada uno decide su cadencia: "once" si es un entregable de una sola vez (ej. configuración inicial, auditoría de arranque), o "monthly"/"quarterly"/"biannual" si se repite con esa frecuencia (ej. reporte mensual, revisión trimestral de estrategia). Si no es obvio, usa "once".
 3. De esta lista de tipos de proyecto ya existentes en el sistema, cuál (si alguno) es el más relevante para esta oferta — o null si ninguno aplica bien:
 ${typeList}
 
 Responde ÚNICAMENTE con JSON válido (sin markdown, sin explicación):
-{"description": "...", "deliverables": ["...", "..."], "project_type_id": "<id o null>"}`,
+{"description": "...", "deliverables": [{"text": "...", "cadence": "once"}, {"text": "...", "cadence": "monthly"}], "project_type_id": "<id o null>"}`,
     }],
   })
 
   const raw = (msg.content[0] as { type: string; text: string }).text.trim()
   const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim()
-  let parsed: { description?: string; deliverables?: string[]; project_type_id?: string | null }
+  let parsed: { description?: string; deliverables?: { text?: string; cadence?: string }[]; project_type_id?: string | null }
   try {
     parsed = JSON.parse(cleaned)
   } catch {
@@ -262,7 +278,12 @@ Responde ÚNICAMENTE con JSON válido (sin markdown, sin explicación):
   const validTypeId = input.projectTypes.some((t) => t.id === parsed.project_type_id) ? parsed.project_type_id! : null
   return {
     description: parsed.description?.trim() || "",
-    deliverables: (parsed.deliverables ?? []).map((d) => d.trim()).filter(Boolean),
+    deliverables: (parsed.deliverables ?? [])
+      .map((d) => ({
+        text: (d.text ?? "").trim(),
+        cadence: (CADENCES as string[]).includes(d.cadence ?? "") ? (d.cadence as DeliverableCadence) : "once",
+      }))
+      .filter((d) => d.text),
     project_type_id: validTypeId,
   }
 }

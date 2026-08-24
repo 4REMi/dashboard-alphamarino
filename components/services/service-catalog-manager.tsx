@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import type { ServiceOffer, ServiceAddon, Currency } from "@/lib/types"
+import type { ServiceOffer, ServiceAddon, Currency, ServiceDeliverable, DeliverableCadence } from "@/lib/types"
 import {
   createServiceOffer, updateServiceOffer, archiveServiceOffer, deleteServiceOffer, setOfferAddons,
   createServiceAddon, updateServiceAddon, archiveServiceAddon, deleteServiceAddon, suggestServiceOffer,
@@ -48,6 +48,66 @@ function CurrencySwitch({ value, onChange }: { value: Currency; onChange: (c: Cu
   )
 }
 
+const CADENCE_LABEL: Record<DeliverableCadence, string> = {
+  once: "Una vez",
+  monthly: "Mensual",
+  quarterly: "Trimestral",
+  biannual: "Semestral",
+}
+const CADENCE_OPTIONS = Object.keys(CADENCE_LABEL) as DeliverableCadence[]
+
+// Structured entregables editor — one row per deliverable (text + cadence),
+// serialized to a hidden JSON field on submit instead of relying on the
+// user pressing Enter in a textarea to separate items.
+function DeliverablesEditor({ value, onChange }: { value: ServiceDeliverable[]; onChange: (v: ServiceDeliverable[]) => void }) {
+  function update(i: number, patch: Partial<ServiceDeliverable>) {
+    onChange(value.map((d, idx) => idx === i ? { ...d, ...patch } : d))
+  }
+  function remove(i: number) {
+    onChange(value.filter((_, idx) => idx !== i))
+  }
+  function add() {
+    onChange([...value, { text: "", cadence: "once" }])
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <input type="hidden" name="deliverables_json" value={JSON.stringify(value)} />
+      {value.map((d, i) => (
+        <div key={i} className="flex items-center gap-1.5">
+          <input
+            value={d.text}
+            onChange={(e) => update(i, { text: e.target.value })}
+            placeholder="Reporte semanal de resultados"
+            className="flex-1 min-w-0 rounded-md border border-input bg-background px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+          <select
+            value={d.cadence}
+            onChange={(e) => update(i, { cadence: e.target.value as DeliverableCadence })}
+            className="flex-shrink-0 rounded-md border border-input bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+          >
+            {CADENCE_OPTIONS.map((c) => <option key={c} value={c}>{CADENCE_LABEL[c]}</option>)}
+          </select>
+          <button
+            type="button"
+            onClick={() => remove(i)}
+            className="flex-shrink-0 p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={add}
+        className="flex items-center gap-1 text-xs text-primary hover:underline"
+      >
+        <Plus className="w-3 h-3" /> Agregar entregable
+      </button>
+    </div>
+  )
+}
+
 // ── Offer form (create + edit) ────────────────────────────────────────────
 
 function OfferForm({
@@ -72,7 +132,7 @@ function OfferForm({
   const [category, setCategory] = useState(base?.category ?? "")
   const [name, setName] = useState(initial?.name ?? (prefillFrom ? `${prefillFrom.name} — tropicalización` : ""))
   const [description, setDescription] = useState(initial?.description ?? prefillFrom?.description ?? "")
-  const [deliverables, setDeliverables] = useState((initial?.deliverables ?? prefillFrom?.deliverables ?? []).join("\n"))
+  const [deliverables, setDeliverables] = useState<ServiceDeliverable[]>(initial?.deliverables ?? prefillFrom?.deliverables ?? [])
   const [projectTypeId, setProjectTypeId] = useState(initial?.default_project_type_id ?? "")
   const [aiHint, setAiHint] = useState("")
   const [aiLoading, setAiLoading] = useState(false)
@@ -88,7 +148,7 @@ function OfferForm({
     suggestServiceOffer({ category, name, hint: aiHint, projectTypes })
       .then((result) => {
         setDescription(result.description)
-        setDeliverables(result.deliverables.join("\n"))
+        setDeliverables(result.deliverables)
         if (result.project_type_id) setProjectTypeId(result.project_type_id)
       })
       .catch((err) => setAiError(err instanceof Error ? err.message : "No se pudo autorrellenar"))
@@ -156,13 +216,8 @@ function OfferForm({
       </div>
 
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-muted-foreground block">Entregables (uno por línea)</label>
-        <textarea
-          name="deliverables" rows={4}
-          value={deliverables} onChange={(e) => setDeliverables(e.target.value)}
-          placeholder={"Configuración de campañas\nReporte semanal\n..."}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none font-mono"
-        />
+        <label className="text-xs font-medium text-muted-foreground block">Entregables</label>
+        <DeliverablesEditor value={deliverables} onChange={setDeliverables} />
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -381,7 +436,13 @@ function OfferCard({
         <ul className="text-xs text-muted-foreground space-y-0.5 pl-1">
           {offer.deliverables.map((d, i) => (
             <li key={i} className="flex items-start gap-1.5">
-              <span className="text-primary/60 mt-0.5">•</span> {d}
+              <span className="text-primary/60 mt-0.5">•</span>
+              <span className="flex-1">{d.text}</span>
+              {d.cadence !== "once" && (
+                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-sky-50 text-sky-700 flex-shrink-0">
+                  {CADENCE_LABEL[d.cadence]}
+                </span>
+              )}
             </li>
           ))}
         </ul>
