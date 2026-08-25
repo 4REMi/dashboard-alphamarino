@@ -1015,6 +1015,27 @@ export interface MetaAdResult {
   total: number
 }
 
+// Raw dataset item shape from Apify's apify/instagram-post-scraper.
+// Kept loose/optional — parsing is defensive since Apify actors change
+// their output shape without warning, same posture as MetaAdResult's
+// nested snapshot handling.
+export interface InstagramPostResult {
+  id: string
+  shortCode: string
+  type?: string             // "Image" | "Video" | "Sidecar"
+  caption?: string | null
+  url?: string               // post URL
+  timestamp?: string | null  // ISO
+  likesCount?: number | null
+  commentsCount?: number | null
+  displayUrl?: string | null       // main/cover image
+  videoUrl?: string | null
+  images?: string[]                // carousel (Sidecar) slide URLs
+  ownerUsername?: string | null
+  ownerId?: string | null
+  ownerFullName?: string | null
+}
+
 // ============================================================
 // AD CLONE
 // ============================================================

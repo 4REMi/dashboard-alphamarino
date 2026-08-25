@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
-import type { TrackedBrand, SavedAd, AdBoard, ClientCreativeContext, MetaAdResult } from "@/lib/types"
+import type { TrackedBrand, SavedAd, AdBoard, ClientCreativeContext, MetaAdResult, InstagramPostResult } from "@/lib/types"
 
 // ── Storage mirror ────────────────────────────────────────────────
 
@@ -196,6 +196,50 @@ export async function searchMetaAds(params: {
   return (Array.isArray(data) ? data : []) as MetaAdResult[]
 }
 
+// ── Apify — Instagram organic posts ──────────────────────────────
+
+const IG_ACTOR = "apify~instagram-post-scraper"
+
+/**
+ * Runs synchronously (no run+poll needed — unlike the Meta ads library
+ * scraper, this actor returns its full result set in one call) and
+ * returns raw dataset items straight from Apify.
+ */
+export async function searchOrganicPosts(params: {
+  username: string
+  limit?: number
+}): Promise<InstagramPostResult[]> {
+  await assertAuth()
+  const token = process.env.APIFY_API_TOKEN
+  if (!token) throw new Error("APIFY_API_TOKEN no configurado")
+
+  const handle = params.username.trim().replace(/^@/, "")
+  if (!handle) throw new Error("Falta el usuario de Instagram")
+
+  const input = {
+    username:      [handle],
+    resultsLimit:  params.limit ?? 24,
+    dataDetailLevel: "detailedData",
+  }
+
+  const res = await fetch(
+    `${APIFY_BASE}/acts/${IG_ACTOR}/run-sync-get-dataset-items?token=${token}`,
+    {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify(input),
+      cache:   "no-store",
+    }
+  )
+  if (!res.ok) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const err: any = await res.json().catch(() => ({}))
+    throw new Error(err?.error?.message ?? `Apify error ${res.status}`)
+  }
+  const data = await res.json()
+  return (Array.isArray(data) ? data : []) as InstagramPostResult[]
+}
+
 async function assertAuth() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -228,12 +272,13 @@ export async function addTrackedBrand(formData: FormData): Promise<TrackedBrand>
   const { data, error } = await supabase
     .from("tracked_brands")
     .insert({
-      customer_id:  (formData.get("customer_id") as string | null) || null,
-      name:         (formData.get("name") as string).trim(),
-      meta_page_id: (formData.get("meta_page_id") as string)?.trim() || null,
-      page_url:     (formData.get("page_url") as string)?.trim() || null,
-      notes:        (formData.get("notes") as string)?.trim() || null,
-      created_by:   user.id,
+      customer_id:      (formData.get("customer_id") as string | null) || null,
+      name:             (formData.get("name") as string).trim(),
+      meta_page_id:     (formData.get("meta_page_id") as string)?.trim() || null,
+      instagram_handle: (formData.get("instagram_handle") as string)?.trim().replace(/^@/, "") || null,
+      page_url:         (formData.get("page_url") as string)?.trim() || null,
+      notes:            (formData.get("notes") as string)?.trim() || null,
+      created_by:       user.id,
     })
     .select("*, customer:customers(id, name, company)")
     .single()
@@ -247,10 +292,11 @@ export async function updateTrackedBrand(id: string, formData: FormData): Promis
   const { error } = await supabase
     .from("tracked_brands")
     .update({
-      name:         (formData.get("name") as string).trim(),
-      meta_page_id: (formData.get("meta_page_id") as string)?.trim() || null,
-      page_url:     (formData.get("page_url") as string)?.trim() || null,
-      notes:        (formData.get("notes") as string)?.trim() || null,
+      name:             (formData.get("name") as string).trim(),
+      meta_page_id:     (formData.get("meta_page_id") as string)?.trim() || null,
+      instagram_handle: (formData.get("instagram_handle") as string)?.trim().replace(/^@/, "") || null,
+      page_url:         (formData.get("page_url") as string)?.trim() || null,
+      notes:            (formData.get("notes") as string)?.trim() || null,
     })
     .eq("id", id)
   if (error) throw error
@@ -341,6 +387,79 @@ export async function saveAd(adData: {
       await supabase.from("saved_ads").update(updates).eq("id", data.id)
       Object.assign(data, updates)
     }
+  }
+
+  revalidate()
+  return data as SavedAd
+}
+
+/**
+ * Saves an organic Instagram post as a saved_ads row (post_type =
+ * "organic_post"). Mirrors saveAd()'s upsert + storage-mirror pattern —
+ * single image/video posts use image_url/video_url like a normal saved
+ * ad; carousel ("Sidecar") posts additionally populate
+ * carousel_image_urls, mirrored to cached_carousel_image_urls.
+ */
+export async function saveOrganicPost(post: InstagramPostResult): Promise<SavedAd> {
+  const { supabase, user } = await assertAuth()
+
+  const isCarousel   = post.type === "Sidecar" && (post.images?.length ?? 0) > 0
+  const primaryImage = isCarousel ? (post.images?.[0] ?? post.displayUrl ?? null) : (post.displayUrl ?? null)
+
+  const row = {
+    ad_archive_id:  null,
+    external_id:    post.shortCode || post.id,
+    page_id:        post.ownerId || post.ownerUsername || "unknown",
+    page_name:       post.ownerFullName || post.ownerUsername || "Instagram",
+    body:           post.caption || null,
+    image_url:      primaryImage,
+    video_url:      post.videoUrl || null,
+    post_type:      "organic_post" as const,
+    caption:        post.caption || null,
+    likes_count:    post.likesCount ?? null,
+    comments_count: post.commentsCount ?? null,
+    post_url:       post.url || null,
+    posted_at:      post.timestamp || null,
+    carousel_image_urls: isCarousel ? (post.images ?? []) : [],
+    currency:       "",
+    platforms:      ["instagram"],
+    created_by:     user.id,
+  }
+
+  const { data, error } = await supabase
+    .from("saved_ads")
+    .upsert(row, { onConflict: "external_id" })
+    .select()
+    .single()
+  if (error) throw error
+
+  // Mirror media to Storage on first save (skip if already cached)
+  const updates: Record<string, unknown> = {}
+
+  if (!data.cached_image_url && row.image_url) {
+    const ext = (row.image_url.split("?")[0].split(".").pop() ?? "jpg").slice(0, 4)
+    const url = await mirrorToStorage(supabase, row.image_url, `${data.id}/image.${ext}`, 20)
+    if (url) updates.cached_image_url = url
+  }
+  if (!data.cached_video_url && row.video_url) {
+    const ext = (row.video_url.split("?")[0].split(".").pop() ?? "mp4").slice(0, 4)
+    const url = await mirrorToStorage(supabase, row.video_url, `${data.id}/video.${ext}`, 150)
+    if (url) updates.cached_video_url = url
+  }
+  if (isCarousel && (!data.cached_carousel_image_urls || data.cached_carousel_image_urls.length === 0)) {
+    const mirrored: string[] = []
+    for (let i = 0; i < row.carousel_image_urls.length; i++) {
+      const src = row.carousel_image_urls[i]
+      const ext = (src.split("?")[0].split(".").pop() ?? "jpg").slice(0, 4)
+      const url = await mirrorToStorage(supabase, src, `${data.id}/carousel-${i}.${ext}`, 20)
+      mirrored.push(url ?? src)
+    }
+    updates.cached_carousel_image_urls = mirrored
+  }
+
+  if (Object.keys(updates).length > 0) {
+    await supabase.from("saved_ads").update(updates).eq("id", data.id)
+    Object.assign(data, updates)
   }
 
   revalidate()

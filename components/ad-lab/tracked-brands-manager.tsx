@@ -37,10 +37,11 @@ export function TrackedBrandsManager({ initialBrands }: Props) {
       await updateTrackedBrand(id, fd)
       setBrands((prev) => prev.map((b) => b.id === id ? {
         ...b,
-        name:         fd.get("name") as string,
-        meta_page_id: (fd.get("meta_page_id") as string) || null,
-        page_url:     (fd.get("page_url") as string) || null,
-        notes:        (fd.get("notes") as string) || null,
+        name:             fd.get("name") as string,
+        meta_page_id:     (fd.get("meta_page_id") as string) || null,
+        instagram_handle: (fd.get("instagram_handle") as string)?.replace(/^@/, "") || null,
+        page_url:         (fd.get("page_url") as string) || null,
+        notes:            (fd.get("notes") as string) || null,
       } : b))
       setEditingId(null)
     })
@@ -155,6 +156,16 @@ function AddBrandForm({
           />
         </div>
 
+        {/* Instagram handle */}
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">Usuario de Instagram</label>
+          <input
+            name="instagram_handle"
+            placeholder="ej. nike"
+            className="w-full text-sm rounded-lg border border-border bg-background px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/40 font-mono"
+          />
+        </div>
+
         {/* Page URL */}
         <div className="sm:col-span-2">
           <label className="text-xs text-muted-foreground mb-1 block">URL de la página</label>
@@ -238,6 +249,14 @@ function BrandRow({
               className="w-full text-sm rounded-lg border border-border bg-background px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/40 font-mono"
             />
           </div>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Usuario de Instagram</label>
+            <input
+              name="instagram_handle"
+              defaultValue={brand.instagram_handle ?? ""}
+              className="w-full text-sm rounded-lg border border-border bg-background px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/40 font-mono"
+            />
+          </div>
           <div className="sm:col-span-2">
             <label className="text-xs text-muted-foreground mb-1 block">URL de la página</label>
             <input
@@ -287,6 +306,11 @@ function BrandRow({
           {brand.meta_page_id && (
             <span className="text-[11px] font-mono text-muted-foreground">
               ID: {brand.meta_page_id}
+            </span>
+          )}
+          {brand.instagram_handle && (
+            <span className="text-[11px] font-mono text-muted-foreground">
+              @{brand.instagram_handle}
             </span>
           )}
           {brand.notes && (

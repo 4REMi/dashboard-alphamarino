@@ -1,17 +1,19 @@
 "use client"
 
 import { useState, useRef, useCallback, useEffect } from "react"
-import type { TrackedBrand, AdBoard, MetaAdResult } from "@/lib/types"
+import type { TrackedBrand, AdBoard, MetaAdResult, InstagramPostResult } from "@/lib/types"
 import {
   startMetaAdsSearch, getMetaAdsRunStatus, getMetaAdsDatasetPage,
-  saveAd, addAdToBoard,
+  saveAd, addAdToBoard, searchOrganicPosts, saveOrganicPost,
 } from "@/lib/actions/ad-lab"
 import { AdCard } from "@/components/ad-lab/ad-card"
 import { AdDetailModal } from "@/components/ad-lab/ad-detail-modal"
+import { OrganicPostCard } from "@/components/ad-lab/organic-post-card"
 import {
   Search, LayoutGrid, ArrowLeft, ChevronDown,
   Loader2, AlertCircle, Radio, Tv2, Upload,
 } from "lucide-react"
+import { SiInstagram } from "@icons-pack/react-simple-icons"
 import Link from "next/link"
 import { UploadAdModal } from "@/components/ad-lab/upload-ad-modal"
 
@@ -23,10 +25,48 @@ interface Props {
 type FilterTab    = "all" | "tracked"
 type StatusFilter = "ALL" | "ACTIVE" | "INACTIVE"
 type SearchStatus = "idle" | "starting" | "running" | "ready" | "failed"
+type SourceMode   = "ads" | "organic"
 
 const PAGE_SIZE = 24
 
 export function DiscoveryShell({ trackedBrands, boards }: Props) {
+  // ── Ads vs. Organic toggle ────────────────────────────────────
+  const [mode, setMode] = useState<SourceMode>("ads")
+
+  // ── Organic (Instagram) search ─────────────────────────────────
+  const [igUsername,      setIgUsername]      = useState("")
+  const [organicStatus,   setOrganicStatus]   = useState<SearchStatus>("idle")
+  const [organicError,    setOrganicError]    = useState<string | null>(null)
+  const [organicResults,  setOrganicResults]  = useState<InstagramPostResult[]>([])
+  const [organicSavingId, setOrganicSavingId] = useState<string | null>(null)
+
+  async function runOrganicSearch(username: string) {
+    const handle = username.trim()
+    if (!handle) return
+    setOrganicStatus("starting")
+    setOrganicError(null)
+    setOrganicResults([])
+    try {
+      setOrganicStatus("running")
+      const items = await searchOrganicPosts({ username: handle, limit: 24 })
+      setOrganicResults(items)
+      setOrganicStatus("ready")
+    } catch (err) {
+      setOrganicError(err instanceof Error ? err.message : "Error al buscar posts")
+      setOrganicStatus("failed")
+    }
+  }
+
+  async function handleSaveOrganicToBoard(post: InstagramPostResult, boardId: string) {
+    setOrganicSavingId(post.shortCode)
+    try {
+      const saved = await saveOrganicPost(post)
+      await addAdToBoard(boardId, saved.id)
+    } finally {
+      setOrganicSavingId(null)
+    }
+  }
+
   // ── Search inputs ──────────────────────────────────────────────
   const [query,          setQuery]          = useState("")
   const [selectedPageId, setSelectedPageId] = useState("")
@@ -260,18 +300,77 @@ export function DiscoveryShell({ trackedBrands, boards }: Props) {
             </div>
             <div className="flex-1 min-w-0">
               <h1 className="text-xl font-bold tracking-tight">Discovery</h1>
-              <p className="text-sm text-muted-foreground">Busca anuncios de competidores en Meta Ads Library</p>
+              <p className="text-sm text-muted-foreground">
+                {mode === "ads" ? "Busca anuncios de competidores en Meta Ads Library" : "Busca posts orgánicos de una cuenta de Instagram"}
+              </p>
             </div>
-            <button
-              onClick={() => setShowUpload(true)}
-              className="flex items-center gap-2 h-9 px-4 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors flex-shrink-0"
-            >
-              <Upload className="w-3.5 h-3.5" />
-              Subir
-            </button>
+            <div className="flex items-center gap-0.5 rounded-full bg-muted p-0.5 flex-shrink-0">
+              {(["ads", "organic"] as SourceMode[]).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setMode(m)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                    mode === m ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {m === "ads" ? "Ads" : "Orgánico"}
+                </button>
+              ))}
+            </div>
+            {mode === "ads" && (
+              <button
+                onClick={() => setShowUpload(true)}
+                className="flex items-center gap-2 h-9 px-4 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors flex-shrink-0"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                Subir
+              </button>
+            )}
           </div>
 
-          {/* Search bar */}
+          {/* Search bar — Instagram (organic) */}
+          {mode === "organic" && (
+            <form onSubmit={(e) => { e.preventDefault(); runOrganicSearch(igUsername) }} className="flex gap-2">
+              <div className="relative flex-1">
+                <SiInstagram className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                <input
+                  value={igUsername}
+                  onChange={(e) => setIgUsername(e.target.value)}
+                  placeholder="usuario_de_instagram (sin @)"
+                  className="w-full pl-9 pr-4 h-10 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-transparent"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={organicStatus === "starting" || organicStatus === "running" || !igUsername.trim()}
+                className="h-10 px-5 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors flex items-center gap-2"
+              >
+                {(organicStatus === "starting" || organicStatus === "running") ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                Buscar
+              </button>
+            </form>
+          )}
+
+          {/* Quick access — tracked brands with an Instagram handle */}
+          {mode === "organic" && trackedBrands.some((b) => b.instagram_handle) && (
+            <div className="mt-4 flex items-center gap-1.5 flex-wrap">
+              <span className="text-xs text-muted-foreground">Acceso rápido:</span>
+              {trackedBrands.filter((b) => b.instagram_handle).slice(0, 6).map((brand) => (
+                <button
+                  key={brand.id}
+                  onClick={() => { setIgUsername(brand.instagram_handle!); runOrganicSearch(brand.instagram_handle!) }}
+                  disabled={organicStatus === "starting" || organicStatus === "running"}
+                  className="text-xs px-2.5 py-1 rounded-lg border border-border hover:border-primary/30 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                >
+                  {brand.name}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Search bar — Ads */}
+          {mode === "ads" && (
+          <>
           <form onSubmit={handleSearch} className="flex gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
@@ -339,9 +438,12 @@ export function DiscoveryShell({ trackedBrands, boards }: Props) {
               </div>
             )}
           </div>
+          </>
+          )}
         </div>
 
-        {/* Content */}
+        {/* Content — Ads */}
+        {mode === "ads" && (
         <div className="flex-1 overflow-y-auto px-6 py-6">
 
           {/* Starting */}
@@ -460,6 +562,75 @@ export function DiscoveryShell({ trackedBrands, boards }: Props) {
             </>
           )}
         </div>
+        )}
+
+        {/* Content — Organic (Instagram) */}
+        {mode === "organic" && (
+        <div className="flex-1 overflow-y-auto px-6 py-6">
+          {(organicStatus === "starting" || organicStatus === "running") && (
+            <div className="flex flex-col items-center justify-center py-24 gap-3">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              <p className="text-sm text-muted-foreground">Buscando posts en Instagram…</p>
+            </div>
+          )}
+
+          {organicStatus === "failed" && organicError && (
+            <div className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-4 max-w-xl mx-auto mt-8">
+              <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-destructive">Error al buscar</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{organicError}</p>
+              </div>
+            </div>
+          )}
+
+          {organicStatus === "idle" && (
+            <div className="flex flex-col items-center justify-center py-24 gap-4 text-center">
+              <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center">
+                <SiInstagram className="w-7 h-7 text-muted-foreground" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold">Busca una cuenta de Instagram para empezar</p>
+                <p className="text-xs text-muted-foreground mt-1 max-w-xs">
+                  Escribe el usuario (sin @) o usa los accesos rápidos de marcas trackeadas.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {organicStatus === "ready" && organicResults.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-24 gap-3 text-center">
+              <div className="w-12 h-12 rounded-2xl bg-muted flex items-center justify-center">
+                <Search className="w-6 h-6 text-muted-foreground" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold">Sin resultados</p>
+                <p className="text-xs text-muted-foreground mt-1">Verifica el usuario e intenta de nuevo.</p>
+              </div>
+            </div>
+          )}
+
+          {organicStatus === "ready" && organicResults.length > 0 && (
+            <>
+              <p className="text-xs text-muted-foreground mb-4">
+                {organicResults.length} post{organicResults.length !== 1 ? "s" : ""} encontrado{organicResults.length !== 1 ? "s" : ""}
+              </p>
+              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+                {organicResults.map((post) => (
+                  <OrganicPostCard
+                    key={post.shortCode || post.id}
+                    post={post}
+                    boards={boards}
+                    savingId={organicSavingId}
+                    onSaveToBoard={handleSaveOrganicToBoard}
+                    onOpenDetail={(p) => { if (p.url) window.open(p.url, "_blank", "noopener,noreferrer") }}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+        )}
       </div>
     </>
   )
