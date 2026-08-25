@@ -6,6 +6,7 @@ import { updateBriefScript, updateScriptTitle } from "@/lib/actions/creatives"
 import { CopyScriptButton } from "@/components/share/copy-script-button"
 import { cn } from "@/lib/utils"
 import { Pencil, Check, X } from "lucide-react"
+import { AutoTextarea } from "@/components/ui/auto-textarea"
 import type { AdCloneLine } from "@/lib/types"
 
 interface Reference {
@@ -359,10 +360,10 @@ function EditableScript({ briefId, adId, initialLines, hadClientFeedback }: { br
                   {i + 1}
                 </span>
               )}
-              <textarea
+              <AutoTextarea
                 value={line.adapted}
                 onChange={(e) => updateLine(i, e.target.value)}
-                rows={Math.max(2, Math.ceil(line.adapted.length / 55))}
+                rows={2}
                 className="w-full resize-none bg-transparent border border-transparent hover:border-indigo-200 focus:border-indigo-400 rounded-lg px-2 py-1 text-sm font-medium leading-relaxed text-gray-900 focus:outline-none transition-colors"
               />
             </div>
