@@ -831,6 +831,7 @@ export interface TrackedBrand {
   customer_id: string | null
   name: string
   meta_page_id: string | null
+  instagram_handle: string | null
   page_url: string | null
   notes: string | null
   created_by: string | null
@@ -838,9 +839,11 @@ export interface TrackedBrand {
   customer?: Pick<Customer, "id" | "name" | "company"> | null
 }
 
+export type SavedAdPostType = "meta_ad" | "organic_post"
+
 export interface SavedAd {
   id: string
-  ad_archive_id: string
+  ad_archive_id: string | null   // null for organic_post rows
   page_id: string
   page_name: string
   body: string | null
@@ -866,6 +869,16 @@ export interface SavedAd {
   source: string | null   // 'discovery' | 'upload'
   created_by: string | null
   created_at: string
+  // Organic Discovery (post_type = "organic_post")
+  post_type: SavedAdPostType
+  external_id: string | null                  // e.g. IG shortcode — organic posts' equivalent of ad_archive_id
+  caption: string | null
+  likes_count: number | null
+  comments_count: number | null
+  post_url: string | null
+  posted_at: string | null
+  carousel_image_urls: string[]
+  cached_carousel_image_urls: string[]
 }
 
 
@@ -1055,6 +1068,7 @@ export interface ImageClone {
   fal_request_id: string | null
   generated_image_urls: string[]
   error_message: string | null
+  batch_id: string | null   // groups the N clones from "Clonar carrusel completo"
   created_by: string | null
   created_at: string
   updated_at: string

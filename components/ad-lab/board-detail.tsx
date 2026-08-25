@@ -53,7 +53,7 @@ function savedAdToResult(ad: SavedAd): MetaAdResult {
   const thumbUrl = ad.cached_image_url ?? ad.image_url
   const videoUrl = ad.cached_video_url ?? ad.video_url
   return {
-    ad_archive_id:        ad.ad_archive_id,
+    ad_archive_id:        ad.ad_archive_id ?? "",
     page_id:              ad.page_id,
     page_name:            ad.page_name,
     is_active:            ad.status === "active",
