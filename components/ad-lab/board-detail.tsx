@@ -6,6 +6,7 @@ import { removeAdFromBoard, deleteSavedAd } from "@/lib/actions/ad-lab"
 import { ArrowLeft, FolderOpen, Trash2, ExternalLink, MoreHorizontal, Loader2, Play, Wand2, Upload, Layers, CheckSquare, Square, X } from "lucide-react"
 import { SiFacebook, SiInstagram, SiMessenger, SiMeta, SiThreads } from "@icons-pack/react-simple-icons"
 import { AdDetailModal } from "@/components/ad-lab/ad-detail-modal"
+import { OrganicPostDetailModal } from "@/components/ad-lab/organic-post-detail-modal"
 import { UploadAdModal } from "@/components/ad-lab/upload-ad-modal"
 import { MassCreationModal } from "@/components/ad-lab/mass-creation-modal"
 import Link from "next/link"
@@ -115,6 +116,7 @@ export function BoardDetail({ board, initialAds, boards, initialCloneCounts = {}
   const [menuId, setMenuId]             = useState<string | null>(null)
   const [detailAd, setDetailAd]         = useState<MetaAdResult | null>(null)
   const [detailSavedAdId, setDetailSavedAdId] = useState<string | undefined>(undefined)
+  const [organicDetailAd, setOrganicDetailAd] = useState<SavedAd | null>(null)
   const [cloneCounts, setCloneCounts]   = useState<Record<string, number>>(initialCloneCounts)
   const [isPending, startTransition]    = useTransition()
   const [showUpload, setShowUpload]     = useState(false)
@@ -164,6 +166,12 @@ export function BoardDetail({ board, initialAds, boards, initialCloneCounts = {}
           boards={boards}
           savedAdId={detailSavedAdId}
           onClose={() => { setDetailAd(null); setDetailSavedAdId(undefined) }}
+        />
+      )}
+      {organicDetailAd && (
+        <OrganicPostDetailModal
+          post={organicDetailAd}
+          onClose={() => setOrganicDetailAd(null)}
         />
       )}
       {showUpload && (
@@ -294,7 +302,10 @@ export function BoardDetail({ board, initialAds, boards, initialCloneCounts = {}
                     {/* ── Thumbnail ── */}
                     <div
                       className="relative aspect-[4/5] bg-muted overflow-hidden cursor-pointer"
-                      onClick={selectionMode ? undefined : () => { setDetailAd(savedAdToResult(ad)); setDetailSavedAdId(ad.id) }}
+                      onClick={selectionMode ? undefined : () => {
+                        if (ad.post_type === "organic_post") setOrganicDetailAd(ad)
+                        else { setDetailAd(savedAdToResult(ad)); setDetailSavedAdId(ad.id) }
+                      }}
                     >
                       {/* Selection checkbox overlay */}
                       {selectionMode && (
@@ -337,12 +348,22 @@ export function BoardDetail({ board, initialAds, boards, initialCloneCounts = {}
                             <Upload className="w-2.5 h-2.5" />
                             Subido
                           </span>
+                        ) : ad.post_type === "organic_post" ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white/90 text-violet-600">
+                            Orgánico
+                          </span>
                         ) : (
                           <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white/90 ${
                             isActive ? "text-emerald-700" : "text-slate-500"
                           }`}>
                             <span className={`w-1.5 h-1.5 rounded-full ${isActive ? "bg-emerald-500" : "bg-slate-400"}`} />
                             {isActive ? "Activo" : "Inactivo"}
+                          </span>
+                        )}
+                        {(ad.carousel_image_urls?.length ?? 0) > 1 && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white/90 text-slate-700">
+                            <Layers className="w-2.5 h-2.5" />
+                            {ad.carousel_image_urls.length}
                           </span>
                         )}
                         {(cloneCounts[ad.id] ?? 0) > 0 && (

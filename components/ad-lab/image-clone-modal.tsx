@@ -5,6 +5,7 @@ import type { BrandBrain, ImageCloneLine, MetaAdResult } from "@/lib/types"
 import {
   startImageClone,
   startImageCloneFromGenerated,
+  startImageCloneFromSavedAd,
   uploadReferenceImages,
   generateImages,
   pollImageGeneration,
@@ -29,10 +30,21 @@ export interface RecloneSource {
   parentCloneId: string
 }
 
+// A fresh clone from an already-saved post (organic or otherwise) —
+// unlike RecloneSource (re-cloning a previously GENERATED output),
+// this runs the normal text-extraction step against a chosen image,
+// e.g. one slide of a saved carousel.
+export interface SavedAdSource {
+  savedAdId: string
+  imageUrl:  string
+  pageName:  string
+}
+
 interface Props {
-  ad?:            MetaAdResult
-  recloneSource?: RecloneSource
-  onClose:        () => void
+  ad?:             MetaAdResult
+  recloneSource?:  RecloneSource
+  savedAdSource?:  SavedAdSource
+  onClose:         () => void
 }
 
 type Step = 1 | 2 | 3
@@ -52,7 +64,7 @@ const RATIO_LABELS: Record<string, string> = {
   "4:5":  "Portrait",
 }
 
-export function ImageCloneModal({ ad, recloneSource, onClose }: Props) {
+export function ImageCloneModal({ ad, recloneSource, savedAdSource, onClose }: Props) {
   const [step, setStep]                         = useState<Step>(1)
   const [brains, setBrains]                     = useState<BrainOption[]>([])
   const [selectedBrainId, setSelectedBrainId]   = useState("")
@@ -103,8 +115,8 @@ export function ImageCloneModal({ ad, recloneSource, onClose }: Props) {
   const pollingRef                              = useRef<NodeJS.Timeout | null>(null)
 
   const card            = ad?.snapshot?.cards?.[0]
-  const adImageUrl      = recloneSource?.imageUrl ?? card?.resized_image_url ?? card?.original_image_url ?? null
-  const pageNameDisplay = recloneSource?.pageName ?? ad?.page_name ?? ""
+  const adImageUrl      = recloneSource?.imageUrl ?? savedAdSource?.imageUrl ?? card?.resized_image_url ?? card?.original_image_url ?? null
+  const pageNameDisplay = recloneSource?.pageName ?? savedAdSource?.pageName ?? ad?.page_name ?? ""
   const brainColors = (brains.find((b) => b.id === selectedBrainId)?.brand_colors ?? [])
 
   useEffect(() => {
@@ -203,6 +215,22 @@ export function ImageCloneModal({ ad, recloneSource, onClose }: Props) {
           setShareToken(result.shareToken)
           setAdaptedLines(result.lines)
           setStep(3)
+        } else if (savedAdSource) {
+          const result = await startImageCloneFromSavedAd(
+            savedAdSource.savedAdId,
+            selectedBrainId,
+            enrichedAngulo,
+            null,
+            savedAdSource.imageUrl,
+          )
+          setCloneId(result.cloneId)
+          setShareToken(result.shareToken)
+          if (result.lines.length > 0) {
+            setAdaptedLines(result.lines)
+            setStep(2)
+          } else {
+            setError("No se encontró texto en la imagen, o ocurrió un error.")
+          }
         } else {
           const result = await startImageClone(ad!, selectedBrainId, enrichedAngulo)
           setCloneId(result.cloneId)

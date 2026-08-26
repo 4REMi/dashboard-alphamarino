@@ -471,6 +471,86 @@ export async function startImageClone(
 }
 
 /**
+ * Starts an image clone directly from an EXISTING saved_ads row —
+ * no MetaAdResult, no re-upserting the ad. Used for organic posts
+ * (already saved via saveOrganicPost) and, for carousels, lets the
+ * caller override which slide to use as the source image instead of
+ * defaulting to the post's cover image.
+ */
+export async function startImageCloneFromSavedAd(
+  savedAdId: string,
+  brandBrainId: string,
+  angulo?: string,
+  conceptId?: string | null,
+  overrideImageUrl?: string,
+): Promise<{ cloneId: string; shareToken: string; lines: ImageCloneLine[] }> {
+  const { supabase, user } = await assertAuth()
+
+  const { data: savedAd, error: adErr } = await supabase
+    .from("saved_ads")
+    .select("id, cached_image_url, image_url")
+    .eq("id", savedAdId)
+    .single()
+  if (adErr || !savedAd) throw new Error("Post guardado no encontrado")
+
+  const { data: clone, error: cloneErr } = await supabase
+    .from("image_clones")
+    .insert({
+      saved_ad_id:    savedAd.id,
+      brand_brain_id: brandBrainId,
+      concept_id:     conceptId || null,
+      status:         "extracting",
+      created_by:     user.id,
+    })
+    .select("id, share_token")
+    .single()
+  if (cloneErr) throw cloneErr
+
+  const srcImageUrl = overrideImageUrl ?? savedAd.cached_image_url ?? savedAd.image_url
+  if (!srcImageUrl) {
+    await supabase
+      .from("image_clones")
+      .update({ status: "error", error_message: "Este post no tiene imagen para analizar." })
+      .eq("id", clone.id)
+    return { cloneId: clone.id, shareToken: clone.share_token, lines: [] }
+  }
+
+  const { data: brain, error: brainErr } = await supabase
+    .from("brand_brains")
+    .select("id, name, industry, language, tone_of_voice, usps, key_benefits, pain_points, target_audience, ctas, brand_colors, logo_url, logo_square_url, logo_horizontal_url")
+    .eq("id", brandBrainId)
+    .single()
+  if (brainErr || !brain) {
+    await supabase
+      .from("image_clones")
+      .update({ status: "error", error_message: "Brand Brain no encontrado" })
+      .eq("id", clone.id)
+    return { cloneId: clone.id, shareToken: clone.share_token, lines: [] }
+  }
+
+  try {
+    const lines = await extractAndAdaptWithClaude(srcImageUrl, brain as BrainContext, angulo)
+    const originalLines = lines.map((l) => ({ element: l.element, original: l.original, adapted: "" }))
+    await supabase
+      .from("image_clones")
+      .update({
+        status:         "ready",
+        original_lines: originalLines,
+        adapted_lines:  lines,
+        updated_at:     new Date().toISOString(),
+      })
+      .eq("id", clone.id)
+    return { cloneId: clone.id, shareToken: clone.share_token, lines }
+  } catch (err) {
+    await supabase
+      .from("image_clones")
+      .update({ status: "error", error_message: String(err) })
+      .eq("id", clone.id)
+    return { cloneId: clone.id, shareToken: clone.share_token, lines: [] }
+  }
+}
+
+/**
  * Uploads product reference images to Supabase storage and
  * stores their URLs on the clone record. Returns the public URLs.
  */
