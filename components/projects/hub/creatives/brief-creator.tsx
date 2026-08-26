@@ -11,7 +11,7 @@ import {
   Loader2, ExternalLink, Play, Image as ImageIcon,
 } from "lucide-react"
 import type { CreativeConcept, BrandBrain, CreativeBrief } from "@/lib/types"
-import { createBrief, generateBriefContent } from "@/lib/actions/creatives"
+import { createBrief, generateBriefContent, getBrief } from "@/lib/actions/creatives"
 
 interface SavedAdRef {
   id: string
@@ -57,6 +57,7 @@ export function BriefCreator({
   const [selectedAdIds, setSelectedAdIds] = useState<string[]>([])
   const [selectedBoardIds, setSelectedBoardIds] = useState<string[]>([])
   const [generatedBrief, setGeneratedBrief] = useState<CreativeBrief | null>(null)
+  const [contentError, setContentError] = useState<string | null>(null)
   const [previewVideoId, setPreviewVideoId] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [isPending, startTransition] = useTransition()
@@ -67,8 +68,16 @@ export function BriefCreator({
     if (!selectedBrainId) return
     startTransition(async () => {
       const brief = await createBrief(projectId, concept.id, selectedBrainId, selectedAdIds, selectedBoardIds, concept.brand_line_id ?? undefined, title)
-      setGeneratedBrief(brief)
-      await generateBriefContent(brief.id)
+      try {
+        await generateBriefContent(brief.id)
+      } catch (e) {
+        setContentError(e instanceof Error ? e.message : "No se pudo generar el contenido del brief")
+      }
+      // Re-fetch regardless of outcome — brief_content/adapted_script may
+      // have been written even if a later step in generateBriefContent
+      // threw, and we always want the freshest row before showing success.
+      const fresh = await getBrief(brief.id)
+      setGeneratedBrief(fresh ?? brief)
     })
   }
 
@@ -102,6 +111,11 @@ export function BriefCreator({
             <div className="text-center space-y-1">
               <p className="text-sm font-semibold">Brief creado</p>
               <p className="text-xs text-muted-foreground">Comparte el link con tu editor o diseñador</p>
+              {contentError && (
+                <p className="text-xs text-destructive pt-1">
+                  El brief se creó, pero falló la generación de guiones/contenido: {contentError}
+                </p>
+              )}
             </div>
             <div className="w-full flex items-center gap-1.5 p-2 rounded-lg bg-muted/50 border">
               <input

@@ -842,6 +842,16 @@ El brief debe ser accionable: un editor o diseñador que lo lea debe poder empez
   return parsed
 }
 
+export async function getBrief(briefId: string): Promise<CreativeBrief | null> {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from("creative_briefs")
+    .select("*, brand_brain:brand_brains!brand_brain_id(id, name, industry)")
+    .eq("id", briefId)
+    .single()
+  return (data as CreativeBrief) ?? null
+}
+
 export async function getBriefsForConcept(conceptId: string): Promise<CreativeBrief[]> {
   const supabase = await createClient()
   const { data, error } = await supabase
