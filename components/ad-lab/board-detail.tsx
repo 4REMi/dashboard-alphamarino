@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react"
 import type { SavedAd, AdBoard, MetaAdResult } from "@/lib/types"
 import { removeAdFromBoard, deleteSavedAd } from "@/lib/actions/ad-lab"
-import { ArrowLeft, FolderOpen, Trash2, ExternalLink, MoreHorizontal, Loader2, Play, Wand2, Upload, Layers, CheckSquare, Square, X } from "lucide-react"
+import { ArrowLeft, FolderOpen, Trash2, ExternalLink, MoreHorizontal, Loader2, Play, Wand2, Upload, Layers, CheckSquare, Square, X, Link as LinkIcon, Check } from "lucide-react"
 import { SiFacebook, SiInstagram, SiMessenger, SiMeta, SiThreads } from "@icons-pack/react-simple-icons"
 import { AdDetailModal } from "@/components/ad-lab/ad-detail-modal"
 import { OrganicPostDetailModal } from "@/components/ad-lab/organic-post-detail-modal"
@@ -123,8 +123,16 @@ export function BoardDetail({ board, initialAds, boards, initialCloneCounts = {}
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedIds, setSelectedIds]     = useState<Set<string>>(new Set())
   const [showMassCreate, setShowMassCreate] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   const MAX_SELECTION = 10
+
+  function handleCopyLink() {
+    const url = `${window.location.origin}/share/board/${board.share_token}`
+    navigator.clipboard.writeText(url)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
 
   function toggleSelection(id: string) {
     setSelectedIds((prev) => {
@@ -210,6 +218,13 @@ export function BoardDetail({ board, initialAds, boards, initialCloneCounts = {}
           {isPending && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
           {!selectionMode ? (
             <>
+              <button
+                onClick={handleCopyLink}
+                className="flex items-center gap-2 h-9 px-4 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors flex-shrink-0"
+              >
+                {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <LinkIcon className="w-3.5 h-3.5" />}
+                {copied ? "Copiado" : "Compartir"}
+              </button>
               <button
                 onClick={() => setShowUpload(true)}
                 className="flex items-center gap-2 h-9 px-4 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors flex-shrink-0"

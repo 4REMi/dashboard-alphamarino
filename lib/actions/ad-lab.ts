@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import type { TrackedBrand, SavedAd, AdBoard, ClientCreativeContext, MetaAdResult, InstagramPostResult } from "@/lib/types"
 
 // ── Storage mirror ────────────────────────────────────────────────
@@ -618,6 +619,29 @@ export async function getBoardAds(boardId: string): Promise<SavedAd[]> {
     .order("added_at", { ascending: false })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return ((data ?? []).map((r: any) => r.saved_ad).filter(Boolean)) as SavedAd[]
+}
+
+// Public, unauthenticated — the read-only moodboard share page.
+// No spend/likes/caption/action surface, just the board + its saved
+// images/videos, so no need to select more than that.
+export async function getBoardByToken(token: string): Promise<{ board: AdBoard; ads: SavedAd[] } | null> {
+  const supabase = createAdminClient()
+  const { data: board } = await supabase
+    .from("ad_boards")
+    .select("*")
+    .eq("share_token", token)
+    .single()
+  if (!board) return null
+
+  const { data: adRows } = await supabase
+    .from("board_ads")
+    .select("saved_ad:saved_ads(*)")
+    .eq("board_id", board.id)
+    .order("added_at", { ascending: false })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ads = ((adRows ?? []).map((r: any) => r.saved_ad).filter(Boolean)) as SavedAd[]
+
+  return { board: board as AdBoard, ads }
 }
 
 export async function createBoard(formData: FormData): Promise<AdBoard> {

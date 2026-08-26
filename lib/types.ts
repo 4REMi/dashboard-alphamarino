@@ -946,6 +946,7 @@ export interface AdBoard {
   name: string
   description: string | null
   cover_ad_id: string | null
+  share_token: string
   created_by: string | null
   created_at: string
   // Relations
