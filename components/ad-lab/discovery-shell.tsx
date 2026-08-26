@@ -62,6 +62,9 @@ export function DiscoveryShell({ trackedBrands, boards }: Props) {
     try {
       const saved = await saveOrganicPost(post)
       await addAdToBoard(boardId, saved.id)
+    } catch (err) {
+      setOrganicError(err instanceof Error ? err.message : "No se pudo guardar el post")
+      throw err // let the card know the save failed too
     } finally {
       setOrganicSavingId(null)
     }
@@ -581,6 +584,17 @@ export function DiscoveryShell({ trackedBrands, boards }: Props) {
                 <p className="text-sm font-medium text-destructive">Error al buscar</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{organicError}</p>
               </div>
+            </div>
+          )}
+
+          {organicStatus === "ready" && organicError && (
+            <div className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-4 mb-4">
+              <AlertCircle className="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-xs font-medium text-destructive">No se pudo guardar</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{organicError}</p>
+              </div>
+              <button onClick={() => setOrganicError(null)} className="text-xs text-muted-foreground hover:text-foreground">✕</button>
             </div>
           )}
 

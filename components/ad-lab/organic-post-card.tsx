@@ -47,9 +47,14 @@ export function OrganicPostCard({ post, boards, savingId, onSaveToBoard, onOpenD
   }, [showBoardPicker])
 
   async function handleSave(boardId: string) {
-    await onSaveToBoard(post, boardId)
-    setSavedBoards((prev) => new Set([...prev, boardId]))
-    setShowBoardPicker(false)
+    try {
+      await onSaveToBoard(post, boardId)
+      setSavedBoards((prev) => new Set([...prev, boardId]))
+      setShowBoardPicker(false)
+    } catch {
+      // error is surfaced by the parent (discovery-shell) — keep the
+      // picker open so the user can retry without re-searching.
+    }
   }
 
   return (
