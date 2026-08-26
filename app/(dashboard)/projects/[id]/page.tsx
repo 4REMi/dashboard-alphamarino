@@ -1,5 +1,13 @@
 import { notFound } from "next/navigation"
 import Link from "next/link"
+
+// generateBriefContent (creatives hub) transcribes + adapts one script per
+// attached video reference — up to ~120s of AssemblyAI polling per video.
+// Without raising this, Server Actions on this page get killed by the
+// platform's default timeout mid-flight, after brief_content is saved but
+// before adapted_script is written: the brief looks created but its scripts
+// never arrive, silently.
+export const maxDuration = 300
 import { getProject, getProjectCycles, getProjectLog, getProjectMembers } from "@/lib/actions/projects"
 import { getEmployees } from "@/lib/actions/employees"
 import { getIncome, getProjectExpenses } from "@/lib/actions/finances"
