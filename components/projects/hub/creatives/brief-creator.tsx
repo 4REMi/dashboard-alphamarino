@@ -68,14 +68,11 @@ export function BriefCreator({
     if (!selectedBrainId) return
     startTransition(async () => {
       const brief = await createBrief(projectId, concept.id, selectedBrainId, selectedAdIds, selectedBoardIds, concept.brand_line_id ?? undefined, title)
-      try {
-        await generateBriefContent(brief.id)
-      } catch (e) {
-        setContentError(e instanceof Error ? e.message : "No se pudo generar el contenido del brief")
-      }
+      const result = await generateBriefContent(brief.id)
+      if (result && "error" in result) setContentError(result.error)
       // Re-fetch regardless of outcome — brief_content/adapted_script may
       // have been written even if a later step in generateBriefContent
-      // threw, and we always want the freshest row before showing success.
+      // failed, and we always want the freshest row before showing success.
       const fresh = await getBrief(brief.id)
       setGeneratedBrief(fresh ?? brief)
     })

@@ -635,69 +635,77 @@ function nextScriptKey(scripts: Record<string, AdCloneLine[]>, prefix: "manual" 
   return `${prefix}_${n}`
 }
 
-export async function generateBriefContent(briefId: string): Promise<BriefContent> {
+// Next.js redacts the message of any error thrown out of a Server Action in
+// production builds — the client only ever sees a generic
+// "An error occurred in the Server Components render" + digest, no matter
+// what the thrown Error says. So this never throws: every failure path is
+// caught here and returned as { error } data instead, which reaches the
+// client verbatim. The real error is still console.error'd for the platform's
+// server logs (matched by the digest, if you ever need to cross-reference).
+export async function generateBriefContent(briefId: string): Promise<BriefContent | { error: string }> {
   const supabase = await createClient()
-  const { role } = await getRole()
-  if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
+  try {
+    const { role } = await getRole()
+    if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
 
-  const { data: brief } = await supabase
-    .from("creative_briefs")
-    .select("*, concept:creative_concepts!concept_id(*)")
-    .eq("id", briefId)
-    .single()
-  if (!brief) throw new Error("Brief not found")
-
-  const { data: brain } = await supabase
-    .from("brand_brains")
-    .select("name, industry, language, tone_of_voice, usps, key_benefits, pain_points, target_audience, ctas, description")
-    .eq("id", brief.brand_brain_id)
-    .single()
-  if (!brain) throw new Error("Brand Brain not found")
-
-  let brandLineBlock = ""
-  if (brief.brand_line_id) {
-    const { data: line } = await supabase
-      .from("brand_lines")
-      .select("name, description, usps, pain_points, keywords")
-      .eq("id", brief.brand_line_id)
+    const { data: brief } = await supabase
+      .from("creative_briefs")
+      .select("*, concept:creative_concepts!concept_id(*)")
+      .eq("id", briefId)
       .single()
-    if (line) {
-      brandLineBlock = `\nLÍNEA DE PRODUCTO/SERVICIO — ${line.name}:
+    if (!brief) throw new Error("Brief not found")
+
+    const { data: brain } = await supabase
+      .from("brand_brains")
+      .select("name, industry, language, tone_of_voice, usps, key_benefits, pain_points, target_audience, ctas, description")
+      .eq("id", brief.brand_brain_id)
+      .single()
+    if (!brain) throw new Error("Brand Brain not found")
+
+    let brandLineBlock = ""
+    if (brief.brand_line_id) {
+      const { data: line } = await supabase
+        .from("brand_lines")
+        .select("name, description, usps, pain_points, keywords")
+        .eq("id", brief.brand_line_id)
+        .single()
+      if (line) {
+        brandLineBlock = `\nLÍNEA DE PRODUCTO/SERVICIO — ${line.name}:
 - Descripción: ${line.description ?? "—"}
 - USPs específicos: ${(line.usps ?? []).join(", ") || "—"}
 - Dolores específicos: ${(line.pain_points ?? []).join(", ") || "—"}
 - Keywords: ${(line.keywords ?? []).join(", ") || "—"}
 El brief debe enfocarse en este producto/servicio específico.`
+      }
     }
-  }
 
-  let referenceSummary = ""
-  if (brief.attached_ad_ids?.length > 0) {
-    const { data: ads } = await supabase
-      .from("saved_ads")
-      .select("page_name, body, format, hook")
-      .in("id", brief.attached_ad_ids)
-    if (ads?.length) {
-      referenceSummary += "\nReferencias de ads guardados:\n" + ads.map((a, i) =>
-        `${i + 1}. ${a.page_name ?? "Ad"}: ${a.body?.slice(0, 200) ?? "sin copy"}${a.format ? ` [${a.format}]` : ""}`
-      ).join("\n")
+    let referenceSummary = ""
+    if (brief.attached_ad_ids?.length > 0) {
+      const { data: ads } = await supabase
+        .from("saved_ads")
+        .select("page_name, body, format, hook")
+        .in("id", brief.attached_ad_ids)
+      if (ads?.length) {
+        referenceSummary += "\nReferencias de ads guardados:\n" + ads.map((a, i) =>
+          `${i + 1}. ${a.page_name ?? "Ad"}: ${a.body?.slice(0, 200) ?? "sin copy"}${a.format ? ` [${a.format}]` : ""}`
+        ).join("\n")
+      }
     }
-  }
 
-  const c = brief.concept as Record<string, unknown>
+    const c = brief.concept as Record<string, unknown>
 
-  const Anthropic = (await import("@anthropic-ai/sdk")).default
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+    const Anthropic = (await import("@anthropic-ai/sdk")).default
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-  const usps = (brain.usps ?? []).join(", ") || "—"
-  const benefits = (brain.key_benefits ?? []).join(", ") || "—"
-  const pains = (brain.pain_points ?? []).join(", ") || "—"
-  const ctas = (brain.ctas ?? []).join(", ") || "—"
+    const usps = (brain.usps ?? []).join(", ") || "—"
+    const benefits = (brain.key_benefits ?? []).join(", ") || "—"
+    const pains = (brain.pain_points ?? []).join(", ") || "—"
+    const ctas = (brain.ctas ?? []).join(", ") || "—"
 
-  const message = await client.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 2048,
-    system: `Eres un director creativo senior especializado en performance marketing. Tu trabajo es crear briefs creativos enriquecidos que un editor de video, diseñador gráfico o creator pueda usar directamente para producir un asset publicitario.
+    const message = await client.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 2048,
+      system: `Eres un director creativo senior especializado en performance marketing. Tu trabajo es crear briefs creativos enriquecidos que un editor de video, diseñador gráfico o creator pueda usar directamente para producir un asset publicitario.
 
 Responde ÚNICAMENTE con un JSON válido con estos campos exactos. Sin markdown ni texto extra:
 {
@@ -711,9 +719,9 @@ Responde ÚNICAMENTE con un JSON válido con estos campos exactos. Sin markdown 
   "dont_list": ["3-5 cosas que NO hacer"],
   "suggested_formats": ["Formatos de ad recomendados para este concepto"]
 }`,
-    messages: [{
-      role: "user",
-      content: `Genera un brief creativo enriquecido combinando este concepto con el Brand Brain.
+      messages: [{
+        role: "user",
+        content: `Genera un brief creativo enriquecido combinando este concepto con el Brand Brain.
 
 CONCEPTO CREATIVO:
 - Nombre: ${c.name ?? "—"}
@@ -741,105 +749,110 @@ BRAND BRAIN:
 ${brandLineBlock}${referenceSummary}
 
 El brief debe ser accionable: un editor o diseñador que lo lea debe poder empezar a producir sin preguntar nada.`,
-    }],
-  })
+      }],
+    })
 
-  const text = message.content[0].type === "text" ? message.content[0].text : ""
-  let parsed: BriefContent
-  try {
-    parsed = JSON.parse(text)
-  } catch {
-    const match = text.match(/\{[\s\S]*\}/)
-    if (match) parsed = JSON.parse(match[0])
-    else throw new Error("AI returned invalid JSON")
-  }
-
-  await supabase.from("creative_briefs").update({
-    brief_content: parsed,
-    updated_at: new Date().toISOString(),
-  }).eq("id", briefId)
-
-  // Tropicalize video scripts for each video reference. Videos are processed
-  // IN PARALLEL (not sequentially) — with several references, sequential
-  // transcription could push total runtime past the serverless function's
-  // execution limit, silently killing the whole request mid-loop before the
-  // final adapted_script write ever ran. Each video also gets its own polling
-  // budget instead of an unbounded do/while, so one slow/stuck AssemblyAI job
-  // can't stall — or starve — the rest.
-  if (brief.attached_ad_ids?.length > 0) {
+    const text = message.content[0].type === "text" ? message.content[0].text : ""
+    let parsed: BriefContent
     try {
-      const { data: ads } = await supabase
-        .from("saved_ads")
-        .select("id, video_url, cached_video_url, format")
-        .in("id", brief.attached_ad_ids)
-      const videoAds = ads?.filter((a: any) => a.format === "video" || a.cached_video_url || a.video_url) ?? []
+      parsed = JSON.parse(text)
+    } catch {
+      const match = text.match(/\{[\s\S]*\}/)
+      if (match) parsed = JSON.parse(match[0])
+      else throw new Error("AI returned invalid JSON")
+    }
 
-      if (videoAds.length > 0) {
-        const lineData = brief.brand_line_id
-          ? (await supabase.from("brand_lines").select("name, description, usps, pain_points, keywords").eq("id", brief.brand_line_id).single()).data
-          : null
+    await supabase.from("creative_briefs").update({
+      brief_content: parsed,
+      updated_at: new Date().toISOString(),
+    }).eq("id", briefId)
 
-        const POLL_INTERVAL_MS = 3000
-        const MAX_POLL_ATTEMPTS = 40 // ~120s ceiling per video
+    // Tropicalize video scripts for each video reference. Videos are processed
+    // IN PARALLEL (not sequentially) — with several references, sequential
+    // transcription could push total runtime past the serverless function's
+    // execution limit, silently killing the whole request mid-loop before the
+    // final adapted_script write ever ran. Each video also gets its own polling
+    // budget instead of an unbounded do/while, so one slow/stuck AssemblyAI job
+    // can't stall — or starve — the rest.
+    if (brief.attached_ad_ids?.length > 0) {
+      try {
+        const { data: ads } = await supabase
+          .from("saved_ads")
+          .select("id, video_url, cached_video_url, format")
+          .in("id", brief.attached_ad_ids)
+        const videoAds = ads?.filter((a: any) => a.format === "video" || a.cached_video_url || a.video_url) ?? []
 
-        async function transcribeAndAdapt(videoAd: { id: string; video_url: string | null; cached_video_url: string | null }) {
-          const videoUrl = videoAd.cached_video_url || videoAd.video_url
-          if (!videoUrl) return null
+        if (videoAds.length > 0) {
+          const lineData = brief.brand_line_id
+            ? (await supabase.from("brand_lines").select("name, description, usps, pain_points, keywords").eq("id", brief.brand_line_id).single()).data
+            : null
 
-          try {
-            const transcript = await aaiPost("/transcript", {
-              audio_url: videoUrl,
-              language_detection: true,
-            })
+          const POLL_INTERVAL_MS = 3000
+          const MAX_POLL_ATTEMPTS = 40 // ~120s ceiling per video
 
-            let result: { status: string; text?: string } = { status: "queued" }
-            let attempts = 0
-            while (result.status !== "completed" && result.status !== "error") {
-              if (attempts >= MAX_POLL_ATTEMPTS) {
-                console.error(`Brief tropicalization timed out for ad ${videoAd.id} after ${MAX_POLL_ATTEMPTS * POLL_INTERVAL_MS / 1000}s (last status: ${result.status})`)
+          async function transcribeAndAdapt(videoAd: { id: string; video_url: string | null; cached_video_url: string | null }) {
+            const videoUrl = videoAd.cached_video_url || videoAd.video_url
+            if (!videoUrl) return null
+
+            try {
+              const transcript = await aaiPost("/transcript", {
+                audio_url: videoUrl,
+                language_detection: true,
+              })
+
+              let result: { status: string; text?: string } = { status: "queued" }
+              let attempts = 0
+              while (result.status !== "completed" && result.status !== "error") {
+                if (attempts >= MAX_POLL_ATTEMPTS) {
+                  console.error(`Brief tropicalization timed out for ad ${videoAd.id} after ${MAX_POLL_ATTEMPTS * POLL_INTERVAL_MS / 1000}s (last status: ${result.status})`)
+                  return null
+                }
+                await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
+                result = await aaiGet(`/transcript/${transcript.id}`)
+                attempts++
+              }
+
+              if (result.status === "error") {
+                console.error(`Brief tropicalization: AssemblyAI returned an error for ad ${videoAd.id}`)
                 return null
               }
-              await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
-              result = await aaiGet(`/transcript/${transcript.id}`)
-              attempts++
-            }
 
-            if (result.status === "error") {
-              console.error(`Brief tropicalization: AssemblyAI returned an error for ad ${videoAd.id}`)
+              if (result.text?.trim()) {
+                const lines = await adaptWithClaude(result.text, brain as any, lineData, c as any)
+                return { id: videoAd.id, lines }
+              }
+              return null
+            } catch (e) {
+              console.error(`Brief tropicalization failed for ad ${videoAd.id}:`, e)
               return null
             }
+          }
 
-            if (result.text?.trim()) {
-              const lines = await adaptWithClaude(result.text, brain as any, lineData, c as any)
-              return { id: videoAd.id, lines }
-            }
-            return null
-          } catch (e) {
-            console.error(`Brief tropicalization failed for ad ${videoAd.id}:`, e)
-            return null
+          const results = await Promise.allSettled(videoAds.map(transcribeAndAdapt))
+          const scripts: Record<string, any[]> = {}
+          for (const r of results) {
+            if (r.status === "fulfilled" && r.value) scripts[r.value.id] = r.value.lines
+          }
+
+          if (Object.keys(scripts).length > 0) {
+            await supabase.from("creative_briefs").update({
+              adapted_script: scripts,
+              updated_at: new Date().toISOString(),
+            }).eq("id", briefId)
           }
         }
-
-        const results = await Promise.allSettled(videoAds.map(transcribeAndAdapt))
-        const scripts: Record<string, any[]> = {}
-        for (const r of results) {
-          if (r.status === "fulfilled" && r.value) scripts[r.value.id] = r.value.lines
-        }
-
-        if (Object.keys(scripts).length > 0) {
-          await supabase.from("creative_briefs").update({
-            adapted_script: scripts,
-            updated_at: new Date().toISOString(),
-          }).eq("id", briefId)
-        }
+      } catch (e) {
+        console.error("Brief tropicalization failed:", e)
       }
-    } catch (e) {
-      console.error("Brief tropicalization failed:", e)
     }
-  }
 
-  revalidateProject(brief.project_id)
-  return parsed
+    revalidateProject(brief.project_id)
+    return parsed
+  } catch (e) {
+    console.error("generateBriefContent failed:", e)
+    const error = e instanceof Error ? e.message : "Error desconocido generando el contenido del brief"
+    return { error }
+  }
 }
 
 export async function getBrief(briefId: string): Promise<CreativeBrief | null> {
