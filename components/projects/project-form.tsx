@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { Plus } from "lucide-react"
-import type { Project, Customer, ProjectType, PhaseSetPhase, BrandBrain } from "@/lib/types"
+import type { Project, Customer, ProjectType, PhaseSetPhase, BrandBrain, Profile } from "@/lib/types"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
 
 interface ProjectFormProps {
@@ -16,16 +16,18 @@ interface ProjectFormProps {
   customers: Customer[]
   projectTypes: ProjectType[]
   brandBrains?: BrandBrain[]
+  employees?: Profile[]
   trigger?: React.ReactNode
   canViewFinancials?: boolean
 }
 
-export function ProjectForm({ project, customers, projectTypes, brandBrains = [], trigger, canViewFinancials = true }: ProjectFormProps) {
+export function ProjectForm({ project, customers, projectTypes, brandBrains = [], employees = [], trigger, canViewFinancials = true }: ProjectFormProps) {
   const [open, setOpen] = useState(false)
   const [customerId, setCustomerId] = useState(project?.customer_id ?? "none")
   const [projectTypeId, setProjectTypeId] = useState(project?.project_type_id ?? "none")
   const [brandBrainId, setBrandBrainId] = useState(project?.brand_brain_id ?? "none")
   const [selectedPhaseIds, setSelectedPhaseIds] = useState<string[]>([])
+  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([])
   const [isPending, startTransition] = useTransition()
 
   // Get the selected project type and its default phase set
@@ -47,6 +49,12 @@ export function ProjectForm({ project, customers, projectTypes, brandBrains = []
     )
   }
 
+  function toggleMember(profileId: string) {
+    setSelectedMemberIds((prev) =>
+      prev.includes(profileId) ? prev.filter((id) => id !== profileId) : [...prev, profileId]
+    )
+  }
+
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const formData = new FormData(e.currentTarget)
@@ -58,7 +66,11 @@ export function ProjectForm({ project, customers, projectTypes, brandBrains = []
       if (project) {
         await updateProject(project.id, formData)
       } else {
-        await createProject(formData, selectedPhaseIds.length > 0 ? selectedPhaseIds : undefined)
+        await createProject(
+          formData,
+          selectedPhaseIds.length > 0 ? selectedPhaseIds : undefined,
+          selectedMemberIds.length > 0 ? selectedMemberIds : undefined
+        )
       }
       setOpen(false)
     })
@@ -170,6 +182,37 @@ export function ProjectForm({ project, customers, projectTypes, brandBrains = []
               className="w-full rounded-md border border-input bg-white px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
             />
           </div>
+
+          {/* Team members — only when creating. Picking members here (before
+              phases/tasks are copied from the type's task sets) lets task
+              templates auto-assign by position right away, instead of every
+              task landing unassigned because the project had no team yet. */}
+          {!project && employees.length > 0 && (
+            <div className="space-y-2 border border-border rounded-lg p-3">
+              <p className="text-xs font-medium text-muted-foreground">
+                Equipo ({selectedMemberIds.length}/{employees.length})
+              </p>
+              <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                {employees.map((employee) => (
+                  <label key={employee.id} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedMemberIds.includes(employee.id)}
+                      onChange={() => toggleMember(employee.id)}
+                      className="w-4 h-4 accent-primary"
+                    />
+                    <span className="text-sm text-foreground">{employee.full_name}</span>
+                    {employee.position && (
+                      <span className="text-xs text-muted-foreground">— {employee.position}</span>
+                    )}
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Se agregan de una vez para que las tareas de las fases se asignen automáticamente por posición.
+              </p>
+            </div>
+          )}
 
           {/* Phase set checkboxes — only when creating and type has phases */}
           {!project && availablePhases.length > 0 && (

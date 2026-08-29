@@ -6,6 +6,68 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import type { ProjectStatus, PhaseStatus, CycleDeliverableStatus, CampaignStatus } from "@/lib/types"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
+// Builds position_id → [profile_ids] from a project's current members, so
+// template tasks/re-assignment can resolve default_position_id → assignee.
+async function buildPositionToMembers(supabase: SupabaseClient, projectId: string) {
+  const { data } = await supabase
+    .from("project_members")
+    .select("profile_id, profile:profiles(position_id)")
+    .eq("project_id", projectId)
+
+  const positionToMembers = new Map<string, string[]>()
+  for (const m of data ?? []) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const posId = (m.profile as any)?.position_id as string | null
+    if (posId) {
+      const list = positionToMembers.get(posId) ?? []
+      list.push(m.profile_id)
+      positionToMembers.set(posId, list)
+    }
+  }
+  return positionToMembers
+}
+
+function resolveAssignment(
+  positionToMembers: Map<string, string[]>,
+  positionId: string | null
+): { assignee_id: string | null; position_id: string | null; assignment_flag: "no_match" | "multi" | null } {
+  if (!positionId) return { assignee_id: null, position_id: null, assignment_flag: null }
+  const matches = positionToMembers.get(positionId) ?? []
+  if (matches.length === 1) return { assignee_id: matches[0], position_id: positionId, assignment_flag: null }
+  if (matches.length === 0) return { assignee_id: null, position_id: positionId, assignment_flag: "no_match" }
+  return { assignee_id: null, position_id: positionId, assignment_flag: "multi" }
+}
+
+// Fills in assignee_id for tasks left unassigned (assignment_flag "no_match")
+// because no project member had a matching position yet. Non-destructive —
+// only touches tasks that are still unassigned. Called after a member joins
+// the project so newly-matched tasks get picked up without re-applying (and
+// wiping) the whole phase set.
+export async function reassignUnassignedTasks(projectId: string) {
+  const supabase = createAdminClient()
+  const positionToMembers = await buildPositionToMembers(supabase, projectId)
+  if (positionToMembers.size === 0) return
+
+  const { data: tasks } = await supabase
+    .from("tasks")
+    .select("id, position_id")
+    .eq("project_id", projectId)
+    .is("assignee_id", null)
+    .not("position_id", "is", null)
+
+  for (const task of tasks ?? []) {
+    const resolved = resolveAssignment(positionToMembers, task.position_id)
+    if (resolved.assignee_id) {
+      await supabase.from("tasks").update({ assignee_id: resolved.assignee_id, assignment_flag: null }).eq("id", task.id)
+    } else if (resolved.assignment_flag !== "no_match") {
+      // now ambiguous ("multi") instead of unmatched — record that, no assignee change
+      await supabase.from("tasks").update({ assignment_flag: resolved.assignment_flag }).eq("id", task.id)
+    }
+  }
+
+  revalidatePath(`/projects/${projectId}`)
+}
+
 // Helper: copy task set tasks to a project for each phase that has a default_task_set_id.
 // Resolves default_position_id → project member with that position (snapshot at creation time).
 async function copyTaskSetsToProject(
@@ -21,42 +83,15 @@ async function copyTaskSetsToProject(
 
     if (taskSetIds.length === 0) return
 
-    const [taskSetsRes, membersRes] = await Promise.all([
+    const [taskSetsRes, positionToMembers] = await Promise.all([
       supabase
         .from("task_sets")
         .select("id, tasks:task_set_tasks(*, checklist_items:task_set_checklist_items(id, text, is_blocking, item_order))")
         .in("id", taskSetIds),
-      supabase
-        .from("project_members")
-        .select("profile_id, profile:profiles(position_id)")
-        .eq("project_id", projectId),
+      buildPositionToMembers(supabase, projectId),
     ])
 
     if (!taskSetsRes.data || taskSetsRes.data.length === 0) return
-
-    // Build position_id → [profile_ids] map from project members
-    const positionToMembers = new Map<string, string[]>()
-    for (const m of membersRes.data ?? []) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const posId = (m.profile as any)?.position_id as string | null
-      if (posId) {
-        const list = positionToMembers.get(posId) ?? []
-        list.push(m.profile_id)
-        positionToMembers.set(posId, list)
-      }
-    }
-
-    const resolveAssignment = (positionId: string | null): {
-      assignee_id: string | null
-      position_id: string | null
-      assignment_flag: "no_match" | "multi" | null
-    } => {
-      if (!positionId) return { assignee_id: null, position_id: null, assignment_flag: null }
-      const matches = positionToMembers.get(positionId) ?? []
-      if (matches.length === 1) return { assignee_id: matches[0], position_id: positionId, assignment_flag: null }
-      if (matches.length === 0) return { assignee_id: null, position_id: positionId, assignment_flag: "no_match" }
-      return { assignee_id: null, position_id: positionId, assignment_flag: "multi" }
-    }
 
     const tasksToInsert = taskSetsRes.data.flatMap((ts) =>
       ((ts.tasks ?? []) as Array<{
@@ -79,7 +114,7 @@ async function copyTaskSetsToProject(
           phase_id: phaseIdByTaskSetId[ts.id] ?? null,
           task_set_task_id: t.id,
           sop_id: null,
-          ...resolveAssignment(t.default_position_id ?? null),
+          ...resolveAssignment(positionToMembers, t.default_position_id ?? null),
           _checklist_items: t.checklist_items ?? [],
         }))
     )
@@ -356,7 +391,8 @@ export async function getProject(id: string) {
 
 export async function createProject(
   formData: FormData,
-  selectedPhaseSetPhaseIds?: string[]
+  selectedPhaseSetPhaseIds?: string[],
+  selectedMemberIds?: string[]
 ) {
   // Get authenticated user before switching to admin client
   const authClient = await createClient()
@@ -387,6 +423,21 @@ export async function createProject(
 
   if (error) throw error
 
+  // Add team members BEFORE copying task sets — task assignment resolves
+  // default_position_id against project_members at copy time, so members
+  // (creator included) must already be in the project or every task
+  // template with a position lands unassigned.
+  const memberIds = new Set(selectedMemberIds ?? [])
+  if (user) memberIds.add(user.id)
+  if (memberIds.size > 0) {
+    await supabase
+      .from("project_members")
+      .upsert(
+        Array.from(memberIds).map((profile_id) => ({ project_id: project.id, profile_id })),
+        { onConflict: "project_id,profile_id", ignoreDuplicates: true }
+      )
+  }
+
   // Copy selected phase set phases to project_phases (and their task sets to tasks)
   if (selectedPhaseSetPhaseIds && selectedPhaseSetPhaseIds.length > 0) {
     const { data: templatePhases } = await supabase
@@ -411,13 +462,6 @@ export async function createProject(
       })
       await copyTaskSetsToProject(supabase, templatePhases, project.id, phaseIdByTaskSetId)
     }
-  }
-
-  // Auto-add creator as project team member
-  if (user) {
-    await supabase
-      .from("project_members")
-      .upsert({ project_id: project.id, profile_id: user.id }, { onConflict: "project_id,profile_id", ignoreDuplicates: true })
   }
 
   revalidatePath("/projects")
@@ -634,6 +678,15 @@ export async function addProjectMember(projectId: string, profileId: string) {
     .from("project_members")
     .insert({ project_id: projectId, profile_id: profileId })
   if (error) throw error
+
+  // Best-effort: pick up any task left unassigned because no member had a
+  // matching position yet. Never block adding the member over this.
+  try {
+    await reassignUnassignedTasks(projectId)
+  } catch (e) {
+    console.error("reassignUnassignedTasks failed after addProjectMember:", e)
+  }
+
   revalidatePath(`/projects/${projectId}`)
 }
 
