@@ -33,35 +33,9 @@ export async function getEmployees() {
 
 export async function getEmployee(id: string) {
   const supabase = await createClient()
-
-  const [profileRes, projectsRes, tasksRes] = await Promise.all([
-    supabase.from("profiles").select("*").eq("id", id).single(),
-    supabase
-      .from("project_members")
-      .select("project:projects(id, name, status, progress, project_type:project_types(name), customer:customers(name))")
-      .eq("profile_id", id),
-    supabase
-      .from("tasks")
-      .select("*, project:projects(id, name)")
-      .eq("assignee_id", id)
-      .neq("status", "Done")
-      .order("due_date", { ascending: true }),
-  ])
-
-  if (profileRes.error) throw profileRes.error
-
-  const projects = (projectsRes.data ?? [])
-    .map((pm: Record<string, unknown>) => {
-      const proj = pm.project
-      return Array.isArray(proj) ? proj[0] : proj
-    })
-    .filter(Boolean)
-
-  return {
-    profile: profileRes.data,
-    projects,
-    tasks: tasksRes.data ?? [],
-  }
+  const { data, error } = await supabase.from("profiles").select("*").eq("id", id).single()
+  if (error) throw error
+  return { profile: data }
 }
 
 export async function createEmployee(formData: FormData) {
