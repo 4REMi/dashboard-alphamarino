@@ -17,7 +17,6 @@ import { getProjectDeliverables } from "@/lib/actions/deliverables"
 import { getSops } from "@/lib/actions/sops"
 import { getCreativeConcepts, getCreativeAssets } from "@/lib/actions/creatives"
 import { getBrandBrains, getBrandLines } from "@/lib/actions/brand-brains"
-import { getSavedAds, getBoards } from "@/lib/actions/ad-lab"
 import { getMetaCampaigns } from "@/lib/actions/meta"
 import { getProjectIntegrations } from "@/lib/actions/integrations"
 import { IntegrationsCard } from "@/components/projects/hub/integrations-card"
@@ -101,18 +100,16 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const historyCycles = (cycles as PaidMediaCycle[]).filter((c) => !c.is_active)
 
   // Fetch initial creatives + meta campaigns + integrations for active cycle
-  const [initialConcepts, initialAssets, initialMetaCampaigns, integrations, brandBrains, savedAds, boards, brandLines] = isPaidMedia
+  const [initialConcepts, initialAssets, initialMetaCampaigns, integrations, brandBrains, brandLines] = isPaidMedia
     ? await Promise.all([
         getCreativeConcepts(id, activeCycle?.id ?? null).catch(() => []),
         getCreativeAssets(id, activeCycle?.id ?? null).catch(() => []),
         activeCycle ? getMetaCampaigns(id, activeCycle.id).catch(() => []) : Promise.resolve([]),
         getProjectIntegrations(id).catch(() => []),
         getBrandBrains().catch(() => []),
-        getSavedAds().catch(() => []),
-        getBoards().catch(() => []),
         project.brand_brain_id ? getBrandLines(project.brand_brain_id).catch(() => []) : Promise.resolve([]),
       ])
-    : [[], [], [], [], [], [], [], []]
+    : [[], [], [], [], [], []]
 
   const totalIncome        = income.reduce((s, i) => s + Number(i.amount), 0)
   const totalExpenses      = expenses.reduce((s, e) => s + Number(e.amount), 0)
@@ -348,8 +345,6 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               isProjectMember={isProjectMember}
               brandBrains={brandBrains as any[]}
               brandLines={brandLines as any[]}
-              savedAds={savedAds as any[]}
-              boards={boards as any[]}
               projectBrandBrainId={project.brand_brain_id ?? undefined}
             />
           </section>

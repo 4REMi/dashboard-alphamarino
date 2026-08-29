@@ -16,8 +16,6 @@ interface CreativesHubProps {
   isProjectMember?: boolean
   brandBrains?: any[]
   brandLines?: any[]
-  savedAds?: any[]
-  boards?: any[]
   projectBrandBrainId?: string
 }
 
@@ -30,8 +28,6 @@ export function CreativesHub({
   isProjectMember = false,
   brandBrains = [],
   brandLines = [],
-  savedAds = [],
-  boards = [],
   projectBrandBrainId,
 }: CreativesHubProps) {
   const activeCycle = cycles.find((c) => c.is_active) ?? cycles[0] ?? null
@@ -119,8 +115,6 @@ export function CreativesHub({
         onRefresh={reload}
         brandBrains={brandBrains}
         brandLines={brandLines}
-        savedAds={savedAds}
-        boards={boards}
         projectBrandBrainId={projectBrandBrainId}
       />
     </div>

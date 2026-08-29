@@ -229,8 +229,6 @@ interface ConceptsTableProps {
   onRefresh: () => void
   brandBrains?: any[]
   brandLines?: BrandLine[]
-  savedAds?: any[]
-  boards?: any[]
   projectBrandBrainId?: string
 }
 
@@ -1019,7 +1017,7 @@ function MecanismoCell({
 
 // ── Main table ───────────────────────────────────────────────────────────────
 
-export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleId, isAdminOrSubadmin, canManageAssets = isAdminOrSubadmin, onRefresh, brandBrains = [], brandLines = [], savedAds = [], boards = [], projectBrandBrainId }: ConceptsTableProps) {
+export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleId, isAdminOrSubadmin, canManageAssets = isAdminOrSubadmin, onRefresh, brandBrains = [], brandLines = [], projectBrandBrainId }: ConceptsTableProps) {
   const [detailConcept, setDetailConcept]   = useState<CreativeConcept | null>(null)
   const [editConcept,   setEditConcept]     = useState<CreativeConcept | null>(null)
   const [createForLineId, setCreateForLineId] = useState<string | null | undefined>(undefined)
@@ -1602,8 +1600,6 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
           concept={briefForConcept}
           projectId={projectId}
           brandBrains={brandBrains}
-          savedAds={savedAds}
-          boards={boards}
           onClose={() => setBriefForConcept(null)}
           onCreated={() => { setBriefForConcept(null); onRefresh(); }}
         />

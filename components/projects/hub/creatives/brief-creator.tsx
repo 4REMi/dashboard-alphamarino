@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useState, useEffect, useTransition } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -12,6 +12,7 @@ import {
 } from "lucide-react"
 import type { CreativeConcept, BrandBrain, CreativeBrief } from "@/lib/types"
 import { createBrief, generateBriefContent, getBrief } from "@/lib/actions/creatives"
+import { getSavedAds, getBoards } from "@/lib/actions/ad-lab"
 
 interface SavedAdRef {
   id: string
@@ -27,7 +28,7 @@ interface SavedAdRef {
 interface BoardRef {
   id: string
   name: string
-  ad_count: number
+  ad_count?: number
   preview_ads?: { cached_image_url: string | null; image_url: string | null }[]
 }
 
@@ -35,8 +36,6 @@ interface Props {
   concept: CreativeConcept
   projectId: string
   brandBrains: BrandBrain[]
-  savedAds: SavedAdRef[]
-  boards: BoardRef[]
   onClose: () => void
   onCreated: (brief: CreativeBrief) => void
 }
@@ -50,7 +49,7 @@ function getThumb(ad: SavedAdRef) {
 }
 
 export function BriefCreator({
-  concept, projectId, brandBrains, savedAds, boards, onClose, onCreated,
+  concept, projectId, brandBrains, onClose, onCreated,
 }: Props) {
   const [title, setTitle] = useState(concept.name ?? concept.angle_type ?? "")
   const [selectedBrainId, setSelectedBrainId] = useState("")
@@ -61,6 +60,25 @@ export function BriefCreator({
   const [previewVideoId, setPreviewVideoId] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [isPending, startTransition] = useTransition()
+
+  // References (saved ads + boards) are account-wide libraries, not scoped
+  // to this project — fetched on demand only when this modal actually opens,
+  // instead of on every project page load whether or not a brief ever gets
+  // created.
+  const [savedAds, setSavedAds] = useState<SavedAdRef[]>([])
+  const [boards, setBoards] = useState<BoardRef[]>([])
+  const [loadingRefs, setLoadingRefs] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([getSavedAds(), getBoards()]).then(([ads, brds]) => {
+      if (cancelled) return
+      setSavedAds(ads)
+      setBoards(brds)
+      setLoadingRefs(false)
+    })
+    return () => { cancelled = true }
+  }, [])
 
   const selectedBrain = brandBrains.find((b) => b.id === selectedBrainId)
 
@@ -196,6 +214,13 @@ export function BriefCreator({
               </div>
             )}
           </section>
+
+          {loadingRefs && (
+            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              Cargando referencias guardadas…
+            </p>
+          )}
 
           {/* ── Video references ── */}
           {videoAds.length > 0 && (
@@ -378,7 +403,7 @@ export function BriefCreator({
                         </div>
                       )}
                       <p className="text-sm font-medium truncate">{board.name}</p>
-                      <p className="text-xs text-muted-foreground">{board.ad_count} ads</p>
+                      <p className="text-xs text-muted-foreground">{board.ad_count ?? 0} ads</p>
                     </button>
                   )
                 })}

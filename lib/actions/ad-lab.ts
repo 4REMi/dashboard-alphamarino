@@ -580,21 +580,23 @@ export async function getBoards(): Promise<AdBoard[]> {
   // Attach ad count
   const boardIds = (data ?? []).map((b) => b.id)
   if (boardIds.length === 0) return []
-  const { data: counts } = await supabase
-    .from("board_ads")
-    .select("board_id")
-    .in("board_id", boardIds)
+  const [{ data: counts }, { data: previewRows }] = await Promise.all([
+    supabase
+      .from("board_ads")
+      .select("board_id")
+      .in("board_id", boardIds),
+    // Fetch up to 4 preview thumbnails per board for the collage
+    supabase
+      .from("board_ads")
+      .select("board_id, saved_ad:saved_ads(id, cached_image_url, image_url)")
+      .in("board_id", boardIds)
+      .order("added_at", { ascending: false }),
+  ])
   const countMap: Record<string, number> = {}
   for (const row of counts ?? []) {
     countMap[row.board_id] = (countMap[row.board_id] ?? 0) + 1
   }
 
-  // Fetch up to 4 preview thumbnails per board for the collage
-  const { data: previewRows } = await supabase
-    .from("board_ads")
-    .select("board_id, saved_ad:saved_ads(id, cached_image_url, image_url)")
-    .in("board_id", boardIds)
-    .order("added_at", { ascending: false })
   const previewMap: Record<string, Pick<SavedAd, "id" | "cached_image_url" | "image_url">[]> = {}
   for (const row of previewRows ?? []) {
     const ad = row.saved_ad as unknown as Pick<SavedAd, "id" | "cached_image_url" | "image_url"> | null
