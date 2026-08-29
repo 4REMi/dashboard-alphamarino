@@ -200,74 +200,78 @@ export async function getProjects(includeArchived = false) {
     rawData = (minimal ?? []).map((p) => ({ ...p, project_type: null, phases: [] }))
   }
 
-  // Fetch latest activity dates from logs, tasks, and phases (each wrapped in try/catch)
-  let logMap: Record<string, string> = {}
-  try {
-    const { data: logs } = await supabase
+  // Fetch latest activity dates from logs, tasks, phases, and pending-client-
+  // changes signals — all scoped to just the projects being returned (not
+  // full-table scans) and run in parallel instead of one after another.
+  const projectIds = rawData.map((p) => p.id as string)
+
+  const [logsRes, taskDatesRes, phaseDatesRes, assetChangesRes, briefsWithReviewsRes] = projectIds.length === 0
+    ? [{ data: null }, { data: null }, { data: null }, { data: null }, { data: null }]
+    : await Promise.all([
+    supabase
       .from("project_log_entries")
       .select("project_id, created_at")
+      .in("project_id", projectIds)
       .order("created_at", { ascending: false })
-    if (logs) {
-      for (const l of logs) {
-        if (!logMap[l.project_id as string]) logMap[l.project_id as string] = l.created_at as string
-      }
-    }
-  } catch { /* table may not exist yet */ }
-
-  let taskActivityMap: Record<string, string> = {}
-  try {
-    const { data: taskDates } = await supabase
+      .then((r) => r, () => ({ data: null })),
+    supabase
       .from("tasks")
       .select("project_id, updated_at")
+      .in("project_id", projectIds)
       .order("updated_at", { ascending: false })
-    if (taskDates) {
-      for (const t of taskDates) {
-        const pid = t.project_id as string
-        const d = t.updated_at as string
-        if (d && (!taskActivityMap[pid] || d > taskActivityMap[pid])) taskActivityMap[pid] = d
-      }
-    }
-  } catch { /* column may not exist */ }
-
-  let phaseActivityMap: Record<string, string> = {}
-  try {
-    const { data: phaseDates } = await supabase
+      .then((r) => r, () => ({ data: null })),
+    supabase
       .from("project_phases")
       .select("project_id, updated_at")
+      .in("project_id", projectIds)
       .order("updated_at", { ascending: false })
-    if (phaseDates) {
-      for (const ph of phaseDates) {
-        const pid = ph.project_id as string
-        const d = ph.updated_at as string
-        if (d && (!phaseActivityMap[pid] || d > phaseActivityMap[pid])) phaseActivityMap[pid] = d
-      }
-    }
-  } catch { /* column may not exist */ }
+      .then((r) => r, () => ({ data: null })),
+    supabase
+      .from("creative_assets")
+      .select("project_id")
+      .in("project_id", projectIds)
+      .eq("client_status", "changes_requested")
+      .eq("client_visible", true)
+      .then((r) => r, () => ({ data: null })),
+    supabase
+      .from("creative_briefs")
+      .select("project_id, script_reviews")
+      .in("project_id", projectIds)
+      .not("script_reviews", "eq", "{}")
+      .then((r) => r, () => ({ data: null })),
+  ])
+
+  const logMap: Record<string, string> = {}
+  for (const l of logsRes.data ?? []) {
+    if (!logMap[l.project_id as string]) logMap[l.project_id as string] = l.created_at as string
+  }
+
+  const taskActivityMap: Record<string, string> = {}
+  for (const t of taskDatesRes.data ?? []) {
+    const pid = t.project_id as string
+    const d = t.updated_at as string
+    if (d && (!taskActivityMap[pid] || d > taskActivityMap[pid])) taskActivityMap[pid] = d
+  }
+
+  const phaseActivityMap: Record<string, string> = {}
+  for (const ph of phaseDatesRes.data ?? []) {
+    const pid = ph.project_id as string
+    const d = ph.updated_at as string
+    if (d && (!phaseActivityMap[pid] || d > phaseActivityMap[pid])) phaseActivityMap[pid] = d
+  }
 
   // Projects where the client is currently waiting on the team — distinct from
   // "activity" (which tracks work the team did). An asset or script can sit in
   // changes_requested for a while with no further admin activity, so this has
   // to be its own signal rather than folded into inactiveForDays.
   const pendingChangesSet = new Set<string>()
-  try {
-    const { data: assetChanges } = await supabase
-      .from("creative_assets")
-      .select("project_id")
-      .eq("client_status", "changes_requested")
-      .eq("client_visible", true)
-    for (const a of assetChanges ?? []) pendingChangesSet.add(a.project_id as string)
-
-    const { data: briefsWithReviews } = await supabase
-      .from("creative_briefs")
-      .select("project_id, script_reviews")
-      .not("script_reviews", "eq", "{}")
-    for (const b of briefsWithReviews ?? []) {
-      const reviews = (b.script_reviews ?? {}) as Record<string, { client_status?: string }>
-      if (Object.values(reviews).some((r) => r?.client_status === "changes_requested")) {
-        pendingChangesSet.add(b.project_id as string)
-      }
+  for (const a of assetChangesRes.data ?? []) pendingChangesSet.add(a.project_id as string)
+  for (const b of briefsWithReviewsRes.data ?? []) {
+    const reviews = (b.script_reviews ?? {}) as Record<string, { client_status?: string }>
+    if (Object.values(reviews).some((r) => r?.client_status === "changes_requested")) {
+      pendingChangesSet.add(b.project_id as string)
     }
-  } catch { /* columns may not exist yet */ }
+  }
 
   return rawData.map((p) => {
     const tasks = (p.tasks ?? []) as Array<{ status: string; due_date: string | null }>
