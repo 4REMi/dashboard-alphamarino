@@ -12,6 +12,7 @@ export type UserPermissions = {
   assign_sops?: boolean              // assign SOPs to tasks/templates
   access_ad_lab?: boolean            // /ad-lab section
   access_brand_brains?: boolean      // /brand-brains section
+  manage_customers?: boolean         // add/import customers from /customers
 }
 
 // Defaults per role (admin always returns true without checking)
@@ -27,6 +28,7 @@ const SUBADMIN_DEFAULTS: Required<UserPermissions> = {
   assign_sops: true,
   access_ad_lab: true,
   access_brand_brains: true,
+  manage_customers: false,
 }
 
 const EMPLOYEE_DEFAULTS: Required<UserPermissions> = {
@@ -41,6 +43,7 @@ const EMPLOYEE_DEFAULTS: Required<UserPermissions> = {
   assign_sops: false,
   access_ad_lab: false,
   access_brand_brains: false,
+  manage_customers: false,
 }
 
 export function can(

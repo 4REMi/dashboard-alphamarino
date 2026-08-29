@@ -7,13 +7,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { subDays } from "date-fns"
 import type { Customer } from "@/lib/types"
 import { getTranslations } from "next-intl/server"
+import { can } from "@/lib/permissions"
 
 export default async function CustomersPage() {
   const t = await getTranslations("customers")
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user!.id).single()
+  const { data: profile } = await supabase.from("profiles").select("role, permissions").eq("id", user!.id).single()
   const isAdmin = profile?.role === "admin"
+  const canAddCustomers = can(profile, "manage_customers")
 
   const customers = (await getCustomers()) as Customer[]
   const recentCutoff = subDays(new Date(), 30).toISOString()
@@ -26,7 +28,7 @@ export default async function CustomersPage() {
           <h1 className="text-2xl font-bold">{t("title")}</h1>
           <p className="text-muted-foreground text-sm mt-1">{customers.length} {t("title").toLowerCase()}</p>
         </div>
-        {isAdmin && <CustomerForm />}
+        {canAddCustomers && <CustomerForm />}
       </div>
 
       <Tabs defaultValue="all">
@@ -37,7 +39,7 @@ export default async function CustomersPage() {
         </TabsList>
 
         <TabsContent value="all" className="mt-4">
-          <CustomerTable customers={customers} isAdmin={isAdmin} />
+          <CustomerTable customers={customers} isAdmin={isAdmin} canAddCustomers={canAddCustomers} />
         </TabsContent>
 
         <TabsContent value="board" className="mt-4">
@@ -49,7 +51,7 @@ export default async function CustomersPage() {
             <p className="text-sm text-muted-foreground mb-4">
               {recentCustomers.length} {t("title").toLowerCase()}
             </p>
-            <CustomerTable customers={recentCustomers} isAdmin={isAdmin} />
+            <CustomerTable customers={recentCustomers} isAdmin={isAdmin} canAddCustomers={canAddCustomers} />
           </div>
         </TabsContent>
       </Tabs>

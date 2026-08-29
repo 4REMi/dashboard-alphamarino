@@ -2,7 +2,16 @@
 
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
+import { can } from "@/lib/permissions"
 import type { CustomerStatus } from "@/lib/types"
+
+async function assertCanManageCustomers() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error("No autenticado")
+  const { data: profile } = await supabase.from("profiles").select("role, permissions").eq("id", user.id).single()
+  if (!can(profile, "manage_customers")) throw new Error("No tienes permiso para agregar clientes")
+}
 
 export async function getCustomers() {
   const supabase = await createClient()
@@ -24,6 +33,7 @@ export async function importCustomers(
     status?: string
   }>
 ): Promise<{ inserted: number; skipped: number }> {
+  await assertCanManageCustomers()
   const supabase = await createClient()
 
   const { data: existing } = await supabase
@@ -82,6 +92,7 @@ export async function getCustomer(id: string) {
 }
 
 export async function createCustomer(formData: FormData) {
+  await assertCanManageCustomers()
   const supabase = await createClient()
 
   const { error } = await supabase.from("customers").insert({

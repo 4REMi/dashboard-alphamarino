@@ -14,9 +14,10 @@ import type { Customer } from "@/lib/types"
 interface CustomerTableProps {
   customers: Customer[]
   isAdmin: boolean
+  canAddCustomers?: boolean
 }
 
-export function CustomerTable({ customers, isAdmin }: CustomerTableProps) {
+export function CustomerTable({ customers, isAdmin, canAddCustomers = isAdmin }: CustomerTableProps) {
   const [search, setSearch] = useState("")
 
   const filtered = customers.filter(
@@ -38,7 +39,7 @@ export function CustomerTable({ customers, isAdmin }: CustomerTableProps) {
             className="pl-9"
           />
         </div>
-        {isAdmin && (
+        {canAddCustomers && (
           <div className="ml-auto">
             <CustomerImportModal />
           </div>

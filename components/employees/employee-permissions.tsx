@@ -62,6 +62,11 @@ const PERMISSION_LABELS: { key: keyof UserPermissions; label: string; descriptio
     label: "Acceso a Brand Brains",
     description: "Acceso a la sección /brand-brains",
   },
+  {
+    key: "manage_customers",
+    label: "Agregar clientes",
+    description: "Agregar o importar nuevos clientes desde /customers",
+  },
 ]
 
 interface Props {
