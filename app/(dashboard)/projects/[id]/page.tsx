@@ -47,11 +47,17 @@ import { getProjectTypeIcon } from "@/lib/project-type-icons"
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
 
-  let project: Awaited<ReturnType<typeof getProject>> | null = null
-  try { project = await getProject(id) } catch { notFound() }
-
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+
+  // getProject and auth.getUser() don't depend on each other — run them
+  // together instead of paying for two sequential network round-trips
+  // before anything else can start. profile still has to wait on user.id.
+  const [project, { data: { user } }] = await Promise.all([
+    getProject(id).catch(() => null),
+    supabase.auth.getUser(),
+  ])
+  if (!project) notFound()
+
   const { data: profile } = await supabase.from("profiles").select("role, permissions").eq("id", user!.id).single()
   const role = profile?.role ?? "employee"
   const isAdmin           = role === "admin"

@@ -354,27 +354,14 @@ export async function getProject(id: string) {
     data = { ...minData, project_type: null, phases: [] } as Record<string, unknown>
   }
 
-  // Optional hub tables — fetch separately so a missing table doesn't crash the page
-  let paidMediaContext = null
-  let webProjectContext = null
-
-  try {
-    const { data: pmc } = await supabase
-      .from("paid_media_context")
-      .select("*")
-      .eq("project_id", id)
-      .maybeSingle()
-    paidMediaContext = pmc
-  } catch { /* table may not exist */ }
-
-  try {
-    const { data: wpc } = await supabase
-      .from("web_project_context")
-      .select("*")
-      .eq("project_id", id)
-      .maybeSingle()
-    webProjectContext = wpc
-  } catch { /* table may not exist */ }
+  // Optional hub tables — fetched in parallel, each isolated so a missing
+  // table doesn't crash the page or block the other.
+  const [paidMediaContext, webProjectContext] = await Promise.all([
+    supabase.from("paid_media_context").select("*").eq("project_id", id).maybeSingle()
+      .then((r) => r.data, () => null),
+    supabase.from("web_project_context").select("*").eq("project_id", id).maybeSingle()
+      .then((r) => r.data, () => null),
+  ])
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return {
