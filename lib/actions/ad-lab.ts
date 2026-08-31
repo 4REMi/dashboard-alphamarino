@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import type { TrackedBrand, SavedAd, AdBoard, ClientCreativeContext, MetaAdResult, InstagramPostResult } from "@/lib/types"
+import type { TrackedBrand, SavedAd, AdBoard, ClientCreativeContext, MetaAdResult, InstagramPostResult, AccountSuggestion } from "@/lib/types"
 
 // ── Storage mirror ────────────────────────────────────────────────
 
@@ -239,6 +239,121 @@ export async function searchOrganicPosts(params: {
   }
   const data = await res.json()
   return (Array.isArray(data) ? data : []) as InstagramPostResult[]
+}
+
+// ── Apify — live account typeahead (real accounts, not just saved ones) ──
+//
+// Separate from the two scrapers above: those pull ads/posts for an
+// already-known page/handle. These two hit lightweight keyword-search
+// actors so the Discovery search box can suggest real Facebook Pages /
+// Instagram accounts as the admin types, instead of only offering
+// previously tracked/saved ones.
+//
+// Output field names below are defensive (tried against several likely
+// casings) because Apify's public store pages only document input
+// schemas, not dataset item shapes — verified the *input* fields against
+// each actor's real build schema, but the output shape may need a
+// one-time adjustment once this runs against live data.
+
+function pickField(obj: Record<string, unknown>, keys: string[]): unknown {
+  for (const k of keys) {
+    if (obj[k] !== undefined && obj[k] !== null && obj[k] !== "") return obj[k]
+  }
+  return null
+}
+
+const FB_SEARCH_ACTOR = "apify~facebook-search-scraper"
+
+export async function searchFacebookPageSuggestions(query: string): Promise<AccountSuggestion[]> {
+  await assertAuth()
+  const token = process.env.APIFY_API_TOKEN
+  if (!token) throw new Error("APIFY_API_TOKEN no configurado")
+
+  const q = query.trim()
+  if (q.length < 2) return []
+
+  const input = {
+    categories: [q],
+    resultsLimit: 8,
+  }
+
+  const res = await fetch(
+    `${APIFY_BASE}/acts/${FB_SEARCH_ACTOR}/run-sync-get-dataset-items?token=${token}`,
+    {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify(input),
+      cache:   "no-store",
+      signal:  AbortSignal.timeout(20_000),
+    }
+  )
+  if (!res.ok) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const err: any = await res.json().catch(() => ({}))
+    throw new Error(err?.error?.message ?? `Apify error ${res.status}`)
+  }
+  const data = await res.json()
+  const items = Array.isArray(data) ? data : []
+
+  return items.map((raw): AccountSuggestion => {
+    const item = raw as Record<string, unknown>
+    return {
+      id:        String(pickField(item, ["pageId", "page_id", "id", "facebookId"]) ?? pickField(item, ["url", "pageUrl"]) ?? ""),
+      name:      String(pickField(item, ["title", "name", "pageName", "page_name"]) ?? "Sin nombre"),
+      handle:    null,
+      thumbnail: (pickField(item, ["profilePhoto", "photoUrl", "photo_url", "avatar", "imageUrl", "profilePicture"]) as string | null) ?? null,
+      url:       (pickField(item, ["pageUrl", "url", "link", "facebookUrl"]) as string | null) ?? null,
+      isVerified: !!pickField(item, ["isVerified", "verified"]),
+    }
+  }).filter((s) => s.name !== "Sin nombre" || s.url)
+}
+
+const IG_SEARCH_ACTOR = "data-slayer~instagram-search-users"
+
+export async function searchInstagramAccountSuggestions(query: string): Promise<AccountSuggestion[]> {
+  await assertAuth()
+  const token = process.env.APIFY_API_TOKEN
+  if (!token) throw new Error("APIFY_API_TOKEN no configurado")
+
+  const q = query.trim().replace(/^@/, "")
+  if (q.length < 2) return []
+
+  const input = {
+    query: q,
+    mode: "basic",
+    maxItems: 8,
+  }
+
+  const res = await fetch(
+    `${APIFY_BASE}/acts/${IG_SEARCH_ACTOR}/run-sync-get-dataset-items?token=${token}`,
+    {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify(input),
+      cache:   "no-store",
+      signal:  AbortSignal.timeout(20_000),
+    }
+  )
+  if (!res.ok) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const err: any = await res.json().catch(() => ({}))
+    throw new Error(err?.error?.message ?? `Apify error ${res.status}`)
+  }
+  const data = await res.json()
+  const items = Array.isArray(data) ? data : []
+
+  return items.map((raw): AccountSuggestion => {
+    const item = raw as Record<string, unknown>
+    const username = String(pickField(item, ["username"]) ?? "")
+    return {
+      id:        String(pickField(item, ["id", "userId", "user_id", "pk"]) ?? username),
+      name:      String(pickField(item, ["fullName", "full_name", "name"]) ?? username),
+      handle:    username || null,
+      thumbnail: (pickField(item, ["profilePicUrl", "profile_pic_url", "profilePicture"]) as string | null) ?? null,
+      url:       username ? `https://instagram.com/${username}` : null,
+      isVerified: !!pickField(item, ["isVerified", "is_verified"]),
+    }
+  }).filter((s) => s.handle)
 }
 
 async function assertAuth() {

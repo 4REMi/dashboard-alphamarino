@@ -1037,6 +1037,17 @@ export interface InstagramPostResult {
   ownerFullName?: string | null
 }
 
+// Live typeahead suggestion for a real Facebook Page / Instagram account
+// (not a previously saved/tracked one) — Ad Discovery search box.
+export interface AccountSuggestion {
+  id: string
+  name: string
+  handle: string | null
+  thumbnail: string | null
+  url: string | null
+  isVerified: boolean
+}
+
 // ============================================================
 // AD CLONE
 // ============================================================

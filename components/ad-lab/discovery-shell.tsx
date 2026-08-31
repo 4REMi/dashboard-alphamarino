@@ -1,10 +1,11 @@
 "use client"
 
 import { useState, useRef, useCallback, useEffect } from "react"
-import type { TrackedBrand, AdBoard, MetaAdResult, InstagramPostResult } from "@/lib/types"
+import type { TrackedBrand, AdBoard, MetaAdResult, InstagramPostResult, AccountSuggestion } from "@/lib/types"
 import {
   startMetaAdsSearch, getMetaAdsRunStatus, getMetaAdsDatasetPage,
   saveAd, addAdToBoard, searchOrganicPosts, saveOrganicPost,
+  searchFacebookPageSuggestions, searchInstagramAccountSuggestions,
 } from "@/lib/actions/ad-lab"
 import { AdCard } from "@/components/ad-lab/ad-card"
 import { AdDetailModal } from "@/components/ad-lab/ad-detail-modal"
@@ -75,6 +76,43 @@ export function DiscoveryShell({ trackedBrands, boards }: Props) {
   const [selectedPageId, setSelectedPageId] = useState("")
   const [statusFilter,   setStatusFilter]   = useState<StatusFilter>("ALL")
   const [tab,              setTab]              = useState<FilterTab>("all")
+
+  // ── Live account typeahead (real FB Pages / IG accounts, not just
+  //    tracked/saved ones) — debounced against the search boxes above ──
+  const [fbSuggestions,     setFbSuggestions]     = useState<AccountSuggestion[]>([])
+  const [fbSuggestOpen,     setFbSuggestOpen]     = useState(false)
+  const [fbSuggestLoading,  setFbSuggestLoading]  = useState(false)
+  const [igSuggestions,     setIgSuggestions]     = useState<AccountSuggestion[]>([])
+  const [igSuggestOpen,     setIgSuggestOpen]     = useState(false)
+  const [igSuggestLoading,  setIgSuggestLoading]  = useState(false)
+
+  useEffect(() => {
+    if (mode !== "ads" || selectedPageId) return
+    const q = query.trim()
+    if (q.length < 2) { setFbSuggestions([]); return }
+    setFbSuggestLoading(true)
+    const t = setTimeout(() => {
+      searchFacebookPageSuggestions(q)
+        .then(setFbSuggestions)
+        .catch(() => setFbSuggestions([]))
+        .finally(() => setFbSuggestLoading(false))
+    }, 400)
+    return () => clearTimeout(t)
+  }, [query, mode, selectedPageId])
+
+  useEffect(() => {
+    if (mode !== "organic") return
+    const q = igUsername.trim()
+    if (q.length < 2) { setIgSuggestions([]); return }
+    setIgSuggestLoading(true)
+    const t = setTimeout(() => {
+      searchInstagramAccountSuggestions(q)
+        .then(setIgSuggestions)
+        .catch(() => setIgSuggestions([]))
+        .finally(() => setIgSuggestLoading(false))
+    }, 400)
+    return () => clearTimeout(t)
+  }, [igUsername, mode])
 
   // ── Async run state ────────────────────────────────────────────
   const [searchStatus,    setSearchStatus]    = useState<SearchStatus>("idle")
@@ -333,15 +371,49 @@ export function DiscoveryShell({ trackedBrands, boards }: Props) {
 
           {/* Search bar — Instagram (organic) */}
           {mode === "organic" && (
-            <form onSubmit={(e) => { e.preventDefault(); runOrganicSearch(igUsername) }} className="flex gap-2">
+            <form onSubmit={(e) => { e.preventDefault(); setIgSuggestOpen(false); runOrganicSearch(igUsername) }} className="flex gap-2">
               <div className="relative flex-1">
                 <SiInstagram className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
                 <input
                   value={igUsername}
                   onChange={(e) => setIgUsername(e.target.value)}
+                  onFocus={() => setIgSuggestOpen(true)}
+                  onBlur={() => setTimeout(() => setIgSuggestOpen(false), 150)}
                   placeholder="usuario_de_instagram (sin @)"
+                  autoComplete="off"
                   className="w-full pl-9 pr-4 h-10 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-transparent"
                 />
+
+                {igSuggestOpen && (igSuggestLoading || igSuggestions.length > 0) && (
+                  <div className="absolute top-full left-0 right-0 mt-1 rounded-xl border border-border bg-popover shadow-lg z-20 overflow-hidden max-h-72 overflow-y-auto">
+                    {igSuggestLoading && igSuggestions.length === 0 && (
+                      <div className="flex items-center gap-2 px-3 py-2.5 text-xs text-muted-foreground">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        Buscando cuentas…
+                      </div>
+                    )}
+                    {igSuggestions.map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => { setIgUsername(s.handle ?? ""); setIgSuggestOpen(false); if (s.handle) runOrganicSearch(s.handle) }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-muted transition-colors"
+                      >
+                        {s.thumbnail ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={s.thumbnail} alt="" className="w-6 h-6 rounded-full object-cover flex-shrink-0" />
+                        ) : (
+                          <div className="w-6 h-6 rounded-full bg-muted flex-shrink-0" />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-medium truncate">{s.name}</p>
+                          {s.handle && <p className="text-[11px] text-muted-foreground truncate">@{s.handle}</p>}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               <button
                 type="submit"
@@ -374,15 +446,55 @@ export function DiscoveryShell({ trackedBrands, boards }: Props) {
           {/* Search bar — Ads */}
           {mode === "ads" && (
           <>
-          <form onSubmit={handleSearch} className="flex gap-2">
+          <form onSubmit={(e) => { setFbSuggestOpen(false); handleSearch(e) }} className="flex gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
               <input
                 value={query}
                 onChange={(e) => { setQuery(e.target.value); if (!e.target.value) setSelectedPageId("") }}
+                onFocus={() => setFbSuggestOpen(true)}
+                onBlur={() => setTimeout(() => setFbSuggestOpen(false), 150)}
                 placeholder="Busca una marca o término…"
+                autoComplete="off"
                 className="w-full pl-9 pr-4 h-10 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-transparent"
               />
+
+              {fbSuggestOpen && !selectedPageId && (fbSuggestLoading || fbSuggestions.length > 0) && (
+                <div className="absolute top-full left-0 right-0 mt-1 rounded-xl border border-border bg-popover shadow-lg z-20 overflow-hidden max-h-72 overflow-y-auto">
+                  {fbSuggestLoading && fbSuggestions.length === 0 && (
+                    <div className="flex items-center gap-2 px-3 py-2.5 text-xs text-muted-foreground">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Buscando páginas…
+                    </div>
+                  )}
+                  {fbSuggestions.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        // Search by name, not s.id — the id comes from a
+                        // different Facebook search actor than the Ads
+                        // Library scraper, so it isn't a reliable
+                        // view_all_page_id to pass through as pageId.
+                        setQuery(s.name)
+                        setFbSuggestOpen(false)
+                        setFbSuggestions([])
+                        runSearch({ query: s.name })
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-muted transition-colors"
+                    >
+                      {s.thumbnail ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={s.thumbnail} alt="" className="w-6 h-6 rounded-full object-cover flex-shrink-0" />
+                      ) : (
+                        <div className="w-6 h-6 rounded-full bg-muted flex-shrink-0" />
+                      )}
+                      <p className="text-xs font-medium truncate">{s.name}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="relative">
               <select
