@@ -21,6 +21,11 @@ async function assertAuth() {
 async function mirrorGeneratedImages(cloneId: string, sourceUrls: string[]): Promise<string[]> {
   const adminStorage = createAdminClient()
   const mirrored: string[] = []
+  // Round-unique prefix — a clone can now go through several generate/review
+  // rounds ("Guardar y generar otra tanda"), and without this a later round's
+  // gen-0/gen-1/... paths would overwrite (upsert: true) an earlier round's
+  // already-accepted images living at the same path.
+  const roundToken = Date.now().toString(36)
 
   for (let i = 0; i < sourceUrls.length; i++) {
     try {
@@ -29,7 +34,7 @@ async function mirrorGeneratedImages(cloneId: string, sourceUrls: string[]): Pro
       const buffer      = await res.arrayBuffer()
       const contentType = res.headers.get("content-type") ?? "image/jpeg"
       const ext         = (contentType.split("/")[1]?.split(";")[0] ?? "jpg").slice(0, 4)
-      const path        = `image-clones/${cloneId}/gen-${i}.${ext}`
+      const path        = `image-clones/${cloneId}/${roundToken}-gen-${i}.${ext}`
       const { error }   = await adminStorage.storage
         .from("ad-lab")
         .upload(path, buffer, { contentType, upsert: true })
@@ -866,25 +871,30 @@ export async function deleteImageClone(cloneId: string): Promise<void> {
 
 /**
  * Called when the user finishes reviewing a "reviewing" clone's variants —
- * keepUrls is the subset of generated_image_urls they chose to keep.
- * Discarded variants are removed from storage. If nothing was kept, the
- * whole clone is deleted rather than left as an empty "done" row.
+ * keepUrls is the subset of THIS ROUND's generated_image_urls they chose to
+ * keep. Discarded variants (this round) are removed from storage. The final
+ * saved set is accepted_image_urls (locked in from earlier rounds, via
+ * acceptRoundAndContinue) plus keepUrls from this last round. If that
+ * combined set is empty, the whole clone is deleted rather than left as an
+ * empty "done" row.
  */
 export async function finalizeImageClone(cloneId: string, keepUrls: string[]): Promise<ImageClone | null> {
   const { supabase } = await assertAuth()
 
   const { data: clone, error } = await supabase
     .from("image_clones")
-    .select("generated_image_urls")
+    .select("generated_image_urls, accepted_image_urls")
     .eq("id", cloneId)
     .single()
   if (error) throw error
 
-  const allUrls = (clone.generated_image_urls as string[] | null) ?? []
-  const discarded = allUrls.filter((u) => !keepUrls.includes(u))
+  const roundUrls  = (clone.generated_image_urls as string[] | null) ?? []
+  const accepted    = (clone.accepted_image_urls as string[] | null) ?? []
+  const discarded   = roundUrls.filter((u) => !keepUrls.includes(u))
+  const finalUrls   = [...accepted, ...keepUrls]
 
-  if (keepUrls.length === 0) {
-    await deleteMirroredImages(allUrls)
+  if (finalUrls.length === 0) {
+    await deleteMirroredImages(roundUrls)
     await supabase.from("image_clones").delete().eq("id", cloneId)
     return null
   }
@@ -892,12 +902,66 @@ export async function finalizeImageClone(cloneId: string, keepUrls: string[]): P
   await deleteMirroredImages(discarded)
   const { data: updated, error: updateError } = await supabase
     .from("image_clones")
-    .update({ status: "done", generated_image_urls: keepUrls, updated_at: new Date().toISOString() })
+    .update({
+      status: "done",
+      generated_image_urls: finalUrls,
+      accepted_image_urls: [],
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", cloneId)
     .select("*")
     .single()
   if (updateError) throw updateError
   return updated as ImageClone
+}
+
+/**
+ * "Guardar y generar otra tanda" — locks keepUrls into accepted_image_urls
+ * (permanent, matches finalize's immediate-lock semantics) and discards the
+ * rest of the current round's storage files, then resets the round fields so
+ * the wizard can go back to the config step and generate again. The clone
+ * row stays alive throughout — nothing here is a terminal action.
+ */
+export async function acceptRoundAndContinue(cloneId: string, keepUrls: string[]): Promise<string[]> {
+  const { supabase } = await assertAuth()
+
+  const { data: clone, error } = await supabase
+    .from("image_clones")
+    .select("generated_image_urls, accepted_image_urls")
+    .eq("id", cloneId)
+    .single()
+  if (error) throw error
+
+  const roundUrls  = (clone.generated_image_urls as string[] | null) ?? []
+  const accepted    = (clone.accepted_image_urls as string[] | null) ?? []
+  const discarded   = roundUrls.filter((u) => !keepUrls.includes(u))
+  const newAccepted = [...accepted, ...keepUrls]
+
+  await deleteMirroredImages(discarded)
+  const { error: updateError } = await supabase
+    .from("image_clones")
+    .update({
+      status: "pending",
+      accepted_image_urls: newAccepted,
+      generated_image_urls: [],
+      fal_request_id: null,
+      generation_input: null,
+      retry_count: 0,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", cloneId)
+  if (updateError) throw updateError
+  return newAccepted
+}
+
+/**
+ * "Descartar y regresar" — discards the entire current round (nothing
+ * kept) and resets for another round, same as acceptRoundAndContinue with
+ * an empty keep list, but named separately since it's a distinct UI action
+ * with no selection involved.
+ */
+export async function discardRoundAndContinue(cloneId: string): Promise<string[]> {
+  return acceptRoundAndContinue(cloneId, [])
 }
 
 export async function getAllImageClones(limit = 12): Promise<ImageClone[]> {

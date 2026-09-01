@@ -10,6 +10,8 @@ import {
   generateImages,
   pollImageGeneration,
   finalizeImageClone,
+  acceptRoundAndContinue,
+  discardRoundAndContinue,
   updateImageAdaptedLines,
   checkAnguloCompatibility,
 } from "@/lib/actions/image-clone"
@@ -108,6 +110,12 @@ export function ImageCloneModal({ ad, recloneSource, savedAdSource, onClose }: P
   const [isFinalizing, setIsFinalizing]         = useState(false)
   const [copied, setCopied]                     = useState(false)
   const [showAllColors, setShowAllColors]       = useState(false)
+
+  // Variants locked in from earlier review rounds ("Guardar y generar otra
+  // tanda") — already persisted server-side, just mirrored here for the
+  // running tally shown above the review grid.
+  const [acceptedUrls, setAcceptedUrls]         = useState<string[]>([])
+  const [isRoundTransitioning, setIsRoundTransitioning] = useState(false)
 
   const [isPending, startTransition]            = useTransition()
   const [isSaving, setIsSaving]                 = useState(false)
@@ -334,14 +342,52 @@ export function ImageCloneModal({ ad, recloneSource, savedAdSource, onClose }: P
     finalizeImageClone(cloneId, kept)
       .then((updated) => {
         if (updated) {
-          setGeneratedUrls(kept)
+          // generated_image_urls now includes anything accepted in earlier
+          // rounds too, not just this round's kept subset.
+          setGeneratedUrls(updated.generated_image_urls)
+          setAcceptedUrls([])
           setIsFinalized(true)
         } else {
-          onClose() // nothing kept — clone was deleted
+          onClose() // nothing kept across any round — clone was deleted
         }
       })
       .catch((err) => setError(String(err)))
       .finally(() => setIsFinalizing(false))
+  }
+
+  // "Guardar y generar otra tanda" — locks the kept subset in for good and
+  // goes back to the config step (step stays 3; it's driven by
+  // generatedUrls.length === 0) with everything else — brand, ángulo,
+  // aspect ratio, count — left exactly as the user set it.
+  function handleSaveAndContinue() {
+    if (!cloneId) return
+    setIsRoundTransitioning(true)
+    setError(null)
+    const kept = generatedUrls.filter((u) => keptUrls.has(u))
+    acceptRoundAndContinue(cloneId, kept)
+      .then((newAccepted) => {
+        setAcceptedUrls(newAccepted)
+        setGeneratedUrls([])
+        setKeptUrls(new Set())
+      })
+      .catch((err) => setError(String(err)))
+      .finally(() => setIsRoundTransitioning(false))
+  }
+
+  // "Descartar y regresar" — discards this round entirely (nothing kept)
+  // and goes back to the config step. Whatever was already locked in from
+  // earlier rounds (acceptedUrls) is untouched.
+  function handleDiscardAndReturn() {
+    if (!cloneId) return
+    setIsRoundTransitioning(true)
+    setError(null)
+    discardRoundAndContinue(cloneId)
+      .then(() => {
+        setGeneratedUrls([])
+        setKeptUrls(new Set())
+      })
+      .catch((err) => setError(String(err)))
+      .finally(() => setIsRoundTransitioning(false))
   }
 
   function copyLink() {
@@ -364,15 +410,19 @@ export function ImageCloneModal({ ad, recloneSource, savedAdSource, onClose }: P
   // kept variants are already saved.
   const hasProgress = !isFinalized && (
     !!selectedBrainId || angulo.trim() !== "" || refFiles.length > 0 ||
-    additionalContext.trim() !== "" || isGenerating || generatedUrls.length > 0
+    additionalContext.trim() !== "" || isGenerating || generatedUrls.length > 0 ||
+    acceptedUrls.length > 0
   )
 
   function requestClose() {
     if (hasProgress && !confirm("¿Cerrar y perder el progreso de esta clonación?")) return
-    // Any variants still sitting unreviewed (never saved via "Guardar
-    // seleccionadas") get discarded rather than left as clutter.
-    if (generatedUrls.length > 0 && !isFinalized && cloneId) {
-      finalizeImageClone(cloneId, []).catch(() => {})
+    // Wrap up anything left hanging: variants still sitting unreviewed in
+    // the current round (never saved) get discarded, and anything already
+    // locked in from earlier rounds (acceptedUrls) gets turned into a real
+    // "done" clone instead of being stranded mid-review forever.
+    if ((generatedUrls.length > 0 || acceptedUrls.length > 0) && !isFinalized && cloneId) {
+      const kept = generatedUrls.filter((u) => keptUrls.has(u))
+      finalizeImageClone(cloneId, kept).catch(() => {})
     }
     onClose()
   }
@@ -733,6 +783,12 @@ export function ImageCloneModal({ ad, recloneSource, savedAdSource, onClose }: P
 
             {/* Right: config */}
             <div className="flex-1 overflow-y-auto p-5 space-y-5">
+              {acceptedUrls.length > 0 && (
+                <div className="flex items-center gap-2 bg-emerald-50 text-emerald-700 rounded-xl px-3 py-2 text-xs font-medium">
+                  <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
+                  {acceptedUrls.length} guardada{acceptedUrls.length !== 1 ? "s" : ""} — generando otra tanda se suma a esto.
+                </div>
+              )}
               {/* Optional product images */}
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
@@ -925,6 +981,12 @@ export function ImageCloneModal({ ad, recloneSource, savedAdSource, onClose }: P
         {/* ── Step 3: Generated results ── */}
         {step === 3 && generatedUrls.length > 0 && !isFinalized && (
           <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            {acceptedUrls.length > 0 && (
+              <div className="flex items-center gap-2 bg-emerald-50 text-emerald-700 rounded-xl px-3 py-2 text-xs font-medium">
+                <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
+                {acceptedUrls.length} guardada{acceptedUrls.length !== 1 ? "s" : ""} de ronda{acceptedUrls.length !== 1 ? "s" : ""} anterior{acceptedUrls.length !== 1 ? "es" : ""}
+              </div>
+            )}
             <div>
               <p className="text-sm font-semibold text-violet-700">Elige cuáles guardar</p>
               <p className="text-xs text-muted-foreground">
@@ -1066,35 +1128,75 @@ export function ImageCloneModal({ ad, recloneSource, savedAdSource, onClose }: P
           )}
 
           {step === 3 && generatedUrls.length === 0 && (
-            <button
-              onClick={handleGenerate}
-              disabled={isGenerating}
-              className="inline-flex items-center gap-2 h-9 px-5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 disabled:opacity-50 transition-colors"
-            >
-              {isGenerating
-                ? <><Loader2 className="w-4 h-4 animate-spin" /> Generando…</>
-                : <><ImageIcon className="w-4 h-4" /> Generar imágenes</>
-              }
-            </button>
+            <div className="flex items-center gap-2">
+              {acceptedUrls.length > 0 && !isGenerating && (
+                <button
+                  onClick={handleFinalize}
+                  disabled={isFinalizing}
+                  className="inline-flex items-center gap-2 h-9 px-4 rounded-xl border border-violet-300 text-violet-700 text-sm font-semibold hover:bg-violet-50 transition-colors disabled:opacity-50"
+                >
+                  {isFinalizing
+                    ? <><Loader2 className="w-4 h-4 animate-spin" /> Guardando…</>
+                    : <><Check className="w-4 h-4" /> Guardar y terminar ({acceptedUrls.length})</>
+                  }
+                </button>
+              )}
+              <button
+                onClick={handleGenerate}
+                disabled={isGenerating}
+                className="inline-flex items-center gap-2 h-9 px-5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 disabled:opacity-50 transition-colors"
+              >
+                {isGenerating
+                  ? <><Loader2 className="w-4 h-4 animate-spin" /> Generando…</>
+                  : <><ImageIcon className="w-4 h-4" /> Generar imágenes</>
+                }
+              </button>
+            </div>
           )}
 
           {step === 3 && generatedUrls.length > 0 && !isFinalized && (
-            <button
-              onClick={handleFinalize}
-              disabled={isFinalizing}
-              className={`inline-flex items-center gap-2 h-9 px-5 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 ${
-                keptUrls.size > 0
-                  ? "bg-violet-600 text-white hover:bg-violet-700"
-                  : "bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              }`}
-            >
-              {isFinalizing
-                ? <><Loader2 className="w-4 h-4 animate-spin" /> Guardando…</>
-                : keptUrls.size > 0
-                  ? <><Check className="w-4 h-4" /> Guardar seleccionadas ({keptUrls.size})</>
-                  : <><Trash2 className="w-4 h-4" /> Descartar todo</>
-              }
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleDiscardAndReturn}
+                disabled={isFinalizing || isRoundTransitioning}
+                className="inline-flex items-center gap-2 h-9 px-4 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+              >
+                {isRoundTransitioning
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : <><ChevronLeft className="w-4 h-4" /> Descartar y regresar</>
+                }
+              </button>
+
+              {keptUrls.size > 0 && (
+                <button
+                  onClick={handleSaveAndContinue}
+                  disabled={isFinalizing || isRoundTransitioning}
+                  className="inline-flex items-center gap-2 h-9 px-4 rounded-xl border border-violet-300 text-violet-700 text-sm font-semibold hover:bg-violet-50 transition-colors disabled:opacity-50"
+                >
+                  {isRoundTransitioning
+                    ? <><Loader2 className="w-4 h-4 animate-spin" /> Guardando…</>
+                    : <><Check className="w-4 h-4" /> Guardar y generar otra tanda</>
+                  }
+                </button>
+              )}
+
+              <button
+                onClick={handleFinalize}
+                disabled={isFinalizing || isRoundTransitioning}
+                className={`inline-flex items-center gap-2 h-9 px-5 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 ${
+                  keptUrls.size > 0 || acceptedUrls.length > 0
+                    ? "bg-violet-600 text-white hover:bg-violet-700"
+                    : "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                }`}
+              >
+                {isFinalizing
+                  ? <><Loader2 className="w-4 h-4 animate-spin" /> Guardando…</>
+                  : keptUrls.size > 0 || acceptedUrls.length > 0
+                    ? <><Check className="w-4 h-4" /> Guardar y terminar ({keptUrls.size + acceptedUrls.length})</>
+                    : <><Trash2 className="w-4 h-4" /> Descartar todo</>
+                }
+              </button>
+            </div>
           )}
 
           {step === 3 && isFinalized && (

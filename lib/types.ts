@@ -1100,6 +1100,7 @@ export interface ImageClone {
   num_images: number
   fal_request_id: string | null
   generated_image_urls: string[]
+  accepted_image_urls: string[]   // locked-in variants from earlier review rounds
   error_message: string | null
   batch_id: string | null   // groups the N clones from "Clonar carrusel completo"
   created_by: string | null
