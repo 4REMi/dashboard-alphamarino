@@ -819,6 +819,22 @@ export interface CreativeAsset {
   concept?: Pick<CreativeConcept, "id" | "name" | "angle_type" | "target_persona"> | null
 }
 
+// A single generated (or refined) copy variant in an asset's reusable copy
+// bank — see lib/actions/creatives.ts generateCopyForAsset/refineAssetCopy.
+export type AssetCopySource = "generated" | "shorter" | "longer" | "richer"
+
+export interface AssetCopy {
+  id: string
+  asset_id: string
+  hook: string | null
+  copy: string | null
+  cta: string | null
+  source: AssetCopySource
+  parent_copy_id: string | null
+  created_by: string | null
+  created_at: string
+}
+
 // ============================================================
 // AD LAB
 // ============================================================

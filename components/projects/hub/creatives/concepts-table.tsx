@@ -11,6 +11,7 @@ import { CONCEPT_STATUS_COLORS, AWARENESS_LABELS, ANGLE_GUIDE, PRODUCTION_STATUS
 import type { CreativeConcept, CreativeAsset, CreativeBrief, BrandLine, AdCloneLine } from "@/lib/types"
 import type { AIDraftConcept } from "@/lib/actions/creatives"
 import { BriefCreator } from "./brief-creator"
+import { AssetCopyBank } from "./asset-copy-bank"
 import { QuickScriptModal } from "./quick-script-modal"
 import { Plus, Sparkles, Check, X, Loader2, Star, ArrowUpRight, Pencil, Trash2, Link2, FileText, Upload, ChevronDown, Film, ImageIcon, Eye, EyeOff, ZoomIn } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -735,6 +736,12 @@ function ConceptDetailModal({
                         </Button>
                       )}
                     </div>
+                    <AssetCopyBank
+                      assetId={a.id}
+                      projectId={projectId}
+                      hasConcept={!!a.concept_id}
+                      canManage={canManageAssets}
+                    />
                   </div>
                 )
               })()}
@@ -1588,6 +1595,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
           conceptId={newAssetForConceptId}
           isAdminOrSubadmin={isAdminOrSubadmin}
           canManageAssets={canManageAssets}
+          brandBrains={brandBrains}
           open={!!newAssetForConceptId}
           onRefresh={onRefresh}
           onClose={() => setNewAssetForConceptId(null)}

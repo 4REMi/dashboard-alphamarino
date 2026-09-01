@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import type {
   CreativeConcept, CreativeAsset, CreativeBrief, BriefContent,
   ConceptStatus, ProductionStatus, AssetVerdict, BrandBrain, AdCloneLine,
+  AssetCopy,
 } from "@/lib/types"
 import { adaptWithClaude, aaiPost, aaiGet, writeScriptFromConcept } from "@/lib/actions/ad-clone"
 import type { ScriptStructureKey } from "@/lib/constants/creatives"
@@ -1116,143 +1117,154 @@ Genera 5 conceptos creativos nuevos. ${brandBlock ? "Usa el Brand Brain como fue
   }
 }
 
-// Generate hook / copy / CTA + format_meta for a single asset from its parent concept
-export async function generateAssetCopy(
-  projectId: string,
-  conceptId: string,
-  format: string | null,  // sub-type: "VO + B-roll" | "UGC" | "Static" | "Carousel" | "Other"
-  platform: string | null,
-  language = "es",
-  copyLength = "~150 palabras",
-  mechanicPrimary: string | null = null,
-  mechanicSecondary: string | null = null,
-): Promise<{ hook: string; copy: string; cta: string; format_meta: Record<string, unknown> }> {
-  const supabase = await createClient()
-  const { role } = await getRole()
-  if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
+// ── Asset copy bank ──────────────────────────────────────────
+//
+// A per-asset bank of hook/copy/cta variants generated from the asset's
+// concept strategy (not from the asset's image/video content — that was
+// considered and dropped as unnecessary cost when the concept's strategic
+// fields already fully determine the copy). Refining a variant (shorter/
+// longer/richer) adds a new bank entry rather than overwriting, so the
+// bank accumulates options to compare and reuse.
 
-  const [conceptRes, ctxRes] = await Promise.all([
-    supabase.from("creative_concepts")
-      .select("angle_type, organizing_principle, target_persona, pain_point, why_it_works, objection, transformation, awareness_stage, product_service")
-      .eq("id", conceptId)
-      .single(),
-    supabase.from("paid_media_context")
-      .select("main_objective, account_notes, platforms")
-      .eq("project_id", projectId)
-      .single(),
-  ])
-
-  const c   = conceptRes.data
-  const ctx = ctxRes.data
-  if (!c) throw new Error("Concept not found")
-
-  // Per sub-type instructions for hook/copy/cta + format_meta fields
-  const subTypeGuides: Record<string, string> = {
-    "VO + B-roll": `Genera estos campos:
-- hook: primera línea spoken (máx 15 palabras, impacto inmediato — lo que se dice al inicio del video)
-- copy: guión de narración en 3-4 frases que fluyen del hook
-- cta: texto spoken o overlay (máx 5 palabras)
-- format_meta.vo_script: guión completo de voz en off listo para grabar (${copyLength}, tono conversacional y persuasivo)
-- format_meta.broll_notes: array JSON de 6-8 strings, cada uno es una escena de B-roll concreta y visualizable (ej: "Manos tecleando en laptop mientras aparecen notificaciones de venta"). Devuelve SOLO el array, sin numeración ni viñetas dentro de cada string.`,
-
-    "UGC": `Genera estos campos:
-- hook: línea de apertura que el creator dice a cámara (máx 15 palabras, patrón de pattern interrupt)
-- copy: cuerpo del ad copy escrito para el creator (${copyLength})
-- cta: llamada a la acción al final del video (máx 6 palabras)
-- format_meta.talent_brief: briefing completo y listo para enviar al creator (incluye: tono de voz, 3 key points obligatorios que debe mencionar, 2 cosas a evitar, estilo de edición sugerido)`,
-
-    "Static": `Genera estos campos:
-- hook: headline de máx 7 palabras (lo más llamativo de la imagen)
-- copy: body copy (máx 125 caracteres, complementa el visual sin repetirlo)
-- cta: texto del botón (máx 4 palabras)
-- format_meta.visual_description: descripción de arte concreta (qué muestra la imagen, jerarquía visual, colores sugeridos, elementos clave, estilo fotográfico o ilustración)
-- format_meta.size_ratio: "1:1"`,
-
-    "Carousel": `Genera estos campos:
-- hook: titular del primer slide que detiene el scroll (máx 8 palabras)
-- copy: copy general del carousel (introducción o descripción del set)
-- cta: texto del último slide y botón (máx 4 palabras)
-- format_meta.slide_count: 5
-- format_meta.slides_brief: estructura slide por slide en formato "Slide N: [título] — [descripción visual + texto]" (slide 1 = problema/hook, slides 2-4 = desarrollo/prueba/beneficios, slide 5 = CTA)`,
-
-    "Other": `Genera estos campos:
-- hook: línea de apertura de alto impacto
-- copy: cuerpo del ad copy (3-4 frases)
-- cta: llamada a la acción clara y directa
-- format_meta.production_notes: notas de dirección creativa y producción para el equipo`,
-  }
-
-  const guideForSubType = subTypeGuides[format ?? ""] ?? subTypeGuides["Other"]
-
-  const langLabel = language === "es" ? "Español" : language === "en" ? "English" : language
-
-  const systemPrompt = `Eres un copywriter de performance marketing experto en Meta Ads, TikTok Ads y Google Ads. Escribes copy que convierte basándote en el ángulo estratégico y el perfil psicológico del buyer persona.
-
-Responde ÚNICAMENTE con un JSON válido con estos campos: hook, copy, cta, format_meta (objeto). Sin markdown, sin texto adicional.`
-
-  // Build mechanic instruction block from params passed by the modal UI
-  const mechanicBlock = mechanicPrimary ? `
-MECÁNICA CREATIVA — esta es la arquitectura estructural del ad. No es el hook ni el formato visual; es el movimiento cognitivo/emocional que hace que el viewer sienta o concluya algo.
-
-Mecánica primaria: ${mechanicPrimary}
-La ejecución del copy, el guión y el b-roll deben reflejar esta mecánica como principio arquitectónico. No la menciones explícitamente — aplícala.
-${mechanicSecondary ? `\nMecánica secundaria: ${mechanicSecondary}\nÚsala como capa adicional de profundidad emocional o credibilidad, sin eclipsar la primaria.` : ""}` : ""
-
-  const userPrompt = `Escribe el copy y brief de producción para este asset publicitario.
-
-IDIOMA DEL ANUNCIO: ${langLabel} — todo el copy (hook, copy, cta, vo_script, talent_brief, slides_brief, etc.) debe estar escrito en ${langLabel}. Los nombres de los campos del JSON permanecen en inglés; solo el contenido va en ${langLabel}.
-
-Ángulo estratégico: ${c.angle_type ?? "—"} (${c.organizing_principle ?? "—"})
-Persona objetivo: ${c.target_persona}
-${c.product_service ? `Producto / Servicio: ${c.product_service}` : ""}
-Pain Point: ${c.pain_point ?? "—"}
-${c.why_it_works ? `Por qué funciona: ${c.why_it_works}` : ""}
-${c.objection ? `Objeción a superar: ${c.objection}` : ""}
-${c.transformation ? `Transformación prometida: ${c.transformation}` : ""}
-Awareness stage: ${c.awareness_stage ?? "—"}/5
-Plataforma: ${platform ?? "No especificada"}
-Sub-tipo de asset: ${format ?? "No especificado"}
-Objetivo de campaña: ${ctx?.main_objective ?? "No especificado"}
-${ctx?.account_notes ? `Briefing adicional: ${ctx.account_notes}` : ""}
-${mechanicBlock}
-Instrucciones por sub-tipo:
-${guideForSubType}
-
-El copy debe sentirse auténtico y específico para la persona descrita — no genérico. Respeta el ángulo y la tensión del concepto.`
-
+async function generateCopyText(prompt: string): Promise<{ hook: string; copy: string; cta: string }> {
   const Anthropic = (await import("@anthropic-ai/sdk")).default
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
   const message = await client.messages.create({
     model: "claude-sonnet-4-6",
-    max_tokens: 2048,
-    messages: [{ role: "user", content: userPrompt }],
-    system: systemPrompt,
+    max_tokens: 1024,
+    messages: [{ role: "user", content: prompt }],
+    system: `Eres un copywriter de performance marketing experto en Meta Ads, TikTok Ads y Google Ads.
+Responde ÚNICAMENTE con un JSON válido: {"hook": "...", "copy": "...", "cta": "..."}. Sin markdown, sin texto adicional.`,
   })
 
   const text = message.content[0].type === "text" ? message.content[0].text : ""
-
+  let parsed: { hook?: string; copy?: string; cta?: string }
   try {
-    const parsed = JSON.parse(text)
-    return {
-      hook: parsed.hook ?? "",
-      copy: parsed.copy ?? "",
-      cta: parsed.cta ?? "",
-      format_meta: parsed.format_meta ?? {},
-    }
+    parsed = JSON.parse(text)
   } catch {
     const match = text.match(/\{[\s\S]*\}/)
-    if (match) {
-      const parsed = JSON.parse(match[0])
-      return {
-        hook: parsed.hook ?? "",
-        copy: parsed.copy ?? "",
-        cta: parsed.cta ?? "",
-        format_meta: parsed.format_meta ?? {},
-      }
-    }
-    throw new Error("AI returned invalid JSON")
+    if (!match) throw new Error("AI returned invalid JSON")
+    parsed = JSON.parse(match[0])
   }
+  return { hook: parsed.hook ?? "", copy: parsed.copy ?? "", cta: parsed.cta ?? "" }
+}
+
+export async function getAssetCopies(assetId: string): Promise<AssetCopy[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from("asset_copies")
+    .select("*")
+    .eq("asset_id", assetId)
+    .order("created_at", { ascending: false })
+  if (error) throw error
+  return (data ?? []) as AssetCopy[]
+}
+
+// First generation for an asset — pulls the asset's own concept/format/
+// platform, no extra input needed from the caller.
+export async function generateCopyForAsset(assetId: string): Promise<AssetCopy> {
+  const supabase = await createClient()
+  const { role } = await getRole()
+  if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
+
+  const { data: asset, error: assetError } = await supabase
+    .from("creative_assets")
+    .select("id, project_id, concept_id, format, platform")
+    .eq("id", assetId)
+    .single()
+  if (assetError) throw assetError
+  if (!asset.concept_id) throw new Error("Este asset no está ligado a ningún concepto")
+
+  const { data: concept, error: conceptError } = await supabase
+    .from("creative_concepts")
+    .select("angle_type, organizing_principle, target_persona, pain_point, why_it_works, objection, transformation, awareness_stage, product_service")
+    .eq("id", asset.concept_id)
+    .single()
+  if (conceptError) throw conceptError
+
+  const prompt = `Escribe hook, copy y CTA para este asset publicitario, en español.
+
+Ángulo estratégico: ${concept.angle_type ?? "—"} (${concept.organizing_principle ?? "—"})
+Persona objetivo: ${concept.target_persona ?? "—"}
+${concept.product_service ? `Producto / Servicio: ${concept.product_service}` : ""}
+Pain Point: ${concept.pain_point ?? "—"}
+${concept.why_it_works ? `Por qué funciona: ${concept.why_it_works}` : ""}
+${concept.objection ? `Objeción a superar: ${concept.objection}` : ""}
+${concept.transformation ? `Transformación prometida: ${concept.transformation}` : ""}
+Awareness stage: ${concept.awareness_stage ?? "—"}/5
+Plataforma: ${asset.platform ?? "No especificada"}
+Formato: ${asset.format ?? "No especificado"}
+
+hook: máx 15 palabras, gancho de alto impacto. copy: cuerpo del ad, 2-4 frases. cta: máx 6 palabras.
+El copy debe sentirse auténtico y específico para la persona descrita — no genérico.`
+
+  const generated = await generateCopyText(prompt)
+
+  const { data: inserted, error: insertError } = await supabase
+    .from("asset_copies")
+    .insert({ asset_id: assetId, ...generated, source: "generated" })
+    .select("*")
+    .single()
+  if (insertError) throw insertError
+  revalidatePath(`/projects/${asset.project_id}`)
+  return inserted as AssetCopy
+}
+
+const REFINEMENT_INSTRUCTIONS: Record<"shorter" | "longer" | "richer", string> = {
+  shorter: "Reescribe esta versión de forma MÁS CORTA — reduce el copy a la mitad manteniendo el mensaje central, hook y cta también más concisos.",
+  longer:  "Reescribe esta versión de forma MÁS LARGA — expande el copy con más detalle, contexto o prueba social, sin perder el ángulo original.",
+  richer:  "Reescribe esta versión MÁS ENRIQUECIDA — con lenguaje más vívido, sensorial y persuasivo, manteniendo el mismo mensaje y CTA.",
+}
+
+export async function refineAssetCopy(
+  copyId: string,
+  refinement: "shorter" | "longer" | "richer",
+): Promise<AssetCopy> {
+  const supabase = await createClient()
+  const { role } = await getRole()
+  if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
+
+  const { data: parent, error: parentError } = await supabase
+    .from("asset_copies")
+    .select("asset_id, hook, copy, cta")
+    .eq("id", copyId)
+    .single()
+  if (parentError) throw parentError
+
+  const { data: asset, error: assetError } = await supabase
+    .from("creative_assets")
+    .select("project_id")
+    .eq("id", parent.asset_id)
+    .single()
+  if (assetError) throw assetError
+
+  const prompt = `${REFINEMENT_INSTRUCTIONS[refinement]}
+
+VERSIÓN ACTUAL:
+hook: ${parent.hook ?? "—"}
+copy: ${parent.copy ?? "—"}
+cta: ${parent.cta ?? "—"}`
+
+  const generated = await generateCopyText(prompt)
+
+  const { data: inserted, error: insertError } = await supabase
+    .from("asset_copies")
+    .insert({ asset_id: parent.asset_id, ...generated, source: refinement, parent_copy_id: copyId })
+    .select("*")
+    .single()
+  if (insertError) throw insertError
+  revalidatePath(`/projects/${asset.project_id}`)
+  return inserted as AssetCopy
+}
+
+export async function deleteAssetCopy(copyId: string, projectId: string): Promise<void> {
+  const supabase = await createClient()
+  const { role } = await getRole()
+  if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
+  const { error } = await supabase.from("asset_copies").delete().eq("id", copyId)
+  if (error) throw error
+  revalidatePath(`/projects/${projectId}`)
 }
 
 // Bulk insert confirmed AI draft concepts

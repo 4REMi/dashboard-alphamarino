@@ -975,6 +975,20 @@ export async function getAllImageClones(limit = 12): Promise<ImageClone[]> {
   return (data ?? []) as ImageClone[]
 }
 
+// For the "elegir del banco de creativos" asset source in AssetModal — lets
+// picking any Brand Brain's already-saved clones, not just the project's own.
+export async function getImageClonesByBrandBrain(brandBrainId: string, limit = 60): Promise<ImageClone[]> {
+  const { supabase } = await assertAuth()
+  const { data } = await supabase
+    .from("image_clones")
+    .select("*, saved_ad:saved_ads(id, page_name, cached_image_url, image_url)")
+    .eq("brand_brain_id", brandBrainId)
+    .eq("status", "done")
+    .order("created_at", { ascending: false })
+    .limit(limit)
+  return (data ?? []) as ImageClone[]
+}
+
 /**
  * Creates an image_clone row from a previously generated image URL.
  * Skips text extraction — copies parent clone's adapted_lines directly.
