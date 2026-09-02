@@ -222,7 +222,11 @@ export function AssetModal({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className={cn("transition-[max-width]", source === "bank" && !isEdit ? "max-w-3xl" : "max-w-md")}>
+      <DialogContent className={cn(
+        source === "bank" && !isEdit
+          ? "max-w-[95vw] w-[95vw] sm:max-w-[95vw] max-h-[92vh] flex flex-col"
+          : "max-w-md"
+      )}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Upload className="w-4 h-4" />
@@ -230,10 +234,13 @@ export function AssetModal({
           </DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4 py-2">
+        <form onSubmit={handleSubmit} className={cn(
+          "space-y-4 py-2",
+          source === "bank" && !isEdit && "flex-1 min-h-0 flex flex-col overflow-hidden"
+        )}>
           {/* Source toggle — only when creating, and only if there's a bank to pick from */}
           {!isEdit && brandBrains.length > 0 && (
-            <div className="flex gap-1 p-0.5 bg-muted rounded-lg">
+            <div className="flex gap-1 p-0.5 bg-muted rounded-lg flex-shrink-0">
               {([
                 { key: "upload" as const, label: "Subir archivo" },
                 { key: "bank" as const, label: "Banco de creativos" },
@@ -254,8 +261,8 @@ export function AssetModal({
           )}
 
           {source === "bank" && !isEdit ? (
-            <div className="space-y-3">
-              <div className="space-y-1.5">
+            <div className="space-y-3 flex-1 min-h-0 flex flex-col">
+              <div className="space-y-1.5 flex-shrink-0">
                 <Label>Brand Brain</Label>
                 <div className="flex flex-wrap gap-2">
                   {brandBrains.map((b) => (
@@ -296,7 +303,7 @@ export function AssetModal({
               )}
 
               {bankClones.length > 0 && (
-                <div className="grid grid-cols-4 sm:grid-cols-5 gap-3 max-h-[28rem] overflow-y-auto pr-1">
+                <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-3 flex-1 min-h-0 overflow-y-auto pr-1 content-start">
                   {bankClones.flatMap((clone) =>
                     (clone.generated_image_urls ?? []).map((url) => (
                       <button
@@ -380,7 +387,7 @@ export function AssetModal({
           )}
 
           {/* Platform */}
-          <div className="space-y-1.5">
+          <div className={cn("space-y-1.5", source === "bank" && !isEdit && "flex-shrink-0")}>
             <Label>Plataforma</Label>
             <select
               value={platform}
@@ -429,7 +436,7 @@ export function AssetModal({
             </div>
           )}
 
-          <DialogFooter className="gap-2 pt-2">
+          <DialogFooter className={cn("gap-2 pt-2", source === "bank" && !isEdit && "flex-shrink-0")}>
             {isEdit && canUpload && (
               <Button type="button" variant="ghost" onClick={handleDelete} disabled={isPending} className="text-destructive hover:text-destructive mr-auto">
                 <Trash2 className="w-3.5 h-3.5 mr-1" />
