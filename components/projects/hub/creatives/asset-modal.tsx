@@ -222,7 +222,7 @@ export function AssetModal({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
+      <DialogContent className={cn("transition-[max-width]", source === "bank" && !isEdit ? "max-w-3xl" : "max-w-md")}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Upload className="w-4 h-4" />
@@ -257,14 +257,29 @@ export function AssetModal({
             <div className="space-y-3">
               <div className="space-y-1.5">
                 <Label>Brand Brain</Label>
-                <select
-                  value={bankBrainId}
-                  onChange={(e) => selectBankBrain(e.target.value)}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                >
-                  <option value="">Seleccionar</option>
-                  {brandBrains.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                </select>
+                <div className="flex flex-wrap gap-2">
+                  {brandBrains.map((b) => (
+                    <button
+                      key={b.id}
+                      type="button"
+                      onClick={() => selectBankBrain(b.id)}
+                      className={cn(
+                        "flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all",
+                        bankBrainId === b.id
+                          ? "border-primary bg-primary/5 ring-1 ring-primary font-medium"
+                          : "border-border hover:border-primary/30"
+                      )}
+                    >
+                      {b.logo_square_url || b.logo_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={b.logo_square_url || b.logo_url!} alt="" className="w-5 h-5 rounded object-contain" />
+                      ) : (
+                        <Sparkles className="w-3.5 h-3.5 text-primary/60" />
+                      )}
+                      {b.name}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {loadingBank && (
@@ -281,7 +296,7 @@ export function AssetModal({
               )}
 
               {bankClones.length > 0 && (
-                <div className="grid grid-cols-4 gap-2 max-h-56 overflow-y-auto">
+                <div className="grid grid-cols-4 sm:grid-cols-5 gap-3 max-h-[28rem] overflow-y-auto pr-1">
                   {bankClones.flatMap((clone) =>
                     (clone.generated_image_urls ?? []).map((url) => (
                       <button
