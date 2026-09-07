@@ -4,8 +4,10 @@ import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import { getWorkspaceSettings } from "@/lib/actions/workspace"
 import { getPositions } from "@/lib/actions/config"
+import { getAutomationLogs } from "@/lib/actions/automation-logs"
 import { BrandingManager } from "@/components/settings/branding-manager"
 import { PositionsManager } from "@/components/settings/positions-manager"
+import { AutomationLogSection } from "@/components/settings/automation-log"
 import { getTranslations } from "next-intl/server"
 
 export default async function SettingsPage() {
@@ -16,9 +18,10 @@ export default async function SettingsPage() {
 
   if (profile?.role !== "admin") redirect("/")
 
-  const [workspaceSettings, positions] = await Promise.all([
+  const [workspaceSettings, positions, automationLogs] = await Promise.all([
     getWorkspaceSettings().catch(() => ({ logo_url: null })),
     getPositions(),
+    getAutomationLogs().catch(() => []),
   ])
 
   return (
@@ -40,6 +43,16 @@ export default async function SettingsPage() {
           </p>
         </div>
         <PositionsManager initialPositions={positions} />
+      </section>
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-base font-semibold">Automatizaciones</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Revisa qué está registrando el bot automáticamente desde Telegram y Vowen (notas de voz).
+          </p>
+        </div>
+        <AutomationLogSection initialLogs={automationLogs} />
       </section>
     </div>
   )

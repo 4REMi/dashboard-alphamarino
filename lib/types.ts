@@ -1201,3 +1201,20 @@ export const PHASE_STATUS_COLORS: Record<PhaseStatus, string> = {
   completed: "text-green-500",
   blocked: "text-destructive",
 }
+
+// ============================================================
+// AUTOMATIONS (Telegram bot + Vowen voice webhook review)
+// ============================================================
+
+export type AutomationSource = "telegram" | "vowen"
+export type AutomationStatus = "ok" | "partial" | "error"
+
+export interface AutomationLog {
+  id: string
+  source: AutomationSource
+  raw_text: string
+  movements: Array<{ tipo: string; error?: string }>
+  status: AutomationStatus
+  error_message: string | null
+  created_at: string
+}
