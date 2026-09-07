@@ -22,13 +22,17 @@ async function logAutomation(
   const hasError = movements.some((m) => m.error) || !!errorMessage
   const allError = movements.length > 0 && movements.every((m) => m.error)
   const status = errorMessage || allError ? "error" : hasError ? "partial" : "ok"
-  await supabase.from("automation_logs").insert({
+  // Best-effort — never let logging break the actual bot flow, but don't
+  // swallow the error silently either (Supabase resolves with {error}
+  // rather than rejecting, so a plain .catch() would never see it).
+  const { error } = await supabase.from("automation_logs").insert({
     source,
     raw_text: rawText,
     movements,
     status,
     error_message: errorMessage ?? null,
-  }).then(() => {}, () => {}) // best-effort — never let logging break the actual flow
+  })
+  if (error) console.error("[automation_logs] insert failed:", error.message)
 }
 
 export async function handleMessage(
