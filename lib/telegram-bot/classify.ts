@@ -1,6 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk"
 
-export type TipoMovimiento = "ingreso" | "gasto_proyecto" | "gasto_general" | "dominio" | "otro"
+export type TipoMovimiento =
+  | "ingreso" | "gasto_proyecto" | "gasto_general" | "dominio"
+  | "tarea" | "tarea_completada" | "nota_proyecto" | "cliente"
+  | "otro"
 
 export interface Movimiento {
   tipo: TipoMovimiento
@@ -14,6 +17,13 @@ export interface Movimiento {
   cliente?: string
   registrador?: string
   respuesta?: string
+  // tarea / tarea_completada
+  titulo?: string
+  asignado?: string
+  // cliente
+  empresa?: string
+  email?: string
+  telefono?: string
 }
 
 const MOVIMIENTO_SCHEMA = {
@@ -21,9 +31,9 @@ const MOVIMIENTO_SCHEMA = {
   properties: {
     tipo: {
       type: "string",
-      enum: ["ingreso", "gasto_proyecto", "gasto_general", "dominio", "otro"],
+      enum: ["ingreso", "gasto_proyecto", "gasto_general", "dominio", "tarea", "tarea_completada", "nota_proyecto", "cliente", "otro"],
       description:
-        "'ingreso' = dinero que entra (pago de cliente). 'gasto_proyecto' = gasto asociado a un proyecto específico. 'gasto_general' = gasto operativo sin proyecto (ej. software, renta, nómina). 'dominio' = alta o renovación de un dominio web. 'otro' = el mensaje no describe ninguno de los anteriores, o falta información esencial.",
+        "'ingreso' = dinero que entra (pago de cliente). 'gasto_proyecto' = gasto asociado a un proyecto específico. 'gasto_general' = gasto operativo sin proyecto (ej. software, renta, nómina). 'dominio' = alta o renovación de un dominio web. 'tarea' = crear una tarea nueva (puede o no tener proyecto). 'tarea_completada' = marcar una tarea existente como hecha (SIEMPRE requiere mencionar el proyecto — no se puede sin eso). 'nota_proyecto' = agregar una nota o comentario a la bitácora de un proyecto. 'cliente' = dar de alta un cliente nuevo. 'otro' = el mensaje no describe ninguno de los anteriores, o falta información esencial.",
     },
     monto: { type: "number", description: "Monto numérico mencionado (costo de renovación si tipo es 'dominio'), sin símbolos." },
     moneda: {
@@ -31,29 +41,34 @@ const MOVIMIENTO_SCHEMA = {
       enum: ["USD", "MXN"],
       description: "Moneda del monto. Si no se especifica, asume MXN salvo que el contexto indique claramente dólares.",
     },
-    descripcion: { type: "string", description: "Descripción breve y clara del movimiento, o notas si tipo es 'dominio'." },
-    proyecto: { type: "string", description: "Nombre del proyecto mencionado (tal cual lo dice el usuario), si aplica a ingreso o gasto_proyecto." },
+    descripcion: { type: "string", description: "Descripción breve y clara del movimiento. Notas si tipo es 'dominio'. Cuerpo del comentario si tipo es 'nota_proyecto'." },
+    proyecto: { type: "string", description: "Nombre del proyecto mencionado (tal cual lo dice el usuario), si aplica a ingreso, gasto_proyecto, tarea, tarea_completada o nota_proyecto." },
     categoria: {
       type: "string",
       enum: ["Payroll", "Software", "Rent", "Services", "Other"],
       description: "Categoría del gasto general. Si no es claro, usa 'Other'.",
     },
-    fecha: { type: "string", description: "Fecha en formato YYYY-MM-DD. Para 'dominio' es la fecha de renovación/vencimiento. Si no se menciona y tipo no es 'dominio', usa la fecha de hoy." },
+    fecha: { type: "string", description: "Fecha en formato YYYY-MM-DD. Para 'dominio' es la fecha de renovación/vencimiento. Para 'tarea' es la fecha límite si se menciona. Si no se menciona y tipo no es 'dominio' ni 'tarea', usa la fecha de hoy." },
     dominio: { type: "string", description: "Nombre del dominio (ej. ejemplo.com), solo si tipo es 'dominio'." },
-    cliente: { type: "string", description: "Nombre del cliente asociado al dominio (tal cual lo dice el usuario), solo si tipo es 'dominio'." },
+    cliente: { type: "string", description: "Nombre del cliente (tal cual lo dice el usuario) — asociado al dominio si tipo es 'dominio', o el nombre del cliente nuevo si tipo es 'cliente'." },
     registrador: { type: "string", description: "Registrador del dominio (ej. GoDaddy, Namecheap, Cloudflare), solo si tipo es 'dominio' y se menciona." },
     respuesta: { type: "string", description: "Mensaje para responder al usuario cuando tipo es 'otro' (saludo, aclaración o pregunta de qué falta)." },
+    titulo: { type: "string", description: "Título de la tarea, solo si tipo es 'tarea' o 'tarea_completada'. Para 'tarea_completada', puede ser el título completo o solo una parte reconocible." },
+    asignado: { type: "string", description: "Nombre de la persona a la que se le asigna la tarea (tal cual lo dice el usuario), solo si tipo es 'tarea' y se menciona." },
+    empresa: { type: "string", description: "Nombre de la empresa del cliente nuevo, solo si tipo es 'cliente' y se menciona." },
+    email: { type: "string", description: "Correo del cliente nuevo, solo si tipo es 'cliente' y se menciona." },
+    telefono: { type: "string", description: "Teléfono del cliente nuevo, solo si tipo es 'cliente' y se menciona." },
   },
   required: ["tipo"],
 }
 
-// A single message/note can describe several movements at once (e.g. a
-// dictated Vowen note listing multiple expenses) — always returns an array,
-// even for the common one-movement case, so callers have one shape to loop
-// over regardless of source.
+// Un solo mensaje/nota puede describir varios movimientos a la vez (ej. una
+// nota de voz dictada en Vowen listando varios gastos) — siempre devuelve un
+// arreglo, incluso para el caso común de un solo movimiento, para que quien
+// llama tenga una sola forma de iterar sin importar el origen.
 const REGISTRAR_MOVIMIENTOS_TOOL: Anthropic.Tool = {
   name: "registrar_movimientos",
-  description: "Interpreta un mensaje o nota en lenguaje natural y lo desglosa en uno o más movimientos a registrar en el dashboard (finanzas o dominios), o responde si no aplica ninguno.",
+  description: "Interpreta un mensaje o nota en lenguaje natural y lo desglosa en uno o más movimientos a registrar en el dashboard (finanzas, dominios, tareas, bitácora de proyecto o clientes), o responde si no aplica ninguno.",
   input_schema: {
     type: "object",
     properties: {

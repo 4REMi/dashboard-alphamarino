@@ -4,6 +4,9 @@ import { sendMessage } from "@/lib/telegram-bot/telegram"
 import { handleFinanzas } from "@/lib/telegram-bot/handlers/finanzas"
 import { handleDominio } from "@/lib/telegram-bot/handlers/dominios"
 import { handleRecibo } from "@/lib/telegram-bot/handlers/recibos"
+import { handleTarea, handleTareaCompletada } from "@/lib/telegram-bot/handlers/tareas"
+import { handleNotaProyecto } from "@/lib/telegram-bot/handlers/notas"
+import { handleCliente } from "@/lib/telegram-bot/handlers/clientes"
 
 export interface MessageContext {
   senderName?: string
@@ -57,9 +60,10 @@ export async function handleMessage(
     return
   }
 
-  const [{ data: projects }, { data: customers }] = await Promise.all([
+  const [{ data: projects }, { data: customers }, { data: profiles }] = await Promise.all([
     supabase.from("projects").select("id, name").eq("status", "Active"),
     supabase.from("customers").select("id, name"),
+    supabase.from("profiles").select("id, full_name"),
   ])
 
   let movimientos: Movimiento[]
@@ -92,10 +96,24 @@ export async function handleMessage(
         case "dominio":
           await handleDominio(supabase, chatId, movimiento, customers ?? [], today)
           break
+        case "tarea":
+          await handleTarea(supabase, chatId, movimiento, projects ?? [], profiles ?? [])
+          break
+        case "tarea_completada":
+          await handleTareaCompletada(supabase, chatId, movimiento, projects ?? [])
+          break
+        case "nota_proyecto":
+          await handleNotaProyecto(supabase, chatId, movimiento, projects ?? [], text)
+          break
+        case "cliente":
+          await handleCliente(supabase, chatId, movimiento)
+          break
       }
       logged.push({ tipo: movimiento.tipo })
     } catch (err) {
-      logged.push({ tipo: movimiento.tipo, error: err instanceof Error ? err.message : "Error desconocido" })
+      const message = err instanceof Error ? err.message : "Error desconocido"
+      logged.push({ tipo: movimiento.tipo, error: message })
+      await sendMessage(chatId, `⚠️ Error registrando ${movimiento.tipo}: ${message}`)
     }
   }
 
