@@ -45,7 +45,26 @@ Por dentro: `generateTelegramLinkCode` (`lib/actions/employees.ts`) guarda el c�
 `app/api/telegram-webhook/route.ts` reconoce el mensaje como un código de vinculación
 **antes** de aplicar el filtro de chat permitido (tiene que funcionar desde cualquier
 chat, no solo el tuyo) — si el código es válido y no venció, guarda el `chat_id` del
-remitente en `profiles.telegram_chat_id` y contesta confirmando.
+remitente en `profiles.telegram_chat_id`, marca `telegram_linked_at`, y contesta confirmando.
+
+## Desvincular
+
+`unlinkTelegram(profileId)` (`lib/actions/employees.ts`) — lo puede hacer la propia
+persona (desde su ficha) o un admin (desde Configuración → Estado de vinculación, por
+ejemplo al offboardear a alguien o si perdió acceso a su teléfono). Limpia
+`telegram_chat_id` y marca `telegram_unlinked_at`; `telegram_linked_at` se conserva como
+histórico de la última vez que sí estuvo vinculado. Si esa persona vuelve a vincularse
+después, `telegram_linked_at` se actualiza y `telegram_unlinked_at` se limpia.
+
+## Preferencias por tipo de notificación
+
+Cada persona (o un admin, por ella) puede apagar tipos de notificación específicos sin
+desvincular su Telegram — `profiles.notification_preferences` (jsonb), mismo modelo
+opt-out que `profiles.permissions`: ausente o `true` = activo, `false` explícito = apagado
+para ese `event_key`. `notify()` respeta esto y lo registra en `notification_log` con
+status `skipped_disabled` (distinto de `skipped_no_channel`, que es no tener Telegram
+vinculado en absoluto). UI: `components/employees/notification-preferences.tsx`, reusada
+tanto en la ficha propia del empleado como en la tabla de admin en Configuración.
 
 ## Eventos activos hoy
 

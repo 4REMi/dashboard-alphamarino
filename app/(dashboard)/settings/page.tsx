@@ -6,11 +6,14 @@ import { getWorkspaceSettings } from "@/lib/actions/workspace"
 import { getPositions } from "@/lib/actions/config"
 import { getAutomationLogs } from "@/lib/actions/automation-logs"
 import { getNotificationLogs } from "@/lib/actions/notification-logs"
+import { getEmployees } from "@/lib/actions/employees"
 import { BrandingManager } from "@/components/settings/branding-manager"
 import { PositionsManager } from "@/components/settings/positions-manager"
 import { AutomationLogSection } from "@/components/settings/automation-log"
 import { NotificationLogSection } from "@/components/settings/notification-log"
+import { TelegramStatusSection } from "@/components/settings/telegram-status"
 import { getTranslations } from "next-intl/server"
+import type { Profile } from "@/lib/types"
 
 export default async function SettingsPage() {
   const t = await getTranslations("settings")
@@ -20,11 +23,12 @@ export default async function SettingsPage() {
 
   if (profile?.role !== "admin") redirect("/")
 
-  const [workspaceSettings, positions, automationLogs, notificationLogs] = await Promise.all([
+  const [workspaceSettings, positions, automationLogs, notificationLogs, employees] = await Promise.all([
     getWorkspaceSettings().catch(() => ({ logo_url: null })),
     getPositions(),
     getAutomationLogs().catch(() => []),
     getNotificationLogs().catch(() => []),
+    getEmployees().catch(() => []),
   ])
 
   return (
@@ -66,6 +70,16 @@ export default async function SettingsPage() {
           </p>
         </div>
         <NotificationLogSection initialLogs={notificationLogs} />
+      </section>
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-base font-semibold">Estado de vinculación — Telegram</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Quién del equipo ya vinculó su Telegram, desde cuándo, y qué tipo de avisos tiene activos.
+          </p>
+        </div>
+        <TelegramStatusSection employees={employees as Profile[]} />
       </section>
     </div>
   )

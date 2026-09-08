@@ -2,20 +2,27 @@
 
 import { useState, useTransition } from "react"
 import { Button } from "@/components/ui/button"
-import { generateTelegramLinkCode } from "@/lib/actions/employees"
-import { Send, Loader2, CheckCircle2, Copy, Check, ExternalLink } from "lucide-react"
+import { generateTelegramLinkCode, unlinkTelegram } from "@/lib/actions/employees"
+import { NotificationPreferences } from "@/components/employees/notification-preferences"
+import { Send, Loader2, CheckCircle2, Copy, Check, ExternalLink, Unlink } from "lucide-react"
 
 // Username del bot de Telegram de la agencia — se usa aquí y en el mensaje
 // de instrucciones para que quien esté vinculando su cuenta sepa a quién
 // mandarle el código, sin tener que preguntar.
 const BOT_USERNAME = "iceberg_alpha"
 
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" })
+}
+
 interface Props {
   profileId: string
   isLinked: boolean
+  linkedAt: string | null
+  notificationPreferences: Record<string, boolean> | null
 }
 
-export function TelegramLink({ profileId, isLinked: initialLinked }: Props) {
+export function TelegramLink({ profileId, isLinked: initialLinked, linkedAt, notificationPreferences }: Props) {
   const [isLinked, setIsLinked] = useState(initialLinked)
   const [code, setCode] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -33,6 +40,20 @@ export function TelegramLink({ profileId, isLinked: initialLinked }: Props) {
     })
   }
 
+  function handleUnlink() {
+    if (!confirm("¿Desvincular tu Telegram? Ya no te van a llegar notificaciones hasta que vuelvas a vincularlo.")) return
+    setError(null)
+    startTransition(async () => {
+      try {
+        await unlinkTelegram(profileId)
+        setIsLinked(false)
+        setCode(null)
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "No se pudo desvincular")
+      }
+    })
+  }
+
   function handleCopy() {
     if (!code) return
     navigator.clipboard.writeText(code)
@@ -42,9 +63,23 @@ export function TelegramLink({ profileId, isLinked: initialLinked }: Props) {
 
   if (isLinked) {
     return (
-      <div className="flex items-center gap-2 text-sm text-emerald-600">
-        <CheckCircle2 className="w-4 h-4" />
-        Telegram vinculado — aquí llegan tus notificaciones.
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-sm text-emerald-600">
+            <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+            <span>
+              Telegram vinculado{linkedAt ? <span className="text-muted-foreground"> · desde {formatDate(linkedAt)}</span> : null}
+            </span>
+          </div>
+          <Button size="sm" variant="ghost" onClick={handleUnlink} disabled={isPending} className="text-muted-foreground hover:text-destructive">
+            {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Unlink className="w-3.5 h-3.5" />}
+          </Button>
+        </div>
+        <div className="border-t pt-2">
+          <p className="text-xs font-medium text-muted-foreground mb-1">Qué te avisa</p>
+          <NotificationPreferences profileId={profileId} initialPreferences={notificationPreferences} />
+        </div>
+        {error && <p className="text-xs text-destructive">{error}</p>}
       </div>
     )
   }

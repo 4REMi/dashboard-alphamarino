@@ -45,6 +45,9 @@ export interface Profile {
   permissions: Record<string, boolean> | null
   language: "es" | "en" | null
   telegram_chat_id: number | null
+  telegram_linked_at: string | null
+  telegram_unlinked_at: string | null
+  notification_preferences: Record<string, boolean> | null
   created_at: string
 }
 

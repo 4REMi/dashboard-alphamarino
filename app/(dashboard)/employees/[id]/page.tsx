@@ -100,7 +100,12 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
             <CardTitle className="text-sm font-semibold">Notificaciones por Telegram</CardTitle>
           </CardHeader>
           <CardContent>
-            <TelegramLink profileId={profile.id} isLinked={!!profile.telegram_chat_id} />
+            <TelegramLink
+              profileId={profile.id}
+              isLinked={!!profile.telegram_chat_id}
+              linkedAt={profile.telegram_linked_at}
+              notificationPreferences={profile.notification_preferences}
+            />
           </CardContent>
         </Card>
       )}

@@ -16,12 +16,10 @@ export async function updateUserPermissions(userId: string, permissions: UserPer
   revalidatePath(`/employees/${userId}`)
 }
 
-const LINK_CODE_TTL_MINUTES = 15
-
-// Generates a short-lived code the user pastes into a Telegram message to
-// the bot — see lib/notifications/README.md for the full linking flow.
-// Only the profile's own owner (or an admin) can generate one for it.
-export async function generateTelegramLinkCode(profileId: string): Promise<string> {
+// Shared by every Telegram-notification action below: the profile's own
+// owner can always manage their own link/preferences; anyone else needs
+// to be an admin.
+async function requireSelfOrAdmin(profileId: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error("No autenticado")
@@ -30,6 +28,14 @@ export async function generateTelegramLinkCode(profileId: string): Promise<strin
     const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
     if (profile?.role !== "admin") throw new Error("Permission denied")
   }
+}
+
+const LINK_CODE_TTL_MINUTES = 15
+
+// Generates a short-lived code the user pastes into a Telegram message to
+// the bot — see lib/notifications/README.md for the full linking flow.
+export async function generateTelegramLinkCode(profileId: string): Promise<string> {
+  await requireSelfOrAdmin(profileId)
 
   const code = Array.from({ length: 6 }, () => "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[Math.floor(Math.random() * 32)]).join("")
   const expiresAt = new Date(Date.now() + LINK_CODE_TTL_MINUTES * 60_000).toISOString()
@@ -42,6 +48,43 @@ export async function generateTelegramLinkCode(profileId: string): Promise<strin
   if (error) throw error
 
   return code
+}
+
+// Breaks the link — either the person themselves (lost their phone, wants
+// to relink from a new one) or an admin (offboarding, forcing a reset).
+// Keeps telegram_linked_at as history of the last time it was linked;
+// records telegram_unlinked_at as when this happened.
+export async function unlinkTelegram(profileId: string) {
+  await requireSelfOrAdmin(profileId)
+
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from("profiles")
+    .update({
+      telegram_chat_id: null,
+      telegram_link_code: null,
+      telegram_link_code_expires_at: null,
+      telegram_unlinked_at: new Date().toISOString(),
+    })
+    .eq("id", profileId)
+  if (error) throw error
+
+  revalidatePath(`/employees/${profileId}`)
+  revalidatePath("/settings")
+}
+
+export async function updateNotificationPreferences(profileId: string, preferences: Record<string, boolean>) {
+  await requireSelfOrAdmin(profileId)
+
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from("profiles")
+    .update({ notification_preferences: preferences })
+    .eq("id", profileId)
+  if (error) throw error
+
+  revalidatePath(`/employees/${profileId}`)
+  revalidatePath("/settings")
 }
 
 export async function getEmployees() {

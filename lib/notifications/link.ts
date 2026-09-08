@@ -27,7 +27,13 @@ export async function tryLinkTelegramAccount(chatId: number, text: string): Prom
 
   const { error } = await supabase
     .from("profiles")
-    .update({ telegram_chat_id: chatId, telegram_link_code: null, telegram_link_code_expires_at: null })
+    .update({
+      telegram_chat_id: chatId,
+      telegram_link_code: null,
+      telegram_link_code_expires_at: null,
+      telegram_linked_at: new Date().toISOString(),
+      telegram_unlinked_at: null,
+    })
     .eq("id", profile.id)
 
   if (error) {
