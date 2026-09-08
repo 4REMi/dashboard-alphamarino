@@ -44,6 +44,7 @@ export interface Profile {
   avatar_url: string | null
   permissions: Record<string, boolean> | null
   language: "es" | "en" | null
+  telegram_chat_id: number | null
   created_at: string
 }
 

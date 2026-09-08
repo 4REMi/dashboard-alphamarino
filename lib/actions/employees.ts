@@ -16,6 +16,34 @@ export async function updateUserPermissions(userId: string, permissions: UserPer
   revalidatePath(`/employees/${userId}`)
 }
 
+const LINK_CODE_TTL_MINUTES = 15
+
+// Generates a short-lived code the user pastes into a Telegram message to
+// the bot — see lib/notifications/README.md for the full linking flow.
+// Only the profile's own owner (or an admin) can generate one for it.
+export async function generateTelegramLinkCode(profileId: string): Promise<string> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error("No autenticado")
+
+  if (user.id !== profileId) {
+    const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
+    if (profile?.role !== "admin") throw new Error("Permission denied")
+  }
+
+  const code = Array.from({ length: 6 }, () => "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[Math.floor(Math.random() * 32)]).join("")
+  const expiresAt = new Date(Date.now() + LINK_CODE_TTL_MINUTES * 60_000).toISOString()
+
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from("profiles")
+    .update({ telegram_link_code: code, telegram_link_code_expires_at: expiresAt })
+    .eq("id", profileId)
+  if (error) throw error
+
+  return code
+}
+
 export async function getEmployees() {
   const supabase = await createClient()
   const { data, error } = await supabase

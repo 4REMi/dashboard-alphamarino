@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ArrowLeft, Mail, Phone, Briefcase } from "lucide-react"
 import { EmployeeEditActions } from "@/components/employees/employee-edit-actions"
 import { EmployeePermissions } from "@/components/employees/employee-permissions"
+import { TelegramLink } from "@/components/employees/telegram-link"
 import type { Profile, Position } from "@/lib/types"
 
 export default async function EmployeeDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -91,6 +92,18 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
           </div>
         </div>
       </div>
+
+      {/* Telegram — self only (an admin can't link someone else's chat for them) */}
+      {user!.id === profile.id && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">Notificaciones por Telegram</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <TelegramLink profileId={profile.id} isLinked={!!profile.telegram_chat_id} />
+          </CardContent>
+        </Card>
+      )}
 
       {/* Permissions (admin only, not shown for other admins) */}
       {isAdmin && profile.role !== "admin" && (

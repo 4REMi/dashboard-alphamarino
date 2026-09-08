@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { handleMessage } from "@/lib/telegram-bot/router"
 import { sendMessage } from "@/lib/telegram-bot/telegram"
+import { tryLinkTelegramAccount } from "@/lib/notifications/link"
 
 export async function POST(req: NextRequest) {
   // Verifies the update really came from Telegram (not just anyone who found
@@ -21,6 +22,13 @@ export async function POST(req: NextRequest) {
   if (!message || (!text && !photo)) return NextResponse.json({ ok: true })
 
   const chatId = message.chat.id as number
+
+  // Telegram-linking codes come from ANY chat (each employee links from
+  // their own), so this has to run before the allow-list check below.
+  if (text && await tryLinkTelegramAccount(chatId, text)) {
+    return NextResponse.json({ ok: true })
+  }
+
   if (String(chatId) !== process.env.TELEGRAM_ALLOWED_CHAT_ID) {
     return NextResponse.json({ ok: true })
   }

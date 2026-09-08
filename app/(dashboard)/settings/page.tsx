@@ -5,9 +5,11 @@ import { createClient } from "@/lib/supabase/server"
 import { getWorkspaceSettings } from "@/lib/actions/workspace"
 import { getPositions } from "@/lib/actions/config"
 import { getAutomationLogs } from "@/lib/actions/automation-logs"
+import { getNotificationLogs } from "@/lib/actions/notification-logs"
 import { BrandingManager } from "@/components/settings/branding-manager"
 import { PositionsManager } from "@/components/settings/positions-manager"
 import { AutomationLogSection } from "@/components/settings/automation-log"
+import { NotificationLogSection } from "@/components/settings/notification-log"
 import { getTranslations } from "next-intl/server"
 
 export default async function SettingsPage() {
@@ -18,10 +20,11 @@ export default async function SettingsPage() {
 
   if (profile?.role !== "admin") redirect("/")
 
-  const [workspaceSettings, positions, automationLogs] = await Promise.all([
+  const [workspaceSettings, positions, automationLogs, notificationLogs] = await Promise.all([
     getWorkspaceSettings().catch(() => ({ logo_url: null })),
     getPositions(),
     getAutomationLogs().catch(() => []),
+    getNotificationLogs().catch(() => []),
   ])
 
   return (
@@ -53,6 +56,16 @@ export default async function SettingsPage() {
           </p>
         </div>
         <AutomationLogSection initialLogs={automationLogs} />
+      </section>
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-base font-semibold">Notificaciones al equipo</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Avisos individuales por Telegram (tareas asignadas, altas a proyectos) — quién los recibió y si de verdad se enviaron.
+          </p>
+        </div>
+        <NotificationLogSection initialLogs={notificationLogs} />
       </section>
     </div>
   )

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { notify } from "@/lib/notifications/notify"
 import type { ProjectStatus, PhaseStatus, CycleDeliverableStatus, CampaignStatus } from "@/lib/types"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
@@ -677,6 +678,9 @@ export async function addProjectMember(projectId: string, profileId: string) {
   } catch (e) {
     console.error("reassignUnassignedTasks failed after addProjectMember:", e)
   }
+
+  const { data: project } = await supabase.from("projects").select("name").eq("id", projectId).single()
+  if (project) await notify(profileId, "project_member_added", { projectName: project.name })
 
   revalidatePath(`/projects/${projectId}`)
 }

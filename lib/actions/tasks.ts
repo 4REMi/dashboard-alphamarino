@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { can } from "@/lib/permissions"
+import { notify } from "@/lib/notifications/notify"
 import type { TaskStatus, TaskChecklistItem, PhaseStatus } from "@/lib/types"
 
 // projectId is null for standalone tasks (not tied to any project) — the
@@ -59,20 +60,25 @@ export async function createTask(formData: FormData) {
   const projectId = (formData.get("project_id") as string) || null
   await requireTaskPermission(projectId)
 
+  const title = formData.get("title") as string
+  const assigneeId = (formData.get("assignee_id") as string) || null
+
   const admin = createAdminClient()
   const { error } = await admin.from("tasks").insert({
     project_id: projectId,
-    title: formData.get("title") as string,
+    title,
     description: (formData.get("description") as string) || null,
     status: (formData.get("status") as TaskStatus) ?? "Todo",
     is_urgent: formData.get("is_urgent") === "true",
     requires_deliverable: formData.get("requires_deliverable") === "true",
     due_date: (formData.get("due_date") as string) || null,
-    assignee_id: (formData.get("assignee_id") as string) || null,
+    assignee_id: assigneeId,
   } as Record<string, unknown>)
 
   if (error) throw error
   revalidateTaskPaths(projectId)
+
+  if (assigneeId) await notifyTaskAssigned(admin, assigneeId, title, projectId)
 }
 
 export async function updateTask(id: string, formData: FormData) {
@@ -114,13 +120,34 @@ export async function updateTaskAssignee(id: string, assigneeId: string | null, 
   await requireTaskPermission(projectId)
 
   const admin = createAdminClient()
-  const { error } = await admin
+  const { data, error } = await admin
     .from("tasks")
     .update({ assignee_id: assigneeId })
     .eq("id", id)
+    .select("title")
+    .single()
 
   if (error) throw error
   revalidateTaskPaths(projectId)
+
+  if (assigneeId) await notifyTaskAssigned(admin, assigneeId, data.title, projectId)
+}
+
+// lib/notifications/README.md — task_assigned event. Kept local to this
+// file (not called from the general-purpose updateTask edit form) so
+// editing an existing task doesn't re-notify the assignee on every save.
+async function notifyTaskAssigned(
+  admin: ReturnType<typeof createAdminClient>,
+  assigneeId: string,
+  taskTitle: string,
+  projectId: string | null,
+) {
+  let projectName: string | undefined
+  if (projectId) {
+    const { data: project } = await admin.from("projects").select("name").eq("id", projectId).single()
+    projectName = project?.name
+  }
+  await notify(assigneeId, "task_assigned", { taskTitle, projectName })
 }
 
 export async function updateTaskStatus(id: string, status: TaskStatus, projectId: string | null) {
