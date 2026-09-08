@@ -3,6 +3,15 @@ import { handleMessage } from "@/lib/telegram-bot/router"
 import { sendMessage } from "@/lib/telegram-bot/telegram"
 
 export async function POST(req: NextRequest) {
+  // Verifies the update really came from Telegram (not just anyone who found
+  // this URL) — set via setWebhook's secret_token param, and only enforced
+  // once TELEGRAM_WEBHOOK_SECRET is actually configured, so this doesn't
+  // break the bot before the webhook has been re-registered with the secret.
+  const expectedSecret = process.env.TELEGRAM_WEBHOOK_SECRET
+  if (expectedSecret && req.headers.get("x-telegram-bot-api-secret-token") !== expectedSecret) {
+    return NextResponse.json({ ok: false }, { status: 401 })
+  }
+
   const update = await req.json()
   const message = update.message
 
