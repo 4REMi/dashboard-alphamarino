@@ -3,7 +3,12 @@
 import { useState, useTransition } from "react"
 import { Button } from "@/components/ui/button"
 import { generateTelegramLinkCode } from "@/lib/actions/employees"
-import { Send, Loader2, CheckCircle2, Copy, Check } from "lucide-react"
+import { Send, Loader2, CheckCircle2, Copy, Check, ExternalLink } from "lucide-react"
+
+// Username del bot de Telegram de la agencia — se usa aquí y en el mensaje
+// de instrucciones para que quien esté vinculando su cuenta sepa a quién
+// mandarle el código, sin tener que preguntar.
+const BOT_USERNAME = "iceberg_alpha"
 
 interface Props {
   profileId: string
@@ -45,7 +50,7 @@ export function TelegramLink({ profileId, isLinked: initialLinked }: Props) {
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       <p className="text-xs text-muted-foreground">
         Vincula tu Telegram para recibir avisos cuando te asignen una tarea o te agreguen a un proyecto.
       </p>
@@ -56,17 +61,33 @@ export function TelegramLink({ profileId, isLinked: initialLinked }: Props) {
           Generar código
         </Button>
       ) : (
-        <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/50 border">
-          <code className="text-sm font-mono font-semibold tracking-wider flex-1">{code}</code>
-          <Button size="sm" variant="ghost" onClick={handleCopy} className="h-7 px-2">
-            {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-          </Button>
+        <div className="space-y-2">
+          <ol className="text-xs text-muted-foreground space-y-1.5 list-decimal list-inside">
+            <li>
+              Abre el bot{" "}
+              <a
+                href={`https://t.me/${BOT_USERNAME}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary font-medium inline-flex items-center gap-0.5 hover:underline"
+              >
+                @{BOT_USERNAME}
+                <ExternalLink className="w-3 h-3" />
+              </a>{" "}
+              en Telegram.
+            </li>
+            <li>Mándale este código tal cual, como mensaje de texto:</li>
+          </ol>
+          <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/50 border">
+            <code className="text-sm font-mono font-semibold tracking-wider flex-1">{code}</code>
+            <Button size="sm" variant="ghost" onClick={handleCopy} className="h-7 px-2">
+              {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            El bot te contesta confirmando. El código vence en 15 minutos.
+          </p>
         </div>
-      )}
-      {code && (
-        <p className="text-xs text-muted-foreground">
-          Mándale ese código tal cual al bot de Telegram — vence en 15 minutos.
-        </p>
       )}
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>

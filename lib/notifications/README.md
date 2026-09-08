@@ -26,17 +26,26 @@ Nada más. No hay que tocar la tabla, ni el webhook, ni ningún otro archivo.
 
 ## Vincular Telegram (por persona, una sola vez)
 
-No hay forma de vincular solo con el número de teléfono — Telegram no lo permite por
-privacidad. El flujo es:
+Bot de la agencia: **@iceberg_alpha** (`https://t.me/iceberg_alpha`) — el username está
+también hardcodeado en `components/employees/telegram-link.tsx` (constante `BOT_USERNAME`)
+para el link directo que se muestra en pantalla. Si el bot cambia de username algún día,
+actualizar en ambos lugares.
 
-1. La persona entra a su propia ficha en Equipo (`/employees/[su-id]`) y genera un código
-   (`generateTelegramLinkCode` en `lib/actions/employees.ts`) — válido 15 minutos, se
-   guarda en `profiles.telegram_link_code` / `telegram_link_code_expires_at`.
-2. Le manda ese código, tal cual, al bot por Telegram.
-3. `app/api/telegram-webhook/route.ts` reconoce el mensaje como un código de vinculación
-   **antes** de aplicar el filtro de chat permitido (tiene que funcionar desde cualquier
-   chat, no solo el tuyo) — si el código es válido y no venció, guarda el `chat_id` del
-   remitente en `profiles.telegram_chat_id` y contesta confirmando.
+No hay forma de vincular solo con el número de teléfono — Telegram no lo permite por
+privacidad. El flujo, para cualquier persona del equipo:
+
+1. Entra a su propia ficha en Equipo (`/employees/[su-id]`) — sección "Notificaciones
+   por Telegram" — y le da a **"Generar código"**.
+2. Abre **@iceberg_alpha** en Telegram (hay un link directo en esa misma pantalla).
+3. Le manda ese código, tal cual, como mensaje de texto normal — vence en 15 minutos.
+4. El bot le contesta confirmando y desde ahí le llegan sus notificaciones ahí.
+
+Por dentro: `generateTelegramLinkCode` (`lib/actions/employees.ts`) guarda el código en
+`profiles.telegram_link_code` / `telegram_link_code_expires_at`.
+`app/api/telegram-webhook/route.ts` reconoce el mensaje como un código de vinculación
+**antes** de aplicar el filtro de chat permitido (tiene que funcionar desde cualquier
+chat, no solo el tuyo) — si el código es válido y no venció, guarda el `chat_id` del
+remitente en `profiles.telegram_chat_id` y contesta confirmando.
 
 ## Eventos activos hoy
 
