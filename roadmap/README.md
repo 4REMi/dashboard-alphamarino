@@ -49,6 +49,6 @@ depende de otra cosa, etc.)
 | [aprobaciones-con-botones-telegram.md](./aprobaciones-con-botones-telegram.md) | Telegram | idea |
 | [auditoria-mobile-dashboard.md](./auditoria-mobile-dashboard.md) | Infra / UI | idea |
 | [telegram-webhook-sin-verificacion.md](./telegram-webhook-sin-verificacion.md) | Telegram / Seguridad | pausado |
-| [notificaciones-por-empleado-telegram.md](./notificaciones-por-empleado-telegram.md) | Telegram / Equipo | idea |
+| [notificaciones-por-empleado-telegram.md](./notificaciones-por-empleado-telegram.md) | Telegram / Equipo | construido — ver `lib/notifications/README.md` |
 
 Actualiza esta tabla cada vez que agregues o cierres un archivo.
