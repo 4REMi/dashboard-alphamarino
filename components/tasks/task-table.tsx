@@ -834,11 +834,15 @@ function TaskDetailModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      onClick={onClose}
+      // Compare target to currentTarget instead of relying on descendants
+      // calling stopPropagation — AssigneePicker/StatusPicker render their
+      // dropdowns through a portal to document.body, and a click there can
+      // still reach this handler; only close when the backdrop itself (not
+      // something portaled on top of it) was the actual click target.
+      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
       <div
         className="bg-card border border-border rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
