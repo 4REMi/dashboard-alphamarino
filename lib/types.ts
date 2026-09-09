@@ -224,6 +224,10 @@ export interface Task {
   is_urgent: boolean
   requires_deliverable: boolean
   deliverable_instructions: string | null
+  // Stays linked to project_id for context/grouping in "Mi lista", but is
+  // deliberately excluded from that project's shared board/progress — for
+  // personal-only detail work that shouldn't clutter the team's view.
+  is_personal: boolean
   task_order: number
   phase_id: string | null
   due_date: string | null

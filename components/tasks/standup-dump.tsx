@@ -8,7 +8,7 @@ import { AutoTextarea } from "@/components/ui/auto-textarea"
 import { processStandup } from "@/lib/actions/standup"
 import { createTask } from "@/lib/actions/tasks"
 import { addLogEntry } from "@/lib/actions/projects"
-import { Loader2, Sparkles, X, Check, ClipboardList, MessageSquare } from "lucide-react"
+import { Loader2, Sparkles, X, Check, ClipboardList, MessageSquare, Lock, Users } from "lucide-react"
 import type { Profile } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -21,6 +21,10 @@ interface EditableItem {
   projectId: string    // "" = sin proyecto (solo válido para tarea)
   assigneeId: string   // solo tarea
   dueDate: string       // solo tarea, YYYY-MM-DD o ""
+  // Solo tarea + con proyecto: mantiene el proyecto para agruparla en "Mi
+  // lista", pero la saca del tablero compartido — para detalles que no le
+  // importan al resto del equipo aunque estén ligados a un proyecto real.
+  isPersonal: boolean
 }
 
 interface Props {
@@ -51,6 +55,7 @@ export function StandupDump({ projects, employees, currentUserId, onClose, onCre
           projectId: r.projectIdGuess ?? "",
           assigneeId: r.assigneeIdGuess ?? currentUserId,
           dueDate: r.fecha ?? "",
+          isPersonal: false,
         })))
       })
       .catch((e) => setError(e instanceof Error ? e.message : "No se pudo interpretar el texto"))
@@ -86,6 +91,7 @@ export function StandupDump({ projects, employees, currentUserId, onClose, onCre
         fd.set("status", "Todo")
         fd.set("is_urgent", "false")
         fd.set("requires_deliverable", "false")
+        fd.set("is_personal", String(!!it.projectId && it.isPersonal))
         if (it.dueDate) fd.set("due_date", it.dueDate)
         if (it.assigneeId) fd.set("assignee_id", it.assigneeId)
         await createTask(fd)
@@ -204,12 +210,41 @@ export function StandupDump({ projects, employees, currentUserId, onClose, onCre
                   </div>
 
                   {it.tipo === "tarea" && (
-                    <Input
-                      type="date"
-                      value={it.dueDate}
-                      onChange={(e) => updateItem(it.key, { dueDate: e.target.value })}
-                      className="text-xs w-40"
-                    />
+                    <div className="flex items-center justify-between gap-2">
+                      <Input
+                        type="date"
+                        value={it.dueDate}
+                        onChange={(e) => updateItem(it.key, { dueDate: e.target.value })}
+                        className="text-xs w-40"
+                      />
+                      {/* Alcance visible y obligatorio de revisar — nunca un
+                          default silencioso. Con proyecto, alterna entre
+                          "todo el equipo la ve" y "solo yo la veo (pero
+                          sigue agrupada en el proyecto en Mi lista)". Sin
+                          proyecto ya es personal por definición, así que
+                          solo se informa, no se puede tocar. */}
+                      {it.projectId ? (
+                        <button
+                          type="button"
+                          onClick={() => updateItem(it.key, { isPersonal: !it.isPersonal })}
+                          className={cn(
+                            "flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-full transition-colors",
+                            it.isPersonal
+                              ? "bg-violet-100 text-violet-700 hover:bg-violet-200"
+                              : "bg-muted text-muted-foreground hover:bg-muted/70"
+                          )}
+                          title="Click para cambiar el alcance"
+                        >
+                          {it.isPersonal ? <Lock className="w-3 h-3" /> : <Users className="w-3 h-3" />}
+                          {it.isPersonal ? "Solo yo la veo" : "Visible para el equipo"}
+                        </button>
+                      ) : (
+                        <span className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-full bg-muted text-muted-foreground">
+                          <Lock className="w-3 h-3" />
+                          Solo yo la veo — sin proyecto
+                        </span>
+                      )}
+                    </div>
                   )}
                 </div>
               ))}

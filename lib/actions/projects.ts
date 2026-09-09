@@ -168,7 +168,7 @@ export async function getProjects(includeArchived = false) {
       customer:customers(id, name, company),
       project_type:project_types(id, name, color, icon),
       members:project_members(profile:profiles(id, full_name, avatar_url)),
-      tasks(id, title, status, due_date, phase_id, task_order),
+      tasks(id, title, status, due_date, phase_id, task_order, is_personal),
       phases:project_phases(id, name, status, phase_order),
       income(amount)
     `)
@@ -190,7 +190,7 @@ export async function getProjects(includeArchived = false) {
         *,
         customer:customers(id, name, company),
         members:project_members(profile:profiles(id, full_name, avatar_url)),
-        tasks(id, status, due_date)
+        tasks(id, status, due_date, is_personal)
       `)
       .order("created_at", { ascending: false })
     if (!includeArchived) {
@@ -275,7 +275,8 @@ export async function getProjects(includeArchived = false) {
   }
 
   return rawData.map((p) => {
-    const tasks = (p.tasks ?? []) as Array<{ status: string; due_date: string | null }>
+    const tasks = ((p.tasks ?? []) as Array<{ status: string; due_date: string | null; is_personal?: boolean }>)
+      .filter((t) => !t.is_personal)
     const phases = (p.phases ?? []) as Array<{ status: string }>
 
     const hasOverdueTasks = tasks.some(
@@ -296,6 +297,7 @@ export async function getProjects(includeArchived = false) {
 
     return {
       ...p,
+      tasks,
       members: ((p.members ?? []) as Array<{ profile: { id: string; full_name: string; avatar_url: string | null } | null }>)
         .map((m) => m.profile)
         .filter(Boolean),

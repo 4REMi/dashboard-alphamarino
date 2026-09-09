@@ -91,6 +91,7 @@ export async function createTask(formData: FormData) {
     status: (formData.get("status") as TaskStatus) ?? "Todo",
     is_urgent: formData.get("is_urgent") === "true",
     requires_deliverable: formData.get("requires_deliverable") === "true",
+    is_personal: formData.get("is_personal") === "true",
     due_date: (formData.get("due_date") as string) || null,
     assignee_id: assigneeId,
   } as Record<string, unknown>)
@@ -114,6 +115,7 @@ export async function updateTask(id: string, formData: FormData) {
       status: formData.get("status") as TaskStatus,
       is_urgent: formData.get("is_urgent") === "true",
       requires_deliverable: formData.get("requires_deliverable") === "true",
+      is_personal: formData.get("is_personal") === "true",
       due_date: (formData.get("due_date") as string) || null,
       assignee_id: (formData.get("assignee_id") as string) || null,
     } as Record<string, unknown>)

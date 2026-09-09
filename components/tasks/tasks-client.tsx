@@ -107,8 +107,13 @@ export function TasksClient({ tasks, employees, projects, sops, deliverablesByTa
   }
 
   // Pending (not Done) tasks assigned to me, grouped by project — this is
-  // the count shown on each tile, always personal regardless of admin role.
+  // the count shown on each project tile, always personal regardless of
+  // admin role. Personal-scoped tasks never count here even when they're
+  // linked to that project — they don't show on that project's board, so
+  // counting them on the tile would be misleading. They count towards "Mi
+  // lista" instead, alongside standalone (no-project) tasks.
   const myPendingByProject = new Map<string, number>()
+  let myPersonalPending = 0
   // Same, but per OTHER team member — admin-only "Equipo" audit row, to
   // check that voice/Telegram-assigned tasks actually landed on the right
   // person, without opening every project one by one.
@@ -116,8 +121,8 @@ export function TasksClient({ tasks, employees, projects, sops, deliverablesByTa
   for (const task of tasks) {
     if (task.status === "Done" || !task.assignee_id) continue
     if (task.assignee_id === currentUserId) {
-      const key = task.project_id ?? PERSONAL_KEY
-      myPendingByProject.set(key, (myPendingByProject.get(key) ?? 0) + 1)
+      if (!task.project_id || task.is_personal) myPersonalPending++
+      else myPendingByProject.set(task.project_id, (myPendingByProject.get(task.project_id) ?? 0) + 1)
     } else {
       teamPendingByAssignee.set(task.assignee_id, (teamPendingByAssignee.get(task.assignee_id) ?? 0) + 1)
     }
@@ -171,7 +176,7 @@ export function TasksClient({ tasks, employees, projects, sops, deliverablesByTa
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           <ProjectTile
             label="Mi lista"
-            count={myPendingByProject.get(PERSONAL_KEY) ?? 0}
+            count={myPersonalPending}
             icon={<ClipboardList className="w-5 h-5" />}
             accent
             onClick={() => selectProject(PERSONAL_KEY)}
@@ -296,13 +301,14 @@ export function TasksClient({ tasks, employees, projects, sops, deliverablesByTa
     )
   }
 
-  // ── Detail screen — full task board for the selected project, or just
-  // my own standalone tasks for "Mi lista" (personal, doesn't affect any
-  // project's board). ─────────────────────────────────────────────────────
+  // ── Detail screen — full task board for the selected project, or my own
+  // personal tasks for "Mi lista": standalone ones plus any task that's
+  // linked to a project but marked personal (kept for context/grouping,
+  // but never shown on that project's own board). ─────────────────────────
   const isPersonal = selectedProject === PERSONAL_KEY
   const scopedTasks = isPersonal
-    ? tasks.filter((task) => !task.project_id && task.assignee_id === currentUserId)
-    : tasks.filter((task) => task.project_id === selectedProject)
+    ? tasks.filter((task) => task.assignee_id === currentUserId && (!task.project_id || task.is_personal))
+    : tasks.filter((task) => task.project_id === selectedProject && !task.is_personal)
 
   const projectName = isPersonal ? "Mi lista" : projects.find((p) => p.id === selectedProject)?.name ?? t("project")
 
@@ -354,10 +360,20 @@ export function TasksClient({ tasks, employees, projects, sops, deliverablesByTa
         <div className="text-center py-16 text-muted-foreground">
           <p className="text-lg">{t("noTasks")}</p>
         </div>
+      ) : isPersonal ? (
+        <PersonalTaskGroups
+          tasks={scopedTasks}
+          projects={projects}
+          employees={employees}
+          isAdmin={isAdmin}
+          deliverablesByTaskId={deliverablesByTaskId}
+          currentUserId={currentUserId}
+          sops={sops}
+        />
       ) : (
         <TaskTable
           tasks={scopedTasks}
-          projectId={isPersonal ? null : selectedProject}
+          projectId={selectedProject}
           employees={employees}
           isAdmin={isAdmin}
           deliverablesByTaskId={deliverablesByTaskId}
@@ -365,6 +381,78 @@ export function TasksClient({ tasks, employees, projects, sops, deliverablesByTa
           sops={sops}
         />
       )}
+    </div>
+  )
+}
+
+// ── "Mi lista" grouped by project — a personal task keeps its project_id
+// for context (per user request: "que pueda verlas todas agrupadas ahí...
+// panorama de lo que tengo que hacer"), so instead of one flat table we
+// render one TaskTable per project (+ a "Sin proyecto" group), each with
+// its own real projectId so the row actions (status/assignee/SOP/etc.)
+// keep working exactly as they do on that project's own board. ───────────
+function PersonalTaskGroups({
+  tasks, projects, employees, isAdmin, deliverablesByTaskId, currentUserId, sops,
+}: {
+  tasks: Task[]
+  projects: ProjectOption[]
+  employees: Profile[]
+  isAdmin: boolean
+  deliverablesByTaskId: Record<string, Deliverable>
+  currentUserId: string
+  sops: Sop[]
+}) {
+  const groups = new Map<string, Task[]>()
+  for (const task of tasks) {
+    const key = task.project_id ?? "none"
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key)!.push(task)
+  }
+
+  const sortedKeys = Array.from(groups.keys()).sort((a, b) => {
+    if (a === "none") return 1
+    if (b === "none") return -1
+    const nameA = projects.find((p) => p.id === a)?.name ?? ""
+    const nameB = projects.find((p) => p.id === b)?.name ?? ""
+    return nameA.localeCompare(nameB)
+  })
+
+  return (
+    <div className="space-y-6">
+      {sortedKeys.map((key) => {
+        const project = key === "none" ? null : projects.find((p) => p.id === key)
+        const pt = project?.project_type
+        const Icon = pt?.icon ? getProjectTypeIcon(pt.icon) : null
+        const iconStyle = pt?.color ? { backgroundColor: `${pt.color}22`, color: pt.color } : undefined
+        const groupTasks = groups.get(key)!
+
+        return (
+          <div key={key} className="space-y-2">
+            <div className="flex items-center gap-2">
+              <div
+                className={cn(
+                  "w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0",
+                  !project && "bg-muted text-muted-foreground"
+                )}
+                style={iconStyle}
+              >
+                {Icon ? <Icon className="w-3.5 h-3.5" /> : <FolderKanban className="w-3.5 h-3.5" />}
+              </div>
+              <h3 className="text-sm font-semibold">{project?.name ?? "Sin proyecto"}</h3>
+              <span className="text-xs text-muted-foreground">{groupTasks.length}</span>
+            </div>
+            <TaskTable
+              tasks={groupTasks}
+              projectId={key === "none" ? null : key}
+              employees={employees}
+              isAdmin={isAdmin}
+              deliverablesByTaskId={deliverablesByTaskId}
+              currentUserId={currentUserId}
+              sops={sops}
+            />
+          </div>
+        )
+      })}
     </div>
   )
 }

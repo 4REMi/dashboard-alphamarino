@@ -925,6 +925,27 @@ function TaskDetailModal({
             </label>
           </div>
 
+          {/* Personal toggle — only relevant when this task actually belongs
+              to a project: keeps the project link (still shows grouped
+              there in "Mi lista") while hiding it from that project's
+              shared board, for detail work the rest of the team doesn't
+              need to see. */}
+          {projectId && (
+            <label className={cn(
+              "flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer select-none text-sm transition-colors",
+              task.is_personal
+                ? "border-violet-300 bg-violet-50 text-violet-700"
+                : "border-border bg-muted/30 text-muted-foreground"
+            )}>
+              <input type="checkbox" name="is_personal" value="true" defaultChecked={task.is_personal} className="accent-violet-500" />
+              <Lock className="w-3.5 h-3.5" />
+              <span>
+                <span className="font-medium">Personal</span>
+                <span className="block text-xs opacity-70">Solo tú la ves — no aparece en el tablero del proyecto</span>
+              </span>
+            </label>
+          )}
+
           {/* Deliverable link */}
           {task.requires_deliverable && (
             <button

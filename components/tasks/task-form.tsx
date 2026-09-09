@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
-import { Plus, Flag, Paperclip } from "lucide-react"
+import { Plus, Flag, Paperclip, Lock } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { Task, Profile } from "@/lib/types"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
@@ -32,6 +32,7 @@ export function TaskForm({ projectId, projects, task, employees, trigger, onCrea
   const [assigneeId, setAssigneeId] = useState<string>(task?.assignee_id ?? "none")
   const [isUrgent, setIsUrgent] = useState(task?.is_urgent ?? false)
   const [requiresDeliverable, setRequiresDeliverable] = useState(task?.requires_deliverable ?? false)
+  const [isPersonal, setIsPersonal] = useState(task?.is_personal ?? false)
   // "none" is a sentinel — Radix Select can't use an empty string value.
   // Maps to a null project_id (standalone task) on submit.
   const [selectedProjectId, setSelectedProjectId] = useState<string>(projectId ?? task?.project_id ?? "none")
@@ -46,6 +47,7 @@ export function TaskForm({ projectId, projects, task, employees, trigger, onCrea
     formData.set("status", status)
     formData.set("is_urgent", String(isUrgent))
     formData.set("requires_deliverable", String(requiresDeliverable))
+    formData.set("is_personal", String(selectedProjectId !== "none" && isPersonal))
     formData.set("assignee_id", assigneeId === "none" ? "" : assigneeId)
     formData.set("project_id", selectedProjectId === "none" ? "" : selectedProjectId)
 
@@ -201,6 +203,42 @@ export function TaskForm({ projectId, projects, task, employees, trigger, onCrea
               )} />
             </div>
           </button>
+
+          {/* Personal toggle — only meaningful when the task is tied to a
+              project: it keeps that link (still shows grouped under the
+              project in "Mi lista") while staying off the shared board, for
+              detail work that isn't relevant to the rest of the team. */}
+          {selectedProjectId !== "none" && (
+            <button
+              type="button"
+              onClick={() => setIsPersonal((v) => !v)}
+              className={cn(
+                "w-full flex items-center gap-3 rounded-lg border px-4 py-3 text-sm transition-colors",
+                isPersonal
+                  ? "border-violet-300 bg-violet-50 text-violet-700"
+                  : "border-border bg-muted/30 text-muted-foreground hover:bg-muted/60"
+              )}
+            >
+              <Lock className="w-4 h-4 flex-shrink-0" />
+              <div className="text-left">
+                <p className="font-medium">{isPersonal ? "Personal" : "Visible para el proyecto"}</p>
+                <p className="text-xs opacity-70">
+                  {isPersonal
+                    ? "Solo tú la ves — no aparece en el tablero del proyecto"
+                    : "Click para que solo tú la veas, sin quitarle el proyecto"}
+                </p>
+              </div>
+              <div className={cn(
+                "ml-auto w-8 h-4 rounded-full transition-colors flex-shrink-0",
+                isPersonal ? "bg-violet-500" : "bg-muted-foreground/30"
+              )}>
+                <div className={cn(
+                  "w-4 h-4 rounded-full bg-white shadow transition-transform",
+                  isPersonal ? "translate-x-4" : "translate-x-0"
+                )} />
+              </div>
+            </button>
+          )}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>

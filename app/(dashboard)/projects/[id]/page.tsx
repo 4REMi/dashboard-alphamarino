@@ -89,7 +89,10 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     isAdminOrSubadmin ? getSops().catch(() => []) : Promise.resolve([]),
   ])
 
-  const tasks  = (project.tasks  ?? []) as Task[]
+  // Personal-scoped tasks stay linked to this project for "Mi lista"
+  // grouping, but are deliberately excluded from the shared board here —
+  // that's the entire point of marking one personal.
+  const tasks  = ((project.tasks  ?? []) as Task[]).filter((t) => !t.is_personal)
   const phases = (project.phases ?? []) as ProjectPhase[]
   const deliverables = rawDeliverables as Deliverable[]
   const deliverablesByTaskId = Object.fromEntries(

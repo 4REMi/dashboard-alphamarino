@@ -34,6 +34,7 @@ export function DeliverablesSectionClient({
         id: drawerDeliverable.task_id,
         title: (drawerDeliverable.task as { title: string } | null)?.title ?? "Tarea",
         requires_deliverable: true,
+        is_personal: false,
         project_id: projectId,
         description: null,
         deliverable_instructions: (drawerDeliverable.task as any)?.deliverable_instructions ?? null,
