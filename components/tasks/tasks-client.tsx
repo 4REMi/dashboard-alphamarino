@@ -7,8 +7,9 @@ import { TaskForm } from "@/components/tasks/task-form"
 import { StandupDump } from "@/components/tasks/standup-dump"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip"
 import { getProjectTypeIcon } from "@/lib/project-type-icons"
-import { ChevronLeft, ClipboardList, FolderKanban, ShieldCheck, Sparkles } from "lucide-react"
+import { ChevronLeft, ClipboardList, FolderKanban, ShieldCheck, Sparkles, HelpCircle } from "lucide-react"
 import type { Task, Profile, Deliverable, Sop } from "@/lib/types"
 import { useTranslations } from "next-intl"
 import { cn } from "@/lib/utils"
@@ -130,6 +131,22 @@ export function TasksClient({ tasks, employees, projects, sops, deliverablesByTa
               <Sparkles className="w-3.5 h-3.5 mr-1.5 text-violet-500" />
               Captura rápida
             </Button>
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                    aria-label="¿Cómo funciona Captura rápida?"
+                  >
+                    <HelpCircle className="w-4 h-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Escribe de corrido varios pendientes o notas de distintos proyectos y personas. El sistema los separa automáticamente y te deja revisar y corregir cada uno antes de crearlos de verdad.
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             <TaskForm projects={projects} employees={employees} />
           </div>
         </div>
