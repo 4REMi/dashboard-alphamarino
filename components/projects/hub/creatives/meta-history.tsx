@@ -33,6 +33,7 @@ export function MetaHistory({ projectId, accountId, initialCreatives, canManage,
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
+  const [savedAssetMessage, setSavedAssetMessage] = useState<string | null>(null)
 
   // Draft review, batch — same shape/interaction as the normal AI concept
   // generator, reused for whatever comes back from analyzing real creatives.
@@ -97,15 +98,27 @@ export function MetaHistory({ projectId, accountId, initialCreatives, canManage,
 
   function handleSaveAsAsset(conceptId: string) {
     if (!assetPickerFor) return
+    // Same cycle-scoping issue as concepts: getCreativeAssets(projectId, cycleId)
+    // filters by cycle_id when a cycle is active, so an asset saved without one
+    // would exist but never show up in the Creative Tracker.
+    if (!activeCycleId) {
+      setError("No hay un ciclo de paid media activo en este proyecto — abre uno primero para que el asset aparezca en el Creative Tracker.")
+      return
+    }
     setSavingAsset(true)
     const fd = new FormData()
     fd.set("concept_id", conceptId)
+    fd.set("cycle_id", activeCycleId)
     const isVideo = !!assetPickerFor.video_url
     fd.set("asset_url", (isVideo ? assetPickerFor.video_url : assetPickerFor.image_url) ?? "")
     fd.set("file_type", isVideo ? "video" : "image")
     fd.set("format", isVideo ? "Video" : "Imagen")
     createAsset(projectId, fd)
-      .then(() => setAssetPickerFor(null))
+      .then(() => {
+        setAssetPickerFor(null)
+        setSavedAssetMessage("✅ Asset guardado — ya está en el Creative Tracker (oculto al cliente hasta que lo publiques).")
+        setTimeout(() => setSavedAssetMessage(null), 4000)
+      })
       .catch((e) => setError(e instanceof Error ? e.message : "No se pudo guardar el asset"))
       .finally(() => setSavingAsset(false))
   }
@@ -128,6 +141,7 @@ export function MetaHistory({ projectId, accountId, initialCreatives, canManage,
       </div>
 
       {error && <p className="text-xs text-destructive">{error}</p>}
+      {savedAssetMessage && <p className="text-xs text-emerald-600">{savedAssetMessage}</p>}
 
       {creatives.length === 0 ? (
         <p className="text-sm text-muted-foreground py-8 text-center border rounded-lg">
