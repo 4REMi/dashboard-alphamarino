@@ -40,6 +40,7 @@ import type { Profile } from "@/lib/types"
 interface SidebarProps {
   profile: Profile | null
   logoUrl?: string | null
+  myPendingTaskCount?: number
   mobileOpen?: boolean
   onMobileClose?: () => void
 }
@@ -60,9 +61,10 @@ type NavItem = {
   permission?: Permission
   adminOnly?: boolean
   children?: NavChild[]
+  badge?: number
 }
 
-export function Sidebar({ profile, logoUrl, mobileOpen = false, onMobileClose }: SidebarProps) {
+export function Sidebar({ profile, logoUrl, myPendingTaskCount = 0, mobileOpen = false, onMobileClose }: SidebarProps) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
   const t = useTranslations("nav")
@@ -73,7 +75,7 @@ export function Sidebar({ profile, logoUrl, mobileOpen = false, onMobileClose }:
     { href: "/customers", icon: Users, label: t("clients") },
     { href: "/services", icon: Tag, label: "Servicios", adminOnly: true },
     { href: "/projects", icon: FolderKanban, label: t("projects") },
-    { href: "/tasks", icon: CheckSquare, label: t("tasks") },
+    { href: "/tasks", icon: CheckSquare, label: t("tasks"), badge: myPendingTaskCount },
     { href: "/finances", icon: DollarSign, label: t("finances"), permission: "view_global_finances" },
     { href: "/finances/domains", icon: Globe, label: t("domains"), permission: "view_domains" },
     { href: "/employees", icon: UserCircle, label: t("team") },
@@ -189,8 +191,20 @@ export function Sidebar({ profile, logoUrl, mobileOpen = false, onMobileClose }:
                       : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
                   )}
                 >
-                  <item.icon className="w-5 h-5 flex-shrink-0" />
+                  <span className="relative flex-shrink-0">
+                    <item.icon className="w-5 h-5" />
+                    {collapsed && !!item.badge && (
+                      <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-[16px] px-1 rounded-full bg-red-600 text-white text-[9px] font-semibold flex items-center justify-center leading-none shadow-sm">
+                        {item.badge > 99 ? "99+" : item.badge}
+                      </span>
+                    )}
+                  </span>
                   {!collapsed && <span className="truncate">{item.label}</span>}
+                  {!collapsed && !!item.badge && (
+                    <span className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[10px] font-semibold flex items-center justify-center leading-none shadow-sm">
+                      {item.badge > 99 ? "99+" : item.badge}
+                    </span>
+                  )}
                 </Link>
 
                 {/* Chevron toggle — only when not collapsed and has children */}

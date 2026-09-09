@@ -56,6 +56,26 @@ export async function getTasks(projectId?: string) {
   return data
 }
 
+// Lightweight count for the sidebar notification badge — mirrors the
+// "my pending tasks" logic on /tasks (excludes Done and tasks whose project
+// is no longer Active) without pulling every task's joins.
+export async function getMyPendingTaskCount() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return 0
+
+  const { data, error } = await supabase
+    .from("tasks")
+    .select("id, project:projects(status)")
+    .eq("assignee_id", user.id)
+    .neq("status", "Done")
+
+  if (error) return 0
+  return (data as unknown as { project: { status: string } | null }[]).filter(
+    (t) => !t.project || t.project.status === "Active"
+  ).length
+}
+
 export async function createTask(formData: FormData) {
   const projectId = (formData.get("project_id") as string) || null
   await requireTaskPermission(projectId)

@@ -10,10 +10,11 @@ import Image from "next/image"
 interface MobileShellProps {
   profile: Profile | null
   logoUrl?: string | null
+  myPendingTaskCount?: number
   children: React.ReactNode
 }
 
-export function MobileShell({ profile, logoUrl, children }: MobileShellProps) {
+export function MobileShell({ profile, logoUrl, myPendingTaskCount = 0, children }: MobileShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
 
   return (
@@ -31,6 +32,7 @@ export function MobileShell({ profile, logoUrl, children }: MobileShellProps) {
       <Sidebar
         profile={profile}
         logoUrl={logoUrl}
+        myPendingTaskCount={myPendingTaskCount}
         mobileOpen={mobileOpen}
         onMobileClose={() => setMobileOpen(false)}
       />
