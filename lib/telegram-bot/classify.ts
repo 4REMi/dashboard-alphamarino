@@ -116,3 +116,75 @@ Mensaje o nota del usuario — puede describir uno o varios movimientos distinto
   if (!movimientos || movimientos.length === 0) throw new Error("No se pudo interpretar el mensaje")
   return movimientos
 }
+
+// Variante restringida para el "Volcado rápido" de /tasks — a diferencia de
+// classifyMessage (Telegram/Vowen, cualquier tipo de movimiento), aquí solo
+// interesan tareas y notas de bitácora: un solo texto puede volcar
+// pendientes de varios proyectos y personas a la vez, que el dashboard
+// desglosa y — a diferencia del bot — muestra en una vista previa EDITABLE
+// antes de crear nada de verdad (por eso no hace falta un tipo "otro" para
+// pedir aclaración; el usuario corrige directo en la UI).
+const STANDUP_TOOL: Anthropic.Tool = {
+  name: "registrar_pendientes",
+  description: "Interpreta un texto de stand-up en lenguaje natural y lo desglosa en tareas y/o notas de bitácora para uno o varios proyectos distintos.",
+  input_schema: {
+    type: "object",
+    properties: {
+      movimientos: {
+        type: "array",
+        description: "Un elemento por cada tarea o nota distinta mencionada en el texto.",
+        items: {
+          type: "object",
+          properties: {
+            tipo: {
+              type: "string",
+              enum: ["tarea", "nota_proyecto"],
+              description: "'tarea' = un pendiente o algo por hacer, explícito o implícito. 'nota_proyecto' = un comentario o actualización informativa de un proyecto, no un pendiente.",
+            },
+            titulo: { type: "string", description: "Para 'tarea': título breve y claro (o el texto tal cual si es un pendiente implícito)." },
+            descripcion: { type: "string", description: "Para 'nota_proyecto': el cuerpo de la nota." },
+            proyecto: { type: "string", description: "Nombre del proyecto mencionado (tal cual lo dice el usuario). Puede faltar en una 'tarea' (queda sin proyecto); una 'nota_proyecto' SIEMPRE debe tener proyecto." },
+            asignado: { type: "string", description: "Nombre de la persona a la que se le asigna la tarea, SOLO si se menciona explícitamente un nombre propio. Si no se menciona a nadie, déjalo vacío." },
+            fecha: { type: "string", description: "Fecha límite en formato YYYY-MM-DD, solo si se menciona." },
+          },
+          required: ["tipo"],
+        },
+        minItems: 1,
+      },
+    },
+    required: ["movimientos"],
+  },
+}
+
+export async function classifyStandup(
+  text: string,
+  context: { projects: string[] },
+  today: string,
+): Promise<Movimiento[]> {
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY no configurado")
+  const client = new Anthropic({ apiKey })
+
+  const response = await client.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 2048,
+    tools: [STANDUP_TOOL],
+    tool_choice: { type: "tool", name: "registrar_pendientes" },
+    messages: [
+      {
+        role: "user",
+        content: `Fecha de hoy: ${today}.
+Proyectos activos conocidos: ${context.projects.length ? context.projects.join(", ") : "(ninguno)"}.
+
+Texto de stand-up — puede mezclar pendientes y notas de varios proyectos y personas distintas:
+"""${text}"""`,
+      },
+    ],
+  })
+
+  const toolUse = response.content.find((b) => b.type === "tool_use")
+  if (!toolUse || toolUse.type !== "tool_use") throw new Error("No se pudo interpretar el texto")
+  const movimientos = (toolUse.input as { movimientos?: Movimiento[] }).movimientos
+  if (!movimientos || movimientos.length === 0) throw new Error("No se pudo interpretar el texto")
+  return movimientos
+}

@@ -1,12 +1,14 @@
 "use client"
 
 import { useRouter, useSearchParams } from "next/navigation"
+import { useState } from "react"
 import { TaskTable } from "@/components/tasks/task-table"
 import { TaskForm } from "@/components/tasks/task-form"
+import { StandupDump } from "@/components/tasks/standup-dump"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { getProjectTypeIcon } from "@/lib/project-type-icons"
-import { ChevronLeft, ClipboardList, FolderKanban, ShieldCheck } from "lucide-react"
+import { ChevronLeft, ClipboardList, FolderKanban, ShieldCheck, Sparkles } from "lucide-react"
 import type { Task, Profile, Deliverable, Sop } from "@/lib/types"
 import { useTranslations } from "next-intl"
 import { cn } from "@/lib/utils"
@@ -84,6 +86,7 @@ export function TasksClient({ tasks, employees, projects, sops, deliverablesByTa
   const searchParams = useSearchParams()
   const selectedProject = searchParams.get("project") // null = overview screen
   const selectedEmployee = searchParams.get("employee") // admin-only audit view
+  const [showStandup, setShowStandup] = useState(false)
 
   function selectProject(key: string) {
     router.push(`?project=${encodeURIComponent(key)}`, { scroll: false })
@@ -122,8 +125,24 @@ export function TasksClient({ tasks, employees, projects, sops, deliverablesByTa
             <h1 className="text-2xl font-bold">{t("title")}</h1>
             <p className="text-muted-foreground text-sm mt-1">Elige un proyecto o tu lista personal.</p>
           </div>
-          <TaskForm projects={projects} employees={employees} />
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setShowStandup(true)}>
+              <Sparkles className="w-3.5 h-3.5 mr-1.5 text-violet-500" />
+              Volcado rápido
+            </Button>
+            <TaskForm projects={projects} employees={employees} />
+          </div>
         </div>
+
+        {showStandup && (
+          <StandupDump
+            projects={projects}
+            employees={employees}
+            currentUserId={currentUserId}
+            onClose={() => setShowStandup(false)}
+            onCreated={() => router.refresh()}
+          />
+        )}
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           <ProjectTile
