@@ -70,7 +70,7 @@ tanto en la ficha propia del empleado como en la tabla de admin en Configuració
 
 | Evento (`event_key`) | Se dispara desde | Desde |
 |---|---|---|
-| `task_assigned` | `lib/actions/tasks.ts` — `createTask` (si trae `assignee_id`) y `updateTaskAssignee` | 2026-09-08 |
+| `task_assigned` | `lib/actions/tasks.ts` — `createTask` (si trae `assignee_id`) y `updateTaskAssignee`; también `lib/telegram-bot/handlers/tareas.ts` — `handleTarea` cuando se asigna por voz/Telegram a alguien más (no en el auto-asignado a uno mismo) | 2026-09-08 |
 | `project_member_added` | `lib/actions/projects.ts` — `addProjectMember` | 2026-09-08 |
 
 Actualiza esta tabla cada vez que agregues un evento nuevo.

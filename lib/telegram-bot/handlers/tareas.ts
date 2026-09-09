@@ -1,6 +1,7 @@
 import { SupabaseClient } from "@supabase/supabase-js"
 import { sendMessage } from "@/lib/telegram-bot/telegram"
 import { findByName, findAllMatches } from "@/lib/telegram-bot/match"
+import { notify } from "@/lib/notifications/notify"
 import type { Movimiento } from "@/lib/telegram-bot/classify"
 
 export async function handleTarea(
@@ -17,22 +18,56 @@ export async function handleTarea(
   }
 
   const project = findByName(projects, movimiento.proyecto)
-  const assignee = movimiento.asignado
-    ? findByName(profiles.map((p) => ({ ...p, name: p.full_name })), movimiento.asignado)
-    : null
+
+  // Sin mención explícita de responsable, la tarea se asigna a quien dicta
+  // (TELEGRAM_BOT_AUTHOR_ID) en vez de quedar sin dueño — así ningún
+  // pendiente dictado al vuelo se pierde. Si SÍ se menciona un nombre, ya
+  // no se adivina con la primera coincidencia: si es ambiguo o no hay
+  // match, se pregunta en vez de arriesgarse a asignarla a la persona
+  // equivocada.
+  let assigneeId: string | null = null
+  let assigneeName: string | null = null
+
+  if (!movimiento.asignado) {
+    assigneeId = process.env.TELEGRAM_BOT_AUTHOR_ID ?? null
+  } else {
+    const matches = findAllMatches(profiles, (p) => p.full_name, movimiento.asignado)
+    if (matches.length === 0) {
+      await sendMessage(chatId, `No encontré a nadie del equipo llamado "${movimiento.asignado}" — ¿me confirmas el nombre?`)
+      return
+    }
+    if (matches.length > 1) {
+      await sendMessage(
+        chatId,
+        `Hay varias personas que podrían ser "${movimiento.asignado}" — sé más específico:\n${matches.slice(0, 8).map((m) => `• ${m.full_name}`).join("\n")}`
+      )
+      return
+    }
+    assigneeId = matches[0].id
+    assigneeName = matches[0].full_name
+  }
 
   const { error } = await supabase.from("tasks").insert({
     project_id: project?.id ?? null,
     title: titulo,
     status: "Todo",
     due_date: movimiento.fecha ?? null,
-    assignee_id: assignee?.id ?? null,
+    assignee_id: assigneeId,
   })
   if (error) throw error
 
+  // Este handler escribe directo en la tabla (como el resto del bot), sin
+  // pasar por createTask() de lib/actions/tasks.ts — que es donde vive el
+  // notify(task_assigned) normal. Se llama aquí explícitamente, y solo
+  // cuando de verdad se le asignó a alguien más por nombre (no al
+  // auto-asignado a uno mismo, que ya vio la confirmación al dictar).
+  if (assigneeName) {
+    await notify(assigneeId!, "task_assigned", { taskTitle: titulo, projectName: project?.name })
+  }
+
   await sendMessage(
     chatId,
-    `✅ Tarea creada: ${titulo}${project ? ` · ${project.name}` : " (sin proyecto)"}${assignee ? `\n👤 ${assignee.full_name}` : ""}${movimiento.fecha ? `\n📅 ${movimiento.fecha}` : ""}`
+    `✅ Tarea creada: ${titulo}${project ? ` · ${project.name}` : " (sin proyecto)"}${assigneeName ? `\n👤 ${assigneeName}` : ""}${movimiento.fecha ? `\n📅 ${movimiento.fecha}` : ""}`
   )
 }
 
