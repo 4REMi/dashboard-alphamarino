@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip"
 import { getProjectTypeIcon } from "@/lib/project-type-icons"
-import { ChevronLeft, ClipboardList, FolderKanban, ShieldCheck, Sparkles, HelpCircle } from "lucide-react"
+import { ChevronLeft, ClipboardList, FolderKanban, ShieldCheck, Sparkles, HelpCircle, ChevronsUpDown } from "lucide-react"
 import type { Task, Profile, Deliverable, Sop } from "@/lib/types"
 import { useTranslations } from "next-intl"
 import { cn } from "@/lib/utils"
@@ -423,8 +423,23 @@ function PersonalTaskGroups({
     return nameA.localeCompare(nameB)
   })
 
+  // Bumped to force every project's own TaskTable below to expand all its
+  // groups at once — each renders independently with its own local
+  // collapsed/expanded state, so clicking through every group one by one
+  // across every project got old fast.
+  const [expandSignal, setExpandSignal] = useState(0)
+
   return (
     <div className="space-y-6">
+      {sortedKeys.length > 1 && (
+        <button
+          onClick={() => setExpandSignal((n) => n + 1)}
+          className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ChevronsUpDown className="w-3.5 h-3.5" />
+          Expandir todo
+        </button>
+      )}
       {sortedKeys.map((key) => {
         const project = key === "none" ? null : projects.find((p) => p.id === key)
         const pt = project?.project_type
@@ -455,6 +470,7 @@ function PersonalTaskGroups({
               deliverablesByTaskId={deliverablesByTaskId}
               currentUserId={currentUserId}
               sops={sops}
+              expandSignal={expandSignal}
             />
           </div>
         )

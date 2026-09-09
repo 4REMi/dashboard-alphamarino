@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Trash2, CalendarDays, ChevronDown, ChevronRight, UserX, Flag, Paperclip, X, BookOpen, Search, ExternalLink, GripVertical, Lock, ListChecks, Plus } from "lucide-react"
+import { Trash2, CalendarDays, ChevronDown, ChevronRight, UserX, Flag, Paperclip, X, BookOpen, Search, ExternalLink, GripVertical, Lock, ListChecks, Plus, ChevronsUpDown } from "lucide-react"
 import { formatDate } from "@/lib/utils"
 import { cn } from "@/lib/utils"
 import type { Task, Profile, TaskStatus, Deliverable, Sop, TaskChecklistItem } from "@/lib/types"
@@ -1303,9 +1303,14 @@ interface TaskTableProps {
   // See TaskForm's allowPersonalToggle — off inside a standardized project's
   // own hub, on everywhere the /tasks section renders this table.
   allowPersonalToggle?: boolean
+  // Bump this number from a parent to force-expand every group in this
+  // table — used by "Mi lista" (tasks-client.tsx) to expand every project's
+  // table at once from a single button, since each renders its own
+  // independent TaskTable with its own local open/collapsed state.
+  expandSignal?: number
 }
 
-export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesByTaskId = {}, currentUserId, sops = [], allowPersonalToggle = true }: TaskTableProps) {
+export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesByTaskId = {}, currentUserId, sops = [], allowPersonalToggle = true, expandSignal }: TaskTableProps) {
   const tT = useTranslations("tasks")
   const tTaskStatus = useTranslations("taskStatus")
 
@@ -1326,6 +1331,19 @@ export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesBy
   // for a server round-trip. Re-synced whenever fresh data arrives.
   const [localTasks, setLocalTasks] = useState<Task[]>(tasks)
   useEffect(() => { setLocalTasks(tasks) }, [tasks])
+
+  // Force-expand every group when a parent bumps expandSignal (see prop
+  // comment) — skip the very first run so an initial expandSignal={0}
+  // doesn't override the default-collapsed groups on mount.
+  const isFirstExpandSignal = useRef(true)
+  useEffect(() => {
+    if (expandSignal === undefined) return
+    if (isFirstExpandSignal.current) { isFirstExpandSignal.current = false; return }
+    setStatusOpen(Object.fromEntries(STATUS_GROUPS.map((g) => [g.value, true])) as Record<TaskStatus, boolean>)
+    const phaseKeys = Array.from(new Set(tasks.map((t) => (t.phase as { id: string } | null)?.id ?? "__no_phase__")))
+    setPhaseOpen(Object.fromEntries(phaseKeys.map((k) => [k, true])))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expandSignal])
 
   function patchTask(taskId: string, patch: Partial<Task>) {
     setLocalTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, ...patch } : t))
@@ -1411,6 +1429,20 @@ export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesBy
     return phaseOpen[key] ?? false  // default collapsed
   }
 
+  // Single toggle to expand/collapse every group at once, instead of
+  // clicking each status/phase header one by one.
+  const visibleGroupKeys = groupMode === "status" ? statusGroups.map((g) => g.value) : phaseGroups.map((g) => g.key)
+  const allGroupsOpen = visibleGroupKeys.length > 0 && visibleGroupKeys.every(
+    (k) => groupMode === "status" ? statusOpen[k as TaskStatus] : isPhaseOpen(k)
+  )
+  function toggleAllGroups() {
+    if (groupMode === "status") {
+      setStatusOpen(Object.fromEntries(STATUS_GROUPS.map((g) => [g.value, !allGroupsOpen])) as Record<TaskStatus, boolean>)
+    } else {
+      setPhaseOpen(Object.fromEntries(phaseGroups.map((g) => [g.key, !allGroupsOpen])))
+    }
+  }
+
   const FILTERS: { value: TaskFilter; label: string }[] = [
     { value: "all",        label: tT("all") },
     { value: "mine",       label: tT("mine") },
@@ -1455,6 +1487,17 @@ export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesBy
               {tT("filterCount", { filtered: filteredTasks.length, total: localTasks.length })}
             </span>
           )}
+        </div>
+
+        {/* Expand/collapse every group at once */}
+        <div className="flex items-center gap-1">
+          <button
+            onClick={toggleAllGroups}
+            className="flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/70 transition-colors"
+          >
+            <ChevronsUpDown className="w-3 h-3" />
+            {allGroupsOpen ? "Colapsar todo" : "Expandir todo"}
+          </button>
         </div>
 
         {/* Group mode toggle — only shown when project has phases */}
