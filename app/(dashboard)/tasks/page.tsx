@@ -27,14 +27,17 @@ export default async function TasksPage() {
     getDeliverablesForTasks(liveTasks.map((t) => t.id)).catch(() => []),
   ])
 
-  const activeProjects = (rawProjects as { id: string; name: string; status: string; members?: { id: string }[] }[])
-    .filter((p) => p.status === "Active")
+  const activeProjects = (rawProjects as {
+    id: string; name: string; status: string
+    members?: { id: string }[]
+    project_type?: { name: string; icon: string | null; color: string | null } | null
+  }[]).filter((p) => p.status === "Active")
   // Employees only get cards for projects they're actually a member of;
   // admins see every active project, same asymmetry the rest of the app uses.
   const visibleProjects = isAdmin
     ? activeProjects
     : activeProjects.filter((p) => (p.members ?? []).some((m) => m.id === user!.id))
-  const projects = visibleProjects.map((p) => ({ id: p.id, name: p.name }))
+  const projects = visibleProjects.map((p) => ({ id: p.id, name: p.name, project_type: p.project_type ?? null }))
 
   const deliverablesByTaskId = Object.fromEntries(
     (rawDeliverables as Deliverable[]).map((d) => [d.task_id, d])
