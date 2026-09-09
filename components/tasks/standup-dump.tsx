@@ -180,8 +180,11 @@ export function StandupDump({ projects, employees, currentUserId, onClose, onCre
           while the user is writing. */}
       <div className="fixed inset-0 z-40" onClick={onClose} />
 
+      {/* Bottom sheet, not a side panel — a side panel still covered several
+          tiles on wide grids. Anchored to the bottom and capped in height
+          so the full project overview stays visible above it. */}
       <div
-        className="fixed top-0 right-0 z-50 h-screen w-full max-w-md bg-card border-l border-border shadow-2xl flex flex-col animate-in slide-in-from-right duration-300"
+        className="fixed bottom-0 left-0 right-0 z-50 max-h-[60vh] bg-card border-t border-border shadow-2xl rounded-t-2xl flex flex-col animate-in slide-in-from-bottom duration-300"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
@@ -198,26 +201,26 @@ export function StandupDump({ projects, employees, currentUserId, onClose, onCre
           {error && <p className="text-xs text-destructive">{error}</p>}
 
           {items === null ? (
-            <>
+            <div className="max-w-2xl w-full mx-auto flex flex-col gap-3">
               <p className="text-xs text-muted-foreground">
-                Escribe todos los pendientes y actualizaciones que se te ocurran, de cualquier proyecto — el sistema los separa en tareas y notas de bitácora por proyecto antes de crear nada. Puedes seguir viendo tus proyectos detrás mientras escribes.
+                Escribe todos los pendientes y actualizaciones que se te ocurran, de cualquier proyecto — el sistema los separa en tareas y notas de bitácora por proyecto antes de crear nada. Puedes seguir viendo tus proyectos arriba mientras escribes.
               </p>
               <AutoTextarea
                 value={text}
                 onChange={(e) => setText(e.target.value)}
-                rows={10}
+                rows={6}
                 placeholder="Ej. Para Alpha Marino hay que revisar el brief de campaña, asígnasela a Karla. Nota para NUACEL: el cliente pidió mover el checkout a fin de mes. Recordar renovar el dominio de Driink…"
                 className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none"
               />
-            </>
+            </div>
           ) : (
             <>
               <p className="text-xs text-muted-foreground">
                 Nada se ha creado todavía. Revisa y corrige proyecto/responsable antes de confirmar — descarta lo que no aplique.
               </p>
-              <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
                 {items.length === 0 && (
-                  <p className="text-sm text-muted-foreground text-center py-8">No queda nada por confirmar.</p>
+                  <p className="text-sm text-muted-foreground text-center py-8 sm:col-span-2 xl:col-span-3">No queda nada por confirmar.</p>
                 )}
                 {items.map((it) => (
                   <div
