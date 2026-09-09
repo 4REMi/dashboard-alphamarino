@@ -8,7 +8,7 @@ import { AutoTextarea } from "@/components/ui/auto-textarea"
 import { processStandup } from "@/lib/actions/standup"
 import { createTask } from "@/lib/actions/tasks"
 import { addLogEntry } from "@/lib/actions/projects"
-import { Loader2, Sparkles, X, Check, ClipboardList, MessageSquare, Lock, Users } from "lucide-react"
+import { Loader2, Sparkles, X, Check, ClipboardList, MessageSquare, Lock, Users, ChevronDown } from "lucide-react"
 import type { Profile } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -65,14 +65,19 @@ export function StandupDump({ projects, employees, currentUserId, onClose, onCre
   const [confirming, setConfirming] = useState(false)
   const [flights, setFlights] = useState<Flight[]>([])
   const [closingAfterFlights, setClosingAfterFlights] = useState(false)
+  // Minimizing keeps the component mounted (and its state, including
+  // whatever's typed in the textarea) — only "Cancelar" or a finished
+  // confirm actually unmount it via onClose. This is what lets the user
+  // duck into a project tile to check something without losing the draft.
+  const [minimized, setMinimized] = useState(false)
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
-  // Close on Escape, like the Dialog primitive did.
+  // Escape minimizes rather than closing, for the same reason.
   useEffect(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose() }
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape") setMinimized(true) }
     document.addEventListener("keydown", onKey)
     return () => document.removeEventListener("keydown", onKey)
-  }, [onClose])
+  }, [])
 
   // Once every flying chip has landed, actually refresh and close.
   useEffect(() => {
@@ -173,12 +178,42 @@ export function StandupDump({ projects, employees, currentUserId, onClose, onCre
     }
   }
 
+  const itemCount = items?.length ?? 0
+
+  if (minimized) {
+    return (
+      <button
+        onClick={() => setMinimized(false)}
+        className="fixed bottom-5 right-5 z-50 flex items-center gap-2 pl-4 pr-3 py-2.5 rounded-full bg-card border border-border shadow-lg hover:shadow-xl hover:border-primary/40 transition-all animate-in slide-in-from-bottom-4"
+      >
+        <Sparkles className="w-4 h-4 text-violet-500" />
+        <span className="text-sm font-medium">Captura rápida</span>
+        {itemCount > 0 && (
+          <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-violet-600 text-white text-[10px] font-semibold flex items-center justify-center leading-none">
+            {itemCount}
+          </span>
+        )}
+        <span
+          role="button"
+          tabIndex={0}
+          onClick={(e) => { e.stopPropagation(); onClose() }}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onClose() } }}
+          title="Descartar"
+          className="ml-1 p-0.5 rounded text-muted-foreground hover:text-destructive transition-colors"
+        >
+          <X className="w-3.5 h-3.5" />
+        </span>
+      </button>
+    )
+  }
+
   return (
     <>
       {/* Click-away layer — intentionally transparent (no dark backdrop) so
           the project overview stays visible and legible behind the panel
-          while the user is writing. */}
-      <div className="fixed inset-0 z-40" onClick={onClose} />
+          while the user is writing. Minimizes instead of closing, so
+          clicking into a project tile behind it never loses the draft. */}
+      <div className="fixed inset-0 z-40" onClick={() => setMinimized(true)} />
 
       {/* Bottom sheet, not a side panel — a side panel still covered several
           tiles on wide grids. Anchored to the bottom and capped in height
@@ -192,8 +227,12 @@ export function StandupDump({ projects, employees, currentUserId, onClose, onCre
             <Sparkles className="w-4 h-4 text-violet-500" />
             Captura rápida
           </h2>
-          <button onClick={onClose} className="p-1 rounded text-muted-foreground hover:text-foreground">
-            <X className="w-4 h-4" />
+          <button
+            onClick={() => setMinimized(true)}
+            title="Minimizar — no se pierde lo escrito"
+            className="p-1 rounded text-muted-foreground hover:text-foreground"
+          >
+            <ChevronDown className="w-4 h-4" />
           </button>
         </div>
 
