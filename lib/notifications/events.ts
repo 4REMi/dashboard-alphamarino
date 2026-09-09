@@ -25,6 +25,15 @@ export const NOTIFICATION_EVENTS = {
     build: (data: { projectName: string }) =>
       `📁 Te agregaron al proyecto *${data.projectName}*`,
   },
+  // One of these per person, per batch — not one "task_assigned" per task.
+  // Applying a phase set (at project creation, or later via "Agregar
+  // fases"/"Aplicar phase set") can auto-assign many tasks by position in a
+  // single shot; this collapses that into a single notification.
+  project_phase_tasks_assigned: {
+    label: "Fases aplicadas a proyecto",
+    build: (data: { projectName: string; taskCount: number }) =>
+      `📁 Se aplicaron fases en *${data.projectName}* — te tocaron ${data.taskCount} tarea${data.taskCount === 1 ? "" : "s"}`,
+  },
 } as const
 
 export type NotificationEventKey = keyof typeof NOTIFICATION_EVENTS

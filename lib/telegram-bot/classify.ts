@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk"
 
 export type TipoMovimiento =
   | "ingreso" | "gasto_proyecto" | "gasto_general" | "dominio"
-  | "tarea" | "tarea_completada" | "nota_proyecto" | "cliente"
+  | "tarea" | "tarea_completada" | "nota_proyecto" | "cliente" | "proyecto"
   | "otro"
 
 export interface Movimiento {
@@ -25,6 +25,11 @@ export interface Movimiento {
   empresa?: string
   email?: string
   telefono?: string
+  // proyecto — alta rápida: solo nombre + cliente/tipo opcionales, nunca
+  // fases/equipo/Brand Brain por voz. Eso se completa después en el
+  // dashboard, igual que Captura rápida no intenta resolver el 100%.
+  nombre_proyecto?: string
+  tipo_proyecto?: string
 }
 
 const MOVIMIENTO_SCHEMA = {
@@ -32,9 +37,9 @@ const MOVIMIENTO_SCHEMA = {
   properties: {
     tipo: {
       type: "string",
-      enum: ["ingreso", "gasto_proyecto", "gasto_general", "dominio", "tarea", "tarea_completada", "nota_proyecto", "cliente", "otro"],
+      enum: ["ingreso", "gasto_proyecto", "gasto_general", "dominio", "tarea", "tarea_completada", "nota_proyecto", "cliente", "proyecto", "otro"],
       description:
-        "'ingreso' = dinero que entra (pago de cliente). 'gasto_proyecto' = gasto asociado a un proyecto específico. 'gasto_general' = gasto operativo sin proyecto (ej. software, renta, nómina). 'dominio' = alta o renovación de un dominio web. 'tarea' = crear una tarea nueva. Úsalo tanto para peticiones explícitas ('crea una tarea...', 'recuérdame...') COMO para cualquier pendiente o cosa por hacer que se mencione de forma implícita, aunque no se pida crear una tarea con esas palabras — si el mensaje describe algo que hay que hacer, resolver, dar seguimiento o no se le puede perder la pista, ES una tarea. Si no se menciona proyecto ni persona responsable, deja 'proyecto' y 'asignado' vacíos — el sistema se encarga de asignarla a quien dictó el mensaje. 'tarea_completada' = marcar una tarea existente como hecha (SIEMPRE requiere mencionar el proyecto — no se puede sin eso). 'nota_proyecto' = agregar una nota o comentario a la bitácora de un proyecto (úsalo en vez de 'tarea' SOLO cuando se menciona explícitamente un proyecto Y sea claramente una nota informativa, no un pendiente). 'cliente' = dar de alta un cliente nuevo. 'otro' = SOLO para saludos, mensajes de prueba, texto ininteligible, o una pregunta directa que espera una respuesta — NUNCA uses 'otro' para un pendiente o algo por hacer, eso siempre es 'tarea'.",
+        "'ingreso' = dinero que entra (pago de cliente). 'gasto_proyecto' = gasto asociado a un proyecto específico. 'gasto_general' = gasto operativo sin proyecto (ej. software, renta, nómina). 'dominio' = alta o renovación de un dominio web. 'tarea' = crear una tarea nueva. Úsalo tanto para peticiones explícitas ('crea una tarea...', 'recuérdame...') COMO para cualquier pendiente o cosa por hacer que se mencione de forma implícita, aunque no se pida crear una tarea con esas palabras — si el mensaje describe algo que hay que hacer, resolver, dar seguimiento o no se le puede perder la pista, ES una tarea. Si no se menciona proyecto ni persona responsable, deja 'proyecto' y 'asignado' vacíos — el sistema se encarga de asignarla a quien dictó el mensaje. 'tarea_completada' = marcar una tarea existente como hecha (SIEMPRE requiere mencionar el proyecto — no se puede sin eso). 'nota_proyecto' = agregar una nota o comentario a la bitácora de un proyecto (úsalo en vez de 'tarea' SOLO cuando se menciona explícitamente un proyecto Y sea claramente una nota informativa, no un pendiente). 'cliente' = dar de alta un cliente nuevo. 'proyecto' = dar de alta un PROYECTO nuevo (ej. 'crea un proyecto nuevo llamado X', 'alta rápida de proyecto para X') — es un alta rápida: solo nombre y, si se mencionan, cliente y tipo de proyecto. NUNCA para tareas o notas de un proyecto ya existente, eso sigue siendo 'tarea'/'nota_proyecto'. 'otro' = SOLO para saludos, mensajes de prueba, texto ininteligible, o una pregunta directa que espera una respuesta — NUNCA uses 'otro' para un pendiente o algo por hacer, eso siempre es 'tarea'.",
     },
     monto: { type: "number", description: "Monto numérico mencionado (costo de renovación si tipo es 'dominio'), sin símbolos." },
     moneda: {
@@ -51,7 +56,7 @@ const MOVIMIENTO_SCHEMA = {
     },
     fecha: { type: "string", description: "Fecha en formato YYYY-MM-DD. Para 'dominio' es la fecha de renovación/vencimiento. Para 'tarea' es la fecha límite si se menciona. Si no se menciona y tipo no es 'dominio' ni 'tarea', usa la fecha de hoy." },
     dominio: { type: "string", description: "Nombre del dominio (ej. ejemplo.com), solo si tipo es 'dominio'." },
-    cliente: { type: "string", description: "Nombre del cliente (tal cual lo dice el usuario) — asociado al dominio si tipo es 'dominio', o el nombre del cliente nuevo si tipo es 'cliente'." },
+    cliente: { type: "string", description: "Nombre del cliente (tal cual lo dice el usuario) — asociado al dominio si tipo es 'dominio', el nombre del cliente nuevo si tipo es 'cliente', o el cliente a asociar al nuevo proyecto si tipo es 'proyecto' Y se menciona explícitamente. Si no se menciona, déjalo vacío — el proyecto se crea sin cliente." },
     registrador: { type: "string", description: "Registrador del dominio (ej. GoDaddy, Namecheap, Cloudflare), solo si tipo es 'dominio' y se menciona." },
     respuesta: { type: "string", description: "Mensaje para responder al usuario cuando tipo es 'otro' (saludo, aclaración o pregunta de qué falta)." },
     titulo: { type: "string", description: "Título de la tarea, solo si tipo es 'tarea' o 'tarea_completada'. Para una tarea explícita, un título breve y claro. Para un pendiente implícito, usa el mensaje tal cual (o una versión ligeramente limpia) como título — no lo resumas de más. Para 'tarea_completada', puede ser el título completo o solo una parte reconocible." },
@@ -60,6 +65,8 @@ const MOVIMIENTO_SCHEMA = {
       type: "boolean",
       description: "Solo si tipo es 'tarea' Y tiene proyecto: true SOLO si el usuario dice explícitamente que es algo personal / que no le importa al resto del equipo / que solo es para él mismo (ej. 'esto que quede solo para mí', 'nota personal, no es para el equipo'). Si no lo dice explícitamente, déjalo vacío — nunca lo asumas por el contenido de la tarea.",
     },
+    nombre_proyecto: { type: "string", description: "Nombre del proyecto nuevo, solo si tipo es 'proyecto'. Tal cual lo dice el usuario." },
+    tipo_proyecto: { type: "string", description: "Nombre del tipo de proyecto mencionado (tal cual lo dice el usuario, ej. 'Paid Media', 'sitio web'), solo si tipo es 'proyecto' Y se menciona explícitamente. Si no se menciona, déjalo vacío — el proyecto se crea sin tipo." },
     empresa: { type: "string", description: "Nombre de la empresa del cliente nuevo, solo si tipo es 'cliente' y se menciona." },
     email: { type: "string", description: "Correo del cliente nuevo, solo si tipo es 'cliente' y se menciona." },
     telefono: { type: "string", description: "Teléfono del cliente nuevo, solo si tipo es 'cliente' y se menciona." },

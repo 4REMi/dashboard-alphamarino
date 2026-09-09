@@ -126,7 +126,28 @@ async function copyTaskSetsToProject(
         .from("tasks")
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .insert(tasksToInsert.map(({ _checklist_items: _c, ...rest }) => rest) as any[])
-        .select("id, task_set_task_id")
+        .select("id, task_set_task_id, assignee_id")
+
+      // One notification per assignee for the whole batch, not one per task
+      // — applying a phase set can auto-assign dozens of tasks by position
+      // in a single shot, and nobody needs a flood of individual "task
+      // assigned" pings for that. See NOTIFICATION_EVENTS.project_phase_tasks_assigned.
+      if (insertedTasks && insertedTasks.length > 0) {
+        const countByAssignee = new Map<string, number>()
+        for (const t of insertedTasks) {
+          if (!t.assignee_id) continue
+          countByAssignee.set(t.assignee_id, (countByAssignee.get(t.assignee_id) ?? 0) + 1)
+        }
+        if (countByAssignee.size > 0) {
+          const { data: proj } = await supabase.from("projects").select("name").eq("id", projectId).single()
+          const projectName = proj?.name ?? "el proyecto"
+          await Promise.all(
+            Array.from(countByAssignee.entries()).map(([assigneeId, taskCount]) =>
+              notify(assigneeId, "project_phase_tasks_assigned", { projectName, taskCount })
+            )
+          )
+        }
+      }
 
       if (insertedTasks && insertedTasks.length > 0) {
         const templateMap = new Map(

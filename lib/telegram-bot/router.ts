@@ -7,6 +7,7 @@ import { handleRecibo } from "@/lib/telegram-bot/handlers/recibos"
 import { handleTarea, handleTareaCompletada } from "@/lib/telegram-bot/handlers/tareas"
 import { handleNotaProyecto } from "@/lib/telegram-bot/handlers/notas"
 import { handleCliente } from "@/lib/telegram-bot/handlers/clientes"
+import { handleProyecto } from "@/lib/telegram-bot/handlers/proyectos"
 
 export interface MessageContext {
   senderName?: string
@@ -60,10 +61,11 @@ export async function handleMessage(
     return
   }
 
-  const [{ data: projects }, { data: customers }, { data: profiles }] = await Promise.all([
+  const [{ data: projects }, { data: customers }, { data: profiles }, { data: projectTypes }] = await Promise.all([
     supabase.from("projects").select("id, name").eq("status", "Active"),
     supabase.from("customers").select("id, name"),
     supabase.from("profiles").select("id, full_name"),
+    supabase.from("project_types").select("id, name"),
   ])
 
   let movimientos: Movimiento[]
@@ -107,6 +109,9 @@ export async function handleMessage(
           break
         case "cliente":
           await handleCliente(supabase, chatId, movimiento)
+          break
+        case "proyecto":
+          await handleProyecto(supabase, chatId, movimiento, customers ?? [], projectTypes ?? [])
           break
       }
       logged.push({ tipo: movimiento.tipo })
