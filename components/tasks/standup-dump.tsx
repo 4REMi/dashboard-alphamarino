@@ -215,11 +215,18 @@ export function StandupDump({ projects, employees, currentUserId, onClose, onCre
           clicking into a project tile behind it never loses the draft. */}
       <div className="fixed inset-0 z-40" onClick={() => setMinimized(true)} />
 
-      {/* Bottom sheet, not a side panel — a side panel still covered several
-          tiles on wide grids. Anchored to the bottom and capped in height
-          so the full project overview stays visible above it. */}
+      {/* While writing: a small floating card bottom-right, like a chat
+          widget — stays a fixed width no matter how long the text gets, so
+          it never grows to cover the overview. Once processed, the review
+          screen genuinely benefits from width (project/assignee dropdowns
+          per item), so it switches to a full-width bottom sheet. */}
       <div
-        className="fixed bottom-0 left-0 right-0 z-50 max-h-[60vh] bg-card border-t border-border shadow-2xl rounded-t-2xl flex flex-col animate-in slide-in-from-bottom duration-300"
+        className={cn(
+          "fixed z-50 bg-card shadow-2xl flex flex-col animate-in duration-300",
+          items === null
+            ? "bottom-5 right-5 w-full max-w-sm max-h-[70vh] rounded-2xl border border-border slide-in-from-bottom-4"
+            : "bottom-0 left-0 right-0 max-h-[60vh] border-t border-border rounded-t-2xl slide-in-from-bottom"
+        )}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
@@ -240,16 +247,20 @@ export function StandupDump({ projects, employees, currentUserId, onClose, onCre
           {error && <p className="text-xs text-destructive">{error}</p>}
 
           {items === null ? (
-            <div className="max-w-2xl w-full mx-auto flex flex-col gap-3">
+            <div className="w-full flex flex-col gap-3">
               <p className="text-xs text-muted-foreground">
-                Escribe todos los pendientes y actualizaciones que se te ocurran, de cualquier proyecto — el sistema los separa en tareas y notas de bitácora por proyecto antes de crear nada. Puedes seguir viendo tus proyectos arriba mientras escribes.
+                Escribe todos los pendientes y actualizaciones que se te ocurran, de cualquier proyecto — el sistema los separa en tareas y notas de bitácora por proyecto antes de crear nada. Puedes seguir viendo tus proyectos detrás mientras escribes.
               </p>
               <AutoTextarea
                 value={text}
                 onChange={(e) => setText(e.target.value)}
-                rows={6}
+                rows={5}
                 placeholder="Ej. Para Alpha Marino hay que revisar el brief de campaña, asígnasela a Karla. Nota para NUACEL: el cliente pidió mover el checkout a fin de mes. Recordar renovar el dominio de Driink…"
                 className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+                // Overrides AutoTextarea's default unbounded auto-grow — this
+                // card stays a fixed size no matter how long the dictation
+                // gets; it scrolls internally past ~10 lines instead.
+                style={{ maxHeight: "15rem", overflowY: "auto" }}
               />
             </div>
           ) : (

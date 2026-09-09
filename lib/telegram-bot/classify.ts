@@ -20,6 +20,7 @@ export interface Movimiento {
   // tarea / tarea_completada
   titulo?: string
   asignado?: string
+  personal?: boolean
   // cliente
   empresa?: string
   email?: string
@@ -55,6 +56,10 @@ const MOVIMIENTO_SCHEMA = {
     respuesta: { type: "string", description: "Mensaje para responder al usuario cuando tipo es 'otro' (saludo, aclaración o pregunta de qué falta)." },
     titulo: { type: "string", description: "Título de la tarea, solo si tipo es 'tarea' o 'tarea_completada'. Para una tarea explícita, un título breve y claro. Para un pendiente implícito, usa el mensaje tal cual (o una versión ligeramente limpia) como título — no lo resumas de más. Para 'tarea_completada', puede ser el título completo o solo una parte reconocible." },
     asignado: { type: "string", description: "Nombre de la persona a la que se le asigna la tarea (tal cual lo dice el usuario), solo si tipo es 'tarea' y se menciona EXPLÍCITAMENTE un nombre propio. Si no se menciona a nadie, déjalo vacío — nunca inventes ni asumas un nombre." },
+    personal: {
+      type: "boolean",
+      description: "Solo si tipo es 'tarea' Y tiene proyecto: true SOLO si el usuario dice explícitamente que es algo personal / que no le importa al resto del equipo / que solo es para él mismo (ej. 'esto que quede solo para mí', 'nota personal, no es para el equipo'). Si no lo dice explícitamente, déjalo vacío — nunca lo asumas por el contenido de la tarea.",
+    },
     empresa: { type: "string", description: "Nombre de la empresa del cliente nuevo, solo si tipo es 'cliente' y se menciona." },
     email: { type: "string", description: "Correo del cliente nuevo, solo si tipo es 'cliente' y se menciona." },
     telefono: { type: "string", description: "Teléfono del cliente nuevo, solo si tipo es 'cliente' y se menciona." },

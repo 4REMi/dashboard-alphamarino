@@ -47,12 +47,17 @@ export async function handleTarea(
     assigneeName = matches[0].full_name
   }
 
+  // "personal" solo tiene sentido cuando SÍ hay proyecto — sin proyecto la
+  // tarea ya es personal por definición (cae directo en "Mi lista").
+  const isPersonal = !!project && !!movimiento.personal
+
   const { error } = await supabase.from("tasks").insert({
     project_id: project?.id ?? null,
     title: titulo,
     status: "Todo",
     due_date: movimiento.fecha ?? null,
     assignee_id: assigneeId,
+    is_personal: isPersonal,
   })
   if (error) throw error
 
@@ -67,7 +72,7 @@ export async function handleTarea(
 
   await sendMessage(
     chatId,
-    `✅ Tarea creada: ${titulo}${project ? ` · ${project.name}` : " (sin proyecto)"}${assigneeName ? `\n👤 ${assigneeName}` : ""}${movimiento.fecha ? `\n📅 ${movimiento.fecha}` : ""}`
+    `✅ Tarea creada: ${titulo}${project ? ` · ${project.name}` : " (sin proyecto)"}${isPersonal ? " 🔒 personal" : ""}${assigneeName ? `\n👤 ${assigneeName}` : ""}${movimiento.fecha ? `\n📅 ${movimiento.fecha}` : ""}`
   )
 }
 
