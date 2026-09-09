@@ -780,6 +780,7 @@ function TaskDetailModal({
   onDeliverableClick,
   onClose,
   onTaskUpdate,
+  allowPersonalToggle,
 }: {
   task: Task
   projectId: string | null
@@ -790,6 +791,7 @@ function TaskDetailModal({
   onDeliverableClick: (task: Task) => void
   onClose: () => void
   onTaskUpdate: (patch: Partial<Task>) => void
+  allowPersonalToggle: boolean
 }) {
   const tT = useTranslations("tasks")
   const tC = useTranslations("common")
@@ -930,7 +932,7 @@ function TaskDetailModal({
               there in "Mi lista") while hiding it from that project's
               shared board, for detail work the rest of the team doesn't
               need to see. */}
-          {projectId && (
+          {allowPersonalToggle && projectId && (
             <label className={cn(
               "flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer select-none text-sm transition-colors",
               task.is_personal
@@ -1294,9 +1296,12 @@ interface TaskTableProps {
   deliverablesByTaskId?: Record<string, Deliverable>
   currentUserId?: string
   sops?: Sop[]
+  // See TaskForm's allowPersonalToggle — off inside a standardized project's
+  // own hub, on everywhere the /tasks section renders this table.
+  allowPersonalToggle?: boolean
 }
 
-export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesByTaskId = {}, currentUserId, sops = [] }: TaskTableProps) {
+export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesByTaskId = {}, currentUserId, sops = [], allowPersonalToggle = true }: TaskTableProps) {
   const tT = useTranslations("tasks")
   const tTaskStatus = useTranslations("taskStatus")
 
@@ -1612,6 +1617,7 @@ export function TaskTable({ tasks, projectId, employees, isAdmin, deliverablesBy
           deliverable={detailDeliverable}
           onDeliverableClick={setDrawerTask}
           onClose={() => setDetailTaskId(null)}
+          allowPersonalToggle={allowPersonalToggle}
           onTaskUpdate={(patch) => patchTask(detailTask.id, patch)}
         />
       )}

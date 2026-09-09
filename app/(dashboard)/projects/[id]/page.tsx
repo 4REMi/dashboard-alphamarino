@@ -274,6 +274,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               <TaskForm
                 projectId={project.id}
                 employees={employees as Profile[]}
+                allowPersonalToggle={false}
                 trigger={
                   <button className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
                     <Plus className="w-3.5 h-3.5" />
@@ -291,6 +292,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             deliverablesByTaskId={deliverablesByTaskId}
             currentUserId={user!.id}
             sops={sops as Sop[]}
+            allowPersonalToggle={false}
           />
         </section>
 

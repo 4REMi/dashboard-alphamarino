@@ -23,9 +23,15 @@ interface TaskFormProps {
   employees: Profile[]
   trigger?: React.ReactNode
   onCreated?: () => void
+  // Only the /tasks section (project tiles + "Mi lista") exposes the
+  // Personal/Equipo choice — inside a standardized project's own hub, tasks
+  // always belong to that project's shared board, so employees shouldn't be
+  // able to opt one out of it from there. Defaults to true so every other
+  // caller keeps working without change.
+  allowPersonalToggle?: boolean
 }
 
-export function TaskForm({ projectId, projects, task, employees, trigger, onCreated }: TaskFormProps) {
+export function TaskForm({ projectId, projects, task, employees, trigger, onCreated, allowPersonalToggle = true }: TaskFormProps) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [status, setStatus] = useState<string>(task?.status ?? "Todo")
@@ -47,7 +53,7 @@ export function TaskForm({ projectId, projects, task, employees, trigger, onCrea
     formData.set("status", status)
     formData.set("is_urgent", String(isUrgent))
     formData.set("requires_deliverable", String(requiresDeliverable))
-    formData.set("is_personal", String(selectedProjectId !== "none" && isPersonal))
+    formData.set("is_personal", String(allowPersonalToggle && selectedProjectId !== "none" && isPersonal))
     formData.set("assignee_id", assigneeId === "none" ? "" : assigneeId)
     formData.set("project_id", selectedProjectId === "none" ? "" : selectedProjectId)
 
@@ -208,7 +214,7 @@ export function TaskForm({ projectId, projects, task, employees, trigger, onCrea
               project: it keeps that link (still shows grouped under the
               project in "Mi lista") while staying off the shared board, for
               detail work that isn't relevant to the rest of the team. */}
-          {selectedProjectId !== "none" && (
+          {allowPersonalToggle && selectedProjectId !== "none" && (
             <button
               type="button"
               onClick={() => setIsPersonal((v) => !v)}
