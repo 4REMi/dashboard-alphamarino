@@ -1,6 +1,6 @@
 "use client"
 
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { TaskTable } from "@/components/tasks/task-table"
 import { TaskForm } from "@/components/tasks/task-form"
@@ -84,19 +84,26 @@ export function TasksClient({ tasks, employees, projects, sops, deliverablesByTa
   const t = useTranslations("tasks")
   const tStatus = useTranslations("taskStatus")
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const selectedProject = searchParams.get("project") // null = overview screen
-  const selectedEmployee = searchParams.get("employee") // admin-only audit view
+  // Local state, not URL search params — this component already has every
+  // task/project/employee it needs in memory, so switching screens should be
+  // instant. Driving it through the URL made each click trigger a full
+  // server round-trip (the layout is force-dynamic, so any query-param
+  // change re-ran every fetch on the page) even though nothing new was
+  // needed. onCreated below still uses router.refresh() on purpose — that's
+  // the one moment new server data genuinely exists.
+  const [selectedProject, setSelectedProject] = useState<string | null>(null) // null = overview screen
+  const [selectedEmployee, setSelectedEmployee] = useState<string | null>(null) // admin-only audit view
   const [showStandup, setShowStandup] = useState(false)
 
   function selectProject(key: string) {
-    router.push(`?project=${encodeURIComponent(key)}`, { scroll: false })
+    setSelectedProject(key)
   }
   function selectEmployee(id: string) {
-    router.push(`?employee=${encodeURIComponent(id)}`, { scroll: false })
+    setSelectedEmployee(id)
   }
   function backToOverview() {
-    router.push("?", { scroll: false })
+    setSelectedProject(null)
+    setSelectedEmployee(null)
   }
 
   // Pending (not Done) tasks assigned to me, grouped by project — this is
