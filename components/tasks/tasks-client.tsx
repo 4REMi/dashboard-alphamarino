@@ -36,12 +36,16 @@ function ProjectTile({
       onClick={onClick}
       className="flex flex-col items-start gap-3 p-5 rounded-xl border border-border bg-card hover:border-primary/40 hover:shadow-sm transition-all text-left"
     >
-      <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-muted text-muted-foreground">
+      <div className="relative w-10 h-10 rounded-lg flex items-center justify-center bg-muted text-muted-foreground">
         {icon}
+        {count > 0 && (
+          <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[10px] font-semibold flex items-center justify-center leading-none shadow-sm">
+            {count > 99 ? "99+" : count}
+          </span>
+        )}
       </div>
       <div className="w-full flex items-start justify-between gap-2">
         <p className="font-medium text-sm">{label}</p>
-        {count > 0 && <Badge variant="secondary">{count}</Badge>}
       </div>
     </button>
   )
