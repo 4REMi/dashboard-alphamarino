@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
 import { createSop, updateSop, deleteSop } from "@/lib/actions/sops"
 import { getProjectTypes } from "@/lib/actions/config"
 import { getProjectTypeIcon } from "@/lib/project-type-icons"
@@ -307,17 +306,17 @@ export function SopsClient({ sops: initSops, currentUser, isAdmin, projectTypeBa
   const [visibilityFilter, setVisibilityFilter] = useState<"all" | "public" | "restricted">("all")
   const [isPending, startTransition] = useTransition()
 
-  // Category is URL-driven (?category=…) instead of local state — same single
-  // data fetch either way, but the selected category is shareable/bookmarkable
-  // and the browser back button naturally returns to the categories screen.
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const selectedCategory = searchParams.get("category") // null = show categories screen
+  // Local state, not URL search params — the page is force-dynamic, so
+  // driving this through router.push made every category click re-run the
+  // full server fetch even though SopsClient already has every SOP in
+  // memory. This screen was never meant to be bookmarkable, so plain state
+  // is strictly better here.
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null) // null = show categories screen
   function selectCategory(key: string) {
-    router.push(`?category=${encodeURIComponent(key)}`, { scroll: false })
+    setSelectedCategory(key)
   }
   function backToCategories() {
-    router.push("?", { scroll: false })
+    setSelectedCategory(null)
   }
 
   // Only needed to populate the create/edit form's project-type dropdown —
