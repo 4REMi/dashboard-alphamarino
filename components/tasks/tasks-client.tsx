@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip"
 import { getProjectTypeIcon } from "@/lib/project-type-icons"
-import { ChevronLeft, ClipboardList, FolderKanban, ShieldCheck, Sparkles, HelpCircle, ChevronsUpDown } from "lucide-react"
+import { ChevronLeft, ClipboardList, FolderKanban, ShieldCheck, Sparkles, HelpCircle, ChevronsUpDown, AlertTriangle } from "lucide-react"
 import type { Task, Profile, Deliverable, Sop } from "@/lib/types"
 import { useTranslations } from "next-intl"
 import { cn } from "@/lib/utils"
@@ -97,6 +97,7 @@ export function TasksClient({ tasks, employees, projects, sops, deliverablesByTa
   // the one moment new server data genuinely exists.
   const [selectedProject, setSelectedProject] = useState<string | null>(null) // null = overview screen
   const [selectedEmployee, setSelectedEmployee] = useState<string | null>(null) // admin-only audit view
+  const [showOrphans, setShowOrphans] = useState(false) // admin-only safety net, see below
   const [showStandup, setShowStandup] = useState(false)
 
   function selectProject(key: string) {
@@ -108,7 +109,17 @@ export function TasksClient({ tasks, employees, projects, sops, deliverablesByTa
   function backToOverview() {
     setSelectedProject(null)
     setSelectedEmployee(null)
+    setShowOrphans(false)
   }
+
+  // Safety net: a task with neither project_id nor assignee_id is
+  // structurally invisible everywhere else in this UI — it can't land on
+  // any project board (no project) or in anyone's "Mi lista" (no owner).
+  // This happens for real when TELEGRAM_BOT_AUTHOR_ID is missing/stale and
+  // a voice-dictated task with no named project/assignee silently falls
+  // through the auto-assign fallback. Surface it here so it's never just
+  // silently lost again.
+  const orphanTasks = tasks.filter((t) => !t.project_id && !t.assignee_id && t.status !== "Done")
 
   // Pending (not Done) tasks assigned to me, grouped by project — this is
   // the count shown on each project tile, always personal regardless of
@@ -134,9 +145,20 @@ export function TasksClient({ tasks, employees, projects, sops, deliverablesByTa
   const teammates = employees.filter((e) => e.id !== currentUserId)
 
   // ── Overview ───────────────────────────────────────────────────────────
-  if (selectedProject === null && selectedEmployee === null) {
+  if (selectedProject === null && selectedEmployee === null && !showOrphans) {
     return (
       <div className="space-y-6">
+        {isAdmin && orphanTasks.length > 0 && (
+          <button
+            onClick={() => setShowOrphans(true)}
+            className="w-full flex items-center gap-2 px-4 py-2.5 rounded-lg border border-amber-300 bg-amber-50 text-amber-800 text-sm hover:bg-amber-100 transition-colors text-left"
+          >
+            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+            <span>
+              {orphanTasks.length} tarea{orphanTasks.length !== 1 ? "s" : ""} sin proyecto ni responsable — no aparecen en ningún tablero. Revisa y asígnalas.
+            </span>
+          </button>
+        )}
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold">{t("title")}</h1>
@@ -303,6 +325,36 @@ export function TasksClient({ tasks, employees, projects, sops, deliverablesByTa
             </table>
           </div>
         )}
+      </div>
+    )
+  }
+
+  // ── Orphan safety net — admin-only, editable (not read-only like the
+  // employee audit) so fixing one is a single click here instead of
+  // hunting it down through SQL. ───────────────────────────────────────────
+  if (showOrphans) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <Button variant="ghost" size="sm" onClick={backToOverview} className="-ml-2 mb-1 text-muted-foreground">
+            <ChevronLeft className="w-4 h-4 mr-1" />
+            Tareas
+          </Button>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-amber-600" />
+            Sin proyecto ni responsable
+          </h1>
+          <p className="text-muted-foreground text-sm mt-1">Asígnales un proyecto y/o responsable para que dejen de estar perdidas.</p>
+        </div>
+        <TaskTable
+          tasks={orphanTasks}
+          projectId={null}
+          employees={employees}
+          isAdmin={isAdmin}
+          deliverablesByTaskId={deliverablesByTaskId}
+          currentUserId={currentUserId}
+          sops={sops}
+        />
       </div>
     )
   }
