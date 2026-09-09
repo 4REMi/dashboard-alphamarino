@@ -111,7 +111,7 @@ export function StandupDump({ projects, employees, currentUserId, onClose, onCre
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <Sparkles className="w-4 h-4 text-violet-500" />
-            Volcado rápido
+            Captura rápida
           </DialogTitle>
         </DialogHeader>
 

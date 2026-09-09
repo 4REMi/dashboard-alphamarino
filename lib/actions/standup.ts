@@ -15,7 +15,7 @@ export interface StandupItem {
   assigneeNameRaw: string | null
 }
 
-// "Volcado rápido" en /tasks — un solo texto libre puede describir pendientes
+// "Captura rápida" en /tasks — un solo texto libre puede describir pendientes
 // y notas de varios proyectos y personas a la vez. Solo interpreta y resuelve
 // las mejores coincidencias (proyecto/persona por nombre) para que el
 // dashboard las muestre en una vista previa editable — nada se crea todavía

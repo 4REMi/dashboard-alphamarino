@@ -128,7 +128,7 @@ export function TasksClient({ tasks, employees, projects, sops, deliverablesByTa
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={() => setShowStandup(true)}>
               <Sparkles className="w-3.5 h-3.5 mr-1.5 text-violet-500" />
-              Volcado rápido
+              Captura rápida
             </Button>
             <TaskForm projects={projects} employees={employees} />
           </div>

@@ -117,7 +117,7 @@ Mensaje o nota del usuario — puede describir uno o varios movimientos distinto
   return movimientos
 }
 
-// Variante restringida para el "Volcado rápido" de /tasks — a diferencia de
+// Variante restringida para la "Captura rápida" de /tasks — a diferencia de
 // classifyMessage (Telegram/Vowen, cualquier tipo de movimiento), aquí solo
 // interesan tareas y notas de bitácora: un solo texto puede volcar
 // pendientes de varios proyectos y personas a la vez, que el dashboard
