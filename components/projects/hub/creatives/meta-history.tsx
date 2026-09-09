@@ -15,13 +15,19 @@ interface Props {
   accountId: string
   initialCreatives: MetaCampaignCreative[]
   canManage: boolean
+  // The Creative Tracker only ever shows concepts scoped to the active cycle
+  // (or Evergreen ones when there's no cycle) — a concept created with no
+  // cycle_id at all is invisible there even though it exists in the DB. New
+  // concepts from Historial de Meta get attached to whichever cycle is
+  // active right now, so they actually show up where you'd look for them.
+  activeCycleId: string | null
 }
 
 function formatMoney(n: number | null) {
   return n == null ? "—" : `$${n.toLocaleString("en-US", { maximumFractionDigits: 0 })}`
 }
 
-export function MetaHistory({ projectId, accountId, initialCreatives, canManage }: Props) {
+export function MetaHistory({ projectId, accountId, initialCreatives, canManage, activeCycleId }: Props) {
   const [creatives, setCreatives] = useState(initialCreatives)
   const [showWizard, setShowWizard] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -70,8 +76,12 @@ export function MetaHistory({ projectId, accountId, initialCreatives, canManage 
     if (!drafts) return
     const kept = drafts.filter((_, i) => keepDraft[i])
     if (kept.length === 0) { setDrafts(null); return }
+    if (!activeCycleId) {
+      setError("No hay un ciclo de paid media activo en este proyecto — abre uno primero para que estos conceptos aparezcan en el Creative Tracker.")
+      return
+    }
     setConfirming(true)
-    confirmAIDrafts(projectId, null, kept)
+    confirmAIDrafts(projectId, activeCycleId, kept)
       .then(() => {
         setDrafts(null)
         setSelectedIds(new Set())

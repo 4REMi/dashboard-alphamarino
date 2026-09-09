@@ -366,6 +366,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                     accountId={metaIntegration.account_id}
                     initialCreatives={importedMetaCreatives as any[]}
                     canManage={isAdminOrSubadmin}
+                    activeCycleId={activeCycle?.id ?? null}
                   />
                 </div>
               ) : null
