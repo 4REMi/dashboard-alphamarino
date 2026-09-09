@@ -10,6 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Plus } from "lucide-react"
 import type { Project, Customer, ProjectType, PhaseSetPhase, BrandBrain, Profile } from "@/lib/types"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
+import { CustomerCombobox } from "@/components/projects/customer-combobox"
+import { BrandBrainPicker } from "@/components/projects/brand-brain-picker"
 
 interface ProjectFormProps {
   project?: Project
@@ -113,36 +115,14 @@ export function ProjectForm({ project, customers, projectTypes, brandBrains = []
             </div>
             <div className="space-y-2">
               <Label>Cliente</Label>
-              <Select value={customerId} onValueChange={setCustomerId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Sin cliente" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Sin cliente</SelectItem>
-                  {customers.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <CustomerCombobox customers={customers} value={customerId} onChange={setCustomerId} />
             </div>
           </div>
 
           {brandBrains.length > 0 && (
             <div className="space-y-2">
               <Label>Brand Brain</Label>
-              <Select value={brandBrainId} onValueChange={setBrandBrainId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Sin marca" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Sin marca</SelectItem>
-                  {brandBrains.map((b) => (
-                    <SelectItem key={b.id} value={b.id}>
-                      {b.name}{b.industry ? ` · ${b.industry}` : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <BrandBrainPicker brandBrains={brandBrains} value={brandBrainId} onChange={setBrandBrainId} />
             </div>
           )}
 
