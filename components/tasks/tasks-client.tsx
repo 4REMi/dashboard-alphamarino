@@ -14,7 +14,9 @@ import type { Task, Profile, Deliverable, Sop } from "@/lib/types"
 import { useTranslations } from "next-intl"
 import { cn } from "@/lib/utils"
 
-const PERSONAL_KEY = "personal"
+// Exported so StandupDump can target the matching tile by the same key when
+// animating a confirmed item flying to its destination.
+export const PERSONAL_KEY = "personal"
 
 interface ProjectOption {
   id: string
@@ -39,8 +41,9 @@ function formatDate(iso: string) {
 // ── Overview screen — one tile per project (+ a personal one) ──────────────
 
 function ProjectTile({
-  label, count, icon, iconStyle, accent, onClick,
+  tileKey, label, count, icon, iconStyle, accent, onClick,
 }: {
+  tileKey: string
   label: string
   count: number
   icon: React.ReactNode
@@ -50,6 +53,7 @@ function ProjectTile({
 }) {
   return (
     <button
+      data-tile-key={tileKey}
       onClick={onClick}
       className={cn(
         "flex flex-col items-start gap-3 p-5 rounded-xl border bg-card hover:shadow-sm transition-all text-left",
@@ -175,6 +179,7 @@ export function TasksClient({ tasks, employees, projects, sops, deliverablesByTa
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           <ProjectTile
+            tileKey={PERSONAL_KEY}
             label="Mi lista"
             count={myPersonalPending}
             icon={<ClipboardList className="w-5 h-5" />}
@@ -188,6 +193,7 @@ export function TasksClient({ tasks, employees, projects, sops, deliverablesByTa
             return (
               <ProjectTile
                 key={p.id}
+                tileKey={p.id}
                 label={p.name}
                 count={myPendingByProject.get(p.id) ?? 0}
                 icon={Icon ? <Icon className="w-5 h-5" /> : <FolderKanban className="w-5 h-5" />}
