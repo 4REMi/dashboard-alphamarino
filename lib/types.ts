@@ -568,6 +568,37 @@ export interface MetaCampaign {
   synced_at: string
 }
 
+// Historial de Meta — creativos importados de campañas pasadas de la
+// cuenta del cliente (no ligados a un ciclo). Ver
+// components/projects/hub/creatives/meta-history.tsx.
+export interface MetaCampaignCreative {
+  id: string
+  project_id: string
+  campaign_id: string
+  campaign_name: string | null
+  ad_set_id: string
+  ad_set_name: string | null
+  ad_id: string
+  ad_name: string | null
+  image_url: string | null
+  video_url: string | null
+  thumbnail_url: string | null
+  body: string | null
+  title: string | null
+  cta: string | null
+  spend: number | null
+  impressions: number | null
+  clicks: number | null
+  ctr: number | null
+  cpc: number | null
+  results: number | null
+  results_type: string | null
+  date_start: string | null
+  date_stop: string | null
+  imported_by: string | null
+  imported_at: string
+}
+
 export interface PaidMediaCycle {
   id: string
   project_id: string

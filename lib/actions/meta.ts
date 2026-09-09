@@ -1,7 +1,8 @@
 "use server"
 
 import { createClient } from "@/lib/supabase/server"
-import type { MetaCampaign } from "@/lib/types"
+import { createAdminClient } from "@/lib/supabase/admin"
+import type { MetaCampaign, MetaCampaignCreative } from "@/lib/types"
 
 const META_API_VERSION = "v21.0"
 const META_BASE = `https://graph.facebook.com/${META_API_VERSION}`
@@ -348,4 +349,172 @@ export async function getMetaAds(adSetId: string): Promise<{ ads: MetaAdCreative
   }))
 
   return { ads }
+}
+
+// ── Historial de Meta — importar creativos de campañas pasadas ─────────────
+// Independiente del ciclo activo: sirve para clientes con historial previo
+// (con o sin la agencia) al que ya se tiene acceso vía System User.
+
+export interface MetaCampaignSummary {
+  id: string
+  name: string
+  status: string | null
+  objective: string | null
+  spend: number | null
+  results: number | null
+  results_type: string | null
+  date_start: string | null
+  date_stop: string | null
+}
+
+// Lista TODAS las campañas de la cuenta (no acotadas a un ciclo), con sus
+// métricas lifetime (date_preset=maximum) — para poder elegir cuáles
+// explorar sin importar cuándo corrieron.
+export async function getMetaCampaignsHistory(accountId: string): Promise<{ campaigns: MetaCampaignSummary[]; error?: string }> {
+  const accessToken = process.env.META_SYSTEM_USER_TOKEN
+  if (!accessToken) return { campaigns: [], error: "META_SYSTEM_USER_TOKEN no configurado" }
+
+  const campaignsUrl = new URL(`${META_BASE}/act_${accountId}/campaigns`)
+  campaignsUrl.searchParams.set("fields", "id,name,effective_status,objective")
+  campaignsUrl.searchParams.set("limit", "300")
+  campaignsUrl.searchParams.set("access_token", accessToken)
+
+  const insightsUrl = new URL(`${META_BASE}/act_${accountId}/insights`)
+  insightsUrl.searchParams.set("level", "campaign")
+  insightsUrl.searchParams.set("fields", "campaign_id,spend,actions,date_start,date_stop")
+  insightsUrl.searchParams.set("date_preset", "maximum")
+  insightsUrl.searchParams.set("limit", "300")
+  insightsUrl.searchParams.set("access_token", accessToken)
+
+  let campaignsRes: Response, insightsRes: Response
+  try {
+    ;[campaignsRes, insightsRes] = await Promise.all([
+      fetch(campaignsUrl.toString(), { cache: "no-store" }),
+      fetch(insightsUrl.toString(), { cache: "no-store" }),
+    ])
+  } catch {
+    return { campaigns: [], error: "Error de red al conectar con Meta" }
+  }
+
+  const campaignsJson = await campaignsRes.json()
+  if (campaignsJson.error) return { campaigns: [], error: `Meta API: ${campaignsJson.error.message}` }
+  const insightsJson = await insightsRes.json()
+
+  const insightsById = new Map<string, MetaInsightRow>(
+    (insightsJson.data ?? []).map((row: MetaInsightRow) => [row.campaign_id, row])
+  )
+
+  const campaigns: MetaCampaignSummary[] = (campaignsJson.data ?? []).map((c: { id: string; name: string; effective_status: string; objective?: string }) => {
+    const insight = insightsById.get(c.id)
+    const { results, results_type } = pickResults(insight?.actions, c.objective ?? null)
+    return {
+      id: c.id,
+      name: c.name ?? c.id,
+      status: c.effective_status ?? null,
+      objective: c.objective ?? null,
+      spend: insight?.spend ? Number(insight.spend) : null,
+      results,
+      results_type,
+      date_start: insight?.date_start ?? null,
+      date_stop: insight?.date_stop ?? null,
+    }
+  })
+
+  return { campaigns }
+}
+
+async function mirrorMetaMedia(projectId: string, adId: string, sourceUrl: string, kind: "image" | "video" | "thumb"): Promise<string | null> {
+  try {
+    const res = await fetch(sourceUrl, { signal: AbortSignal.timeout(45_000) })
+    if (!res.ok) return null
+    const buffer = await res.arrayBuffer()
+    const contentType = res.headers.get("content-type") ?? (kind === "video" ? "video/mp4" : "image/jpeg")
+    const ext = (contentType.split("/")[1]?.split(";")[0] ?? (kind === "video" ? "mp4" : "jpg")).slice(0, 4)
+    const path = `meta-imports/${projectId}/${adId}-${kind}.${ext}`
+    const adminStorage = createAdminClient()
+    const { error } = await adminStorage.storage.from("ad-lab").upload(path, buffer, { contentType, upsert: true })
+    if (error) return sourceUrl // fall back to the original (Meta-hosted) URL
+    const { data: { publicUrl } } = adminStorage.storage.from("ad-lab").getPublicUrl(path)
+    return publicUrl
+  } catch {
+    return sourceUrl
+  }
+}
+
+export interface ImportMetaCreativeInput {
+  campaignId: string
+  campaignName: string | null
+  adSetId: string
+  adSetName: string | null
+  ad: MetaAdCreative
+  campaignMetrics: {
+    spend: number | null
+    results: number | null
+    results_type: string | null
+    date_start: string | null
+    date_stop: string | null
+  }
+}
+
+// Descarga imagen/video a Storage (las URLs de Meta pueden expirar o no ser
+// estables para análisis posterior) y guarda el creativo + métricas de su
+// campaña (lifetime, no por-anuncio — evita una llamada de insights extra
+// por cada creativo seleccionado).
+export async function importMetaCreatives(projectId: string, inputs: ImportMetaCreativeInput[]): Promise<{ imported: number; errors: string[] }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  const errors: string[] = []
+  let imported = 0
+
+  for (const input of inputs) {
+    try {
+      const [imageUrl, videoUrl, thumbnailUrl] = await Promise.all([
+        input.ad.imageUrl ? mirrorMetaMedia(projectId, input.ad.id, input.ad.imageUrl, "image") : Promise.resolve(null),
+        input.ad.videoUrl ? mirrorMetaMedia(projectId, input.ad.id, input.ad.videoUrl, "video") : Promise.resolve(null),
+        input.ad.thumbnailUrl ? mirrorMetaMedia(projectId, input.ad.id, input.ad.thumbnailUrl, "thumb") : Promise.resolve(null),
+      ])
+
+      const { error } = await supabase.from("meta_campaign_creatives").upsert({
+        project_id: projectId,
+        campaign_id: input.campaignId,
+        campaign_name: input.campaignName,
+        ad_set_id: input.adSetId,
+        ad_set_name: input.adSetName,
+        ad_id: input.ad.id,
+        ad_name: input.ad.name,
+        image_url: imageUrl,
+        video_url: videoUrl,
+        thumbnail_url: thumbnailUrl,
+        body: input.ad.body,
+        title: input.ad.title,
+        cta: input.ad.cta,
+        spend: input.campaignMetrics.spend,
+        results: input.campaignMetrics.results,
+        results_type: input.campaignMetrics.results_type,
+        date_start: input.campaignMetrics.date_start,
+        date_stop: input.campaignMetrics.date_stop,
+        imported_by: user?.id ?? null,
+        imported_at: new Date().toISOString(),
+      }, { onConflict: "project_id,ad_id" })
+
+      if (error) throw error
+      imported++
+    } catch (err) {
+      errors.push(`${input.ad.name ?? input.ad.id}: ${err instanceof Error ? err.message : "error desconocido"}`)
+    }
+  }
+
+  return { imported, errors }
+}
+
+export async function getMetaImportedCreatives(projectId: string): Promise<MetaCampaignCreative[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from("meta_campaign_creatives")
+    .select("*")
+    .eq("project_id", projectId)
+    .order("imported_at", { ascending: false })
+  if (error) return []
+  return data ?? []
 }

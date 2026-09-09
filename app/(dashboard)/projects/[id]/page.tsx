@@ -17,10 +17,11 @@ import { getProjectDeliverables } from "@/lib/actions/deliverables"
 import { getSops } from "@/lib/actions/sops"
 import { getCreativeConcepts, getCreativeAssets } from "@/lib/actions/creatives"
 import { getBrandBrains, getBrandLines } from "@/lib/actions/brand-brains"
-import { getMetaCampaigns } from "@/lib/actions/meta"
+import { getMetaCampaigns, getMetaImportedCreatives } from "@/lib/actions/meta"
 import { getProjectIntegrations } from "@/lib/actions/integrations"
 import { IntegrationsCard } from "@/components/projects/hub/integrations-card"
 import { CreativesHub } from "@/components/projects/hub/creatives/creatives-hub"
+import { MetaHistory } from "@/components/projects/hub/creatives/meta-history"
 import { ProjectActions } from "@/components/projects/project-actions"
 import { ApplyPhasesButton } from "@/components/projects/apply-phases-button"
 import { AddPhasesButton } from "@/components/projects/add-phases-button"
@@ -106,7 +107,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const historyCycles = (cycles as PaidMediaCycle[]).filter((c) => !c.is_active)
 
   // Fetch initial creatives + meta campaigns + integrations for active cycle
-  const [initialConcepts, initialAssets, initialMetaCampaigns, integrations, brandBrains, brandLines] = isPaidMedia
+  const [initialConcepts, initialAssets, initialMetaCampaigns, integrations, brandBrains, brandLines, importedMetaCreatives] = isPaidMedia
     ? await Promise.all([
         getCreativeConcepts(id, activeCycle?.id ?? null).catch(() => []),
         getCreativeAssets(id, activeCycle?.id ?? null).catch(() => []),
@@ -114,8 +115,9 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         getProjectIntegrations(id).catch(() => []),
         getBrandBrains().catch(() => []),
         project.brand_brain_id ? getBrandLines(project.brand_brain_id).catch(() => []) : Promise.resolve([]),
+        getMetaImportedCreatives(id).catch(() => []),
       ])
-    : [[], [], [], [], [], []]
+    : [[], [], [], [], [], [], []]
 
   const totalIncome        = income.reduce((s, i) => s + Number(i.amount), 0)
   const totalExpenses      = expenses.reduce((s, e) => s + Number(e.amount), 0)
@@ -353,6 +355,21 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               brandLines={brandLines as any[]}
               projectBrandBrainId={project.brand_brain_id ?? undefined}
             />
+
+            {/* ── Historial de Meta — creativos de campañas pasadas ── */}
+            {(() => {
+              const metaIntegration = (integrations as ProjectIntegration[]).find((i) => i.platform === "meta")
+              return metaIntegration ? (
+                <div className="mt-8">
+                  <MetaHistory
+                    projectId={project.id}
+                    accountId={metaIntegration.account_id}
+                    initialCreatives={importedMetaCreatives as any[]}
+                    canManage={isAdminOrSubadmin}
+                  />
+                </div>
+              ) : null
+            })()}
           </section>
         )}
       </div>

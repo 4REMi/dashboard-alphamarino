@@ -85,6 +85,20 @@ export async function getConceptsByBrandBrain(
 
 // ── CONCEPTS ─────────────────────────────────────────────────
 
+// Lightweight list for pickers (e.g. "guardar como asset" from Historial de
+// Meta) — every non-archived concept in the project, regardless of cycle.
+export async function getProjectConceptOptions(projectId: string): Promise<{ id: string; name: string | null; angle_type: string | null }[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from("creative_concepts")
+    .select("id, name, angle_type")
+    .eq("project_id", projectId)
+    .neq("status", "Archived")
+    .order("created_at", { ascending: false })
+  if (error) return []
+  return data ?? []
+}
+
 export async function getCreativeConcepts(
   projectId: string,
   cycleId?: string | null
@@ -1267,10 +1281,13 @@ export async function deleteAssetCopy(copyId: string, projectId: string): Promis
   revalidatePath(`/projects/${projectId}`)
 }
 
-// Bulk insert confirmed AI draft concepts
+// Bulk insert confirmed AI draft concepts. cycleId is nullable — concepts
+// reverse-engineered from Historial de Meta creatives aren't tied to any
+// paid media cycle (they can come from a campaign that ran long before this
+// project even started tracking cycles).
 export async function confirmAIDrafts(
   projectId: string,
-  cycleId: string,
+  cycleId: string | null,
   drafts: AIDraftConcept[],
   brandLineId?: string,
 ): Promise<void> {
@@ -1300,6 +1317,112 @@ export async function confirmAIDrafts(
   const { error } = await supabase.from("creative_concepts").insert(rows)
   if (error) throw error
   revalidateProject(projectId)
+}
+
+// ── Historial de Meta — generar conceptos a partir de creativos reales ──
+// A diferencia de generateCreativeConcepts (que parte de la estrategia de
+// marca), esto parte de lo que la IA "ve" en un anuncio real ya importado
+// (imagen/video + su transcripción si es video) — reconstruye el concepto
+// hacia atrás. Devuelve un borrador por creativo, mismo shape AIDraftConcept
+// para poder reusar exactamente la misma pantalla de revisión/confirmación.
+const ANGULOS_DISPONIBLES = "Desired Outcome, Objection, Feature / Benefit, Use Case, Consequence, Misconception, Education, Acceptance, Failed Solutions, Identity"
+
+async function transcribeVideo(videoUrl: string): Promise<string | null> {
+  try {
+    const transcript = await aaiPost("/transcript", { audio_url: videoUrl, language_detection: true })
+    let result: { status: string; text?: string } = { status: "queued" }
+    let attempts = 0
+    const POLL_INTERVAL_MS = 3000
+    const MAX_ATTEMPTS = 40 // ~120s
+    while (result.status !== "completed" && result.status !== "error") {
+      if (attempts >= MAX_ATTEMPTS) return null
+      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
+      result = await aaiGet(`/transcript/${transcript.id}`)
+      attempts++
+    }
+    return result.status === "completed" ? (result.text ?? null) : null
+  } catch {
+    return null
+  }
+}
+
+async function draftConceptFromCreative(creative: {
+  image_url: string | null; thumbnail_url: string | null; video_url: string | null
+  body: string | null; title: string | null; campaign_name: string | null
+}): Promise<AIDraftConcept | null> {
+  const visionImageUrl = creative.image_url ?? creative.thumbnail_url
+  if (!visionImageUrl) return null
+
+  const transcript = creative.video_url ? await transcribeVideo(creative.video_url) : null
+
+  const Anthropic = (await import("@anthropic-ai/sdk")).default
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+  const systemPrompt = `Eres un estratega de publicidad digital experto en ingeniería inversa de creativos — dado un anuncio real, reconstruyes el concepto/estrategia detrás de él.
+
+Responde ÚNICAMENTE con un JSON válido con exactamente estos campos (sin markdown, sin texto extra):
+- organizing_principle: "Pain-First" o "Desire-First"
+- angle_type: uno de: ${ANGULOS_DISPONIBLES}
+- name: nombre corto del concepto (3-6 palabras, en español)
+- target_persona: a quién le habla este anuncio, inferido de lo que ves/lees
+- product_service: qué producto o servicio promueve
+- pain_point: qué dolor o problema activa
+- why_it_works: por qué este ángulo resuena con esa persona
+- objection: qué objeción intenta superar
+- transformation: qué transformación promete
+- awareness_stage: número del 1 al 5
+- funnel_stage: "TOF", "MOF" o "BOF"`
+
+  const userText = `Analiza este anuncio real y reconstruye el concepto creativo detrás de él.
+${creative.campaign_name ? `Campaña: ${creative.campaign_name}` : ""}
+${creative.title ? `Título: ${creative.title}` : ""}
+${creative.body ? `Copy: ${creative.body}` : ""}
+${transcript ? `Transcripción del video:\n"""${transcript}"""` : ""}
+
+Basa el concepto en lo que realmente ves en la imagen${transcript ? " y escuchas en la transcripción" : ""} — no inventes nada que no esté ahí.`
+
+  const message = await client.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 1024,
+    system: systemPrompt,
+    messages: [{
+      role: "user",
+      content: [
+        { type: "image", source: { type: "url", url: visionImageUrl } },
+        { type: "text", text: userText },
+      ],
+    }],
+  })
+
+  const text = message.content[0].type === "text" ? message.content[0].text : ""
+  try {
+    return JSON.parse(text) as AIDraftConcept
+  } catch {
+    const match = text.match(/\{[\s\S]*\}/)
+    return match ? (JSON.parse(match[0]) as AIDraftConcept) : null
+  }
+}
+
+export async function generateConceptsFromMetaCreatives(creativeIds: string[]): Promise<AIDraftConcept[]> {
+  const supabase = await createClient()
+  const { role } = await getRole()
+  if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
+  if (creativeIds.length === 0) return []
+
+  const { data: creatives, error } = await supabase
+    .from("meta_campaign_creatives")
+    .select("image_url, thumbnail_url, video_url, body, title, campaign_name")
+    .in("id", creativeIds)
+  if (error) throw error
+
+  const results = await Promise.allSettled((creatives ?? []).map(draftConceptFromCreative))
+  const drafts: AIDraftConcept[] = []
+  results.forEach((r, i) => {
+    if (r.status === "fulfilled" && r.value) drafts.push(r.value)
+    else console.error(`generateConceptsFromMetaCreatives: creative ${i} failed`, r.status === "rejected" ? r.reason : "no result")
+  })
+  if (drafts.length === 0) throw new Error("No se pudo generar ningún concepto a partir de los creativos seleccionados")
+  return drafts
 }
 
 // ── AI AUTOFILL ─────────────────────────────────────────────
