@@ -9,7 +9,7 @@ import { Send, Loader2, CheckCircle2, Copy, Check, ExternalLink, Unlink } from "
 // Username del bot de Telegram de la agencia — se usa aquí y en el mensaje
 // de instrucciones para que quien esté vinculando su cuenta sepa a quién
 // mandarle el código, sin tener que preguntar.
-const BOT_USERNAME = "iceberg_alpha"
+const BOT_USERNAME = "icebergalpha_bot"
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" })

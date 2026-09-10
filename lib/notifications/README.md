@@ -26,7 +26,7 @@ Nada más. No hay que tocar la tabla, ni el webhook, ni ningún otro archivo.
 
 ## Vincular Telegram (por persona, una sola vez)
 
-Bot de la agencia: **@iceberg_alpha** (`https://t.me/iceberg_alpha`) — el username está
+Bot de la agencia: **@icebergalpha_bot** (`https://t.me/icebergalpha_bot`) — el username está
 también hardcodeado en `components/employees/telegram-link.tsx` (constante `BOT_USERNAME`)
 para el link directo que se muestra en pantalla. Si el bot cambia de username algún día,
 actualizar en ambos lugares.
@@ -36,7 +36,7 @@ privacidad. El flujo, para cualquier persona del equipo:
 
 1. Entra a su propia ficha en Equipo (`/employees/[su-id]`) — sección "Notificaciones
    por Telegram" — y le da a **"Generar código"**.
-2. Abre **@iceberg_alpha** en Telegram (hay un link directo en esa misma pantalla).
+2. Abre **@icebergalpha_bot** en Telegram (hay un link directo en esa misma pantalla).
 3. Le manda ese código, tal cual, como mensaje de texto normal — vence en 15 minutos.
 4. El bot le contesta confirmando y desde ahí le llegan sus notificaciones ahí.
 
