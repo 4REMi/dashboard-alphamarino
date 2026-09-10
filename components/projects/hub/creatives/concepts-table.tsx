@@ -269,6 +269,7 @@ function ConceptDetailModal({
   const [isPending, startTransition] = useTransition()
   const [activeTab, setActiveTab] = useState<"id" | "angle" | "mech">("id")
   const [lightboxAsset, setLightboxAsset] = useState<CreativeAsset | null>(null)
+  const [lightboxVideoError, setLightboxVideoError] = useState(false)
   const [editingBriefId, setEditingBriefId] = useState<string | null>(null)
   const [briefTitleDraft, setBriefTitleDraft] = useState("")
   const angleEntry  = ANGLE_GUIDE.find((a) => a.name === concept.angle_type)
@@ -600,7 +601,7 @@ function ConceptDetailModal({
                     <div
                       key={a.id}
                       className="relative aspect-square rounded-xl overflow-hidden bg-muted/50 border flex items-center justify-center group cursor-pointer hover:ring-2 hover:ring-primary/30 transition-all"
-                      onClick={() => setLightboxAsset(a)}
+                      onClick={() => { setLightboxVideoError(false); setLightboxAsset(a) }}
                     >
                       {thumb ? (
                         <>
@@ -681,9 +682,21 @@ function ConceptDetailModal({
                     {/* Media */}
                     <div className="bg-black flex items-center justify-center min-h-[300px] max-h-[70vh]">
                       {a.file_type === "video" && fileUrl ? (
-                        <video controls autoPlay className="max-w-full max-h-[70vh]" style={{ display: "block" }}>
-                          <source src={fileUrl} />
-                        </video>
+                        lightboxVideoError ? (
+                          <p className="text-white/70 text-sm py-16 px-6 text-center">
+                            Este video ya no se puede reproducir — probablemente venció el enlace original.
+                          </p>
+                        ) : (
+                          <video
+                            controls
+                            autoPlay
+                            className="max-w-full max-h-[70vh]"
+                            style={{ display: "block" }}
+                            onError={() => setLightboxVideoError(true)}
+                          >
+                            <source src={fileUrl} />
+                          </video>
+                        )
                       ) : fileUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={fileUrl} alt="" className="max-w-full max-h-[70vh] object-contain" />

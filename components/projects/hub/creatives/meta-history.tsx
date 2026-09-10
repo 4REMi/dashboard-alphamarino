@@ -7,7 +7,7 @@ import { MetaImportWizard } from "./meta-import-wizard"
 import { getMetaImportedCreatives } from "@/lib/actions/meta"
 import { generateConceptsFromMetaCreatives, confirmAIDrafts, getProjectConceptOptions, createAsset, type AIDraftConcept } from "@/lib/actions/creatives"
 import type { MetaCampaignCreative } from "@/lib/types"
-import { Upload, Sparkles, Film, ImageIcon, Loader2, Check, X, Save } from "lucide-react"
+import { Upload, Sparkles, ImageIcon, Loader2, Check, X, Save, Play } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface Props {
@@ -40,6 +40,11 @@ export function MetaHistory({ projectId, accountId, initialCreatives, canManage,
   const [drafts, setDrafts] = useState<AIDraftConcept[] | null>(null)
   const [keepDraft, setKeepDraft] = useState<boolean[]>([])
   const [confirming, setConfirming] = useState(false)
+
+  // Click-to-play preview — the grid itself only ever showed a thumbnail
+  // with a film-strip badge, no actual way to watch the video in place.
+  const [videoPreview, setVideoPreview] = useState<MetaCampaignCreative | null>(null)
+  const [videoPreviewError, setVideoPreviewError] = useState(false)
 
   // "Guardar como asset" — pick an existing concept for one creative at a time.
   const [assetPickerFor, setAssetPickerFor] = useState<MetaCampaignCreative | null>(null)
@@ -183,8 +188,17 @@ export function MetaHistory({ projectId, accountId, initialCreatives, canManage,
                       <div className="w-full h-full flex items-center justify-center"><ImageIcon className="w-6 h-6 text-muted-foreground/40" /></div>
                     )}
                     {c.video_url && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                        <Film className="w-5 h-5 text-white drop-shadow" />
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => { e.stopPropagation(); setVideoPreviewError(false); setVideoPreview(c) }}
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); setVideoPreviewError(false); setVideoPreview(c) } }}
+                        title="Reproducir"
+                        className="absolute inset-0 flex items-center justify-center bg-black/20 hover:bg-black/35 transition-colors"
+                      >
+                        <div className="w-9 h-9 rounded-full bg-white/90 flex items-center justify-center">
+                          <Play className="w-4 h-4 text-black fill-black ml-0.5" />
+                        </div>
                       </div>
                     )}
                     {checked && (
@@ -266,6 +280,36 @@ export function MetaHistory({ projectId, accountId, initialCreatives, canManage,
                 Crear conceptos ({keepDraft.filter(Boolean).length})
               </Button>
             </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* ── Preview de video ── */}
+      {videoPreview && (
+        <Dialog open onOpenChange={(o) => { if (!o) setVideoPreview(null) }}>
+          <DialogContent className="max-w-2xl p-0 overflow-hidden">
+            <div className="bg-black flex items-center justify-center min-h-[300px] max-h-[70vh]">
+              {videoPreviewError ? (
+                <p className="text-white/70 text-sm py-16 px-6 text-center">
+                  Este video ya no se puede reproducir — probablemente venció el enlace original de Meta.
+                  Vuelve a importarlo desde &quot;Importar de Meta&quot;.
+                </p>
+              ) : (
+                <video
+                  key={videoPreview.id}
+                  controls
+                  autoPlay
+                  className="max-w-full max-h-[70vh]"
+                  onError={() => setVideoPreviewError(true)}
+                >
+                  <source src={videoPreview.video_url ?? ""} />
+                </video>
+              )}
+            </div>
+            <div className="px-4 py-3 border-t">
+              <p className="text-sm font-medium">{videoPreview.ad_name}</p>
+              <p className="text-xs text-muted-foreground">{videoPreview.campaign_name}</p>
+            </div>
           </DialogContent>
         </Dialog>
       )}

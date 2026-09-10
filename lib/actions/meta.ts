@@ -423,21 +423,39 @@ export async function getMetaCampaignsHistory(accountId: string): Promise<{ camp
   return { campaigns }
 }
 
+// Video specifically comes from Meta's `/{video_id}?fields=source` — a
+// short-lived SIGNED url that expires within hours. Falling back to it on a
+// failed mirror (like image/thumb do, where the source is a more stable CDN
+// link) looked fine at import time but silently rotted into a dead link a
+// few hours later, which is exactly the "no se pueden reproducir" bug this
+// was written to fix — so video never falls back, it's null-or-nothing.
+// Also guards against a redirect/error page masquerading as a 200 (Meta's
+// CDN has been known to hand back an HTML error body with a 200 status) by
+// checking the actual content-type before trusting the download.
 async function mirrorMetaMedia(projectId: string, adId: string, sourceUrl: string, kind: "image" | "video" | "thumb"): Promise<string | null> {
+  const expectedPrefix = kind === "video" ? "video/" : "image/"
   try {
-    const res = await fetch(sourceUrl, { signal: AbortSignal.timeout(45_000) })
-    if (!res.ok) return null
+    const res = await fetch(sourceUrl, { signal: AbortSignal.timeout(kind === "video" ? 120_000 : 45_000) })
+    if (!res.ok) return kind === "video" ? null : sourceUrl
+    const contentType = res.headers.get("content-type") ?? ""
+    if (!contentType.startsWith(expectedPrefix)) {
+      console.error(`[mirrorMetaMedia] unexpected content-type "${contentType}" for ${kind} ${adId}`)
+      return kind === "video" ? null : sourceUrl
+    }
     const buffer = await res.arrayBuffer()
-    const contentType = res.headers.get("content-type") ?? (kind === "video" ? "video/mp4" : "image/jpeg")
     const ext = (contentType.split("/")[1]?.split(";")[0] ?? (kind === "video" ? "mp4" : "jpg")).slice(0, 4)
     const path = `meta-imports/${projectId}/${adId}-${kind}.${ext}`
     const adminStorage = createAdminClient()
     const { error } = await adminStorage.storage.from("ad-lab").upload(path, buffer, { contentType, upsert: true })
-    if (error) return sourceUrl // fall back to the original (Meta-hosted) URL
+    if (error) {
+      console.error(`[mirrorMetaMedia] upload failed for ${kind} ${adId}:`, error.message)
+      return kind === "video" ? null : sourceUrl
+    }
     const { data: { publicUrl } } = adminStorage.storage.from("ad-lab").getPublicUrl(path)
     return publicUrl
-  } catch {
-    return sourceUrl
+  } catch (err) {
+    console.error(`[mirrorMetaMedia] failed for ${kind} ${adId}:`, err instanceof Error ? err.message : err)
+    return kind === "video" ? null : sourceUrl
   }
 }
 
