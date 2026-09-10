@@ -7,7 +7,7 @@ import { MetaImportWizard } from "./meta-import-wizard"
 import { getMetaImportedCreatives } from "@/lib/actions/meta"
 import { generateConceptsFromMetaCreatives, confirmAIDrafts, getProjectConceptOptions, createAsset, type AIDraftConcept } from "@/lib/actions/creatives"
 import type { MetaCampaignCreative } from "@/lib/types"
-import { Upload, Sparkles, ImageIcon, Loader2, Check, X, Save, Play } from "lucide-react"
+import { Upload, Sparkles, ImageIcon, Loader2, Check, X, Save, Play, ZoomIn } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface Props {
@@ -167,7 +167,11 @@ export function MetaHistory({ projectId, accountId, initialCreatives, canManage,
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
             {creatives.map((c) => {
               const checked = selectedIds.has(c.id)
-              const thumb = c.thumbnail_url || c.image_url
+              // Meta's thumbnail_url is a deliberately small, low-res crop —
+              // showing it as the primary preview is exactly what read as
+              // "pixelated." image_url is the full creative image; only
+              // fall back to the tiny thumbnail when that's all we have.
+              const thumb = c.image_url || c.thumbnail_url
               return (
                 <div
                   key={c.id}
@@ -187,7 +191,7 @@ export function MetaHistory({ projectId, accountId, initialCreatives, canManage,
                     ) : (
                       <div className="w-full h-full flex items-center justify-center"><ImageIcon className="w-6 h-6 text-muted-foreground/40" /></div>
                     )}
-                    {c.video_url && (
+                    {c.video_url ? (
                       <div
                         role="button"
                         tabIndex={0}
@@ -199,6 +203,20 @@ export function MetaHistory({ projectId, accountId, initialCreatives, canManage,
                         <div className="w-9 h-9 rounded-full bg-white/90 flex items-center justify-center">
                           <Play className="w-4 h-4 text-black fill-black ml-0.5" />
                         </div>
+                      </div>
+                    ) : thumb && (
+                      // No video for this creative — still let people zoom
+                      // into the image full-size instead of only ever
+                      // seeing it cropped to a small square tile.
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => { e.stopPropagation(); setVideoPreviewError(false); setVideoPreview(c) }}
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); setVideoPreviewError(false); setVideoPreview(c) } }}
+                        title="Ampliar"
+                        className="absolute top-1.5 left-1.5 w-6 h-6 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-colors"
+                      >
+                        <ZoomIn className="w-3.5 h-3.5 text-white" />
                       </div>
                     )}
                     {checked && (
@@ -284,26 +302,37 @@ export function MetaHistory({ projectId, accountId, initialCreatives, canManage,
         </Dialog>
       )}
 
-      {/* ── Preview de video ── */}
+      {/* ── Preview — video con reproductor, o imagen a tamaño completo ── */}
       {videoPreview && (
         <Dialog open onOpenChange={(o) => { if (!o) setVideoPreview(null) }}>
           <DialogContent className="max-w-2xl p-0 overflow-hidden">
             <div className="bg-black flex items-center justify-center min-h-[300px] max-h-[70vh]">
-              {videoPreviewError ? (
-                <p className="text-white/70 text-sm py-16 px-6 text-center">
-                  Este video ya no se puede reproducir — probablemente venció el enlace original de Meta.
-                  Vuelve a importarlo desde &quot;Importar de Meta&quot;.
-                </p>
+              {videoPreview.video_url ? (
+                videoPreviewError ? (
+                  <p className="text-white/70 text-sm py-16 px-6 text-center">
+                    Este video ya no se puede reproducir — probablemente venció el enlace original de Meta.
+                    Vuelve a importarlo desde &quot;Importar de Meta&quot;.
+                  </p>
+                ) : (
+                  <video
+                    key={videoPreview.id}
+                    controls
+                    autoPlay
+                    className="max-w-full max-h-[70vh]"
+                    onError={() => setVideoPreviewError(true)}
+                  >
+                    <source src={videoPreview.video_url} />
+                  </video>
+                )
+              ) : (videoPreview.image_url || videoPreview.thumbnail_url) ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={videoPreview.image_url || videoPreview.thumbnail_url || ""}
+                  alt=""
+                  className="max-w-full max-h-[70vh] object-contain"
+                />
               ) : (
-                <video
-                  key={videoPreview.id}
-                  controls
-                  autoPlay
-                  className="max-w-full max-h-[70vh]"
-                  onError={() => setVideoPreviewError(true)}
-                >
-                  <source src={videoPreview.video_url ?? ""} />
-                </video>
+                <p className="text-white/70 text-sm py-16 px-6 text-center">Sin imagen disponible.</p>
               )}
             </div>
             <div className="px-4 py-3 border-t">

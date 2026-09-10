@@ -299,7 +299,11 @@ export async function getMetaAds(adSetId: string): Promise<{ ads: MetaAdCreative
   const url = new URL(`${META_BASE}/${adSetId}/ads`)
   url.searchParams.set(
     "fields",
-    "id,name,effective_status,creative{id,thumbnail_url,image_url,video_id,body,title,call_to_action_type,object_story_spec}"
+    // asset_feed_spec covers Advantage+/dynamic creative ads, whose video and
+    // image live there instead of object_story_spec — ads built that way
+    // were silently coming back with no video_id and a tiny thumbnail_url
+    // for imageUrl, which is exactly the "pixelated, can't play" symptom.
+    "id,name,effective_status,creative{id,thumbnail_url,image_url,video_id,body,title,call_to_action_type,object_story_spec,asset_feed_spec{videos{video_id},images{url}}}"
   )
   url.searchParams.set("limit", "50")
   url.searchParams.set("access_token", accessToken)
@@ -319,9 +323,10 @@ export async function getMetaAds(adSetId: string): Promise<{ ads: MetaAdCreative
     const story = creative.object_story_spec ?? {}
     const linkData = story.link_data ?? {}
     const videoData = story.video_data ?? {}
+    const feedSpec = creative.asset_feed_spec ?? {}
 
     let videoUrl: string | null = null
-    const videoId = creative.video_id || videoData.video_id
+    const videoId = creative.video_id || videoData.video_id || feedSpec.videos?.[0]?.video_id
     if (videoId) {
       try {
         const vUrl = new URL(`${META_BASE}/${videoId}`)
@@ -329,9 +334,12 @@ export async function getMetaAds(adSetId: string): Promise<{ ads: MetaAdCreative
         vUrl.searchParams.set("access_token", accessToken)
         const vRes = await fetch(vUrl.toString(), { cache: "no-store" })
         const vJson = await vRes.json()
+        if (vJson.error) {
+          console.error(`[getMetaAds] video source fetch failed for ${videoId}:`, vJson.error.message)
+        }
         videoUrl = vJson.source ?? null
-      } catch {
-        // no video source available — thumbnail-only preview
+      } catch (err) {
+        console.error(`[getMetaAds] video source fetch threw for ${videoId}:`, err instanceof Error ? err.message : err)
       }
     }
 
@@ -339,8 +347,11 @@ export async function getMetaAds(adSetId: string): Promise<{ ads: MetaAdCreative
       id: a.id,
       name: a.name ?? a.id,
       status: a.effective_status ?? null,
+      // Prefer the full creative image over Meta's thumbnail_url — that
+      // field is a small, deliberately low-res crop, not meant to be shown
+      // at any real size (the pixelated preview the user flagged).
       thumbnailUrl: creative.thumbnail_url ?? videoData.image_url ?? null,
-      imageUrl: creative.image_url ?? linkData.picture ?? null,
+      imageUrl: creative.image_url ?? linkData.picture ?? feedSpec.images?.[0]?.url ?? null,
       videoUrl,
       body: creative.body ?? linkData.message ?? videoData.message ?? null,
       title: creative.title ?? linkData.name ?? videoData.title ?? null,
