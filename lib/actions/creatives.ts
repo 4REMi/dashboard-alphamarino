@@ -368,6 +368,7 @@ export async function createBrief(
   attachedBoardIds: string[] = [],
   brandLineId?: string,
   title?: string,
+  noTranscribeAdIds: string[] = [],
 ): Promise<CreativeBrief> {
   const supabase = await createClient()
   const { userId, role } = await getRole()
@@ -379,6 +380,9 @@ export async function createBrief(
     brand_brain_id: brandBrainId,
     brand_line_id: brandLineId || null,
     attached_ad_ids: attachedAdIds,
+    // Only meaningful for ids that are actually video refs, but harmless to
+    // store extra — generateBriefContent already filters to video ads first.
+    no_transcribe_ad_ids: noTranscribeAdIds,
     attached_board_ids: attachedBoardIds,
     title: title?.trim() || null,
     created_by: userId,
@@ -795,7 +799,9 @@ El brief debe ser accionable: un editor o diseñador que lo lea debe poder empez
           .from("saved_ads")
           .select("id, video_url, cached_video_url, format")
           .in("id", brief.attached_ad_ids)
-        const videoAds = ads?.filter((a: any) => a.format === "video" || a.cached_video_url || a.video_url) ?? []
+        const skipIds = new Set<string>(brief.no_transcribe_ad_ids ?? [])
+        const videoAds = (ads?.filter((a: any) => a.format === "video" || a.cached_video_url || a.video_url) ?? [])
+          .filter((a: any) => !skipIds.has(a.id))
 
         if (videoAds.length > 0) {
           const lineData = brief.brand_line_id

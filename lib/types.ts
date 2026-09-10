@@ -804,6 +804,9 @@ export interface CreativeBrief {
   important_notes: string | null
   brief_content: BriefContent
   attached_ad_ids: string[]
+  // Video refs in attached_ad_ids that should NOT be transcribed/tropicalized
+  // — b-roll, stitched montages, anything with no dialogue to adapt.
+  no_transcribe_ad_ids: string[]
   attached_board_ids: string[]
   adapted_script: Record<string, AdCloneLine[]> | AdCloneLine[] | null
   script_titles: Record<string, string>

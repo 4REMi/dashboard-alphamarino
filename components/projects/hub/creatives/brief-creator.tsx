@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
 import {
   Brain, Sparkles, Link2, Copy, Check,
-  Loader2, ExternalLink, Play, Image as ImageIcon,
+  Loader2, ExternalLink, Play, Image as ImageIcon, Mic, MicOff,
 } from "lucide-react"
 import type { CreativeConcept, BrandBrain, CreativeBrief } from "@/lib/types"
 import { createBrief, generateBriefContent, getBrief } from "@/lib/actions/creatives"
@@ -54,6 +54,11 @@ export function BriefCreator({
   const [title, setTitle] = useState(concept.name ?? concept.angle_type ?? "")
   const [selectedBrainId, setSelectedBrainId] = useState("")
   const [selectedAdIds, setSelectedAdIds] = useState<string[]>([])
+  // Videos default to "tropicalizar" (transcribe + adapt script) since
+  // that's almost always what you want — this only needs to be turned OFF
+  // for a reference that's pure visual (b-roll, a stitched montage, nothing
+  // said on camera), so no tokens get burned transcribing silence.
+  const [noTranscribeIds, setNoTranscribeIds] = useState<string[]>([])
   const [selectedBoardIds, setSelectedBoardIds] = useState<string[]>([])
   const [generatedBrief, setGeneratedBrief] = useState<CreativeBrief | null>(null)
   const [contentError, setContentError] = useState<string | null>(null)
@@ -85,7 +90,8 @@ export function BriefCreator({
   function handleGenerate() {
     if (!selectedBrainId) return
     startTransition(async () => {
-      const brief = await createBrief(projectId, concept.id, selectedBrainId, selectedAdIds, selectedBoardIds, concept.brand_line_id ?? undefined, title)
+      const skipTranscribe = noTranscribeIds.filter((id) => selectedAdIds.includes(id))
+      const brief = await createBrief(projectId, concept.id, selectedBrainId, selectedAdIds, selectedBoardIds, concept.brand_line_id ?? undefined, title, skipTranscribe)
       const result = await generateBriefContent(brief.id)
       if (result && "error" in result) setContentError(result.error)
       // Re-fetch regardless of outcome — brief_content/adapted_script may
@@ -106,6 +112,9 @@ export function BriefCreator({
 
   function toggleAd(id: string) {
     setSelectedAdIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
+  }
+  function toggleTranscribe(id: string) {
+    setNoTranscribeIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
   }
   function toggleBoard(id: string) {
     setSelectedBoardIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
@@ -226,7 +235,7 @@ export function BriefCreator({
           {videoAds.length > 0 && (
             <section>
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                Videos de referencia <span className="font-normal">(opcional — se tropicalizará el guión)</span>
+                Videos de referencia <span className="font-normal">(opcional — al seleccionar uno, usa el ícono de micrófono para elegir si se tropicaliza su guión)</span>
               </p>
 
               {/* Inline video preview */}
@@ -265,6 +274,7 @@ export function BriefCreator({
                   const thumb = getThumb(ad)
                   const selected = selectedAdIds.includes(ad.id)
                   const hasVideo = !!(ad.cached_video_url || ad.video_url)
+                  const willTranscribe = !noTranscribeIds.includes(ad.id)
                   return (
                     <div
                       key={ad.id}
@@ -318,6 +328,25 @@ export function BriefCreator({
                         <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-primary flex items-center justify-center pointer-events-none">
                           <Check className="w-3 h-3 text-primary-foreground" />
                         </div>
+                      )}
+
+                      {/* Tropicalizar toggle — only meaningful once selected.
+                          No dialogue on camera (b-roll, stitched montages)?
+                          turn this off so nothing gets sent to AssemblyAI/
+                          Claude for a transcript that was never going to
+                          exist. */}
+                      {selected && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); toggleTranscribe(ad.id) }}
+                          title={willTranscribe ? "Se tropicalizará el guión — click para omitir" : "No se tropicalizará el guión — click para incluir"}
+                          className={cn(
+                            "absolute top-1.5 left-1.5 w-5 h-5 rounded-full flex items-center justify-center transition-colors",
+                            willTranscribe ? "bg-emerald-500 text-white" : "bg-white/90 text-muted-foreground"
+                          )}
+                        >
+                          {willTranscribe ? <Mic className="w-3 h-3" /> : <MicOff className="w-3 h-3" />}
+                        </button>
                       )}
                     </div>
                   )
@@ -421,7 +450,7 @@ export function BriefCreator({
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
           <Button onClick={handleGenerate} disabled={!selectedBrainId || isPending}>
             {isPending ? (
-              <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />{selectedAdIds.some(id => videoAds.find(a => a.id === id)) ? "Generando y tropicalizando…" : "Generando…"}</>
+              <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />{selectedAdIds.some(id => videoAds.find(a => a.id === id) && !noTranscribeIds.includes(id)) ? "Generando y tropicalizando…" : "Generando…"}</>
             ) : (
               <><Sparkles className="w-3.5 h-3.5 mr-1.5" />Generar Brief</>
             )}
