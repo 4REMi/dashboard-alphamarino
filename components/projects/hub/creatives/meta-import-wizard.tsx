@@ -209,7 +209,10 @@ export function MetaImportWizard({ projectId, accountId, onClose, onImported }: 
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                 {adRows.map((row) => {
                   const checked = selectedAdIds.has(row.ad.id)
-                  const thumb = row.ad.thumbnailUrl || row.ad.imageUrl
+                  // imageUrl is the full creative; thumbnailUrl is Meta's
+                  // deliberately small crop — only fall back to that when
+                  // there's nothing else to show.
+                  const thumb = row.ad.imageUrl || row.ad.thumbnailUrl
                   return (
                     <button
                       key={row.ad.id}

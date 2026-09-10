@@ -443,15 +443,28 @@ export async function getMetaCampaignsHistory(accountId: string): Promise<{ camp
 // Also guards against a redirect/error page masquerading as a 200 (Meta's
 // CDN has been known to hand back an HTML error body with a 200 status) by
 // checking the actual content-type before trusting the download.
-async function mirrorMetaMedia(projectId: string, adId: string, sourceUrl: string, kind: "image" | "video" | "thumb"): Promise<string | null> {
+interface MirrorResult {
+  url: string | null
+  // Surfaced all the way up to the import wizard's result screen — a null
+  // url with no reason was undebuggable without pulling Vercel logs, which
+  // isn't something the person doing the import can do themselves.
+  error?: string
+}
+
+async function mirrorMetaMedia(projectId: string, adId: string, sourceUrl: string, kind: "image" | "video" | "thumb"): Promise<MirrorResult> {
   const expectedPrefix = kind === "video" ? "video/" : "image/"
   try {
     const res = await fetch(sourceUrl, { signal: AbortSignal.timeout(kind === "video" ? 120_000 : 45_000) })
-    if (!res.ok) return kind === "video" ? null : sourceUrl
+    if (!res.ok) {
+      const reason = `Meta respondió ${res.status} al descargar el ${kind}`
+      console.error(`[mirrorMetaMedia] ${reason} (${adId})`)
+      return kind === "video" ? { url: null, error: reason } : { url: sourceUrl }
+    }
     const contentType = res.headers.get("content-type") ?? ""
     if (!contentType.startsWith(expectedPrefix)) {
-      console.error(`[mirrorMetaMedia] unexpected content-type "${contentType}" for ${kind} ${adId}`)
-      return kind === "video" ? null : sourceUrl
+      const reason = `Meta devolvió "${contentType || "sin content-type"}" en vez de un ${kind} real`
+      console.error(`[mirrorMetaMedia] ${reason} (${adId})`)
+      return kind === "video" ? { url: null, error: reason } : { url: sourceUrl }
     }
     const buffer = await res.arrayBuffer()
     const ext = (contentType.split("/")[1]?.split(";")[0] ?? (kind === "video" ? "mp4" : "jpg")).slice(0, 4)
@@ -460,13 +473,17 @@ async function mirrorMetaMedia(projectId: string, adId: string, sourceUrl: strin
     const { error } = await adminStorage.storage.from("ad-lab").upload(path, buffer, { contentType, upsert: true })
     if (error) {
       console.error(`[mirrorMetaMedia] upload failed for ${kind} ${adId}:`, error.message)
-      return kind === "video" ? null : sourceUrl
+      return kind === "video" ? { url: null, error: `No se pudo subir a Storage: ${error.message}` } : { url: sourceUrl }
     }
     const { data: { publicUrl } } = adminStorage.storage.from("ad-lab").getPublicUrl(path)
-    return publicUrl
+    return { url: publicUrl }
   } catch (err) {
-    console.error(`[mirrorMetaMedia] failed for ${kind} ${adId}:`, err instanceof Error ? err.message : err)
-    return kind === "video" ? null : sourceUrl
+    const message = err instanceof Error ? err.message : String(err)
+    console.error(`[mirrorMetaMedia] failed for ${kind} ${adId}:`, message)
+    const reason = message.includes("timeout") || message.includes("abort")
+      ? `Se tardó demasiado en descargar el ${kind} (timeout)`
+      : `Error descargando el ${kind}: ${message}`
+    return kind === "video" ? { url: null, error: reason } : { url: sourceUrl }
   }
 }
 
@@ -498,11 +515,19 @@ export async function importMetaCreatives(projectId: string, inputs: ImportMetaC
 
   for (const input of inputs) {
     try {
-      const [imageUrl, videoUrl, thumbnailUrl] = await Promise.all([
-        input.ad.imageUrl ? mirrorMetaMedia(projectId, input.ad.id, input.ad.imageUrl, "image") : Promise.resolve(null),
-        input.ad.videoUrl ? mirrorMetaMedia(projectId, input.ad.id, input.ad.videoUrl, "video") : Promise.resolve(null),
-        input.ad.thumbnailUrl ? mirrorMetaMedia(projectId, input.ad.id, input.ad.thumbnailUrl, "thumb") : Promise.resolve(null),
+      const noMedia: MirrorResult = { url: null }
+      const [image, video, thumbnail] = await Promise.all([
+        input.ad.imageUrl ? mirrorMetaMedia(projectId, input.ad.id, input.ad.imageUrl, "image") : Promise.resolve(noMedia),
+        input.ad.videoUrl ? mirrorMetaMedia(projectId, input.ad.id, input.ad.videoUrl, "video") : Promise.resolve(noMedia),
+        input.ad.thumbnailUrl ? mirrorMetaMedia(projectId, input.ad.id, input.ad.thumbnailUrl, "thumb") : Promise.resolve(noMedia),
       ])
+
+      // Non-fatal — the creative still gets saved with whatever media did
+      // come through — but shown right here in the import result instead
+      // of only ever visible in server logs.
+      if (input.ad.videoUrl && video.error) {
+        errors.push(`${input.ad.name}: video no se pudo importar (${video.error})`)
+      }
 
       const { error } = await supabase.from("meta_campaign_creatives").upsert({
         project_id: projectId,
@@ -512,9 +537,9 @@ export async function importMetaCreatives(projectId: string, inputs: ImportMetaC
         ad_set_name: input.adSetName,
         ad_id: input.ad.id,
         ad_name: input.ad.name,
-        image_url: imageUrl,
-        video_url: videoUrl,
-        thumbnail_url: thumbnailUrl,
+        image_url: image.url,
+        video_url: video.url,
+        thumbnail_url: thumbnail.url,
         body: input.ad.body,
         title: input.ad.title,
         cta: input.ad.cta,
