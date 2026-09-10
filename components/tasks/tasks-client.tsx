@@ -9,7 +9,8 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip"
 import { getProjectTypeIcon } from "@/lib/project-type-icons"
-import { ChevronLeft, ClipboardList, FolderKanban, ShieldCheck, Sparkles, HelpCircle, ChevronsUpDown, AlertTriangle } from "lucide-react"
+import { ChevronLeft, ClipboardList, FolderKanban, ShieldCheck, Sparkles, HelpCircle, ChevronsUpDown, AlertTriangle, Trash2 } from "lucide-react"
+import { deleteTask } from "@/lib/actions/tasks"
 import type { Task, Profile, Deliverable, Sop } from "@/lib/types"
 import { useTranslations } from "next-intl"
 import { cn } from "@/lib/utils"
@@ -99,6 +100,21 @@ export function TasksClient({ tasks, employees, projects, sops, deliverablesByTa
   const [selectedEmployee, setSelectedEmployee] = useState<string | null>(null) // admin-only audit view
   const [showOrphans, setShowOrphans] = useState(false) // admin-only safety net, see below
   const [showStandup, setShowStandup] = useState(false)
+  // Admin-deleted rows in the team audit view, hidden immediately without
+  // waiting on a full router.refresh() — mistakes dictated over Telegram
+  // sometimes land on the wrong person, and admins need to clear those out
+  // without cluttering the employee's own list.
+  const [deletedTaskIds, setDeletedTaskIds] = useState<Set<string>>(new Set())
+  const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null)
+
+  function handleDeleteEmployeeTask(task: Task) {
+    if (!confirm(`¿Eliminar "${task.title}"? No se puede deshacer.`)) return
+    setDeletingTaskId(task.id)
+    deleteTask(task.id, task.project_id ?? null)
+      .then(() => setDeletedTaskIds((prev) => new Set(prev).add(task.id)))
+      .catch(() => alert("No se pudo eliminar la tarea."))
+      .finally(() => setDeletingTaskId(null))
+  }
 
   function selectProject(key: string) {
     setSelectedProject(key)
@@ -270,7 +286,7 @@ export function TasksClient({ tasks, employees, projects, sops, deliverablesByTa
   if (selectedEmployee !== null) {
     const employee = employees.find((e) => e.id === selectedEmployee)
     const employeeTasks = tasks
-      .filter((task) => task.assignee_id === selectedEmployee && task.status !== "Done")
+      .filter((task) => task.assignee_id === selectedEmployee && task.status !== "Done" && !deletedTaskIds.has(task.id))
       .sort((a, b) => (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999"))
     const today = new Date().toISOString().slice(0, 10)
 
@@ -282,7 +298,7 @@ export function TasksClient({ tasks, employees, projects, sops, deliverablesByTa
             Tareas
           </Button>
           <h1 className="text-2xl font-bold">{employee?.full_name ?? "Equipo"}</h1>
-          <p className="text-muted-foreground text-sm mt-1">{employeeTasks.length} tarea{employeeTasks.length !== 1 ? "s" : ""} pendiente{employeeTasks.length !== 1 ? "s" : ""} — solo lectura, para verificar asignación.</p>
+          <p className="text-muted-foreground text-sm mt-1">{employeeTasks.length} tarea{employeeTasks.length !== 1 ? "s" : ""} pendiente{employeeTasks.length !== 1 ? "s" : ""} — para verificar asignación y limpiar lo que se haya dictado mal.</p>
         </div>
 
         {employeeTasks.length === 0 ? (
@@ -298,6 +314,7 @@ export function TasksClient({ tasks, employees, projects, sops, deliverablesByTa
                   <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Proyecto</th>
                   <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Estado</th>
                   <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Vence</th>
+                  <th className="w-10 px-4 py-2.5" />
                 </tr>
               </thead>
               <tbody>
@@ -317,6 +334,17 @@ export function TasksClient({ tasks, employees, projects, sops, deliverablesByTa
                       </td>
                       <td className={cn("px-4 py-2.5", isOverdue ? "text-destructive font-medium" : "text-muted-foreground")}>
                         {task.due_date ? formatDate(task.due_date) : "—"}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteEmployeeTask(task)}
+                          disabled={deletingTaskId === task.id}
+                          title="Eliminar tarea"
+                          className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </td>
                     </tr>
                   )
