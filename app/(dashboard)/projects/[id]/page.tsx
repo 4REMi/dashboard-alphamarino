@@ -21,7 +21,6 @@ import { getMetaCampaigns, getMetaImportedCreatives } from "@/lib/actions/meta"
 import { getProjectIntegrations } from "@/lib/actions/integrations"
 import { IntegrationsCard } from "@/components/projects/hub/integrations-card"
 import { CreativesHub } from "@/components/projects/hub/creatives/creatives-hub"
-import { MetaHistory } from "@/components/projects/hub/creatives/meta-history"
 import { ProjectActions } from "@/components/projects/project-actions"
 import { ApplyPhasesButton } from "@/components/projects/apply-phases-button"
 import { AddPhasesButton } from "@/components/projects/add-phases-button"
@@ -361,21 +360,15 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               projectBrandBrainId={project.brand_brain_id ?? undefined}
             />
 
-            {/* ── Historial de Meta — creativos de campañas pasadas ── */}
-            {(() => {
-              const metaIntegration = (integrations as ProjectIntegration[]).find((i) => i.platform === "meta")
-              return metaIntegration ? (
-                <div className="mt-8">
-                  <MetaHistory
-                    projectId={project.id}
-                    accountId={metaIntegration.account_id}
-                    initialCreatives={importedMetaCreatives as any[]}
-                    canManage={isAdminOrSubadmin}
-                    activeCycleId={activeCycle?.id ?? null}
-                  />
-                </div>
-              ) : null
-            })()}
+            {/* Historial de Meta (importar creativos de campañas pasadas) —
+                temporalmente quitado de la interfaz: la importación de video
+                nunca resolvió el video/imagen correctamente en ningún
+                proyecto, y el usuario prefiere no mostrar una función rota
+                en vez de dejarla visible a medias. El componente
+                (MetaHistory) y sus acciones (lib/actions/meta.ts) siguen
+                intactos — solo hace falta volver a renderizarlo aquí una vez
+                que se resuelva el bug de origen (ver conversación / logs de
+                Vercel para el JSON crudo de Meta pendiente de revisar). */}
           </section>
         )}
       </div>
