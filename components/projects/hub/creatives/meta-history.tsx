@@ -4,10 +4,10 @@ import { useState, useTransition } from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { MetaImportWizard } from "./meta-import-wizard"
-import { getMetaImportedCreatives } from "@/lib/actions/meta"
+import { getMetaImportedCreatives, deleteMetaImportedCreative, reimportMetaCreative } from "@/lib/actions/meta"
 import { generateConceptsFromMetaCreatives, confirmAIDrafts, getProjectConceptOptions, createAsset, type AIDraftConcept } from "@/lib/actions/creatives"
 import type { MetaCampaignCreative } from "@/lib/types"
-import { Upload, Sparkles, ImageIcon, Loader2, Check, X, Save, Play, ZoomIn } from "lucide-react"
+import { Upload, Sparkles, ImageIcon, Loader2, Check, X, Save, Play, ZoomIn, Trash2, RefreshCw } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface Props {
@@ -50,6 +50,32 @@ export function MetaHistory({ projectId, accountId, initialCreatives, canManage,
   const [assetPickerFor, setAssetPickerFor] = useState<MetaCampaignCreative | null>(null)
   const [conceptOptions, setConceptOptions] = useState<{ id: string; name: string | null; angle_type: string | null }[]>([])
   const [savingAsset, setSavingAsset] = useState(false)
+
+  // CRUD sobre un creativo ya importado — antes la única forma de "arreglar"
+  // uno mal importado era un DELETE manual por SQL.
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [reimportingId, setReimportingId] = useState<string | null>(null)
+
+  function handleDelete(c: MetaCampaignCreative) {
+    if (!confirm(`¿Eliminar "${c.ad_name}" del historial? Esto no borra nada en Meta.`)) return
+    setDeletingId(c.id)
+    deleteMetaImportedCreative(projectId, c.id)
+      .then(() => setCreatives((prev) => prev.filter((x) => x.id !== c.id)))
+      .catch((e) => setError(e instanceof Error ? e.message : "No se pudo eliminar"))
+      .finally(() => setDeletingId(null))
+  }
+
+  function handleReimport(c: MetaCampaignCreative) {
+    setReimportingId(c.id)
+    setError(null)
+    reimportMetaCreative(projectId, c.id)
+      .then((res) => {
+        if (!res.ok) { setError(res.error ?? "No se pudo reimportar"); return }
+        refresh()
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : "No se pudo reimportar"))
+      .finally(() => setReimportingId(null))
+  }
 
   function refresh() {
     startTransition(async () => {
@@ -232,13 +258,40 @@ export function MetaHistory({ projectId, accountId, initialCreatives, canManage,
                       {formatMoney(c.spend)}{c.results ? ` · ${c.results} ${c.results_type ?? ""}` : ""}
                     </p>
                     {canManage && (
-                      <button
-                        type="button"
-                        onClick={() => openAssetPicker(c)}
-                        className="text-[10px] text-primary hover:underline flex items-center gap-0.5"
-                      >
-                        <Save className="w-2.5 h-2.5" /> Guardar como asset
-                      </button>
+                      <div className="space-y-1 pt-0.5">
+                        <button
+                          type="button"
+                          onClick={() => openAssetPicker(c)}
+                          className="text-[10px] text-primary hover:underline flex items-center gap-0.5"
+                        >
+                          <Save className="w-2.5 h-2.5" /> Guardar como asset
+                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleReimport(c)}
+                            disabled={reimportingId === c.id}
+                            title="Volver a traer este creativo de Meta — corrige un thumbnail o video que se importó mal"
+                            className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-0.5 disabled:opacity-50"
+                          >
+                            {reimportingId === c.id
+                              ? <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                              : <RefreshCw className="w-2.5 h-2.5" />}
+                            Reimportar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(c)}
+                            disabled={deletingId === c.id}
+                            className="text-[10px] text-muted-foreground hover:text-destructive flex items-center gap-0.5 disabled:opacity-50"
+                          >
+                            {deletingId === c.id
+                              ? <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                              : <Trash2 className="w-2.5 h-2.5" />}
+                            Eliminar
+                          </button>
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>

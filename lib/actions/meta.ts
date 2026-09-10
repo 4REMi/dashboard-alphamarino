@@ -292,19 +292,63 @@ export interface MetaAdCreative {
   cta: string | null
 }
 
+const AD_CREATIVE_FIELDS =
+  // asset_feed_spec covers Advantage+/dynamic creative ads, whose video and
+  // image live there instead of object_story_spec — ads built that way
+  // were silently coming back with no video_id and a tiny thumbnail_url
+  // for imageUrl, which is exactly the "pixelated, can't play" symptom.
+  "id,name,effective_status,creative{id,thumbnail_url,image_url,video_id,body,title,call_to_action_type,object_story_spec,asset_feed_spec{videos{video_id},images{url}}}"
+
+// Shared by getMetaAds (listing an ad set's ads) and getMetaAdById (a single
+// ad, used to refresh one creative without repeating the whole picker flow)
+// so both resolve video/image the exact same way.
+async function mapAdNodeToCreative(a: any, accessToken: string): Promise<MetaAdCreative> {
+  const creative = a.creative ?? {}
+  const story = creative.object_story_spec ?? {}
+  const linkData = story.link_data ?? {}
+  const videoData = story.video_data ?? {}
+  const feedSpec = creative.asset_feed_spec ?? {}
+
+  let videoUrl: string | null = null
+  const videoId = creative.video_id || videoData.video_id || feedSpec.videos?.[0]?.video_id
+  if (videoId) {
+    try {
+      const vUrl = new URL(`${META_BASE}/${videoId}`)
+      vUrl.searchParams.set("fields", "source")
+      vUrl.searchParams.set("access_token", accessToken)
+      const vRes = await fetch(vUrl.toString(), { cache: "no-store" })
+      const vJson = await vRes.json()
+      if (vJson.error) {
+        console.error(`[mapAdNodeToCreative] video source fetch failed for ${videoId}:`, vJson.error.message)
+      }
+      videoUrl = vJson.source ?? null
+    } catch (err) {
+      console.error(`[mapAdNodeToCreative] video source fetch threw for ${videoId}:`, err instanceof Error ? err.message : err)
+    }
+  }
+
+  return {
+    id: a.id,
+    name: a.name ?? a.id,
+    status: a.effective_status ?? null,
+    // Prefer the full creative image over Meta's thumbnail_url — that
+    // field is a small, deliberately low-res crop, not meant to be shown
+    // at any real size (the pixelated preview the user flagged).
+    thumbnailUrl: creative.thumbnail_url ?? videoData.image_url ?? null,
+    imageUrl: creative.image_url ?? linkData.picture ?? feedSpec.images?.[0]?.url ?? null,
+    videoUrl,
+    body: creative.body ?? linkData.message ?? videoData.message ?? null,
+    title: creative.title ?? linkData.name ?? videoData.title ?? null,
+    cta: creative.call_to_action_type ?? linkData.call_to_action?.type ?? videoData.call_to_action?.type ?? null,
+  }
+}
+
 export async function getMetaAds(adSetId: string): Promise<{ ads: MetaAdCreative[]; error?: string }> {
   const accessToken = process.env.META_SYSTEM_USER_TOKEN
   if (!accessToken) return { ads: [], error: "META_SYSTEM_USER_TOKEN no configurado" }
 
   const url = new URL(`${META_BASE}/${adSetId}/ads`)
-  url.searchParams.set(
-    "fields",
-    // asset_feed_spec covers Advantage+/dynamic creative ads, whose video and
-    // image live there instead of object_story_spec — ads built that way
-    // were silently coming back with no video_id and a tiny thumbnail_url
-    // for imageUrl, which is exactly the "pixelated, can't play" symptom.
-    "id,name,effective_status,creative{id,thumbnail_url,image_url,video_id,body,title,call_to_action_type,object_story_spec,asset_feed_spec{videos{video_id},images{url}}}"
-  )
+  url.searchParams.set("fields", AD_CREATIVE_FIELDS)
   url.searchParams.set("limit", "50")
   url.searchParams.set("access_token", accessToken)
 
@@ -318,48 +362,30 @@ export async function getMetaAds(adSetId: string): Promise<{ ads: MetaAdCreative
   }
 
   const rows = json.data ?? []
-  const ads: MetaAdCreative[] = await Promise.all(rows.map(async (a: any) => {
-    const creative = a.creative ?? {}
-    const story = creative.object_story_spec ?? {}
-    const linkData = story.link_data ?? {}
-    const videoData = story.video_data ?? {}
-    const feedSpec = creative.asset_feed_spec ?? {}
-
-    let videoUrl: string | null = null
-    const videoId = creative.video_id || videoData.video_id || feedSpec.videos?.[0]?.video_id
-    if (videoId) {
-      try {
-        const vUrl = new URL(`${META_BASE}/${videoId}`)
-        vUrl.searchParams.set("fields", "source")
-        vUrl.searchParams.set("access_token", accessToken)
-        const vRes = await fetch(vUrl.toString(), { cache: "no-store" })
-        const vJson = await vRes.json()
-        if (vJson.error) {
-          console.error(`[getMetaAds] video source fetch failed for ${videoId}:`, vJson.error.message)
-        }
-        videoUrl = vJson.source ?? null
-      } catch (err) {
-        console.error(`[getMetaAds] video source fetch threw for ${videoId}:`, err instanceof Error ? err.message : err)
-      }
-    }
-
-    return {
-      id: a.id,
-      name: a.name ?? a.id,
-      status: a.effective_status ?? null,
-      // Prefer the full creative image over Meta's thumbnail_url — that
-      // field is a small, deliberately low-res crop, not meant to be shown
-      // at any real size (the pixelated preview the user flagged).
-      thumbnailUrl: creative.thumbnail_url ?? videoData.image_url ?? null,
-      imageUrl: creative.image_url ?? linkData.picture ?? feedSpec.images?.[0]?.url ?? null,
-      videoUrl,
-      body: creative.body ?? linkData.message ?? videoData.message ?? null,
-      title: creative.title ?? linkData.name ?? videoData.title ?? null,
-      cta: creative.call_to_action_type ?? linkData.call_to_action?.type ?? videoData.call_to_action?.type ?? null,
-    }
-  }))
+  const ads: MetaAdCreative[] = await Promise.all(rows.map((a: any) => mapAdNodeToCreative(a, accessToken)))
 
   return { ads }
+}
+
+// Fetches a single ad node directly by id — used to refresh one already
+// -imported creative (reimportMetaCreative) without repeating the whole
+// campaign -> ad set -> ads picker flow just to fix one broken import.
+export async function getMetaAdById(adId: string): Promise<{ ad: MetaAdCreative | null; error?: string }> {
+  const accessToken = process.env.META_SYSTEM_USER_TOKEN
+  if (!accessToken) return { ad: null, error: "META_SYSTEM_USER_TOKEN no configurado" }
+
+  const url = new URL(`${META_BASE}/${adId}`)
+  url.searchParams.set("fields", AD_CREATIVE_FIELDS)
+  url.searchParams.set("access_token", accessToken)
+
+  try {
+    const res = await fetch(url.toString(), { cache: "no-store" })
+    const json = await res.json()
+    if (json.error) return { ad: null, error: `Meta API: ${json.error.message}` }
+    return { ad: await mapAdNodeToCreative(json, accessToken) }
+  } catch {
+    return { ad: null, error: "Error de red al conectar con Meta" }
+  }
 }
 
 // ── Historial de Meta — importar creativos de campañas pasadas ─────────────
@@ -468,7 +494,12 @@ async function mirrorMetaMedia(projectId: string, adId: string, sourceUrl: strin
     }
     const buffer = await res.arrayBuffer()
     const ext = (contentType.split("/")[1]?.split(";")[0] ?? (kind === "video" ? "mp4" : "jpg")).slice(0, 4)
-    const path = `meta-imports/${projectId}/${adId}-${kind}.${ext}`
+    // A deterministic path (no timestamp) meant reimporting the same ad
+    // overwrote the exact same file at the exact same public URL — which
+    // silently hid the fix behind the browser/CDN's cached copy of the
+    // previous (broken) attempt. Every mirror now gets its own path, so a
+    // reimport always produces a URL nobody has cached yet.
+    const path = `meta-imports/${projectId}/${adId}-${kind}-${Date.now()}.${ext}`
     const adminStorage = createAdminClient()
     const { error } = await adminStorage.storage.from("ad-lab").upload(path, buffer, { contentType, upsert: true })
     if (error) {
@@ -571,4 +602,77 @@ export async function getMetaImportedCreatives(projectId: string): Promise<MetaC
     .order("imported_at", { ascending: false })
   if (error) return []
   return data ?? []
+}
+
+// Extracts the meta-imports/<projectId>/<file> storage path out of a public
+// URL from the ad-lab bucket — used to clean up mirrored files on delete.
+// Anything that isn't actually one of ours (e.g. a Meta URL that never got
+// mirrored) is left alone.
+function storagePathFromPublicUrl(url: string | null): string | null {
+  if (!url) return null
+  const marker = "/storage/v1/object/public/ad-lab/"
+  const i = url.indexOf(marker)
+  return i === -1 ? null : url.slice(i + marker.length)
+}
+
+// Delete — a creative imported wrong (or just no longer wanted) had no way
+// to be removed short of a manual SQL DELETE.
+export async function deleteMetaImportedCreative(projectId: string, creativeId: string): Promise<void> {
+  const supabase = await createClient()
+  const { data: row } = await supabase
+    .from("meta_campaign_creatives")
+    .select("image_url, video_url, thumbnail_url")
+    .eq("id", creativeId)
+    .eq("project_id", projectId)
+    .single()
+
+  const { error } = await supabase
+    .from("meta_campaign_creatives")
+    .delete()
+    .eq("id", creativeId)
+    .eq("project_id", projectId)
+  if (error) throw error
+
+  const paths = [row?.image_url, row?.video_url, row?.thumbnail_url]
+    .map(storagePathFromPublicUrl)
+    .filter((p): p is string => !!p)
+  if (paths.length > 0) {
+    const adminStorage = createAdminClient()
+    await adminStorage.storage.from("ad-lab").remove(paths).catch(() => { /* best effort */ })
+  }
+}
+
+// Update/refresh — re-fetches this one ad from Meta and re-mirrors its
+// media, reusing importMetaCreatives' upsert (now on a fresh, uncached
+// Storage path each time — see mirrorMetaMedia) instead of forcing a trip
+// through the whole campaign -> ad set -> ads picker just to fix one row.
+export async function reimportMetaCreative(projectId: string, creativeId: string): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient()
+  const { data: existing, error: fetchError } = await supabase
+    .from("meta_campaign_creatives")
+    .select("*")
+    .eq("id", creativeId)
+    .eq("project_id", projectId)
+    .single()
+  if (fetchError || !existing) return { ok: false, error: "No se encontró el creativo" }
+
+  const { ad, error: adError } = await getMetaAdById(existing.ad_id)
+  if (adError || !ad) return { ok: false, error: adError ?? "No se pudo obtener el anuncio de Meta" }
+
+  const { errors } = await importMetaCreatives(projectId, [{
+    campaignId: existing.campaign_id,
+    campaignName: existing.campaign_name,
+    adSetId: existing.ad_set_id,
+    adSetName: existing.ad_set_name,
+    ad,
+    campaignMetrics: {
+      spend: existing.spend,
+      results: existing.results,
+      results_type: existing.results_type,
+      date_start: existing.date_start,
+      date_stop: existing.date_stop,
+    },
+  }])
+
+  return errors.length > 0 ? { ok: false, error: errors[0] } : { ok: true }
 }
