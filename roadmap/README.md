@@ -50,5 +50,6 @@ depende de otra cosa, etc.)
 | [auditoria-mobile-dashboard.md](./auditoria-mobile-dashboard.md) | Infra / UI | idea |
 | [telegram-webhook-sin-verificacion.md](./telegram-webhook-sin-verificacion.md) | Telegram / Seguridad | pausado |
 | [notificaciones-por-empleado-telegram.md](./notificaciones-por-empleado-telegram.md) | Telegram / Equipo | construido — ver `lib/notifications/README.md` |
+| [payload-de-lanzamiento-por-ciclo.md](./payload-de-lanzamiento-por-ciclo.md) | Paid Media / Creative Tracker | idea |
 
 Actualiza esta tabla cada vez que agregues o cierres un archivo.
