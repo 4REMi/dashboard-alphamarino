@@ -486,6 +486,43 @@ export async function deleteBriefReference(briefId: string, projectId: string, r
   if (brief?.share_token) revalidatePath(`/share/brief/${brief.share_token}`)
 }
 
+// Marks every script in the brief as client-approved without a real client
+// review — for projects that never get a client share link at all (so
+// nothing would otherwise leave "pending_review"), letting the team still
+// use the approval status as an internal control signal instead of it
+// sitting stale forever. Only touches scripts that actually exist in
+// adapted_script; doesn't invent entries for keys with no script.
+export async function autoApproveBriefScripts(briefId: string, projectId: string): Promise<void> {
+  const { role } = await getRole()
+  if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
+  const supabase = await createClient()
+
+  const { data: existing, error: fetchError } = await supabase
+    .from("creative_briefs")
+    .select("adapted_script, script_reviews")
+    .eq("id", briefId)
+    .single()
+  if (fetchError) throw fetchError
+
+  const rawScript = existing?.adapted_script as Record<string, AdCloneLine[]> | AdCloneLine[] | null
+  const scriptKeys = rawScript && !Array.isArray(rawScript) ? Object.keys(rawScript) : rawScript ? ["_single"] : []
+
+  const scriptReviews = { ...(existing?.script_reviews as Record<string, unknown> | null ?? {}) }
+  for (const key of scriptKeys) {
+    scriptReviews[key] = { client_status: "approved", client_feedback: null }
+  }
+
+  const { data: brief, error } = await supabase
+    .from("creative_briefs")
+    .update({ script_reviews: scriptReviews, updated_at: new Date().toISOString() })
+    .eq("id", briefId)
+    .select("share_token")
+    .single()
+  if (error) throw error
+  revalidateProject(projectId)
+  if (brief?.share_token) revalidatePath(`/share/brief/${brief.share_token}`)
+}
+
 export async function updateBriefNotes(briefId: string, projectId: string, notes: string): Promise<void> {
   const { role } = await getRole()
   if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")

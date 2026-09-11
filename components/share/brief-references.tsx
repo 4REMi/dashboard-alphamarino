@@ -2,10 +2,10 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { updateBriefScript, updateScriptTitle, deleteBriefReference } from "@/lib/actions/creatives"
+import { updateBriefScript, updateScriptTitle, deleteBriefReference, autoApproveBriefScripts } from "@/lib/actions/creatives"
 import { CopyScriptButton } from "@/components/share/copy-script-button"
 import { cn } from "@/lib/utils"
-import { Pencil, Check, X, Trash2 } from "lucide-react"
+import { Pencil, Check, X, Trash2, BadgeCheck } from "lucide-react"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
 import type { AdCloneLine } from "@/lib/types"
 
@@ -69,13 +69,36 @@ export function BriefReferences({ references, briefId, projectId, editable = fal
     })
   }
 
+  function autoApproveAll() {
+    if (!briefId || !projectId) return
+    startTransition(async () => {
+      await autoApproveBriefScripts(briefId, projectId)
+      router.refresh()
+    })
+  }
+
   // Wide desktops have room to compare references side by side instead of
   // scrolling through one long column — grid kicks in only with 2+ refs.
   return (
-    <div className={cn(
-      "flex flex-col gap-3",
-      references.length > 1 && "xl:grid xl:grid-cols-2 xl:items-start"
-    )}>
+    <div className="flex flex-col gap-3">
+      {editable && briefId && projectId && references.some((r) => r.script && r.script.length > 0) && (
+        <div className="flex items-center justify-end">
+          <button
+            type="button"
+            disabled={isPending}
+            onClick={autoApproveAll}
+            title="Marca todos los guiones como aprobados sin pasar por revisión del cliente — para proyectos que no reciben enlace de cliente"
+            className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 transition-colors"
+          >
+            <BadgeCheck className="w-3.5 h-3.5" />
+            Aprobar automáticamente
+          </button>
+        </div>
+      )}
+      <div className={cn(
+        "flex flex-col gap-3",
+        references.length > 1 && "xl:grid xl:grid-cols-2 xl:items-start"
+      )}>
       {references.map((ref) => {
         const isOpen = !closedIds.has(ref.id)
         const isVideo = ref.type === "video"
@@ -270,6 +293,7 @@ export function BriefReferences({ references, briefId, projectId, editable = fal
           </div>
         )
       })}
+      </div>
     </div>
   )
 }
