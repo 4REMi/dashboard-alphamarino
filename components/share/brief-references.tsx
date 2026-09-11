@@ -2,10 +2,10 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { updateBriefScript, updateScriptTitle } from "@/lib/actions/creatives"
+import { updateBriefScript, updateScriptTitle, deleteBriefReference } from "@/lib/actions/creatives"
 import { CopyScriptButton } from "@/components/share/copy-script-button"
 import { cn } from "@/lib/utils"
-import { Pencil, Check, X } from "lucide-react"
+import { Pencil, Check, X, Trash2 } from "lucide-react"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
 import type { AdCloneLine } from "@/lib/types"
 
@@ -39,6 +39,7 @@ export function BriefReferences({ references, briefId, projectId, editable = fal
   // accordion one at a time. Collapsing one just hides that one panel.
   const [closedIds, setClosedIds] = useState<Set<string>>(new Set())
   const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
   const router = useRouter()
 
@@ -55,6 +56,15 @@ export function BriefReferences({ references, briefId, projectId, editable = fal
     startTransition(async () => {
       await updateScriptTitle(briefId, projectId, scriptKey, title)
       setRenamingId(null)
+      router.refresh()
+    })
+  }
+
+  function confirmDelete(referenceKey: string) {
+    if (!briefId || !projectId) return
+    startTransition(async () => {
+      await deleteBriefReference(briefId, projectId, referenceKey)
+      setDeletingId(null)
       router.refresh()
     })
   }
@@ -157,6 +167,41 @@ export function BriefReferences({ references, briefId, projectId, editable = fal
                   )}
                 </div>
               </div>
+
+              {/* Delete reference */}
+              {editable && briefId && projectId && (
+                deletingId === ref.id ? (
+                  <div className="flex items-center gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                    <span className="text-[10px] text-gray-500">¿Eliminar?</span>
+                    <button
+                      type="button"
+                      disabled={isPending}
+                      onClick={() => confirmDelete(ref.id)}
+                      className="p-1 rounded text-red-600 hover:bg-red-50 disabled:opacity-50"
+                      title="Confirmar eliminación"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeletingId(null)}
+                      className="p-1 rounded text-gray-400 hover:bg-gray-100"
+                      title="Cancelar"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setDeletingId(ref.id) }}
+                    className="flex-shrink-0 p-1 text-gray-300 hover:text-red-600 transition-colors"
+                    title="Eliminar esta referencia del brief"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )
+              )}
 
               {/* Chevron */}
               <svg

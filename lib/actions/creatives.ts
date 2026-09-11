@@ -439,6 +439,53 @@ export async function updateScriptTitle(briefId: string, projectId: string, scri
   if (brief?.share_token) revalidatePath(`/share/brief/${brief.share_token}`)
 }
 
+// Removes one video/script reference from an already-created brief (e.g. 4
+// videos were attached but only 1 is actually going to production, or one
+// was picked by mistake). A reference is identified by a single key shared
+// across every per-reference column — a real ad id for an attached video, or
+// a synthetic key ("manual"/"gen_N") for a script written from scratch — so
+// this strips that key from all of them together to avoid leaving orphaned
+// entries that would still render as a phantom reference on the share page.
+export async function deleteBriefReference(briefId: string, projectId: string, referenceKey: string): Promise<void> {
+  const { role } = await getRole()
+  if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
+  const supabase = await createClient()
+
+  const { data: existing, error: fetchError } = await supabase
+    .from("creative_briefs")
+    .select("attached_ad_ids, adapted_script, script_reviews, script_titles, no_transcribe_ad_ids")
+    .eq("id", briefId)
+    .single()
+  if (fetchError) throw fetchError
+
+  const attachedAdIds = ((existing?.attached_ad_ids as string[] | null) ?? []).filter((id) => id !== referenceKey)
+  const noTranscribeAdIds = ((existing?.no_transcribe_ad_ids as string[] | null) ?? []).filter((id) => id !== referenceKey)
+
+  const adaptedScript = { ...(existing?.adapted_script as Record<string, AdCloneLine[]> | null ?? {}) }
+  delete adaptedScript[referenceKey]
+  const scriptReviews = { ...(existing?.script_reviews as Record<string, unknown> | null ?? {}) }
+  delete scriptReviews[referenceKey]
+  const scriptTitles = { ...(existing?.script_titles as Record<string, string> | null ?? {}) }
+  delete scriptTitles[referenceKey]
+
+  const { data: brief, error } = await supabase
+    .from("creative_briefs")
+    .update({
+      attached_ad_ids: attachedAdIds,
+      adapted_script: adaptedScript,
+      script_reviews: scriptReviews,
+      script_titles: scriptTitles,
+      no_transcribe_ad_ids: noTranscribeAdIds,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", briefId)
+    .select("share_token")
+    .single()
+  if (error) throw error
+  revalidateProject(projectId)
+  if (brief?.share_token) revalidatePath(`/share/brief/${brief.share_token}`)
+}
+
 export async function updateBriefNotes(briefId: string, projectId: string, notes: string): Promise<void> {
   const { role } = await getRole()
   if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
