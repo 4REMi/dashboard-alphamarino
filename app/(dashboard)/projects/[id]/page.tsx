@@ -31,6 +31,7 @@ import { PaidMediaContextCard } from "@/components/projects/hub/paid-media-conte
 import { PaidMediaCycleCard } from "@/components/projects/hub/paid-media-cycle-card"
 import { PaidMediaCycleHistory } from "@/components/projects/hub/paid-media-cycle-history"
 import { WebContextCard } from "@/components/projects/hub/web-context-card"
+import { ServiceDeliverablesCard } from "@/components/projects/hub/service-deliverables-card"
 import { ExpandableDescription } from "@/components/projects/expandable-description"
 import { DeliverablesSectionClient } from "@/components/projects/deliverables-section"
 import { Progress } from "@/components/ui/progress"
@@ -67,6 +68,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const canEditProjects   = can(profile as Profile, "edit_projects")
   const canManageTeam     = can(profile as Profile, "manage_team")
   const canManageTasks    = can(profile as Profile, "manage_tasks")
+  const canViewServiceDeliverables = can(profile as Profile, "view_service_deliverables")
 
   const projectType = project.project_type as { name: string; color?: string | null; icon?: string | null } | null
   const isPaidMedia = projectType?.name?.toLowerCase().includes("paid media") ||
@@ -225,6 +227,19 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           <div className="border border-border rounded-xl px-5 py-4 bg-card">
             <ExpandableDescription text={project.description} />
           </div>
+        )}
+
+        {/* ── Alcance del servicio — cualquier tipo de proyecto, no solo
+            Paid Media. Entregables que el CLIENTE recibe (videos, reportes,
+            juntas) según lo contratado en Servicios — no confundir con la
+            sección "Entregables" de abajo, que es evidencia interna por
+            tarea. Puramente interno: nada de esto se expone al cliente. ── */}
+        {canViewServiceDeliverables && (
+          <ServiceDeliverablesCard
+            projectId={project.id}
+            canManage={isAdminOrSubadmin}
+            canMark={isAdminOrSubadmin || canManageTasks}
+          />
         )}
 
         {/* ── Phases — full width, above tasks ───────────────────────── */}

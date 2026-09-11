@@ -43,7 +43,7 @@ depende de otra cosa, etc.)
 
 | Archivo | Área | Estado |
 |---|---|---|
-| [deliverables-por-proyecto.md](./deliverables-por-proyecto.md) | Servicios / Proyectos | mapeado |
+| [deliverables-por-proyecto.md](./deliverables-por-proyecto.md) | Servicios / Proyectos | construido — ver `docs/agent-guides/entregables-de-servicio.md` |
 | [consultas-por-voz.md](./consultas-por-voz.md) | Telegram/Vowen | idea |
 | [alertas-proactivas-telegram.md](./alertas-proactivas-telegram.md) | Telegram | idea |
 | [aprobaciones-con-botones-telegram.md](./aprobaciones-con-botones-telegram.md) | Telegram | idea |
@@ -52,5 +52,6 @@ depende de otra cosa, etc.)
 | [notificaciones-por-empleado-telegram.md](./notificaciones-por-empleado-telegram.md) | Telegram / Equipo | construido — ver `lib/notifications/README.md` |
 | [payload-de-lanzamiento-por-ciclo.md](./payload-de-lanzamiento-por-ciclo.md) | Paid Media / Creative Tracker | mapeado |
 | [reportes-estandarizados-por-ciclo.md](./reportes-estandarizados-por-ciclo.md) | Paid Media / Creative Tracker | idea |
+| [acceso-ventas-banco-ofertas.md](./acceso-ventas-banco-ofertas.md) | Servicios / Permisos | idea |
 
 Actualiza esta tabla cada vez que agregues o cierres un archivo.

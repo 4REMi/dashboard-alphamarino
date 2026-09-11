@@ -80,5 +80,6 @@ grep-ear todo el repo desde cero.
 |---|---|---|
 | [tareas.md](./tareas.md) | Tareas (`/tasks`) | 2026-09-11 |
 | [guiones-por-voz.md](./guiones-por-voz.md) | Bot Telegram/Vowen — guiones (🚧 borrador, sin construir) | 2026-09-11 |
+| [entregables-de-servicio.md](./entregables-de-servicio.md) | Servicios / Proyectos — alcance del servicio | 2026-09-11 |
 
 Actualiza esta tabla cada vez que agregues un archivo nuevo.

@@ -1176,8 +1176,18 @@ export type ServiceStatus = "active" | "archived"
 export type DeliverableCadence = "once" | "monthly" | "quarterly" | "biannual"
 
 export interface ServiceDeliverable {
+  // Generated client-side (crypto.randomUUID()) when a line is added — lets a
+  // project_deliverable_period reference a specific line stably even though
+  // deliverables live as a JSONB array with no row id of its own. Older
+  // entries saved before this field existed get one assigned lazily when
+  // loaded into the editor (see parseDeliverables/DeliverablesEditor).
+  id: string
   text: string
   cadence: DeliverableCadence
+  // Units expected per period of that cadence (e.g. "4" videos/month). null
+  // = no defined quantity — treated as 1 (a single trackable unit) wherever
+  // this gets turned into a tracked deliverable period.
+  quantity: number | null
 }
 
 export interface ServiceAddon {
@@ -1213,6 +1223,39 @@ export interface ServiceOffer {
   based_on_offer?: Pick<ServiceOffer, "id" | "name"> | null
   default_project_type?: Pick<ProjectType, "id" | "name" | "color" | "icon"> | null
   addons?: ServiceAddon[]
+}
+
+// A project can have several offers attached at once (many-to-many) — each
+// one contributes its own deliverables to that project's tracked scope.
+// Entirely separate from the internal task/deliverable system
+// (tasks.requires_deliverable, the `deliverables` table): this is about what
+// the client tangibly receives, not internal work artifacts.
+export interface ProjectServiceOffer {
+  id: string
+  project_id: string
+  service_offer_id: string
+  added_by: string | null
+  created_at: string
+  service_offer?: ServiceOffer | null
+}
+
+// One row per (project, offer, deliverable line, period) — lazily created
+// the first time that period is viewed, so expected_quantity can be
+// overridden for one specific period without touching the offer's own
+// definition or any other period.
+export interface ProjectDeliverablePeriod {
+  id: string
+  project_id: string
+  service_offer_id: string
+  deliverable_key: string
+  deliverable_text: string
+  period_start: string
+  period_label: string
+  expected_quantity: number
+  fulfilled_quantity: number
+  notes: string | null
+  created_at: string
+  updated_at: string
 }
 
 // ============================================================

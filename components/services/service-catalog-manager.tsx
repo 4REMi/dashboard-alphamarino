@@ -67,19 +67,28 @@ function DeliverablesEditor({ value, onChange }: { value: ServiceDeliverable[]; 
     onChange(value.filter((_, idx) => idx !== i))
   }
   function add() {
-    onChange([...value, { text: "", cadence: "once" }])
+    onChange([...value, { id: crypto.randomUUID(), text: "", cadence: "once", quantity: null }])
   }
 
   return (
     <div className="space-y-1.5">
       <input type="hidden" name="deliverables_json" value={JSON.stringify(value)} />
       {value.map((d, i) => (
-        <div key={i} className="flex items-center gap-1.5">
+        <div key={d.id} className="flex items-center gap-1.5">
           <input
             value={d.text}
             onChange={(e) => update(i, { text: e.target.value })}
             placeholder="Reporte semanal de resultados"
             className="flex-1 min-w-0 rounded-md border border-input bg-background px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+          <input
+            type="number"
+            min="0"
+            value={d.quantity ?? ""}
+            onChange={(e) => update(i, { quantity: e.target.value === "" ? null : Number(e.target.value) })}
+            placeholder="Cant."
+            title="Cantidad esperada por periodo (ej. 4 videos/mes) — opcional"
+            className="w-16 flex-shrink-0 rounded-md border border-input bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
           />
           <select
             value={d.cadence}
@@ -132,7 +141,16 @@ function OfferForm({
   const [category, setCategory] = useState(base?.category ?? "")
   const [name, setName] = useState(initial?.name ?? (prefillFrom ? `${prefillFrom.name} — tropicalización` : ""))
   const [description, setDescription] = useState(initial?.description ?? prefillFrom?.description ?? "")
-  const [deliverables, setDeliverables] = useState<ServiceDeliverable[]>(initial?.deliverables ?? prefillFrom?.deliverables ?? [])
+  // Lines saved before `id`/`quantity` existed get them backfilled here on
+  // load — no migration needed, deliverables live as a flexible JSONB array.
+  const [deliverables, setDeliverables] = useState<ServiceDeliverable[]>(
+    (initial?.deliverables ?? prefillFrom?.deliverables ?? []).map((d) => ({
+      id: d.id || crypto.randomUUID(),
+      text: d.text,
+      cadence: d.cadence,
+      quantity: d.quantity ?? null,
+    }))
+  )
   const [projectTypeId, setProjectTypeId] = useState(initial?.default_project_type_id ?? "")
   const [aiHint, setAiHint] = useState("")
   const [aiLoading, setAiLoading] = useState(false)
@@ -435,9 +453,9 @@ function OfferCard({
       {offer.deliverables.length > 0 && (
         <ul className="text-xs text-muted-foreground space-y-0.5 pl-1">
           {offer.deliverables.map((d, i) => (
-            <li key={i} className="flex items-start gap-1.5">
+            <li key={d.id ?? i} className="flex items-start gap-1.5">
               <span className="text-primary/60 mt-0.5">•</span>
-              <span className="flex-1">{d.text}</span>
+              <span className="flex-1">{d.text}{d.quantity != null && ` — ${d.quantity}`}</span>
               {d.cadence !== "once" && (
                 <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-sky-50 text-sky-700 flex-shrink-0">
                   {CADENCE_LABEL[d.cadence]}

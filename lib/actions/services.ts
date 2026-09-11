@@ -21,8 +21,13 @@ function parseDeliverables(formData: FormData): ServiceDeliverable[] {
     if (!Array.isArray(parsed)) return []
     return parsed
       .map((d) => ({
+        // The editor generates an id client-side for every line (including
+        // ones loaded from before this field existed) — this is just a
+        // server-side safety net in case one ever arrives missing.
+        id: String(d?.id ?? "").trim() || crypto.randomUUID(),
         text: String(d?.text ?? "").trim(),
         cadence: (CADENCES as string[]).includes(d?.cadence) ? d.cadence as DeliverableCadence : "once",
+        quantity: Number.isFinite(Number(d?.quantity)) && d?.quantity !== "" && d?.quantity != null ? Number(d.quantity) : null,
       }))
       .filter((d) => d.text)
   } catch {
@@ -278,10 +283,14 @@ Responde ÚNICAMENTE con JSON válido (sin markdown, sin explicación):
   const validTypeId = input.projectTypes.some((t) => t.id === parsed.project_type_id) ? parsed.project_type_id! : null
   return {
     description: parsed.description?.trim() || "",
+    // Quantity is deliberately never AI-guessed — same rule as price/is_base/
+    // based_on, a contract number is a deliberate human call.
     deliverables: (parsed.deliverables ?? [])
       .map((d) => ({
+        id: crypto.randomUUID(),
         text: (d.text ?? "").trim(),
         cadence: (CADENCES as string[]).includes(d.cadence ?? "") ? (d.cadence as DeliverableCadence) : "once",
+        quantity: null,
       }))
       .filter((d) => d.text),
     project_type_id: validTypeId,

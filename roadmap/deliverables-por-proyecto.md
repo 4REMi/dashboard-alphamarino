@@ -1,8 +1,9 @@
 # Chequeo de entregables por proyecto, conectado a Servicios
 
-**Estado:** mapeado
+**Estado:** construido — ver `docs/agent-guides/entregables-de-servicio.md`
 **Área:** Servicios / Proyectos
 **Agregado:** 2026-09-08
+**Construido:** 2026-09-11
 
 ## Contexto
 El catálogo de Servicios (`/services`) ya tiene `ServiceOffer.deliverables: ServiceDeliverable[]`,
