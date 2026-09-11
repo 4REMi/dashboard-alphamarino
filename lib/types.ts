@@ -1246,7 +1246,10 @@ export interface ProjectServiceOffer {
 export interface ProjectDeliverablePeriod {
   id: string
   project_id: string
-  service_offer_id: string
+  // null when this period comes from a project_custom_deliverables line
+  // instead of a catalog offer — a one-off deliverable for a project whose
+  // scope isn't common enough to formalize as a reusable Servicios offer.
+  service_offer_id: string | null
   deliverable_key: string
   deliverable_text: string
   period_start: string
@@ -1256,6 +1259,18 @@ export interface ProjectDeliverablePeriod {
   notes: string | null
   created_at: string
   updated_at: string
+}
+
+// The definition behind a custom (non-catalog) deliverable period — one row
+// per one-off entregable a project tracks outside of any attached offer.
+export interface ProjectCustomDeliverable {
+  id: string
+  project_id: string
+  text: string
+  cadence: DeliverableCadence
+  quantity: number | null
+  created_by: string | null
+  created_at: string
 }
 
 // ============================================================

@@ -47,6 +47,18 @@ nunca se expone fuera del dashboard. Es control interno del equipo, punto.
   definición original en Servicios.
 - **Línea sin cantidad (`quantity: null`)**: se trata como 1 unidad implícita — sí
   se rastrea, como una casilla simple de entregado/no entregado.
+- **Entregable personalizado** (`project_custom_deliverables`): un entregable
+  puntual de UN proyecto en particular, sin pasar por ninguna oferta del catálogo —
+  para proyectos cuyo alcance no es común/repetible y no vale la pena formalizar
+  como oferta reusable. Genera periodos exactamente igual que uno de catálogo, solo
+  que `project_deliverable_periods.service_offer_id` queda en `null` para esas filas.
+- **Edición por periodo (texto y cantidad)**: el lápiz junto a cada entregable edita
+  el texto Y la cantidad esperada de **ese periodo únicamente** — nunca modifica la
+  oferta del catálogo ni ningún otro proyecto. Importante: no es una sobreescritura
+  permanente — la próxima vez que ese periodo se regenere (el siguiente mes/
+  trimestre/etc.), vuelve a jalar el texto original de la fuente (la oferta, o la
+  definición del entregable personalizado). Es deliberadamente el mismo
+  comportamiento que ya tenía la edición de cantidad, no un modelo nuevo.
 
 ## Cómo hacer las acciones comunes
 
@@ -61,13 +73,20 @@ del servicio" del proyecto (admin/subadmin).
 cada clic avanza/retrocede el contador de cumplido (admin/subadmin, o cualquiera con
 el permiso `manage_tasks`).
 
-**Ajustar la cantidad esperada de un periodo específico**: ícono de lápiz junto al
-contador (solo admin/subadmin) — cambia SOLO ese periodo, no la oferta.
+**Ajustar el texto o la cantidad esperada de un periodo específico**: ícono de lápiz
+junto al entregable (solo admin/subadmin) — cambia SOLO ese periodo, no la oferta ni
+la definición del entregable personalizado.
+
+**Agregar un entregable personalizado**: botón "Entregable personalizado" en la
+tarjeta del proyecto (admin/subadmin) — texto, cadencia y cantidad libres, sin
+ninguna oferta de por medio. Para eliminarlo, la X junto al entregable en su propia
+sección "Entregables personalizados".
 
 ## Reglas y restricciones
 
-- Quitar una oferta de un proyecto **no borra el historial** de periodos ya
-  generados — solo detiene la generación de periodos nuevos para esa oferta.
+- Quitar una oferta de un proyecto (o eliminar un entregable personalizado) **no
+  borra el historial** de periodos ya generados — solo detiene la generación de
+  periodos nuevos para esa línea.
 - El periodo vigente se calcula siempre por calendario, para todos los tipos de
   proyecto por igual — nunca se acopla a un concepto de ciclo específico de un tipo
   de proyecto (ej. Paid Media).
@@ -79,8 +98,9 @@ contador (solo admin/subadmin) — cambia SOLO ese periodo, no la oferta.
   (`lib/permissions.ts`) — default `true` para todos los roles, pero es un override
   real: un admin puede apagarlo para una persona específica desde su perfil, igual
   que cualquier otro permission key del sistema.
-- **Adjuntar/quitar oferta, editar cantidad esperada de un periodo**: solo
-  admin/subadmin — es una decisión de alcance/contrato.
+- **Adjuntar/quitar oferta, agregar/eliminar entregable personalizado, editar
+  texto/cantidad de un periodo**: solo admin/subadmin — es una decisión de
+  alcance/contrato.
 - **Marcar como entregado**: admin/subadmin, o cualquiera con `manage_tasks` — misma
   gente que ya toca el avance operativo día a día del proyecto.
 
@@ -88,12 +108,15 @@ contador (solo admin/subadmin) — cambia SOLO ese periodo, no la oferta.
 
 - `supabase/migrations/072_project_service_offers.sql` — tabla de ofertas adjuntas.
 - `supabase/migrations/073_project_deliverable_periods.sql` — tabla de periodos.
+- `supabase/migrations/074_project_custom_deliverables.sql` — entregables
+  personalizados + `service_offer_id` nullable en periodos.
 - `lib/actions/service-deliverables.ts` — todas las acciones (attach/detach,
-  generación perezosa de periodos, marcar entregado, ajustar cantidad).
+  entregables personalizados, generación perezosa de periodos, marcar entregado,
+  editar texto/cantidad por periodo).
 - `components/projects/hub/service-deliverables-card.tsx` — la tarjeta del hub.
 - `lib/actions/services.ts` — `parseDeliverables` (id/quantity por línea).
 - `components/services/service-catalog-manager.tsx` — `DeliverablesEditor` (input
   de cantidad).
 - `lib/types.ts` — `ServiceDeliverable`, `ProjectServiceOffer`,
-  `ProjectDeliverablePeriod`.
+  `ProjectDeliverablePeriod`, `ProjectCustomDeliverable`.
 - `lib/permissions.ts` — `view_service_deliverables`.
