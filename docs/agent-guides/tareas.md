@@ -94,9 +94,9 @@ nunca se infiere del contenido.
   que un empleado cree ahí se espera que sea del tablero compartido, sin la opción
   de sacarla de ahí sin querer.
 - **La vista de auditoría "Equipo" (admin-only) es editable, no de solo lectura**:
-  se puede eliminar una tarea de un empleado directamente ahí (con confirmación) —
-  pensado para limpiar pendientes mal dictados por voz sin ensuciarle la lista a
-  nadie.
+  se puede eliminar una tarea de un empleado directamente ahí (con confirmación), o
+  marcarla como hecha en un clic sin tener que rastrear a la persona — pensado para
+  limpiar/resolver pendientes mal dictados por voz sin ensuciarle la lista a nadie.
 - Cambiar de proyecto (crear uno nuevo, mover una tarea) **no tiene una acción de
   "cambiar el project_id de una tarea existente"** todavía — solo se define al
   crearla.

@@ -9,8 +9,8 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip"
 import { getProjectTypeIcon } from "@/lib/project-type-icons"
-import { ChevronLeft, ClipboardList, FolderKanban, ShieldCheck, Sparkles, HelpCircle, ChevronsUpDown, AlertTriangle, Trash2 } from "lucide-react"
-import { deleteTask } from "@/lib/actions/tasks"
+import { ChevronLeft, ClipboardList, FolderKanban, ShieldCheck, Sparkles, HelpCircle, ChevronsUpDown, AlertTriangle, Trash2, Check } from "lucide-react"
+import { deleteTask, updateTaskStatus } from "@/lib/actions/tasks"
 import type { Task, Profile, Deliverable, Sop } from "@/lib/types"
 import { useTranslations } from "next-intl"
 import { cn } from "@/lib/utils"
@@ -104,16 +104,25 @@ export function TasksClient({ tasks, employees, projects, sops, deliverablesByTa
   // waiting on a full router.refresh() — mistakes dictated over Telegram
   // sometimes land on the wrong person, and admins need to clear those out
   // without cluttering the employee's own list.
-  const [deletedTaskIds, setDeletedTaskIds] = useState<Set<string>>(new Set())
+  const [hiddenTaskIds, setHiddenTaskIds] = useState<Set<string>>(new Set())
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null)
+  const [completingTaskId, setCompletingTaskId] = useState<string | null>(null)
 
   function handleDeleteEmployeeTask(task: Task) {
     if (!confirm(`¿Eliminar "${task.title}"? No se puede deshacer.`)) return
     setDeletingTaskId(task.id)
     deleteTask(task.id, task.project_id ?? null)
-      .then(() => setDeletedTaskIds((prev) => new Set(prev).add(task.id)))
+      .then(() => setHiddenTaskIds((prev) => new Set(prev).add(task.id)))
       .catch(() => alert("No se pudo eliminar la tarea."))
       .finally(() => setDeletingTaskId(null))
+  }
+
+  function handleCompleteEmployeeTask(task: Task) {
+    setCompletingTaskId(task.id)
+    updateTaskStatus(task.id, "Done", task.project_id ?? null)
+      .then(() => setHiddenTaskIds((prev) => new Set(prev).add(task.id)))
+      .catch((e) => alert(e instanceof Error ? e.message : "No se pudo marcar como hecha."))
+      .finally(() => setCompletingTaskId(null))
   }
 
   function selectProject(key: string) {
@@ -286,7 +295,7 @@ export function TasksClient({ tasks, employees, projects, sops, deliverablesByTa
   if (selectedEmployee !== null) {
     const employee = employees.find((e) => e.id === selectedEmployee)
     const employeeTasks = tasks
-      .filter((task) => task.assignee_id === selectedEmployee && task.status !== "Done" && !deletedTaskIds.has(task.id))
+      .filter((task) => task.assignee_id === selectedEmployee && task.status !== "Done" && !hiddenTaskIds.has(task.id))
       .sort((a, b) => (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999"))
     const today = new Date().toISOString().slice(0, 10)
 
@@ -298,7 +307,7 @@ export function TasksClient({ tasks, employees, projects, sops, deliverablesByTa
             Tareas
           </Button>
           <h1 className="text-2xl font-bold">{employee?.full_name ?? "Equipo"}</h1>
-          <p className="text-muted-foreground text-sm mt-1">{employeeTasks.length} tarea{employeeTasks.length !== 1 ? "s" : ""} pendiente{employeeTasks.length !== 1 ? "s" : ""} — para verificar asignación y limpiar lo que se haya dictado mal.</p>
+          <p className="text-muted-foreground text-sm mt-1">{employeeTasks.length} tarea{employeeTasks.length !== 1 ? "s" : ""} pendiente{employeeTasks.length !== 1 ? "s" : ""} — verifica asignación, marca como hecha o elimina lo que se haya dictado mal.</p>
         </div>
 
         {employeeTasks.length === 0 ? (
@@ -336,15 +345,26 @@ export function TasksClient({ tasks, employees, projects, sops, deliverablesByTa
                         {task.due_date ? formatDate(task.due_date) : "—"}
                       </td>
                       <td className="px-4 py-2.5">
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteEmployeeTask(task)}
-                          disabled={deletingTaskId === task.id}
-                          title="Eliminar tarea"
-                          className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleCompleteEmployeeTask(task)}
+                            disabled={completingTaskId === task.id}
+                            title="Marcar como hecha"
+                            className="p-1 rounded text-muted-foreground hover:text-success hover:bg-success/10 transition-colors disabled:opacity-50"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteEmployeeTask(task)}
+                            disabled={deletingTaskId === task.id}
+                            title="Eliminar tarea"
+                            className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   )
