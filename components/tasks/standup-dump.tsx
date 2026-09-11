@@ -8,7 +8,7 @@ import { AutoTextarea } from "@/components/ui/auto-textarea"
 import { processStandup } from "@/lib/actions/standup"
 import { createTask } from "@/lib/actions/tasks"
 import { addLogEntry } from "@/lib/actions/projects"
-import { Loader2, Sparkles, X, Check, ClipboardList, MessageSquare, Lock, Users, ChevronDown } from "lucide-react"
+import { Loader2, Sparkles, X, Check, ClipboardList, MessageSquare, Lock, Users, ChevronDown, Plus } from "lucide-react"
 import type { Profile } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -72,6 +72,14 @@ export function StandupDump({ projects, employees, currentUserId, onClose, onCre
   const [minimized, setMinimized] = useState(false)
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
+  // "Agregar más" — once you're mid-review, more pendings come to mind
+  // without wanting to lose the polishing already done on the current
+  // batch. Runs the same classify+resolve pass on new text and appends the
+  // result to the existing (unconfirmed) items instead of replacing them.
+  const [addingMore, setAddingMore] = useState(false)
+  const [moreText, setMoreText] = useState("")
+  const [processingMore, setProcessingMore] = useState(false)
+
   // Escape minimizes rather than closing, for the same reason.
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === "Escape") setMinimized(true) }
@@ -105,6 +113,29 @@ export function StandupDump({ projects, employees, currentUserId, onClose, onCre
       })
       .catch((e) => setError(e instanceof Error ? e.message : "No se pudo interpretar el texto"))
       .finally(() => setProcessing(false))
+  }
+
+  function handleProcessMore() {
+    if (!moreText.trim()) return
+    setError(null)
+    setProcessingMore(true)
+    processStandup(moreText)
+      .then((results) => {
+        const newItems = results.map((r, i) => ({
+          key: `more-${i}-${Date.now()}`,
+          tipo: r.tipo,
+          title: r.tipo === "tarea" ? (r.titulo ?? "") : (r.descripcion ?? ""),
+          projectId: r.projectIdGuess ?? "",
+          assigneeId: r.assigneeIdGuess ?? currentUserId,
+          dueDate: r.fecha ?? "",
+          isPersonal: false,
+        }))
+        setItems((prev) => [...(prev ?? []), ...newItems])
+        setMoreText("")
+        setAddingMore(false)
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : "No se pudo interpretar el texto"))
+      .finally(() => setProcessingMore(false))
   }
 
   function updateItem(key: string, patch: Partial<EditableItem>) {
@@ -265,9 +296,41 @@ export function StandupDump({ projects, employees, currentUserId, onClose, onCre
             </div>
           ) : (
             <>
-              <p className="text-xs text-muted-foreground">
-                Nada se ha creado todavía. Revisa y corrige proyecto/responsable antes de confirmar — descarta lo que no aplique.
-              </p>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs text-muted-foreground">
+                  Nada se ha creado todavía. Revisa y corrige proyecto/responsable antes de confirmar — descarta lo que no aplique.
+                </p>
+                {!addingMore && (
+                  <Button size="sm" variant="outline" onClick={() => setAddingMore(true)} className="flex-shrink-0">
+                    <Plus className="w-3.5 h-3.5 mr-1" />
+                    Agregar más
+                  </Button>
+                )}
+              </div>
+
+              {addingMore && (
+                <div className="border rounded-xl p-3 space-y-2 bg-muted/30">
+                  <AutoTextarea
+                    value={moreText}
+                    onChange={(e) => setMoreText(e.target.value)}
+                    rows={3}
+                    placeholder="Escribe los pendientes que se te acaban de ocurrir — se agregan a los de abajo, sin tocar lo que ya revisaste."
+                    className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+                    style={{ maxHeight: "10rem", overflowY: "auto" }}
+                    autoFocus
+                  />
+                  <div className="flex justify-end gap-2">
+                    <Button size="sm" variant="ghost" onClick={() => { setAddingMore(false); setMoreText("") }}>
+                      Cancelar
+                    </Button>
+                    <Button size="sm" onClick={handleProcessMore} disabled={!moreText.trim() || processingMore}>
+                      {processingMore ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5 mr-1.5" />}
+                      Agregar a la lista
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
                 {items.length === 0 && (
                   <p className="text-sm text-muted-foreground text-center py-8 sm:col-span-2 xl:col-span-3">No queda nada por confirmar.</p>
