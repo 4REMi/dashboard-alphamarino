@@ -73,7 +73,7 @@ export function Sidebar({ profile, logoUrl, myPendingTaskCount = 0, mobileOpen =
   const navItems: NavItem[] = [
     { href: "/", icon: LayoutDashboard, label: t("dashboard") },
     { href: "/customers", icon: Users, label: t("clients") },
-    { href: "/services", icon: Tag, label: "Servicios", adminOnly: true },
+    { href: "/services", icon: Tag, label: "Ofertas", adminOnly: true },
     { href: "/projects", icon: FolderKanban, label: t("projects") },
     { href: "/tasks", icon: CheckSquare, label: t("tasks"), badge: myPendingTaskCount },
     { href: "/finances", icon: DollarSign, label: t("finances"), permission: "view_global_finances" },

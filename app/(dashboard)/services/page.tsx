@@ -21,7 +21,7 @@ export default async function ServicesPage() {
   return (
     <div className="p-6 space-y-4">
       <div>
-        <h1 className="text-2xl font-bold">Servicios</h1>
+        <h1 className="text-2xl font-bold">Ofertas</h1>
         <p className="text-sm text-muted-foreground mt-1">
           Catálogo interno de ofertas y addons de la agencia — referencia para cotizar y pitchear.
         </p>
