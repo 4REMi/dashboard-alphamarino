@@ -7,23 +7,35 @@
 //
 // To add a new event:
 //   1. Add an entry below with a `label` (Spanish, for the log/UI)
-//      and a `build(data)` function that returns the message text.
+//      and a `build(data, lang)` function that returns the message text
+//      in Spanish or English depending on `lang`.
 //   2. Call `notify(profileId, "your_event_key", { ...data })` at
 //      whatever point in the code triggers it.
 // That's it — no other file needs to change. See README.md in this
 // folder for the full guide and the list of what's wired up so far.
+//
+// Language: notify() reads the recipient's own profiles.language ("es" |
+// "en", same field the dashboard UI already uses for their locale) and
+// passes it to build() — each person gets notified in whatever language
+// they already use, no separate notification-language setting needed.
 // ============================================================
+
+export type NotificationLang = "es" | "en"
 
 export const NOTIFICATION_EVENTS = {
   task_assigned: {
     label: "Tarea asignada",
-    build: (data: { taskTitle: string; projectName?: string }) =>
-      `📋 Se te asignó una tarea: *${data.taskTitle}*${data.projectName ? ` · ${data.projectName}` : ""}`,
+    build: (data: { taskTitle: string; projectName?: string }, lang: NotificationLang) =>
+      lang === "en"
+        ? `📋 You were assigned a task: *${data.taskTitle}*${data.projectName ? ` · ${data.projectName}` : ""}`
+        : `📋 Se te asignó una tarea: *${data.taskTitle}*${data.projectName ? ` · ${data.projectName}` : ""}`,
   },
   project_member_added: {
     label: "Agregado a proyecto",
-    build: (data: { projectName: string }) =>
-      `📁 Te agregaron al proyecto *${data.projectName}*`,
+    build: (data: { projectName: string }, lang: NotificationLang) =>
+      lang === "en"
+        ? `📁 You were added to project *${data.projectName}*`
+        : `📁 Te agregaron al proyecto *${data.projectName}*`,
   },
   // One of these per person, per batch — not one "task_assigned" per task.
   // Applying a phase set (at project creation, or later via "Agregar
@@ -31,8 +43,10 @@ export const NOTIFICATION_EVENTS = {
   // single shot; this collapses that into a single notification.
   project_phase_tasks_assigned: {
     label: "Fases aplicadas a proyecto",
-    build: (data: { projectName: string; taskCount: number }) =>
-      `📁 Se aplicaron fases en *${data.projectName}* — te tocaron ${data.taskCount} tarea${data.taskCount === 1 ? "" : "s"}`,
+    build: (data: { projectName: string; taskCount: number }, lang: NotificationLang) =>
+      lang === "en"
+        ? `📁 Phases were applied on *${data.projectName}* — you got ${data.taskCount} task${data.taskCount === 1 ? "" : "s"}`
+        : `📁 Se aplicaron fases en *${data.projectName}* — te tocaron ${data.taskCount} tarea${data.taskCount === 1 ? "" : "s"}`,
   },
 } as const
 

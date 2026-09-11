@@ -14,13 +14,15 @@ export async function notify<K extends NotificationEventKey>(
   data: NotificationPayload<K>,
 ): Promise<void> {
   const supabase = createAdminClient()
-  const message = NOTIFICATION_EVENTS[eventKey].build(data as never)
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("telegram_chat_id, notification_preferences")
+    .select("telegram_chat_id, notification_preferences, language")
     .eq("id", profileId)
     .single()
+
+  const lang = profile?.language === "en" ? "en" : "es"
+  const message = NOTIFICATION_EVENTS[eventKey].build(data as never, lang)
 
   const chatId = profile?.telegram_chat_id as number | null | undefined
   const preferences = (profile?.notification_preferences ?? {}) as Record<string, boolean>

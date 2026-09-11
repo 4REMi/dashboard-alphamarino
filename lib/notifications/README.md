@@ -66,6 +66,15 @@ status `skipped_disabled` (distinto de `skipped_no_channel`, que es no tener Tel
 vinculado en absoluto). UI: `components/employees/notification-preferences.tsx`, reusada
 tanto en la ficha propia del empleado como en la tabla de admin en Configuración.
 
+## Idioma de la notificación
+
+Cada evento en `events.ts` tiene su texto en español e inglés dentro del mismo
+`build(data, lang)`. `notify()` lee `profiles.language` de quien recibe (el mismo
+campo que ya usa el dashboard para su propio idioma de interfaz — se cambia desde su
+ficha en Equipo, o un admin se lo puede cambiar ahí mismo) y le manda el mensaje en
+ese idioma. No hay una preferencia de idioma separada solo para notificaciones — es
+el mismo idioma que ya tiene configurado en el dashboard.
+
 ## Eventos activos hoy
 
 | Evento (`event_key`) | Se dispara desde | Desde |
