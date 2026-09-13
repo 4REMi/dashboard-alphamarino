@@ -82,21 +82,43 @@ export async function createTask(formData: FormData) {
 
   const title = formData.get("title") as string
   const assigneeId = (formData.get("assignee_id") as string) || null
+  const sopId = (formData.get("sop_id") as string) || null
 
   const admin = createAdminClient()
-  const { error } = await admin.from("tasks").insert({
+  const { data: task, error } = await admin.from("tasks").insert({
     project_id: projectId,
     title,
     description: (formData.get("description") as string) || null,
     status: (formData.get("status") as TaskStatus) ?? "Todo",
     is_urgent: formData.get("is_urgent") === "true",
     requires_deliverable: formData.get("requires_deliverable") === "true",
+    deliverable_instructions: (formData.get("deliverable_instructions") as string) || null,
     is_personal: formData.get("is_personal") === "true",
     due_date: (formData.get("due_date") as string) || null,
     assignee_id: assigneeId,
+    sop_id: sopId,
   } as Record<string, unknown>)
+    .select("id")
+    .single()
 
   if (error) throw error
+
+  // Optional checklist, same shape the "Nueva tarea"/task-detail editors
+  // already serialize — a plain JSON array of {text, is_blocking}.
+  const checklistRaw = (formData.get("checklist_items_json") as string) || "[]"
+  const checklistItems = JSON.parse(checklistRaw) as { text: string; is_blocking: boolean }[]
+  if (checklistItems.length > 0) {
+    await admin.from("task_checklist_items").insert(
+      checklistItems.map((item, i) => ({
+        task_id: task.id,
+        text: item.text,
+        is_blocking: item.is_blocking,
+        is_checked: false,
+        item_order: i,
+      }))
+    )
+  }
+
   revalidateTaskPaths(projectId)
 
   if (assigneeId) await notifyTaskAssigned(admin, assigneeId, title, projectId)

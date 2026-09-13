@@ -218,6 +218,7 @@ export function TasksClient({ tasks, employees, projects, sops, deliverablesByTa
           <StandupDump
             projects={projects}
             employees={employees}
+            sops={sops}
             currentUserId={currentUserId}
             onClose={() => setShowStandup(false)}
             onCreated={() => router.refresh()}

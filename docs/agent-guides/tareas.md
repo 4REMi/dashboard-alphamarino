@@ -2,7 +2,7 @@
 
 **Ruta:** `/tasks`
 **Para quién:** ambos (admin ve más — ver "Quién puede ver/hacer qué")
-**Actualizado:** 2026-09-11
+**Actualizado:** 2026-09-13
 
 ## Qué es y para qué sirve
 
@@ -41,6 +41,14 @@ navegar a cada proyecto uno por uno.
   rápida, cada tarea con proyecto muestra explícitamente su alcance (equivalente al
   toggle `is_personal`) — nunca es un default silencioso, siempre hay que verlo y
   confirmarlo.
+- **"Más detalles" en Captura rápida**: cada tarjeta de tipo tarea trae, colapsado
+  por default, un desplegable con descripción, SOP y checklist — los mismos campos
+  que ya existen en una tarea normal, pero que la IA de clasificación nunca intenta
+  extraer del dictado (deliberado: la gran mayoría de dictados se resuelven solo con
+  el título, y forzar a la IA a inventar descripción/checklist agregaría costo y
+  ruido para el caso raro). Quedan vacíos hasta que alguien los abre y los llena a
+  mano. Un punto violeta junto al enlace avisa si una tarjeta colapsada ya tiene algo
+  cargado ahí.
 - **Tarea huérfana**: una tarea sin `project_id` Y sin `assignee_id`. Es
   estructuralmente invisible en cualquier otra vista (no cae en ningún tablero de
   proyecto ni en ninguna "Mi lista"). Pasa cuando algo dictado por voz no menciona
@@ -66,6 +74,11 @@ sistema separa automáticamente tareas vs. notas de bitácora por proyecto. Revi
 vista previa (proyecto/responsable/alcance de cada item, todo editable), descarta lo
 que no aplique, y confirma. El panel se puede minimizar (clic afuera, o el botón de
 colapsar) sin perder lo escrito — solo "Cancelar" descarta de verdad.
+
+**Agregar descripción/SOP/checklist a una tarea desde Captura rápida**: clic en "Más
+detalles" dentro de la tarjeta de esa tarea (antes de confirmar) — despliega
+descripción, selector de SOP y un editor simple de checklist (texto + toggle
+bloqueante). Se guarda junto con el resto al confirmar esa tarjeta.
 
 **Expandir todo un tablero de golpe**: botón "Expandir todo"/"Colapsar todo" en la
 barra de cada tabla de tareas. En "Mi lista" hay un botón adicional arriba que
@@ -118,7 +131,8 @@ nunca se infiere del contenido.
   estado/fase, modal de detalle, checklist, toggle Personal).
 - `components/tasks/task-form.tsx` — formulario de creación/edición.
 - `components/tasks/standup-dump.tsx` — Captura rápida.
-- `lib/actions/tasks.ts` — `createTask`, `updateTask`, `deleteTask`,
+- `lib/actions/tasks.ts` — `createTask` (acepta `sop_id` y `checklist_items_json`
+  opcionales, además de los campos base), `updateTask`, `deleteTask`,
   `getMyPendingTaskCount`, etc.
 - `lib/actions/standup.ts` — clasificación de Captura rápida (`processStandup`).
 - `lib/telegram-bot/handlers/tareas.ts` — creación/completado de tareas por voz.

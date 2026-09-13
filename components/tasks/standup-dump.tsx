@@ -8,9 +8,11 @@ import { AutoTextarea } from "@/components/ui/auto-textarea"
 import { processStandup } from "@/lib/actions/standup"
 import { createTask } from "@/lib/actions/tasks"
 import { addLogEntry } from "@/lib/actions/projects"
-import { Loader2, Sparkles, X, Check, ClipboardList, MessageSquare, Lock, Users, ChevronDown, Plus } from "lucide-react"
-import type { Profile } from "@/lib/types"
+import { Loader2, Sparkles, X, Check, ClipboardList, MessageSquare, Lock, Users, ChevronDown, ChevronRight, Plus, ListChecks } from "lucide-react"
+import type { Profile, Sop } from "@/lib/types"
 import { cn } from "@/lib/utils"
+
+type ChecklistDraft = { text: string; is_blocking: boolean }
 
 // Same sentinel as tasks-client.tsx's PERSONAL_KEY — duplicated as a literal
 // (rather than imported) to avoid a circular import between the two client
@@ -31,6 +33,13 @@ interface EditableItem {
   // lista", pero la saca del tablero compartido — para detalles que no le
   // importan al resto del equipo aunque estén ligados a un proyecto real.
   isPersonal: boolean
+  // "Más detalles" — solo tarea. Nunca se pre-poblan desde la IA (la gran
+  // mayoría de dictados se resuelven solo con el título); quedan vacíos
+  // hasta que alguien los abre y los llena a mano para el caso puntual que
+  // sí los necesita.
+  description: string
+  sopId: string
+  checklistItems: ChecklistDraft[]
 }
 
 interface Flight {
@@ -52,12 +61,13 @@ function destinationTileKey(it: EditableItem): string {
 interface Props {
   projects: ProjectOption[]
   employees: Profile[]
+  sops: Sop[]
   currentUserId: string
   onClose: () => void
   onCreated: () => void
 }
 
-export function StandupDump({ projects, employees, currentUserId, onClose, onCreated }: Props) {
+export function StandupDump({ projects, employees, sops, currentUserId, onClose, onCreated }: Props) {
   const [text, setText] = useState("")
   const [processing, setProcessing] = useState(false)
   const [items, setItems] = useState<EditableItem[] | null>(null)
@@ -79,6 +89,17 @@ export function StandupDump({ projects, employees, currentUserId, onClose, onCre
   const [addingMore, setAddingMore] = useState(false)
   const [moreText, setMoreText] = useState("")
   const [processingMore, setProcessingMore] = useState(false)
+
+  // Which cards have "Más detalles" open — collapsed by default for every
+  // item, since the vast majority need nothing beyond the title.
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set())
+  function toggleExpanded(key: string) {
+    setExpandedKeys((prev) => {
+      const next = new Set(prev)
+      next.has(key) ? next.delete(key) : next.add(key)
+      return next
+    })
+  }
 
   // Escape minimizes rather than closing, for the same reason.
   useEffect(() => {
@@ -109,6 +130,9 @@ export function StandupDump({ projects, employees, currentUserId, onClose, onCre
           assigneeId: r.assigneeIdGuess ?? currentUserId,
           dueDate: r.fecha ?? "",
           isPersonal: false,
+          description: "",
+          sopId: "",
+          checklistItems: [],
         })))
       })
       .catch((e) => setError(e instanceof Error ? e.message : "No se pudo interpretar el texto"))
@@ -129,6 +153,9 @@ export function StandupDump({ projects, employees, currentUserId, onClose, onCre
           assigneeId: r.assigneeIdGuess ?? currentUserId,
           dueDate: r.fecha ?? "",
           isPersonal: false,
+          description: "",
+          sopId: "",
+          checklistItems: [],
         }))
         setItems((prev) => [...(prev ?? []), ...newItems])
         setMoreText("")
@@ -174,6 +201,9 @@ export function StandupDump({ projects, employees, currentUserId, onClose, onCre
         fd.set("is_personal", String(!!it.projectId && it.isPersonal))
         if (it.dueDate) fd.set("due_date", it.dueDate)
         if (it.assigneeId) fd.set("assignee_id", it.assigneeId)
+        if (it.description.trim()) fd.set("description", it.description.trim())
+        if (it.sopId) fd.set("sop_id", it.sopId)
+        if (it.checklistItems.length > 0) fd.set("checklist_items_json", JSON.stringify(it.checklistItems))
         await createTask(fd)
       }
     }))
@@ -433,6 +463,33 @@ export function StandupDump({ projects, employees, currentUserId, onClose, onCre
                         )}
                       </div>
                     )}
+
+                    {it.tipo === "tarea" && (
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => toggleExpanded(it.key)}
+                          className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          {expandedKeys.has(it.key) ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                          Más detalles
+                          {(it.description.trim() || it.sopId || it.checklistItems.length > 0) && !expandedKeys.has(it.key) && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-violet-500" title="Tiene detalles adicionales" />
+                          )}
+                        </button>
+                        {expandedKeys.has(it.key) && (
+                          <TaskDetailsEditor
+                            description={it.description}
+                            sopId={it.sopId}
+                            checklistItems={it.checklistItems}
+                            sops={sops}
+                            onChangeDescription={(description) => updateItem(it.key, { description })}
+                            onChangeSopId={(sopId) => updateItem(it.key, { sopId })}
+                            onChangeChecklist={(checklistItems) => updateItem(it.key, { checklistItems })}
+                          />
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -471,6 +528,99 @@ export function StandupDump({ projects, employees, currentUserId, onClose, onCre
         document.body
       )}
     </>
+  )
+}
+
+function TaskDetailsEditor({
+  description, sopId, checklistItems, sops,
+  onChangeDescription, onChangeSopId, onChangeChecklist,
+}: {
+  description: string
+  sopId: string
+  checklistItems: ChecklistDraft[]
+  sops: Sop[]
+  onChangeDescription: (v: string) => void
+  onChangeSopId: (v: string) => void
+  onChangeChecklist: (v: ChecklistDraft[]) => void
+}) {
+  const [newItemText, setNewItemText] = useState("")
+  const [newItemBlocking, setNewItemBlocking] = useState(false)
+
+  function addItem() {
+    if (!newItemText.trim()) return
+    onChangeChecklist([...checklistItems, { text: newItemText.trim(), is_blocking: newItemBlocking }])
+    setNewItemText("")
+    setNewItemBlocking(false)
+  }
+
+  return (
+    <div className="mt-2 space-y-2 border-t pt-2.5">
+      <AutoTextarea
+        value={description}
+        onChange={(e) => onChangeDescription(e.target.value)}
+        rows={2}
+        placeholder="Descripción (opcional)"
+        className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+      />
+
+      <select
+        value={sopId}
+        onChange={(e) => onChangeSopId(e.target.value)}
+        className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs"
+      >
+        <option value="">Sin SOP</option>
+        {sops.map((s) => <option key={s.id} value={s.id}>{s.title}</option>)}
+      </select>
+
+      <div className="space-y-1">
+        {checklistItems.map((item, i) => (
+          <div key={i} className="flex items-center gap-1.5 text-xs">
+            <button
+              type="button"
+              onClick={() => onChangeChecklist(checklistItems.map((it, j) => j === i ? { ...it, is_blocking: !it.is_blocking } : it))}
+              title={item.is_blocking ? "Bloqueante" : "No bloqueante"}
+              className={cn("flex-shrink-0", item.is_blocking ? "text-destructive" : "text-muted-foreground hover:text-foreground")}
+            >
+              <ListChecks className="w-3.5 h-3.5" />
+            </button>
+            <span className="flex-1 min-w-0 truncate">{item.text}</span>
+            <button
+              type="button"
+              onClick={() => onChangeChecklist(checklistItems.filter((_, j) => j !== i))}
+              className="flex-shrink-0 text-muted-foreground hover:text-destructive"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex items-center gap-1.5">
+        <input
+          value={newItemText}
+          onChange={(e) => setNewItemText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addItem() } }}
+          placeholder="Agregar item de checklist…"
+          className="flex-1 min-w-0 rounded-md border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+        />
+        <button
+          type="button"
+          onClick={() => setNewItemBlocking((v) => !v)}
+          title={newItemBlocking ? "Bloqueante" : "No bloqueante"}
+          className={cn("flex-shrink-0 p-1 rounded", newItemBlocking ? "text-destructive" : "text-muted-foreground hover:text-foreground")}
+        >
+          <ListChecks className="w-3.5 h-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={addItem}
+          disabled={!newItemText.trim()}
+          className="flex-shrink-0 p-1 rounded text-muted-foreground hover:text-foreground disabled:opacity-40"
+        >
+          <Plus className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    </div>
   )
 }
 
