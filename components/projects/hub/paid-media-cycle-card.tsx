@@ -4,7 +4,7 @@ import { useState, useTransition, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import type { PaidMediaCycle, PaidMediaContext, CycleDeliverableStatus, MetaCampaign } from "@/lib/types"
 import { CAMPAIGN_STATUS_LABELS, DELIVERABLE_STATUS_LABELS } from "@/lib/types"
-import { openNewCycle, updateCycle, closeCycle, suggestNextCycleStartDate, updateCycleStartDay } from "@/lib/actions/projects"
+import { openNewCycle, updateCycle, closeCycle, suggestNextCycleStartDate, updateCycleStartDay, updateCycleDates, updateProjectAutoCloseCycles } from "@/lib/actions/projects"
 import { formatCycleRange } from "@/lib/utils"
 import { MetaCampaignsPanel } from "./meta-campaigns-panel"
 
@@ -13,6 +13,12 @@ interface Props {
   activeCycle: PaidMediaCycle | null
   context: PaidMediaContext | null
   canEdit: boolean
+  // Separate from canEdit — a real per-person permission override
+  // (edit_cycle_dates), not hardcoded to admin/subadmin like the rest of
+  // this card.
+  canEditDates: boolean
+  isAdminOrSubadmin: boolean
+  autoCloseCycles: boolean
   initialCampaigns?: MetaCampaign[]
   hasMetaConnected?: boolean
   cycleStartDay?: number | null
@@ -108,9 +114,75 @@ function CycleStartDaySetting({ projectId, value, canEdit }: { projectId: string
   )
 }
 
-export function PaidMediaCycleCard({ projectId, activeCycle, context, canEdit, initialCampaigns = [], hasMetaConnected = false, cycleStartDay = null }: Props) {
+function CycleDatesEditor({ startDate, endDate, isPending, onSave, onCancel }: {
+  startDate: string
+  endDate: string
+  isPending: boolean
+  onSave: (startDate: string, endDate: string) => void
+  onCancel: () => void
+}) {
+  const [start, setStart] = useState(startDate)
+  const [end, setEnd] = useState(endDate)
+
+  return (
+    <div className="px-5 py-3 border-b border-border bg-amber-50/50 dark:bg-amber-950/20">
+      <p className="text-xs text-muted-foreground mb-2">
+        Corrige las fechas si se abrió el ciclo con un error — no afecta los conceptos/creativos ya ligados a él.
+      </p>
+      <div className="flex items-end gap-3 flex-wrap">
+        <div>
+          <label className="text-xs font-medium text-muted-foreground mb-1 block">Fecha inicio</label>
+          <input type="date" value={start} onChange={(e) => setStart(e.target.value)}
+            className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground mb-1 block">Fecha fin</label>
+          <input type="date" value={end} onChange={(e) => setEnd(e.target.value)}
+            className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+        </div>
+        <button
+          onClick={() => onSave(start, end)}
+          disabled={isPending || !start || !end}
+          className="px-3 py-2 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 disabled:opacity-50 transition-colors"
+        >
+          {isPending ? "Guardando…" : "Guardar"}
+        </button>
+        <button onClick={onCancel} className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors">Cancelar</button>
+      </div>
+    </div>
+  )
+}
+
+function AutoCloseCyclesSetting({ projectId, enabled }: { projectId: string; enabled: boolean }) {
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+
+  function toggle() {
+    startTransition(async () => {
+      await updateProjectAutoCloseCycles(projectId, !enabled)
+      router.refresh()
+    })
+  }
+
+  return (
+    <div className="flex items-center gap-2 text-xs text-muted-foreground px-5 py-2 border-b border-border bg-muted/20">
+      <span>Auto-cerrar ciclos vencidos en este proyecto:</span>
+      <button
+        onClick={toggle}
+        disabled={isPending}
+        className={`font-medium disabled:opacity-50 ${enabled ? "text-primary" : "hover:text-foreground"}`}
+        title="Sin esto activado, un ciclo vencido solo avisa por Telegram — nunca se cierra solo"
+      >
+        {enabled ? "Activado — click para desactivar" : "Desactivado — click para activar"}
+      </button>
+    </div>
+  )
+}
+
+export function PaidMediaCycleCard({ projectId, activeCycle, context, canEdit, canEditDates, isAdminOrSubadmin, autoCloseCycles, initialCampaigns = [], hasMetaConnected = false, cycleStartDay = null }: Props) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
+  const [editingDates, setEditingDates] = useState(false)
   const [showOpenForm, setShowOpenForm] = useState(false)
 
   const [newStartDate, setNewStartDate] = useState("")
@@ -147,6 +219,19 @@ export function PaidMediaCycleCard({ projectId, activeCycle, context, canEdit, i
     startTransition(async () => {
       await updateCycle(activeCycle.id, projectId, fd)
       setEditing(false)
+    })
+  }
+
+  function handleSaveDates(startDate: string, endDate: string) {
+    if (!activeCycle) return
+    startTransition(async () => {
+      try {
+        await updateCycleDates(activeCycle.id, projectId, startDate, endDate)
+        setEditingDates(false)
+        router.refresh()
+      } catch (e) {
+        alert(e instanceof Error ? e.message : "No se pudieron guardar las fechas")
+      }
     })
   }
 
@@ -195,13 +280,31 @@ export function PaidMediaCycleCard({ projectId, activeCycle, context, canEdit, i
     )
   }
 
+  const today = new Date().toISOString().slice(0, 10)
+  const isOverdue = activeCycle.end_date < today
+
   return (
     <div className="rounded-xl border border-border bg-card">
       <CycleStartDaySetting projectId={projectId} value={cycleStartDay} canEdit={canEdit} />
+      {isAdminOrSubadmin && (
+        <AutoCloseCyclesSetting projectId={projectId} enabled={autoCloseCycles} />
+      )}
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-border">
         <div>
-          <h3 className="font-semibold text-sm text-foreground">Ciclo Activo — {formatCycleRange(activeCycle.start_date, activeCycle.end_date)}</h3>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="font-semibold text-sm text-foreground">Ciclo Activo — {formatCycleRange(activeCycle.start_date, activeCycle.end_date)}</h3>
+            {isOverdue && (
+              <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                Vencido
+              </span>
+            )}
+            {canEditDates && (
+              <button onClick={() => setEditingDates((v) => !v)} className="text-[11px] text-primary hover:underline">
+                {editingDates ? "Cancelar" : "Corregir fechas"}
+              </button>
+            )}
+          </div>
           {activeCycle.campaign_status && (
             <span className="text-xs text-muted-foreground">{CAMPAIGN_STATUS_LABELS[activeCycle.campaign_status]}</span>
           )}
@@ -217,6 +320,16 @@ export function PaidMediaCycleCard({ projectId, activeCycle, context, canEdit, i
           </div>
         )}
       </div>
+
+      {editingDates && (
+        <CycleDatesEditor
+          startDate={activeCycle.start_date}
+          endDate={activeCycle.end_date}
+          isPending={isPending}
+          onSave={handleSaveDates}
+          onCancel={() => setEditingDates(false)}
+        />
+      )}
 
       {editing ? (
         <form onSubmit={handleUpdateCycle} className="p-5 space-y-4">

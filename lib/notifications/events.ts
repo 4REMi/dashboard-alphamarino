@@ -73,6 +73,32 @@ export const NOTIFICATION_EVENTS = {
         ? `✅ You completed a pinged task: *${data.taskTitle}* · ${data.projectName}`
         : `✅ Completaste una tarea pingueada: *${data.taskTitle}* · ${data.projectName}`,
   },
+  // The daily cycle check (app/api/cron/check-cycles, lib/actions/projects.ts
+  // runDailyCycleCheck) fires each of these at most once per cycle — a
+  // preventive heads-up ~4 days before end_date, and (only if the project
+  // hasn't opted into auto-close) a single notice the day it's confirmed
+  // overdue. Sent to every project member, same broadcast pattern as Ping.
+  cycle_ending_soon: {
+    label: "Ciclo por terminar",
+    build: (data: { projectName: string; endDate: string }, lang: NotificationLang) =>
+      lang === "en"
+        ? `📅 The active cycle for *${data.projectName}* ends ${data.endDate} — plan the close/renewal`
+        : `📅 El ciclo activo de *${data.projectName}* termina el ${data.endDate} — hay que planear el cierre/renovación`,
+  },
+  cycle_overdue: {
+    label: "Ciclo vencido sin cerrar",
+    build: (data: { projectName: string; endDate: string }, lang: NotificationLang) =>
+      lang === "en"
+        ? `⚠️ The cycle for *${data.projectName}* ended ${data.endDate} and is still open — close it or open the next one`
+        : `⚠️ El ciclo de *${data.projectName}* terminó el ${data.endDate} y sigue abierto — ciérralo o abre el siguiente`,
+  },
+  cycle_auto_closed: {
+    label: "Ciclo cerrado automáticamente",
+    build: (data: { projectName: string; endDate: string }, lang: NotificationLang) =>
+      lang === "en"
+        ? `🔒 The cycle for *${data.projectName}* (ended ${data.endDate}) was closed automatically — this project has auto-close on`
+        : `🔒 El ciclo de *${data.projectName}* (terminó el ${data.endDate}) se cerró automáticamente — este proyecto tiene el auto-cierre activado`,
+  },
   // One of these per person, per batch — not one "task_assigned" per task.
   // Applying a phase set (at project creation, or later via "Agregar
   // fases"/"Aplicar phase set") can auto-assign many tasks by position in a

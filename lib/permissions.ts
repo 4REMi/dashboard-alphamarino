@@ -14,6 +14,7 @@ export type UserPermissions = {
   access_brand_brains?: boolean      // /brand-brains section
   manage_customers?: boolean         // add/import customers from /customers
   view_service_deliverables?: boolean // see the "Alcance del servicio" card in a project's hub
+  edit_cycle_dates?: boolean         // correct a paid media cycle's start/end date after creation
 }
 
 // Defaults per role (admin always returns true without checking)
@@ -31,6 +32,7 @@ const SUBADMIN_DEFAULTS: Required<UserPermissions> = {
   access_brand_brains: true,
   manage_customers: false,
   view_service_deliverables: true,
+  edit_cycle_dates: true,
 }
 
 const EMPLOYEE_DEFAULTS: Required<UserPermissions> = {
@@ -47,6 +49,7 @@ const EMPLOYEE_DEFAULTS: Required<UserPermissions> = {
   access_brand_brains: false,
   manage_customers: false,
   view_service_deliverables: true,
+  edit_cycle_dates: false,
 }
 
 export function can(

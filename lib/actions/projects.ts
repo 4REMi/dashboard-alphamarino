@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { notify } from "@/lib/notifications/notify"
-import type { ProjectStatus, PhaseStatus, CycleDeliverableStatus, CampaignStatus } from "@/lib/types"
+import { can } from "@/lib/permissions"
+import type { ProjectStatus, PhaseStatus, CycleDeliverableStatus, CampaignStatus, Profile } from "@/lib/types"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
 // Builds position_id → [profile_ids] from a project's current members, so
@@ -957,6 +958,55 @@ export async function updateCycle(cycleId: string, projectId: string, formData: 
   revalidatePath(`/projects/${projectId}`)
 }
 
+// Corrects a cycle's dates after the fact (e.g. someone typed the wrong
+// month when opening it). Safe to do at any point, even with concepts
+// already active — creative_concepts/creative_assets link to a cycle by
+// id, never by date, so this never reshuffles what "belongs" to it.
+// Gated by the edit_cycle_dates permission (admin/subadmin by default,
+// same as everything else about a cycle — but a real per-person override).
+export async function updateCycleDates(cycleId: string, projectId: string, startDate: string, endDate: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error("Not authenticated")
+  const { data: profile } = await supabase.from("profiles").select("role, permissions").eq("id", user.id).single()
+  if (!can(profile as Profile, "edit_cycle_dates")) throw new Error("Permission denied")
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+    throw new Error("Formato de fecha inválido")
+  }
+  if (endDate <= startDate) throw new Error("La fecha de fin debe ser posterior a la fecha de inicio")
+
+  const { error } = await supabase
+    .from("paid_media_cycles")
+    // cycle_month kept in sync with start_date, same as openNewCycle.
+    // Editing dates resets the notice tracking so a corrected end_date
+    // gets its own fresh warning/overdue check instead of inheriting
+    // whatever was already sent for the wrong date.
+    .update({ start_date: startDate, end_date: endDate, cycle_month: startDate, end_warning_sent_at: null, overdue_notice_sent_at: null })
+    .eq("id", cycleId)
+  if (error) throw error
+  revalidatePath(`/projects/${projectId}`)
+}
+
+// Per-project opt-in: a cycle that's still active past its end_date gets
+// auto-closed by the daily check (app/api/cron/check-cycles) instead of
+// just getting a one-time nag notice. Off by default everywhere — never a
+// blanket behavior across all projects.
+export async function updateProjectAutoCloseCycles(projectId: string, enabled: boolean) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error("Not authenticated")
+  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
+  if (profile?.role !== "admin" && profile?.role !== "subadmin") throw new Error("Permission denied")
+
+  const { error } = await supabase
+    .from("projects")
+    .update({ auto_close_cycles: enabled })
+    .eq("id", projectId)
+  if (error) throw error
+  revalidatePath(`/projects/${projectId}`)
+}
+
 export async function closeCycle(cycleId: string, projectId: string) {
   const supabase = await createClient()
   const { error } = await supabase
@@ -965,6 +1015,63 @@ export async function closeCycle(cycleId: string, projectId: string) {
     .eq("id", cycleId)
   if (error) throw error
   revalidatePath(`/projects/${projectId}`)
+}
+
+// Called once a day by app/api/cron/check-cycles (see that route for the
+// shared-secret auth). Every check is idempotent per cycle via the
+// *_notice_sent_at columns, so running this more than once a day — or
+// re-running it manually — never double-notifies anyone.
+const CYCLE_WARNING_DAYS_BEFORE = 4
+
+export async function runDailyCycleCheck(): Promise<{ warned: number; overdueNotified: number; autoClosed: number }> {
+  const admin = createAdminClient()
+  const today = new Date().toISOString().slice(0, 10)
+  const warningThreshold = (() => {
+    const d = new Date()
+    d.setDate(d.getDate() + CYCLE_WARNING_DAYS_BEFORE)
+    return d.toISOString().slice(0, 10)
+  })()
+
+  const { data: cycles, error } = await admin
+    .from("paid_media_cycles")
+    .select("id, project_id, end_date, end_warning_sent_at, overdue_notice_sent_at, project:projects(name, auto_close_cycles)")
+    .eq("is_active", true)
+  if (error) throw error
+
+  let warned = 0, overdueNotified = 0, autoClosed = 0
+
+  for (const cycle of cycles ?? []) {
+    const project = cycle.project as unknown as { name: string; auto_close_cycles: boolean } | null
+    if (!project) continue
+
+    if (cycle.end_date < today) {
+      if (project.auto_close_cycles) {
+        await admin.from("paid_media_cycles").update({ is_active: false }).eq("id", cycle.id)
+        await notifyCycleMembers(admin, cycle.project_id, "cycle_auto_closed", { projectName: project.name, endDate: cycle.end_date })
+        autoClosed++
+      } else if (!cycle.overdue_notice_sent_at) {
+        await admin.from("paid_media_cycles").update({ overdue_notice_sent_at: new Date().toISOString() }).eq("id", cycle.id)
+        await notifyCycleMembers(admin, cycle.project_id, "cycle_overdue", { projectName: project.name, endDate: cycle.end_date })
+        overdueNotified++
+      }
+    } else if (cycle.end_date <= warningThreshold && !cycle.end_warning_sent_at) {
+      await admin.from("paid_media_cycles").update({ end_warning_sent_at: new Date().toISOString() }).eq("id", cycle.id)
+      await notifyCycleMembers(admin, cycle.project_id, "cycle_ending_soon", { projectName: project.name, endDate: cycle.end_date })
+      warned++
+    }
+  }
+
+  return { warned, overdueNotified, autoClosed }
+}
+
+async function notifyCycleMembers(
+  admin: ReturnType<typeof createAdminClient>,
+  projectId: string,
+  event: "cycle_ending_soon" | "cycle_overdue" | "cycle_auto_closed",
+  data: { projectName: string; endDate: string },
+) {
+  const { data: members } = await admin.from("project_members").select("profile_id").eq("project_id", projectId)
+  await Promise.all((members ?? []).map((m) => notify(m.profile_id, event, data)))
 }
 
 // ============================================================

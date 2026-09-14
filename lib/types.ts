@@ -164,6 +164,10 @@ export interface Project {
   description: string | null
   brand_brain_id: string | null
   paid_media_cycle_start_day: number | null
+  // Opt-in only — a cycle still open past its end_date auto-closes instead
+  // of just getting a one-time overdue notice. Off by default; never a
+  // blanket behavior across projects.
+  auto_close_cycles: boolean
   created_at: string
   // Relations
   customer?: Customer | null

@@ -69,6 +69,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const canManageTeam     = can(profile as Profile, "manage_team")
   const canManageTasks    = can(profile as Profile, "manage_tasks")
   const canViewServiceDeliverables = can(profile as Profile, "view_service_deliverables")
+  const canEditCycleDates = can(profile as Profile, "edit_cycle_dates")
 
   const projectType = project.project_type as { name: string; color?: string | null; icon?: string | null } | null
   const isPaidMedia = projectType?.name?.toLowerCase().includes("paid media") ||
@@ -352,7 +353,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             )}
             <PaidMediaContextCard projectId={project.id} context={paidMediaContext} canEdit={isAdminOrSubadmin} />
             <IntegrationsCard     projectId={project.id} integrations={integrations as ProjectIntegration[]} canEdit={isAdminOrSubadmin} />
-            <PaidMediaCycleCard   projectId={project.id} activeCycle={activeCycle} context={paidMediaContext} canEdit={isAdminOrSubadmin} initialCampaigns={initialMetaCampaigns as MetaCampaign[]} hasMetaConnected={!!(integrations as ProjectIntegration[]).find((i) => i.platform === "meta")} cycleStartDay={project.paid_media_cycle_start_day} />
+            <PaidMediaCycleCard   projectId={project.id} activeCycle={activeCycle} context={paidMediaContext} canEdit={isAdminOrSubadmin} canEditDates={canEditCycleDates} isAdminOrSubadmin={isAdminOrSubadmin} autoCloseCycles={!!project.auto_close_cycles} initialCampaigns={initialMetaCampaigns as MetaCampaign[]} hasMetaConnected={!!(integrations as ProjectIntegration[]).find((i) => i.platform === "meta")} cycleStartDay={project.paid_media_cycle_start_day} />
             {historyCycles.length > 0 && <PaidMediaCycleHistory cycles={historyCycles} />}
           </section>
         )}

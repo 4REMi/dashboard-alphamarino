@@ -78,8 +78,9 @@ grep-ear todo el repo desde cero.
 
 | Archivo | Apartado | Actualizado |
 |---|---|---|
-| [tareas.md](./tareas.md) | Tareas (`/tasks`) | 2026-09-11 |
+| [tareas.md](./tareas.md) | Tareas (`/tasks`) | 2026-09-14 |
 | [guiones-por-voz.md](./guiones-por-voz.md) | Bot Telegram/Vowen — guiones (🚧 borrador, sin construir) | 2026-09-11 |
 | [entregables-de-servicio.md](./entregables-de-servicio.md) | Servicios / Proyectos — alcance del servicio | 2026-09-11 |
+| [ciclos-paid-media.md](./ciclos-paid-media.md) | Proyectos — Ciclo Activo (Paid Media) | 2026-09-14 |
 
 Actualiza esta tabla cada vez que agregues un archivo nuevo.
