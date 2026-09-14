@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useTransition } from "react"
+import { useState, useEffect, useRef, useTransition } from "react"
 import type { ServiceOffer, ServiceAddon, Currency, ServiceDeliverable, DeliverableCadence } from "@/lib/types"
 import {
   createServiceOffer, updateServiceOffer, archiveServiceOffer, deleteServiceOffer, setOfferAddons,
@@ -369,13 +369,40 @@ function AddonForm({ initial, isPending, onSubmit, onClose }: {
 
 // ── Modal wrapper ────────────────────────────────────────────────────────
 
+// Guards against the classic "clicked outside by accident, lost everything
+// I typed" — tracks (via native input/change events, no per-form wiring
+// needed) whether anything inside the modal actually changed, and only
+// then confirms before closing on a backdrop click or the X button. The
+// explicit "Cancelar" button inside each form is a deliberate action, not
+// an accident, so it stays an immediate close — this only guards the two
+// accidental-close paths.
 function Modal({ title, children, onClose, wide }: { title: string; children: React.ReactNode; onClose: () => void; wide?: boolean }) {
+  const dirtyRef = useRef(false)
+  const contentRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = contentRef.current
+    if (!el) return
+    const markDirty = () => { dirtyRef.current = true }
+    el.addEventListener("input", markDirty)
+    el.addEventListener("change", markDirty)
+    return () => {
+      el.removeEventListener("input", markDirty)
+      el.removeEventListener("change", markDirty)
+    }
+  }, [])
+
+  function handleClose() {
+    if (dirtyRef.current && !confirm("Se perderá lo que llevas escrito o seleccionado aquí. ¿Cerrar de todas formas?")) return
+    onClose()
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div className={cn("bg-card border border-border rounded-xl shadow-xl w-full max-h-[90vh] flex flex-col", wide ? "max-w-4xl" : "max-w-lg")} onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={handleClose}>
+      <div ref={contentRef} className={cn("bg-card border border-border rounded-xl shadow-xl w-full max-h-[90vh] flex flex-col", wide ? "max-w-4xl" : "max-w-lg")} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-border flex-shrink-0">
           <h2 className="font-semibold">{title}</h2>
-          <button onClick={onClose} className="p-1 rounded text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
+          <button onClick={handleClose} className="p-1 rounded text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
         </div>
         <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
       </div>
