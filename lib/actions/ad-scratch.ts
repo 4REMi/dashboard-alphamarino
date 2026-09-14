@@ -94,7 +94,9 @@ Cada objeto debe tener exactamente estos campos:
 - headline: el titular/copy principal del anuncio (corto, directo, en el idioma de la marca)
 - copy_angle: 1-2 frases explicando la lógica del mensaje — por qué este copy funcionaría para esta audiencia
 - visual_description: descripción concreta de la composición visual (qué se ve, cómo se organiza, qué elementos gráficos/producto aparecen) — suficientemente específica para que un generador de imágenes la ejecute
-- brand_elements_used: arreglo de strings describiendo qué elementos de marca usaría (ej. ["logo", "color primario", "USP: envío gratis"])`
+- brand_elements_used: arreglo de strings describiendo qué elementos de marca usaría (ej. ["logo", "color primario", "USP: envío gratis"])
+
+CRÍTICO — VALIDEZ DEL JSON: si necesitas citar una frase o palabra dentro de algún texto, usa comillas simples ('así') o guiones — NUNCA comillas dobles dentro de un valor de string, porque rompen el JSON. Ejemplo de lo que NO debes hacer: "visual_description": "una foto con el texto "oferta" en grande". Ejemplo correcto: "visual_description": "una foto con el texto 'oferta' en grande".`
 
   const userPrompt = `${brandBlock}${conceptBlock}${prevBlock}
 
@@ -112,15 +114,26 @@ Genera 5 ideas de creativo estático nuevas y distintas entre sí (varía el án
 
   const text = message.content[0].type === "text" ? message.content[0].text : ""
 
+  // The model occasionally leaves internal double-quotes unescaped inside a
+  // string value (e.g. a "quoted phrase" in visual_description), which
+  // breaks JSON.parse with a raw, unhelpful SyntaxError — never let that
+  // propagate as-is, always surface a message the user can act on
+  // ("intenta de nuevo" is genuinely the fix, since it's model variance).
   let drafts: { headline: string; copy_angle: string; visual_description: string; brand_elements_used: string[] }[]
   try {
     const parsed = JSON.parse(text)
     if (!Array.isArray(parsed)) throw new Error("Not an array")
     drafts = parsed
   } catch {
-    const match = text.match(/\[[\s\S]*\]/)
-    if (!match) throw new Error("La IA regresó un formato inválido")
-    drafts = JSON.parse(match[0])
+    try {
+      const match = text.match(/\[[\s\S]*\]/)
+      if (!match) throw new Error("no array found")
+      const parsed = JSON.parse(match[0])
+      if (!Array.isArray(parsed)) throw new Error("Not an array")
+      drafts = parsed
+    } catch {
+      throw new Error("La IA devolvió un formato inválido — intenta de nuevo, normalmente funciona al segundo intento.")
+    }
   }
 
   const batchId = crypto.randomUUID()
