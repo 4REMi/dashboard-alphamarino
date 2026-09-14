@@ -27,6 +27,7 @@ import {
   FolderOpen,
   Radio,
   Tag,
+  Sparkles,
 } from "lucide-react"
 import { useState } from "react"
 import Image from "next/image"
@@ -87,6 +88,7 @@ export function Sidebar({ profile, logoUrl, myPendingTaskCount = 0, mobileOpen =
         { href: "/ad-lab/boards",    icon: FolderOpen, label: "Boards"        },
         { href: "/ad-lab/brands",    icon: Radio,      label: "Marcas"        },
         { href: "/ad-lab/creatives", icon: ImagePlay,  label: "Creatives"     },
+        { href: "/ad-lab/scratch",   icon: Sparkles,   label: "Crear desde cero" },
         { href: "/ad-lab/resize",    icon: Expand,     label: "Image Resize"  },
         { href: "/brand-brains",     icon: Brain,      label: "Brand Brains", permission: "access_brand_brains" },
       ],

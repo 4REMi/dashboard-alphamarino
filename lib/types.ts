@@ -1161,9 +1161,15 @@ export interface ImageCloneLine {
 
 export interface ImageClone {
   id: string
-  saved_ad_id: string
+  // NULL for a "from scratch" clone (source: "scratch") — nothing to
+  // reference, there's no saved ad this one came from.
+  saved_ad_id: string | null
   brand_brain_id: string | null
   concept_id: string | null
+  // "reference" = the original clone-from-a-competitor-ad flow. "scratch" =
+  // generated from a ScratchAdIdea instead, no reference ad involved.
+  source: "reference" | "scratch"
+  scratch_idea_id: string | null
   share_token: string
   status: ImageCloneStatus
   original_lines: ImageCloneLine[]
@@ -1182,6 +1188,33 @@ export interface ImageClone {
   updated_at: string
   brand_brain?: Pick<BrandBrain, "id" | "name"> | null
   saved_ad?: Pick<SavedAd, "id" | "page_name" | "cached_image_url" | "image_url"> | null
+}
+
+// ============================================================
+// AD LAB — CREAR DESDE CERO (sin referencia)
+// ============================================================
+
+export type ScratchAdIdeaStatus = "proposed" | "edited" | "discarded" | "approved"
+
+export interface ScratchAdIdea {
+  id: string
+  brand_brain_id: string
+  concept_id: string | null
+  brief: string | null
+  batch_id: string
+  round: number
+  headline: string
+  copy_angle: string
+  visual_description: string
+  brand_elements_used: string[]
+  status: ScratchAdIdeaStatus
+  edited_headline: string | null
+  edited_copy_angle: string | null
+  edited_visual_description: string | null
+  image_clone_id: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
 }
 
 // ============================================================
