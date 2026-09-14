@@ -322,11 +322,14 @@ export async function addTaskToSet(taskSetId: string, formData: FormData) {
   const nextOrder = existing?.[0] ? existing[0].task_order + 1 : 0
 
   const positionIdRaw = formData.get("default_position_id") as string
+  const pingPositionIds = formData.getAll("ping_position_ids") as string[]
   const { data, error } = await supabase.from("task_set_tasks").insert({
     task_set_id: taskSetId,
     title: formData.get("title") as string,
     description: (formData.get("description") as string) || null,
     is_urgent: formData.get("is_urgent") === "true",
+    is_pinged: formData.get("is_pinged") === "true",
+    ping_position_ids: pingPositionIds.length > 0 ? pingPositionIds : null,
     requires_deliverable: formData.get("requires_deliverable") === "true",
     deliverable_instructions: (formData.get("deliverable_instructions") as string) || null,
     default_position_id: positionIdRaw && positionIdRaw !== "none" ? positionIdRaw : null,
@@ -342,12 +345,15 @@ export async function updateTaskInSet(taskId: string, formData: FormData) {
   const supabase = await createClient()
   const sopIdRaw = formData.get("sop_id") as string
   const positionIdRaw = formData.get("default_position_id") as string
+  const pingPositionIds = formData.getAll("ping_position_ids") as string[]
   const { data, error } = await supabase
     .from("task_set_tasks")
     .update({
       title: formData.get("title") as string,
       description: (formData.get("description") as string) || null,
       is_urgent: formData.get("is_urgent") === "true",
+      is_pinged: formData.get("is_pinged") === "true",
+      ping_position_ids: pingPositionIds.length > 0 ? pingPositionIds : null,
       requires_deliverable: formData.get("requires_deliverable") === "true",
       deliverable_instructions: (formData.get("deliverable_instructions") as string) || null,
       sop_id: sopIdRaw || null,
@@ -685,6 +691,8 @@ async function deepCloneTaskSet(
       description:          task.description,
       task_order:           task.task_order,
       is_urgent:            task.is_urgent ?? false,
+      is_pinged:            task.is_pinged ?? false,
+      ping_position_ids:    task.ping_position_ids ?? null,
       requires_deliverable: task.requires_deliverable ?? false,
       sop_id:               task.sop_id ?? null,
       default_position_id:  task.default_position_id ?? null,
@@ -857,6 +865,8 @@ export async function cloneTaskInTaskSet(taskId: string, targetTaskSetId: string
     description:          source.description,
     task_order:           insertOrder,
     is_urgent:            source.is_urgent ?? false,
+    is_pinged:            source.is_pinged ?? false,
+    ping_position_ids:    source.ping_position_ids ?? null,
     requires_deliverable: source.requires_deliverable ?? false,
     sop_id:               source.sop_id ?? null,
     default_position_id:  source.default_position_id ?? null,

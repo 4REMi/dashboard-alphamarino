@@ -82,7 +82,7 @@ el mismo idioma que ya tiene configurado en el dashboard.
 | `task_assigned` | `lib/actions/tasks.ts` — `createTask` (si trae `assignee_id`) y `updateTaskAssignee`; también `lib/telegram-bot/handlers/tareas.ts` — `handleTarea` cuando se asigna por voz/Telegram a alguien más (no en el auto-asignado a uno mismo) | 2026-09-08 |
 | `project_member_added` | `lib/actions/projects.ts` — `addProjectMember` | 2026-09-08 |
 | `project_phase_tasks_assigned` | `lib/actions/projects.ts` — `copyTaskSetsToProject` (usado por `createProject`, `importPhasesToProject` y `applyPhaseSetToProject`) — **una** notificación por persona con el total de tareas que le tocaron, no una por tarea, ya que aplicar un phase set puede auto-asignar decenas de tareas por puesto de golpe | 2026-09-09 |
-| `task_pinged_completed` | `lib/actions/tasks.ts` — `updateTaskStatus`, cuando una tarea marcada "pingada" (`tasks.is_pinged`) pasa a Done — **una** notificación por cada miembro del proyecto (`project_members`), incluyendo a quien la completó | 2026-09-14 |
+| `task_pinged_completed` / `task_pinged_completed_targeted` / `task_pinged_completed_self` | `lib/actions/tasks.ts` — `updateTaskStatus` → `notifyPingedTaskCompleted`, cuando una tarea marcada "pingueada" (`tasks.is_pinged`) pasa a Done. `ping_recipient_ids` vacío/null = a todo `project_members` (`task_pinged_completed`); con gente específica = solo a ellos (`task_pinged_completed_targeted`). Quien completó la tarea siempre recibe la variante `task_pinged_completed_self` en vez de las otras dos, sin importar si estaba en la lista de destinatarios | 2026-09-14 |
 
 Actualiza esta tabla cada vez que agregues un evento nuevo.
 

@@ -110,6 +110,12 @@ export interface TaskSetTask {
   description: string | null
   priority: TaskPriority // kept for DB compat
   is_urgent: boolean
+  // Template default for Ping — resolved into a real task's is_pinged /
+  // ping_recipient_ids when this template is applied to a project (puestos
+  // resolve against that project's actual roster; no puesto match falls
+  // back to broadcasting to everyone rather than notifying no one).
+  is_pinged: boolean
+  ping_position_ids: string[] | null
   requires_deliverable: boolean
   deliverable_instructions: string | null
   task_order: number
@@ -224,6 +230,10 @@ export interface Task {
   // "Ping" — marking a task pinged and later completing it notifies the
   // whole project team. Replaces the old decorative "Urgente" flag.
   is_pinged: boolean
+  // NULL/empty = broadcast to every project member (default). Non-empty =
+  // only these profile ids get notified on completion — narrows WHO hears
+  // about it, never blocks the task itself on anything.
+  ping_recipient_ids: string[] | null
   requires_deliverable: boolean
   deliverable_instructions: string | null
   // Stays linked to project_id for context/grouping in "Mi lista", but is

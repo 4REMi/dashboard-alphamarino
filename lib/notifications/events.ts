@@ -37,17 +37,41 @@ export const NOTIFICATION_EVENTS = {
         ? `📁 You were added to project *${data.projectName}*`
         : `📁 Te agregaron al proyecto *${data.projectName}*`,
   },
-  // Fires once per project member (including whoever completed it — an
-  // explicit confirmation for the actor too, not just the rest of the
-  // team) when a task marked "pingada" is moved to Done. Replaces the old
-  // decorative "Urgente" flag, which nobody actually acted on now that a
-  // real notification system exists.
+  // Three variants of the same underlying event — a task marked "pingueada"
+  // (Ping) was moved to Done — chosen per recipient by
+  // notifyPingedTaskCompleted (lib/actions/tasks.ts) depending on whether
+  // they're the one who completed it, and whether they were targeted
+  // specifically or just part of the project-wide broadcast. Replaces the
+  // old decorative "Urgente" flag, which nobody actually acted on now that
+  // a real notification system exists. Never blocking — Ping only narrows
+  // who hears about a completion, it doesn't gate the task itself on
+  // anything.
   task_pinged_completed: {
-    label: "Tarea pingada completada",
+    label: "Tarea pingueada completada (equipo)",
     build: (data: { taskTitle: string; projectName: string; completedByName: string }, lang: NotificationLang) =>
       lang === "en"
         ? `🔔 *${data.taskTitle}* (pinged) was completed by ${data.completedByName} · ${data.projectName}`
-        : `🔔 *${data.taskTitle}* (pingada) fue completada por ${data.completedByName} · ${data.projectName}`,
+        : `🔔 *${data.taskTitle}* (pingueada) fue completada por ${data.completedByName} · ${data.projectName}`,
+  },
+  // Sent instead of task_pinged_completed when Ping was aimed at specific
+  // people rather than the whole project — makes clear this wasn't a
+  // broadcast, someone pinged you directly.
+  task_pinged_completed_targeted: {
+    label: "Tarea pingueada completada (dirigido)",
+    build: (data: { taskTitle: string; projectName: string; completedByName: string }, lang: NotificationLang) =>
+      lang === "en"
+        ? `🔔 You were pinged — *${data.taskTitle}* was completed by ${data.completedByName} · ${data.projectName}`
+        : `🔔 Te pinguearon — *${data.taskTitle}* fue completada por ${data.completedByName} · ${data.projectName}`,
+  },
+  // Sent to whoever actually completed the pinged task, instead of either
+  // variant above — reads as a confirmation of their own action rather
+  // than news about someone else's.
+  task_pinged_completed_self: {
+    label: "Tarea pingueada completada (por ti)",
+    build: (data: { taskTitle: string; projectName: string }, lang: NotificationLang) =>
+      lang === "en"
+        ? `✅ You completed a pinged task: *${data.taskTitle}* · ${data.projectName}`
+        : `✅ Completaste una tarea pingueada: *${data.taskTitle}* · ${data.projectName}`,
   },
   // One of these per person, per batch — not one "task_assigned" per task.
   // Applying a phase set (at project creation, or later via "Agregar

@@ -39,6 +39,26 @@ function resolveAssignment(
   return { assignee_id: null, position_id: positionId, assignment_flag: "multi" }
 }
 
+// Resolves a template task's target puestos into real profile ids for THIS
+// project's current roster — union of everyone holding any of those
+// positions (unlike resolveAssignment, multiple matches are fine here, we
+// want to notify all of them, not pick one owner). If the template targeted
+// specific puestos but none of them matched anyone on this project, falls
+// back to null (broadcast to the whole team) rather than silently pinging
+// no one — better to over-notify than to lose a completion nobody hears
+// about.
+function resolvePingRecipients(
+  positionToMembers: Map<string, string[]>,
+  pingPositionIds: string[] | null
+): string[] | null {
+  if (!pingPositionIds || pingPositionIds.length === 0) return null
+  const recipients = new Set<string>()
+  for (const posId of pingPositionIds) {
+    for (const profileId of positionToMembers.get(posId) ?? []) recipients.add(profileId)
+  }
+  return recipients.size > 0 ? Array.from(recipients) : null
+}
+
 // Fills in assignee_id for tasks left unassigned (assignment_flag "no_match")
 // because no project member had a matching position yet. Non-destructive —
 // only touches tasks that are still unassigned. Called after a member joins
@@ -99,6 +119,7 @@ async function copyTaskSetsToProject(
         id: string; title: string; description: string | null; priority: string
         task_order: number; is_urgent: boolean; requires_deliverable: boolean; deliverable_instructions: string | null
         default_position_id: string | null
+        is_pinged: boolean; ping_position_ids: string[] | null
         checklist_items: Array<{ id: string; text: string; is_blocking: boolean; item_order: number }> | null
       }>)
         .sort((a, b) => a.task_order - b.task_order)
@@ -108,9 +129,11 @@ async function copyTaskSetsToProject(
           description: t.description,
           priority: t.priority,
           status: "Todo",
-          // Ping is a deliberate per-task action, never inherited from the
-          // task_set_tasks template's own (unrelated) is_urgent field.
-          is_pinged: false,
+          // The template's own Ping default — puestos resolve against THIS
+          // project's actual roster (resolvePingRecipients), never the
+          // unrelated is_urgent field.
+          is_pinged: t.is_pinged ?? false,
+          ping_recipient_ids: resolvePingRecipients(positionToMembers, t.ping_position_ids ?? null),
           requires_deliverable: t.requires_deliverable ?? false,
           deliverable_instructions: t.deliverable_instructions ?? null,
           task_order: j,

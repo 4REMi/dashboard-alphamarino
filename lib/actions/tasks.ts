@@ -76,6 +76,20 @@ export async function getMyPendingTaskCount() {
   ).length
 }
 
+// "" or absent -> null (broadcast to everyone, today's default). A JSON
+// array (possibly empty, same as absent) -> that exact list of profile ids.
+function parsePingRecipientIds(formData: FormData): string[] | null {
+  const raw = (formData.get("ping_recipient_ids_json") as string) || ""
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed) || parsed.length === 0) return null
+    return parsed.map(String)
+  } catch {
+    return null
+  }
+}
+
 export async function createTask(formData: FormData) {
   const projectId = (formData.get("project_id") as string) || null
   await requireTaskPermission(projectId)
@@ -91,6 +105,7 @@ export async function createTask(formData: FormData) {
     description: (formData.get("description") as string) || null,
     status: (formData.get("status") as TaskStatus) ?? "Todo",
     is_pinged: formData.get("is_pinged") === "true",
+    ping_recipient_ids: parsePingRecipientIds(formData),
     requires_deliverable: formData.get("requires_deliverable") === "true",
     deliverable_instructions: (formData.get("deliverable_instructions") as string) || null,
     is_personal: formData.get("is_personal") === "true",
@@ -136,6 +151,7 @@ export async function updateTask(id: string, formData: FormData) {
       description: (formData.get("description") as string) || null,
       status: formData.get("status") as TaskStatus,
       is_pinged: formData.get("is_pinged") === "true",
+      ping_recipient_ids: parsePingRecipientIds(formData),
       requires_deliverable: formData.get("requires_deliverable") === "true",
       is_personal: formData.get("is_personal") === "true",
       due_date: (formData.get("due_date") as string) || null,
@@ -199,21 +215,37 @@ async function notifyPingedTaskCompleted(
   completedByUserId: string,
   projectId: string,
   taskTitle: string,
+  pingRecipientIds: string[] | null,
 ) {
+  const targeted = !!pingRecipientIds && pingRecipientIds.length > 0
+
   const [{ data: project }, { data: completedBy }, { data: members }] = await Promise.all([
     admin.from("projects").select("name").eq("id", projectId).single(),
     admin.from("profiles").select("full_name").eq("id", completedByUserId).single(),
-    admin.from("project_members").select("profile_id").eq("project_id", projectId),
+    targeted
+      ? Promise.resolve({ data: pingRecipientIds!.map((id) => ({ profile_id: id })) })
+      : admin.from("project_members").select("profile_id").eq("project_id", projectId),
   ])
   if (!project || !members || members.length === 0) return
 
   const projectName = project.name
   const completedByName = completedBy?.full_name ?? "Alguien"
 
+  // Always include whoever completed it, even if targeting narrowed the
+  // recipient list down to other people — they get the "self" variant
+  // instead of the broadcast/targeted one either way.
+  const recipientIds = new Set(members.map((m) => m.profile_id))
+  recipientIds.add(completedByUserId)
+
   await Promise.all(
-    members.map((m) =>
-      notify(m.profile_id, "task_pinged_completed", { taskTitle, projectName, completedByName })
-    )
+    Array.from(recipientIds).map((profileId) => {
+      if (profileId === completedByUserId) {
+        return notify(profileId, "task_pinged_completed_self", { taskTitle, projectName })
+      }
+      return notify(profileId, targeted ? "task_pinged_completed_targeted" : "task_pinged_completed", {
+        taskTitle, projectName, completedByName,
+      })
+    })
   )
 }
 
@@ -238,7 +270,7 @@ export async function updateTaskStatus(id: string, status: TaskStatus, projectId
     .from("tasks")
     .update({ status })
     .eq("id", id)
-    .select("phase_id, title, is_pinged, project_id")
+    .select("phase_id, title, is_pinged, project_id, ping_recipient_ids")
     .single()
 
   if (error) throw error
@@ -248,11 +280,12 @@ export async function updateTaskStatus(id: string, status: TaskStatus, projectId
   }
 
   // "Ping" — replaces the old decorative "Urgente" flag: a task marked
-  // pinged that gets completed notifies the whole project team (including
-  // whoever just completed it, as an explicit confirmation), instead of
-  // sitting as a flag nobody actually acted on.
+  // pinged that gets completed notifies the whole project team, or just
+  // specific people if it was targeted (including whoever just completed
+  // it either way, as an explicit confirmation), instead of sitting as a
+  // flag nobody actually acted on.
   if (status === "Done" && data.is_pinged && data.project_id) {
-    await notifyPingedTaskCompleted(admin, user.id, data.project_id, data.title)
+    await notifyPingedTaskCompleted(admin, user.id, data.project_id, data.title, data.ping_recipient_ids)
   }
 
   revalidateTaskPaths(projectId)

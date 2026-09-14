@@ -41,6 +41,7 @@ export function DeliverablesSectionClient({
         status: "Done" as const,
         priority: "Low" as const,
         is_pinged: false,
+        ping_recipient_ids: null,
         task_order: 0,
         phase_id: null,
         due_date: null,

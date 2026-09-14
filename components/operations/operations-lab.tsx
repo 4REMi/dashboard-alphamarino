@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { ChevronRight, Plus, Trash2, LayoutList, Link2, Pencil, Check, X, Upload, Download, Paperclip, GripVertical, BookOpen, Search, Lock, ListChecks, AlertCircle, Copy, Sparkles } from "lucide-react"
+import { ChevronRight, Plus, Trash2, LayoutList, Link2, Pencil, Check, X, Upload, Download, Paperclip, GripVertical, BookOpen, Search, Lock, ListChecks, AlertCircle, Copy, Sparkles, Bell } from "lucide-react"
 import { PanelHeader, EmptyPanel, InlineInput, InlineSelect } from "@/components/lab/shared"
 import type { ProjectType, PhaseSet, PhaseSetPhase, TaskSet, TaskSetTask, TaskSetChecklistItem, Profile, Sop, Position } from "@/lib/types"
 import { PROJECT_TYPE_ICONS, getProjectTypeIcon } from "@/lib/project-type-icons"
@@ -463,6 +463,14 @@ function SortableTaskRow({
         {task.is_urgent && (
           <span className="text-xs px-1.5 py-0.5 rounded font-medium flex-shrink-0 bg-destructive/10 text-destructive">Urgente</span>
         )}
+        {task.is_pinged && (
+          <span
+            title="Al completarse en un proyecto, dispara un Ping"
+            className="flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded font-medium flex-shrink-0 bg-sky-100 text-sky-700"
+          >
+            <Bell className="w-3 h-3" />
+          </span>
+        )}
         {task.default_position_id && (
           <span
             title={(task.default_position as { name?: string } | null)?.name ?? "Puesto asignado"}
@@ -596,6 +604,8 @@ function EditTaskModal({
   const [sopId, setSopId] = useState(task.sop_id ?? "")
   const [sopSearch, setSopSearch] = useState("")
   const [showSopPicker, setShowSopPicker] = useState(false)
+  const [isPinged, setIsPinged] = useState(task.is_pinged ?? false)
+  const [pingPositionIds, setPingPositionIds] = useState<string[]>(task.ping_position_ids ?? [])
 
   const filteredSops = sops.filter((s) =>
     s.title.toLowerCase().includes(sopSearch.toLowerCase()) ||
@@ -654,7 +664,47 @@ function EditTaskModal({
                   <Paperclip className="w-3 h-3" />
                   Requiere entregable
                 </label>
+                <label className={cn(
+                  "flex items-center gap-1.5 h-7 px-3 rounded-full border cursor-pointer select-none text-xs font-medium transition-colors",
+                  isPinged ? "bg-sky-50 border-sky-300 text-sky-700" : "hover:bg-muted"
+                )}>
+                  <input type="checkbox" name="is_pinged" value="true" checked={isPinged} onChange={(e) => setIsPinged(e.target.checked)} className="sr-only" />
+                  <Bell className="w-3 h-3" />
+                  Ping al completarse
+                </label>
               </div>
+
+              {/* Ping recipients — puestos, ya que una plantilla no conoce
+                  personas reales. Se resuelven contra el equipo real del
+                  proyecto al aplicar la plantilla; sin puesto elegido, avisa
+                  a todo el equipo (default de Ping, sin cambios). */}
+              {isPinged && positions.length > 0 && (
+                <div className="rounded-lg border border-sky-200 bg-sky-50/50 px-3 py-2.5 space-y-1.5">
+                  <p className="text-xs font-medium text-sky-700">¿A qué puesto(s) avisar? (opcional)</p>
+                  <p className="text-[11px] text-muted-foreground">Sin elegir ninguno, se avisa a todo el equipo del proyecto — igual que hoy.</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {positions.map((p) => {
+                      const checked = pingPositionIds.includes(p.id)
+                      return (
+                        <label key={p.id} className={cn(
+                          "flex items-center gap-1 h-6 px-2 rounded-full border cursor-pointer select-none text-[11px] font-medium transition-colors",
+                          checked ? "bg-sky-600 border-sky-600 text-white" : "bg-white border-sky-200 text-muted-foreground hover:bg-sky-100"
+                        )}>
+                          <input
+                            type="checkbox"
+                            name="ping_position_ids"
+                            value={p.id}
+                            checked={checked}
+                            onChange={() => setPingPositionIds((prev) => checked ? prev.filter((id) => id !== p.id) : [...prev, p.id])}
+                            className="sr-only"
+                          />
+                          {p.name}
+                        </label>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Deliverable instructions — shown when requires_deliverable is checked */}
               {task.requires_deliverable && (

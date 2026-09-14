@@ -5,6 +5,7 @@ import { createPortal } from "react-dom"
 import { useTranslations } from "next-intl"
 import { deleteTask, updateTask, updateTaskStatus, updateTaskAssignee, updateTaskPinged, createChecklistItem, toggleChecklistItem, updateChecklistItem, deleteChecklistItem, reorderChecklistItems } from "@/lib/actions/tasks"
 import { assignSopToTask } from "@/lib/actions/sops"
+import { PingRecipientsPicker } from "@/components/tasks/ping-recipients-picker"
 import { DeliverableDrawer } from "@/components/projects/deliverable-drawer"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -806,6 +807,8 @@ function TaskDetailModal({
   )
   const [currentStatus, setCurrentStatus] = useState<TaskStatus>(task.status)
   const [currentAssigneeId, setCurrentAssigneeId] = useState<string | null>(task.assignee_id)
+  const [isPinged, setIsPinged] = useState(task.is_pinged ?? false)
+  const [pingRecipientIds, setPingRecipientIds] = useState<string[]>(task.ping_recipient_ids ?? [])
   const phase = (task.phase as { id: string; name: string; phase_order: number } | null | undefined) ?? null
 
   // Close on Escape
@@ -822,6 +825,8 @@ function TaskDetailModal({
     // include current status/assignee so they're preserved
     fd.set("status", currentStatus)
     fd.set("assignee_id", currentAssigneeId ?? "")
+    fd.set("is_pinged", String(isPinged && !!projectId))
+    fd.set("ping_recipient_ids_json", isPinged && projectId ? JSON.stringify(pingRecipientIds) : "")
     startTransition(async () => {
       try {
         await updateTask(task.id, fd)
@@ -914,16 +919,23 @@ function TaskDetailModal({
 
           {/* Ping + Requires deliverable */}
           <div className="flex gap-3">
-            <label className={cn(
-              "flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer select-none flex-1 text-sm transition-colors",
-              task.is_pinged
-                ? "border-sky-300 bg-sky-50 text-sky-700"
-                : "border-border bg-muted/30 text-muted-foreground"
-            )}>
-              <input type="checkbox" name="is_pinged" value="true" defaultChecked={task.is_pinged} className="accent-sky-500" />
-              <Bell className="w-3.5 h-3.5" />
-              {tT("pinged")}
-            </label>
+            {projectId && (
+              <label className={cn(
+                "flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer select-none flex-1 text-sm transition-colors",
+                isPinged
+                  ? "border-sky-300 bg-sky-50 text-sky-700"
+                  : "border-border bg-muted/30 text-muted-foreground"
+              )}>
+                <input
+                  type="checkbox"
+                  checked={isPinged}
+                  onChange={(e) => setIsPinged(e.target.checked)}
+                  className="accent-sky-500"
+                />
+                <Bell className="w-3.5 h-3.5" />
+                {tT("pinged")}
+              </label>
+            )}
             <label className={cn(
               "flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer select-none flex-1 text-sm transition-colors",
               task.requires_deliverable
@@ -935,6 +947,14 @@ function TaskDetailModal({
               {tT("deliverable")}
             </label>
           </div>
+
+          {isPinged && projectId && (
+            <PingRecipientsPicker
+              projectId={projectId}
+              selectedIds={pingRecipientIds}
+              onChange={setPingRecipientIds}
+            />
+          )}
 
           {/* Personal toggle — only relevant when this task actually belongs
               to a project: keeps the project link (still shows grouped

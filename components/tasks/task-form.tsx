@@ -12,6 +12,7 @@ import { Plus, Bell, Paperclip, Lock } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { Task, Profile } from "@/lib/types"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
+import { PingRecipientsPicker } from "@/components/tasks/ping-recipients-picker"
 
 interface TaskFormProps {
   // Fixed project context (project hub). Omit and pass `projects` instead
@@ -37,6 +38,7 @@ export function TaskForm({ projectId, projects, task, employees, trigger, onCrea
   const [status, setStatus] = useState<string>(task?.status ?? "Todo")
   const [assigneeId, setAssigneeId] = useState<string>(task?.assignee_id ?? "none")
   const [isPinged, setIsPinged] = useState(task?.is_pinged ?? false)
+  const [pingRecipientIds, setPingRecipientIds] = useState<string[]>(task?.ping_recipient_ids ?? [])
   const [requiresDeliverable, setRequiresDeliverable] = useState(task?.requires_deliverable ?? false)
   const [isPersonal, setIsPersonal] = useState(task?.is_personal ?? false)
   // "none" is a sentinel — Radix Select can't use an empty string value.
@@ -51,7 +53,9 @@ export function TaskForm({ projectId, projects, task, employees, trigger, onCrea
     setLoading(true)
     const formData = new FormData(e.currentTarget)
     formData.set("status", status)
-    formData.set("is_pinged", String(isPinged && selectedProjectId !== "none"))
+    const pinged = isPinged && selectedProjectId !== "none"
+    formData.set("is_pinged", String(pinged))
+    formData.set("ping_recipient_ids_json", pinged ? JSON.stringify(pingRecipientIds) : "")
     formData.set("requires_deliverable", String(requiresDeliverable))
     formData.set("is_personal", String(allowPersonalToggle && selectedProjectId !== "none" && isPersonal))
     formData.set("assignee_id", assigneeId === "none" ? "" : assigneeId)
@@ -169,7 +173,11 @@ export function TaskForm({ projectId, projects, task, employees, trigger, onCrea
               <div className="text-left">
                 <p className="font-medium">{isPinged ? "Ping" : "Sin ping"}</p>
                 <p className="text-xs opacity-70">
-                  {isPinged ? "Al completarse, se avisa a todo el equipo del proyecto" : "Click para pingar esta tarea"}
+                  {isPinged
+                    ? pingRecipientIds.length > 0
+                      ? `Al completarse, se avisa a ${pingRecipientIds.length} persona${pingRecipientIds.length > 1 ? "s" : ""} específica${pingRecipientIds.length > 1 ? "s" : ""}`
+                      : "Al completarse, se avisa a todo el equipo del proyecto"
+                    : "Click para pingar esta tarea"}
                 </p>
               </div>
               <div className={cn(
@@ -182,6 +190,14 @@ export function TaskForm({ projectId, projects, task, employees, trigger, onCrea
                 )} />
               </div>
             </button>
+          )}
+
+          {isPinged && selectedProjectId !== "none" && (
+            <PingRecipientsPicker
+              projectId={selectedProjectId}
+              selectedIds={pingRecipientIds}
+              onChange={setPingRecipientIds}
+            />
           )}
 
           {/* Requires deliverable toggle */}

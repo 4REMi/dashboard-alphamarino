@@ -51,12 +51,23 @@ navegar a cada proyecto uno por uno.
   cargado ahí.
 - **Ping (`is_pinged`)**: reemplaza la antigua bandera "Urgente" (que nadie usaba en la
   práctica ahora que existe el sistema de notificaciones). Ícono de campana, junto al
-  checkbox de estado en cada fila. Cuando una tarea pingada se marca "Hecho", se
-  notifica por Telegram a TODOS los miembros del proyecto (evento
-  `task_pinged_completed`), incluyendo a quien la completó — una confirmación
-  explícita para todo el equipo de que algo importante ya se cerró, sin que nadie
-  tenga que estar viendo el dashboard. Solo existe con proyecto (no tiene a quién
-  notificar sin uno) — el toggle no aparece en tareas sin `project_id`.
+  checkbox de estado en cada fila. Cuando una tarea pingueada se marca "Hecho", se
+  notifica por Telegram — por default a TODOS los miembros del proyecto, incluyendo a
+  quien la completó — una confirmación explícita de que algo importante ya se cerró,
+  sin que nadie tenga que estar viendo el dashboard. Solo existe con proyecto (no
+  tiene a quién notificar sin uno) — el toggle no aparece en tareas sin `project_id`.
+- **Destinatarios específicos de un Ping (`ping_recipient_ids`)**: opcional, nunca
+  bloqueante — al pingar una tarea real puedes elegir "Todo el equipo" (default) o
+  "Personas específicas" y marcar de la lista de miembros del proyecto quién necesita
+  enterarse. No crea ninguna dependencia entre tareas, solo afina a quién le llega el
+  aviso. Quien completa la tarea siempre recibe su propia confirmación
+  (`task_pinged_completed_self`) sin importar si estaba en la lista.
+- **Ping desde Operaciones (plantillas)**: `task_set_tasks.is_pinged` +
+  `ping_position_ids` — una tarea de plantilla puede traer Ping activado por default,
+  dirigido a puesto(s) en vez de personas (una plantilla no conoce gente real todavía).
+  Al aplicar la plantilla a un proyecto (`copyTaskSetsToProject`), el/los puesto(s) se
+  resuelven contra el equipo real de ESE proyecto — si nadie del proyecto tiene ese
+  puesto, cae de regreso a avisar a todo el equipo en vez de perderse el aviso.
 - **Tarea huérfana**: una tarea sin `project_id` Y sin `assignee_id`. Es
   estructuralmente invisible en cualquier otra vista (no cae en ningún tablero de
   proyecto ni en ninguna "Mi lista"). Pasa cuando algo dictado por voz no menciona
@@ -147,6 +158,18 @@ nunca se infiere del contenido.
   `tasks.is_pinged`. Solo afecta la tabla `tasks` — `task_set_tasks` y las tablas de
   Ops Lab conservan su propio `is_urgent` sin tocar (concepto de plantilla, no de
   tarea viva; nunca se hereda al crear una tarea real desde una plantilla).
+- `supabase/migrations/076_task_ping_targeting.sql` — `tasks.ping_recipient_ids`
+  (destinatarios específicos, opcional) + `task_set_tasks.is_pinged`/
+  `ping_position_ids` (default de Ping en plantillas de Operaciones).
+- `components/tasks/ping-recipients-picker.tsx` — selector "Todo el equipo" /
+  "Personas específicas", reusado en `task-form.tsx` y el modal de detalle de
+  `task-table.tsx`. Llama `getProjectMembers` (`lib/actions/projects.ts`) para listar
+  al equipo real del proyecto.
+- `components/operations/operations-lab.tsx` — `EditTaskModal` trae el mismo
+  concepto para plantillas, pero por puesto (`positions`) en vez de personas.
+- `lib/actions/projects.ts` — `resolvePingRecipients` (junto a `resolveAssignment`,
+  mismo `positionToMembers`) resuelve los puestos de una plantilla contra el equipo
+  real al aplicar un task set (`copyTaskSetsToProject`).
 - `lib/actions/standup.ts` — clasificación de Captura rápida (`processStandup`).
 - `lib/telegram-bot/handlers/tareas.ts` — creación/completado de tareas por voz.
 - `lib/telegram-bot/classify.ts` — clasificador de mensajes (incluye el campo
