@@ -200,7 +200,7 @@
     "phaseCol": "Fase",
     "noPhase": "Sin fase",
     "doneCount": "{count} hechas",
-    "urgent": "Urgente",
+    "pinged": "Ping",
     "deliverable": "Entregable",
     "deliverablePending": "Entregable pendiente — click para subir",
     "deliverableView": "Ver entregable entregado",

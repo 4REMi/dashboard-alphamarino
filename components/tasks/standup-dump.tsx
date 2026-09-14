@@ -196,7 +196,7 @@ export function StandupDump({ projects, employees, sops, currentUserId, onClose,
         if (it.projectId) fd.set("project_id", it.projectId)
         fd.set("title", it.title)
         fd.set("status", "Todo")
-        fd.set("is_urgent", "false")
+        fd.set("is_pinged", "false")
         fd.set("requires_deliverable", "false")
         fd.set("is_personal", String(!!it.projectId && it.isPersonal))
         if (it.dueDate) fd.set("due_date", it.dueDate)

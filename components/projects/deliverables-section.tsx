@@ -40,7 +40,7 @@ export function DeliverablesSectionClient({
         deliverable_instructions: (drawerDeliverable.task as any)?.deliverable_instructions ?? null,
         status: "Done" as const,
         priority: "Low" as const,
-        is_urgent: false,
+        is_pinged: false,
         task_order: 0,
         phase_id: null,
         due_date: null,

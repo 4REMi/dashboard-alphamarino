@@ -2,7 +2,7 @@
 
 **Ruta:** `/tasks`
 **Para quién:** ambos (admin ve más — ver "Quién puede ver/hacer qué")
-**Actualizado:** 2026-09-13
+**Actualizado:** 2026-09-14
 
 ## Qué es y para qué sirve
 
@@ -49,6 +49,14 @@ navegar a cada proyecto uno por uno.
   ruido para el caso raro). Quedan vacíos hasta que alguien los abre y los llena a
   mano. Un punto violeta junto al enlace avisa si una tarjeta colapsada ya tiene algo
   cargado ahí.
+- **Ping (`is_pinged`)**: reemplaza la antigua bandera "Urgente" (que nadie usaba en la
+  práctica ahora que existe el sistema de notificaciones). Ícono de campana, junto al
+  checkbox de estado en cada fila. Cuando una tarea pingada se marca "Hecho", se
+  notifica por Telegram a TODOS los miembros del proyecto (evento
+  `task_pinged_completed`), incluyendo a quien la completó — una confirmación
+  explícita para todo el equipo de que algo importante ya se cerró, sin que nadie
+  tenga que estar viendo el dashboard. Solo existe con proyecto (no tiene a quién
+  notificar sin uno) — el toggle no aparece en tareas sin `project_id`.
 - **Tarea huérfana**: una tarea sin `project_id` Y sin `assignee_id`. Es
   estructuralmente invisible en cualquier otra vista (no cae en ningún tablero de
   proyecto ni en ninguna "Mi lista"). Pasa cuando algo dictado por voz no menciona
@@ -133,7 +141,12 @@ nunca se infiere del contenido.
 - `components/tasks/standup-dump.tsx` — Captura rápida.
 - `lib/actions/tasks.ts` — `createTask` (acepta `sop_id` y `checklist_items_json`
   opcionales, además de los campos base), `updateTask`, `deleteTask`,
-  `getMyPendingTaskCount`, etc.
+  `updateTaskPinged`, `getMyPendingTaskCount`, etc. `updateTaskStatus` dispara
+  `task_pinged_completed` a todo `project_members` cuando aplica.
+- `supabase/migrations/075_task_ping_flag.sql` — renombra `tasks.is_urgent` →
+  `tasks.is_pinged`. Solo afecta la tabla `tasks` — `task_set_tasks` y las tablas de
+  Ops Lab conservan su propio `is_urgent` sin tocar (concepto de plantilla, no de
+  tarea viva; nunca se hereda al crear una tarea real desde una plantilla).
 - `lib/actions/standup.ts` — clasificación de Captura rápida (`processStandup`).
 - `lib/telegram-bot/handlers/tareas.ts` — creación/completado de tareas por voz.
 - `lib/telegram-bot/classify.ts` — clasificador de mensajes (incluye el campo

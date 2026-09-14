@@ -37,6 +37,18 @@ export const NOTIFICATION_EVENTS = {
         ? `📁 You were added to project *${data.projectName}*`
         : `📁 Te agregaron al proyecto *${data.projectName}*`,
   },
+  // Fires once per project member (including whoever completed it — an
+  // explicit confirmation for the actor too, not just the rest of the
+  // team) when a task marked "pingada" is moved to Done. Replaces the old
+  // decorative "Urgente" flag, which nobody actually acted on now that a
+  // real notification system exists.
+  task_pinged_completed: {
+    label: "Tarea pingada completada",
+    build: (data: { taskTitle: string; projectName: string; completedByName: string }, lang: NotificationLang) =>
+      lang === "en"
+        ? `🔔 *${data.taskTitle}* (pinged) was completed by ${data.completedByName} · ${data.projectName}`
+        : `🔔 *${data.taskTitle}* (pingada) fue completada por ${data.completedByName} · ${data.projectName}`,
+  },
   // One of these per person, per batch — not one "task_assigned" per task.
   // Applying a phase set (at project creation, or later via "Agregar
   // fases"/"Aplicar phase set") can auto-assign many tasks by position in a

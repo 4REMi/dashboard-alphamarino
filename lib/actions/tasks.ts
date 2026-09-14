@@ -90,7 +90,7 @@ export async function createTask(formData: FormData) {
     title,
     description: (formData.get("description") as string) || null,
     status: (formData.get("status") as TaskStatus) ?? "Todo",
-    is_urgent: formData.get("is_urgent") === "true",
+    is_pinged: formData.get("is_pinged") === "true",
     requires_deliverable: formData.get("requires_deliverable") === "true",
     deliverable_instructions: (formData.get("deliverable_instructions") as string) || null,
     is_personal: formData.get("is_personal") === "true",
@@ -135,7 +135,7 @@ export async function updateTask(id: string, formData: FormData) {
       title: formData.get("title") as string,
       description: (formData.get("description") as string) || null,
       status: formData.get("status") as TaskStatus,
-      is_urgent: formData.get("is_urgent") === "true",
+      is_pinged: formData.get("is_pinged") === "true",
       requires_deliverable: formData.get("requires_deliverable") === "true",
       is_personal: formData.get("is_personal") === "true",
       due_date: (formData.get("due_date") as string) || null,
@@ -147,13 +147,13 @@ export async function updateTask(id: string, formData: FormData) {
   revalidateTaskPaths(projectId)
 }
 
-export async function updateTaskUrgent(id: string, isUrgent: boolean, projectId: string | null) {
+export async function updateTaskPinged(id: string, isPinged: boolean, projectId: string | null) {
   await requireTaskPermission(projectId)
 
   const admin = createAdminClient()
   const { error } = await admin
     .from("tasks")
-    .update({ is_urgent: isUrgent })
+    .update({ is_pinged: isPinged })
     .eq("id", id)
 
   if (error) throw error
@@ -194,8 +194,31 @@ async function notifyTaskAssigned(
   await notify(assigneeId, "task_assigned", { taskTitle, projectName })
 }
 
+async function notifyPingedTaskCompleted(
+  admin: ReturnType<typeof createAdminClient>,
+  completedByUserId: string,
+  projectId: string,
+  taskTitle: string,
+) {
+  const [{ data: project }, { data: completedBy }, { data: members }] = await Promise.all([
+    admin.from("projects").select("name").eq("id", projectId).single(),
+    admin.from("profiles").select("full_name").eq("id", completedByUserId).single(),
+    admin.from("project_members").select("profile_id").eq("project_id", projectId),
+  ])
+  if (!project || !members || members.length === 0) return
+
+  const projectName = project.name
+  const completedByName = completedBy?.full_name ?? "Alguien"
+
+  await Promise.all(
+    members.map((m) =>
+      notify(m.profile_id, "task_pinged_completed", { taskTitle, projectName, completedByName })
+    )
+  )
+}
+
 export async function updateTaskStatus(id: string, status: TaskStatus, projectId: string | null) {
-  await requireTaskPermission(projectId)
+  const user = await requireTaskPermission(projectId)
 
   const admin = createAdminClient()
 
@@ -215,13 +238,21 @@ export async function updateTaskStatus(id: string, status: TaskStatus, projectId
     .from("tasks")
     .update({ status })
     .eq("id", id)
-    .select("phase_id")
+    .select("phase_id, title, is_pinged, project_id")
     .single()
 
   if (error) throw error
 
   if (data.phase_id) {
     await syncPhaseStatusFromTasks(admin, data.phase_id)
+  }
+
+  // "Ping" — replaces the old decorative "Urgente" flag: a task marked
+  // pinged that gets completed notifies the whole project team (including
+  // whoever just completed it, as an explicit confirmation), instead of
+  // sitting as a flag nobody actually acted on.
+  if (status === "Done" && data.is_pinged && data.project_id) {
+    await notifyPingedTaskCompleted(admin, user.id, data.project_id, data.title)
   }
 
   revalidateTaskPaths(projectId)

@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
-import { Plus, Flag, Paperclip, Lock } from "lucide-react"
+import { Plus, Bell, Paperclip, Lock } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { Task, Profile } from "@/lib/types"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
@@ -36,7 +36,7 @@ export function TaskForm({ projectId, projects, task, employees, trigger, onCrea
   const [open, setOpen] = useState(false)
   const [status, setStatus] = useState<string>(task?.status ?? "Todo")
   const [assigneeId, setAssigneeId] = useState<string>(task?.assignee_id ?? "none")
-  const [isUrgent, setIsUrgent] = useState(task?.is_urgent ?? false)
+  const [isPinged, setIsPinged] = useState(task?.is_pinged ?? false)
   const [requiresDeliverable, setRequiresDeliverable] = useState(task?.requires_deliverable ?? false)
   const [isPersonal, setIsPersonal] = useState(task?.is_personal ?? false)
   // "none" is a sentinel — Radix Select can't use an empty string value.
@@ -51,7 +51,7 @@ export function TaskForm({ projectId, projects, task, employees, trigger, onCrea
     setLoading(true)
     const formData = new FormData(e.currentTarget)
     formData.set("status", status)
-    formData.set("is_urgent", String(isUrgent))
+    formData.set("is_pinged", String(isPinged && selectedProjectId !== "none"))
     formData.set("requires_deliverable", String(requiresDeliverable))
     formData.set("is_personal", String(allowPersonalToggle && selectedProjectId !== "none" && isPersonal))
     formData.set("assignee_id", assigneeId === "none" ? "" : assigneeId)
@@ -152,34 +152,37 @@ export function TaskForm({ projectId, projects, task, employees, trigger, onCrea
             </Select>
           </div>
 
-          {/* Urgent toggle */}
-          <button
-            type="button"
-            onClick={() => setIsUrgent((v) => !v)}
-            className={cn(
-              "w-full flex items-center gap-3 rounded-lg border px-4 py-3 text-sm transition-colors",
-              isUrgent
-                ? "border-destructive/40 bg-destructive/5 text-destructive"
-                : "border-border bg-muted/30 text-muted-foreground hover:bg-muted/60"
-            )}
-          >
-            <Flag className={cn("w-4 h-4 flex-shrink-0", isUrgent && "fill-current")} />
-            <div className="text-left">
-              <p className="font-medium">{isUrgent ? "Urgente" : "Normal"}</p>
-              <p className="text-xs opacity-70">
-                {isUrgent ? "Requiere atención inmediata" : "Click para marcar como urgente"}
-              </p>
-            </div>
-            <div className={cn(
-              "ml-auto w-8 h-4 rounded-full transition-colors flex-shrink-0",
-              isUrgent ? "bg-destructive" : "bg-muted-foreground/30"
-            )}>
+          {/* Ping toggle — only meaningful with a project (notifies the
+              project team on completion), so it's hidden without one. */}
+          {selectedProjectId !== "none" && (
+            <button
+              type="button"
+              onClick={() => setIsPinged((v) => !v)}
+              className={cn(
+                "w-full flex items-center gap-3 rounded-lg border px-4 py-3 text-sm transition-colors",
+                isPinged
+                  ? "border-sky-300 bg-sky-50 text-sky-700"
+                  : "border-border bg-muted/30 text-muted-foreground hover:bg-muted/60"
+              )}
+            >
+              <Bell className={cn("w-4 h-4 flex-shrink-0", isPinged && "fill-current")} />
+              <div className="text-left">
+                <p className="font-medium">{isPinged ? "Ping" : "Sin ping"}</p>
+                <p className="text-xs opacity-70">
+                  {isPinged ? "Al completarse, se avisa a todo el equipo del proyecto" : "Click para pingar esta tarea"}
+                </p>
+              </div>
               <div className={cn(
-                "w-4 h-4 rounded-full bg-white shadow transition-transform",
-                isUrgent ? "translate-x-4" : "translate-x-0"
-              )} />
-            </div>
-          </button>
+                "ml-auto w-8 h-4 rounded-full transition-colors flex-shrink-0",
+                isPinged ? "bg-sky-500" : "bg-muted-foreground/30"
+              )}>
+                <div className={cn(
+                  "w-4 h-4 rounded-full bg-white shadow transition-transform",
+                  isPinged ? "translate-x-4" : "translate-x-0"
+                )} />
+              </div>
+            </button>
+          )}
 
           {/* Requires deliverable toggle */}
           <button

@@ -200,7 +200,7 @@
     "phaseCol": "Phase",
     "noPhase": "No phase",
     "doneCount": "{count} done",
-    "urgent": "Urgent",
+    "pinged": "Ping",
     "deliverable": "Deliverable",
     "deliverablePending": "Deliverable pending — click to upload",
     "deliverableView": "View submitted deliverable",

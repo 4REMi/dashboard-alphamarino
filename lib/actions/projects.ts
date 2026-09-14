@@ -108,7 +108,9 @@ async function copyTaskSetsToProject(
           description: t.description,
           priority: t.priority,
           status: "Todo",
-          is_urgent: t.is_urgent ?? false,
+          // Ping is a deliberate per-task action, never inherited from the
+          // task_set_tasks template's own (unrelated) is_urgent field.
+          is_pinged: false,
           requires_deliverable: t.requires_deliverable ?? false,
           deliverable_instructions: t.deliverable_instructions ?? null,
           task_order: j,

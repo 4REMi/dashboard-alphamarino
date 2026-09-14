@@ -3,14 +3,14 @@
 import { useState, useTransition, useRef, useEffect } from "react"
 import { createPortal } from "react-dom"
 import { useTranslations } from "next-intl"
-import { deleteTask, updateTask, updateTaskStatus, updateTaskAssignee, updateTaskUrgent, createChecklistItem, toggleChecklistItem, updateChecklistItem, deleteChecklistItem, reorderChecklistItems } from "@/lib/actions/tasks"
+import { deleteTask, updateTask, updateTaskStatus, updateTaskAssignee, updateTaskPinged, createChecklistItem, toggleChecklistItem, updateChecklistItem, deleteChecklistItem, reorderChecklistItems } from "@/lib/actions/tasks"
 import { assignSopToTask } from "@/lib/actions/sops"
 import { DeliverableDrawer } from "@/components/projects/deliverable-drawer"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Trash2, CalendarDays, ChevronDown, ChevronRight, UserX, Flag, Paperclip, X, BookOpen, Search, ExternalLink, GripVertical, Lock, ListChecks, Plus, ChevronsUpDown } from "lucide-react"
+import { Trash2, CalendarDays, ChevronDown, ChevronRight, UserX, Bell, Paperclip, X, BookOpen, Search, ExternalLink, GripVertical, Lock, ListChecks, Plus, ChevronsUpDown } from "lucide-react"
 import { formatDate } from "@/lib/utils"
 import { cn } from "@/lib/utils"
 import type { Task, Profile, TaskStatus, Deliverable, Sop, TaskChecklistItem } from "@/lib/types"
@@ -194,19 +194,24 @@ function StatusPicker({
   )
 }
 
-// ─── Urgent Flag ──────────────────────────────────────────────────────────────
+// ─── Ping Flag ────────────────────────────────────────────────────────────────
+// Replaces the old decorative "Urgente" flag: pinging a task means the whole
+// project team gets notified once it's completed. Only meaningful with a
+// project (there's no one to notify without one), so hidden otherwise.
 
-function UrgentFlag({ task, projectId }: { task: Task; projectId: string | null }) {
-  const [optimistic, setOptimistic] = useState(task.is_urgent ?? false)
+function PingFlag({ task, projectId }: { task: Task; projectId: string | null }) {
+  const [optimistic, setOptimistic] = useState(task.is_pinged ?? false)
   const [isPending, startTransition] = useTransition()
+
+  if (!projectId) return null
 
   function handleToggle(e: React.MouseEvent) {
     e.stopPropagation()
     const next = !optimistic
     setOptimistic(next)
     startTransition(async () => {
-      try { await updateTaskUrgent(task.id, next, projectId) }
-      catch { setOptimistic(task.is_urgent ?? false) }
+      try { await updateTaskPinged(task.id, next, projectId) }
+      catch { setOptimistic(task.is_pinged ?? false) }
     })
   }
 
@@ -214,16 +219,16 @@ function UrgentFlag({ task, projectId }: { task: Task; projectId: string | null 
     <button
       onClick={handleToggle}
       disabled={isPending}
-      title={optimistic ? "Urgente — click para quitar" : "Marcar como urgente"}
+      title={optimistic ? "Pingada — al completarse avisa a todo el equipo (click para quitar)" : "Pingar — avisa a todo el equipo del proyecto al completarse"}
       className={cn(
         "p-1.5 rounded-md transition-colors",
         isPending && "opacity-40",
         optimistic
-          ? "text-destructive hover:text-destructive hover:bg-destructive/10"
+          ? "text-sky-600 hover:text-sky-600 hover:bg-sky-500/10"
           : "text-muted-foreground/30 hover:text-muted-foreground hover:bg-muted"
       )}
     >
-      <Flag className={cn("w-3.5 h-3.5", optimistic && "fill-current")} />
+      <Bell className={cn("w-3.5 h-3.5", optimistic && "fill-current")} />
     </button>
   )
 }
@@ -907,17 +912,17 @@ function TaskDetailModal({
             </div>
           </div>
 
-          {/* Urgent + Requires deliverable */}
+          {/* Ping + Requires deliverable */}
           <div className="flex gap-3">
             <label className={cn(
               "flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer select-none flex-1 text-sm transition-colors",
-              task.is_urgent
-                ? "border-destructive/40 bg-destructive/5 text-destructive"
+              task.is_pinged
+                ? "border-sky-300 bg-sky-50 text-sky-700"
                 : "border-border bg-muted/30 text-muted-foreground"
             )}>
-              <input type="checkbox" name="is_urgent" value="true" defaultChecked={task.is_urgent} className="accent-destructive" />
-              <Flag className="w-3.5 h-3.5" />
-              {tT("urgent")}
+              <input type="checkbox" name="is_pinged" value="true" defaultChecked={task.is_pinged} className="accent-sky-500" />
+              <Bell className="w-3.5 h-3.5" />
+              {tT("pinged")}
             </label>
             <label className={cn(
               "flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer select-none flex-1 text-sm transition-colors",
@@ -1024,12 +1029,12 @@ function TaskCard({ task, projectId, deliverable, onDeliverableClick, onCardClic
       onClick={() => onCardClick(task)}
       className={cn(
         "border rounded-lg bg-card px-4 py-3 space-y-2 cursor-pointer active:bg-muted/50 transition-colors",
-        task.is_urgent && "border-destructive/30 bg-destructive/5"
+        task.is_pinged && "border-sky-300/50 bg-sky-50/40"
       )}
     >
       {/* Title row */}
       <div className="flex items-start gap-2">
-        {task.is_urgent && <Flag className="w-3.5 h-3.5 text-destructive flex-shrink-0 mt-0.5 fill-current" />}
+        {task.is_pinged && <Bell className="w-3.5 h-3.5 text-sky-600 flex-shrink-0 mt-0.5 fill-current" />}
         <p className={cn("text-sm font-medium flex-1 min-w-0", task.status === "Done" && "line-through text-muted-foreground")}>
           {task.title}
         </p>
@@ -1129,15 +1134,15 @@ function TaskRow({ task, projectId, employees, isAdmin, deliverable, onDeliverab
     <tr
       className={cn(
         "border-t transition-colors cursor-pointer",
-        task.is_urgent
-          ? "bg-destructive/5 hover:bg-destructive/10"
+        task.is_pinged
+          ? "bg-sky-500/5 hover:bg-sky-500/10"
           : "hover:bg-muted/30"
       )}
       onClick={() => onRowClick(task)}
     >
-      {/* Urgent flag */}
+      {/* Ping flag */}
       <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
-        <UrgentFlag task={task} projectId={projectId} />
+        <PingFlag task={task} projectId={projectId} />
       </td>
 
       {/* Title + description excerpt + due date */}

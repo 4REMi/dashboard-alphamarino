@@ -5,7 +5,7 @@
 export type Role = "admin" | "subadmin" | "employee"
 export type ProjectStatus = "Active" | "Completed" | "Archived"
 export type TaskStatus = "Todo" | "In Progress" | "Done"
-/** @deprecated Use is_urgent boolean instead */
+/** @deprecated Kept for task_set_tasks/Ops Lab template compat only — live tasks use is_pinged instead */
 export type TaskPriority = "Low" | "Medium" | "High"
 export type CustomerStatus = "Prospect" | "Active" | "Inactive"
 export type ExpenseFrequency = "Monthly" | "Weekly" | "Annual" | "Semestral" | "One-time"
@@ -220,8 +220,10 @@ export interface Task {
   title: string
   description: string | null
   status: TaskStatus
-  priority: TaskPriority // kept for DB compat, use is_urgent in UI
-  is_urgent: boolean
+  priority: TaskPriority // kept for DB compat, unused in UI
+  // "Ping" — marking a task pinged and later completing it notifies the
+  // whole project team. Replaces the old decorative "Urgente" flag.
+  is_pinged: boolean
   requires_deliverable: boolean
   deliverable_instructions: string | null
   // Stays linked to project_id for context/grouping in "Mi lista", but is
