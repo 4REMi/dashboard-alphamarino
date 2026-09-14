@@ -249,6 +249,43 @@ async function notifyPingedTaskCompleted(
   )
 }
 
+// Shared "this task just became Done" finalization — status update, phase
+// sync, and the Ping notification. There are THREE independent paths that
+// can complete a task (explicit status change below, checklist
+// auto-complete in syncTaskStatusFromChecklist, and the Telegram
+// "tarea completada" voice command in lib/telegram-bot/handlers/tareas.ts)
+// — all three route through this so Ping fires no matter which one did
+// it. wasAlreadyDone guards against re-notifying when nothing actually
+// changed (e.g. the checklist recomputes to Done again after being Done
+// already, or the same status gets resubmitted).
+async function finalizeTaskDone(
+  admin: ReturnType<typeof createAdminClient>,
+  taskId: string,
+  completedByUserId: string,
+  wasAlreadyDone: boolean,
+) {
+  const { data, error } = await admin
+    .from("tasks")
+    .update({ status: "Done" })
+    .eq("id", taskId)
+    .select("phase_id, title, is_pinged, project_id, ping_recipient_ids")
+    .single()
+  if (error) throw error
+
+  if (data.phase_id) {
+    await syncPhaseStatusFromTasks(admin, data.phase_id)
+  }
+
+  // "Ping" — replaces the old decorative "Urgente" flag: a task marked
+  // pinged that gets completed notifies the whole project team, or just
+  // specific people if it was targeted (including whoever just completed
+  // it either way, as an explicit confirmation), instead of sitting as a
+  // flag nobody actually acted on.
+  if (!wasAlreadyDone && data.is_pinged && data.project_id) {
+    await notifyPingedTaskCompleted(admin, completedByUserId, data.project_id, data.title, data.ping_recipient_ids)
+  }
+}
+
 export async function updateTaskStatus(id: string, status: TaskStatus, projectId: string | null) {
   const user = await requireTaskPermission(projectId)
 
@@ -264,31 +301,34 @@ export async function updateTaskStatus(id: string, status: TaskStatus, projectId
     if (count && count > 0) {
       throw new Error(`Hay ${count} item${count > 1 ? "s" : ""} obligatorio${count > 1 ? "s" : ""} sin completar`)
     }
-  }
 
-  const { data, error } = await admin
-    .from("tasks")
-    .update({ status })
-    .eq("id", id)
-    .select("phase_id, title, is_pinged, project_id, ping_recipient_ids")
-    .single()
-
-  if (error) throw error
-
-  if (data.phase_id) {
-    await syncPhaseStatusFromTasks(admin, data.phase_id)
-  }
-
-  // "Ping" — replaces the old decorative "Urgente" flag: a task marked
-  // pinged that gets completed notifies the whole project team, or just
-  // specific people if it was targeted (including whoever just completed
-  // it either way, as an explicit confirmation), instead of sitting as a
-  // flag nobody actually acted on.
-  if (status === "Done" && data.is_pinged && data.project_id) {
-    await notifyPingedTaskCompleted(admin, user.id, data.project_id, data.title, data.ping_recipient_ids)
+    const { data: before } = await admin.from("tasks").select("status").eq("id", id).single()
+    await finalizeTaskDone(admin, id, user.id, before?.status === "Done")
+  } else {
+    const { data, error } = await admin
+      .from("tasks")
+      .update({ status })
+      .eq("id", id)
+      .select("phase_id")
+      .single()
+    if (error) throw error
+    if (data.phase_id) await syncPhaseStatusFromTasks(admin, data.phase_id)
   }
 
   revalidateTaskPaths(projectId)
+}
+
+// Used by the Telegram "tarea completada" voice command
+// (lib/telegram-bot/handlers/tareas.ts) — no dashboard session there, so
+// requireTaskPermission's cookie-based auth doesn't apply; the bot already
+// resolved which profile is completing it from the chat_id before calling
+// this.
+export async function markTaskDoneFromBot(taskId: string, completedByProfileId: string): Promise<void> {
+  const admin = createAdminClient()
+  const { data: before } = await admin.from("tasks").select("status, project_id").eq("id", taskId).single()
+  await finalizeTaskDone(admin, taskId, completedByProfileId, before?.status === "Done")
+  if (before?.project_id) revalidatePath(`/projects/${before.project_id}`)
+  revalidatePath("/tasks")
 }
 
 export async function deleteTask(id: string, projectId: string | null) {
@@ -309,7 +349,12 @@ export async function deleteTask(id: string, projectId: string | null) {
 
 // Keep task status in sync with checklist completion: fully checked -> Done,
 // some checked -> In Progress, none checked -> Todo. No-op for tasks without a checklist.
-async function syncTaskStatusFromChecklist(admin: ReturnType<typeof createAdminClient>, taskId: string) {
+//
+// This is a SECOND path to "Done" besides the explicit status change in
+// updateTaskStatus — completing the last checklist item auto-completes the
+// task here instead. Routes the Done case through the same finalizeTaskDone
+// as every other completion path, so Ping fires here too.
+async function syncTaskStatusFromChecklist(admin: ReturnType<typeof createAdminClient>, taskId: string, completedByUserId: string) {
   const { data: items } = await admin
     .from("task_checklist_items")
     .select("is_checked")
@@ -318,6 +363,12 @@ async function syncTaskStatusFromChecklist(admin: ReturnType<typeof createAdminC
 
   const checked = items.filter((i) => i.is_checked).length
   const status: TaskStatus = checked === items.length ? "Done" : checked > 0 ? "In Progress" : "Todo"
+
+  if (status === "Done") {
+    const { data: before } = await admin.from("tasks").select("status").eq("id", taskId).single()
+    await finalizeTaskDone(admin, taskId, completedByUserId, before?.status === "Done")
+    return
+  }
 
   const { data } = await admin
     .from("tasks")
@@ -417,7 +468,7 @@ export async function toggleChecklistItem(
   isChecked: boolean,
   projectId: string | null
 ) {
-  await requireTaskPermission(projectId)
+  const user = await requireTaskPermission(projectId)
   const admin = createAdminClient()
   const { data, error } = await admin
     .from("task_checklist_items")
@@ -427,7 +478,7 @@ export async function toggleChecklistItem(
     .single()
   if (error) throw error
 
-  await syncTaskStatusFromChecklist(admin, data.task_id)
+  await syncTaskStatusFromChecklist(admin, data.task_id, user.id)
 
   revalidateTaskPaths(projectId)
 }

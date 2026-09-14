@@ -2,6 +2,7 @@ import { SupabaseClient } from "@supabase/supabase-js"
 import { sendMessage } from "@/lib/telegram-bot/telegram"
 import { findByName, findAllMatches } from "@/lib/telegram-bot/match"
 import { notify } from "@/lib/notifications/notify"
+import { markTaskDoneFromBot } from "@/lib/actions/tasks"
 import type { Movimiento } from "@/lib/telegram-bot/classify"
 
 export async function handleTarea(
@@ -132,8 +133,23 @@ export async function handleTareaCompletada(
     return
   }
 
-  const { error } = await supabase.from("tasks").update({ status: "Done" }).eq("id", task.id)
-  if (error) throw error
+  // Resolves who's actually completing it (for the Ping "self" confirmation
+  // and the "completed by X" text) from their linked Telegram chat — same
+  // TELEGRAM_BOT_AUTHOR_ID fallback used elsewhere in this file when no
+  // person can be resolved, so this never throws for lack of a completer.
+  const { data: completer } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("telegram_chat_id", chatId)
+    .maybeSingle()
+  const completedByProfileId = completer?.id ?? process.env.TELEGRAM_BOT_AUTHOR_ID ?? null
+
+  if (completedByProfileId) {
+    await markTaskDoneFromBot(task.id, completedByProfileId)
+  } else {
+    const { error } = await supabase.from("tasks").update({ status: "Done" }).eq("id", task.id)
+    if (error) throw error
+  }
 
   await sendMessage(chatId, `✅ Tarea completada: ${task.title} · ${project.name}`)
 }

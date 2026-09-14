@@ -2,7 +2,7 @@
 
 **Ruta:** `/tasks`
 **Para quién:** ambos (admin ve más — ver "Quién puede ver/hacer qué")
-**Actualizado:** 2026-09-14
+**Actualizado:** 2026-09-15
 
 ## Qué es y para qué sirve
 
@@ -62,6 +62,13 @@ navegar a cada proyecto uno por uno.
   enterarse. No crea ninguna dependencia entre tareas, solo afina a quién le llega el
   aviso. Quien completa la tarea siempre recibe su propia confirmación
   (`task_pinged_completed_self`) sin importar si estaba en la lista.
+- **Tres caminos a "Hecho", un solo disparador de Ping**: una tarea puede llegar a
+  Done por cambio de estado explícito, por completar su checklist (auto-completado),
+  o por voz ("tarea completada" en Telegram). Los tres pasan por `finalizeTaskDone`
+  (`lib/actions/tasks.ts`) — si algún día se agrega un cuarto camino a Done, tiene
+  que pasar por ahí también o el Ping de ese camino no se dispara (bug real que ya
+  pasó: el auto-completado por checklist y el completado por voz escribían
+  `status: "Done"` directo a la tabla, sin pasar por la lógica de notificación).
 - **Ping desde Operaciones (plantillas)**: `task_set_tasks.is_pinged` +
   `ping_position_ids` — una tarea de plantilla puede traer Ping activado por default,
   dirigido a puesto(s) en vez de personas (una plantilla no conoce gente real todavía).
@@ -152,8 +159,12 @@ nunca se infiere del contenido.
 - `components/tasks/standup-dump.tsx` — Captura rápida.
 - `lib/actions/tasks.ts` — `createTask` (acepta `sop_id` y `checklist_items_json`
   opcionales, además de los campos base), `updateTask`, `deleteTask`,
-  `updateTaskPinged`, `getMyPendingTaskCount`, etc. `updateTaskStatus` dispara
-  `task_pinged_completed` a todo `project_members` cuando aplica.
+  `updateTaskPinged`, `getMyPendingTaskCount`, etc. `finalizeTaskDone` es el único
+  punto que marca Done + dispara Ping — usado por `updateTaskStatus`,
+  `syncTaskStatusFromChecklist`, y `markTaskDoneFromBot` (Telegram).
+- `lib/telegram-bot/handlers/tareas.ts` — `handleTareaCompletada` resuelve quién
+  completa la tarea por `profiles.telegram_chat_id` (fallback `TELEGRAM_BOT_AUTHOR_ID`)
+  y llama `markTaskDoneFromBot`.
 - `supabase/migrations/075_task_ping_flag.sql` — renombra `tasks.is_urgent` →
   `tasks.is_pinged`. Solo afecta la tabla `tasks` — `task_set_tasks` y las tablas de
   Ops Lab conservan su propio `is_urgent` sin tocar (concepto de plantilla, no de
