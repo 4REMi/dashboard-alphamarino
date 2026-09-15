@@ -75,15 +75,27 @@ function extractUrls(data: ApimartTaskResponse): string[] {
 // used by the LLM node for GPT-5 (Claude goes through the direct Anthropic
 // integration instead, see node-handlers.ts — no APIMart markup for that
 // one). Unlike image/video generation this has no task_id/polling step.
-export async function callApimartChat(model: string, prompt: string, systemPrompt?: string): Promise<string> {
+// imageUrls uses OpenAI's vision content format — a direct URL, no need to
+// download/base64 like Anthropic's API requires.
+export async function callApimartChat(model: string, prompt: string, systemPrompt?: string, imageUrls: string[] = []): Promise<string> {
+  const userContent = imageUrls.length > 0
+    ? [
+        { type: "text", text: prompt },
+        ...imageUrls.map((url) => ({ type: "image_url", image_url: { url } })),
+      ]
+    : prompt
+
   const messages = [
     ...(systemPrompt ? [{ role: "system", content: systemPrompt }] : []),
-    { role: "user", content: prompt },
+    { role: "user", content: userContent },
   ]
   const res = await fetch(`${APIMART_BASE}/chat/completions`, {
     method: "POST",
     headers: apimartHeaders(),
-    body: JSON.stringify({ model, messages }),
+    // stream:false is required — without it this endpoint defaults to a
+    // Server-Sent-Events stream ("data: {...}\n\n" chunks), which broke
+    // res.json() with a raw "Unexpected token 'd'" parse error.
+    body: JSON.stringify({ model, messages, stream: false }),
     cache: "no-store",
   })
   if (!res.ok) {

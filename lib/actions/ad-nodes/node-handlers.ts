@@ -7,17 +7,37 @@ import { callApimartChat } from "./providers/apimart"
 // (submit + poll a provider job) and live in executor.ts instead, since
 // they need to persist a provider_job_id between polls.
 
-// Concatenates whatever upstream nodes produced (text, analysis text, or
-// image urls) into a single context block a text-only node can read.
+// Concatenates whatever TEXT upstream nodes produced. Deliberately does
+// NOT try to represent image outputs as text (e.g. "[imagen: url]") — that
+// used to be the actual bug: the model only ever saw a URL string, never
+// the image itself, so it had nothing real to look at and hallucinated.
+// Images are attached as real vision content instead — see
+// upstreamImageUrls + downloadImageAsBase64.
 function summarizeUpstream(upstream: AdNodeRunOutput[]): string {
   return upstream
-    .map((o) => o.text ?? o.analysis ?? (o.image_urls?.length ? `[imagen: ${o.image_urls[0]}]` : ""))
+    .map((o) => o.text ?? o.analysis ?? "")
     .filter(Boolean)
     .join("\n\n")
 }
 
 function upstreamImageUrls(upstream: AdNodeRunOutput[]): string[] {
   return upstream.flatMap((o) => o.image_urls ?? [])
+}
+
+// Anthropic's vision API needs the image bytes (base64), not a bare URL —
+// download and encode. Capped at 5 images per call so a workflow with many
+// reference images doesn't build an enormous request.
+async function downloadImageAsBase64(url: string): Promise<{ type: "image"; source: { type: "base64"; media_type: "image/jpeg" | "image/png" | "image/webp" | "image/gif"; data: string } } | null> {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(15_000) })
+    if (!res.ok) return null
+    const buffer = await res.arrayBuffer()
+    const base64 = Buffer.from(buffer).toString("base64")
+    const mediaType = (res.headers.get("content-type") ?? "image/jpeg") as "image/jpeg" | "image/png" | "image/webp" | "image/gif"
+    return { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } }
+  } catch {
+    return null
+  }
 }
 
 export async function runTextNode(config: AdNodeConfig): Promise<AdNodeRunOutput> {
@@ -27,27 +47,36 @@ export async function runTextNode(config: AdNodeConfig): Promise<AdNodeRunOutput
 // Model choice decides the provider — Claude runs through this account's
 // own direct Anthropic integration (no APIMart markup), GPT-5 has no such
 // direct integration so it goes through APIMart's chat completions.
+// Reference images from upstream Image nodes are attached as real vision
+// content either way, not just mentioned as a URL in the text prompt.
 export async function runLLMNode(config: AdNodeConfig, upstream: AdNodeRunOutput[]): Promise<AdNodeRunOutput> {
   const context = summarizeUpstream(upstream)
   const userPrompt = [context, config.prompt ?? ""].filter(Boolean).join("\n\n")
-  if (!userPrompt.trim()) throw new Error("Este nodo LLM no tiene ningún input ni prompt propio")
+  const imageUrls = upstreamImageUrls(upstream).slice(0, 5)
+  if (!userPrompt.trim() && imageUrls.length === 0) throw new Error("Este nodo LLM no tiene ningún input ni prompt propio")
 
   const model = config.model || "claude-sonnet-4-6"
 
   if (model.startsWith("apimart:")) {
-    const text = await callApimartChat(model.replace("apimart:", ""), userPrompt, config.systemPrompt)
+    // OpenAI-style vision content takes a plain URL — no download needed.
+    const text = await callApimartChat(model.replace("apimart:", ""), userPrompt, config.systemPrompt, imageUrls)
     return { text }
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY no configurado")
 
+  const imageBlocks = (await Promise.all(imageUrls.map(downloadImageAsBase64))).filter((b) => b !== null)
+  const content = imageBlocks.length > 0
+    ? [...imageBlocks, { type: "text" as const, text: userPrompt }]
+    : userPrompt
+
   const Anthropic = (await import("@anthropic-ai/sdk")).default
   const client = new Anthropic({ apiKey })
   const message = await client.messages.create({
     model,
     max_tokens: 2048,
-    messages: [{ role: "user", content: userPrompt }],
+    messages: [{ role: "user", content }],
     ...(config.systemPrompt ? { system: config.systemPrompt } : {}),
   })
   const text = message.content[0].type === "text" ? message.content[0].text : ""
@@ -59,14 +88,10 @@ export async function runAnalysisNode(config: AdNodeConfig, upstream: AdNodeRunO
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY no configurado")
 
   const imageUrls = upstreamImageUrls(upstream)
-  const imageUrl = imageUrls[0]
-  if (!imageUrl) throw new Error("Este nodo de análisis necesita una imagen de un nodo Image conectado")
+  if (imageUrls.length === 0) throw new Error("Este nodo de análisis necesita una imagen de un nodo Image conectado")
 
-  const imageRes = await fetch(imageUrl, { signal: AbortSignal.timeout(15_000) })
-  if (!imageRes.ok) throw new Error("No se pudo descargar la imagen a analizar")
-  const buffer = await imageRes.arrayBuffer()
-  const base64 = Buffer.from(buffer).toString("base64")
-  const mediaType = (imageRes.headers.get("content-type") ?? "image/jpeg") as "image/jpeg" | "image/png" | "image/webp" | "image/gif"
+  const imageBlock = await downloadImageAsBase64(imageUrls[0])
+  if (!imageBlock) throw new Error("No se pudo descargar la imagen a analizar")
 
   const Anthropic = (await import("@anthropic-ai/sdk")).default
   const client = new Anthropic({ apiKey })
@@ -76,7 +101,7 @@ export async function runAnalysisNode(config: AdNodeConfig, upstream: AdNodeRunO
     messages: [{
       role: "user",
       content: [
-        { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
+        imageBlock,
         { type: "text", text: config.prompt || "Describe esta imagen con el mayor detalle posible." },
       ],
     }],

@@ -113,7 +113,16 @@ canvas — fuerza el guardado inmediato en vez de esperar el autoguardado
   explícitamente `failed`/`cancelled`. Requiere `APIMART_API_KEY` en las
   variables de entorno.
   - `callApimartChat` (mismo archivo) es la contraparte síncrona para el nodo LLM
-    con GPT-5 — chat completions estilo OpenAI, sin task_id/polling.
+    con GPT-5 — chat completions estilo OpenAI, sin task_id/polling. Requiere
+    `stream: false` explícito — sin eso, este endpoint regresa Server-Sent Events
+    en vez de un JSON normal (así se manifestó el bug: `JSON.parse` tronando con
+    "Unexpected token 'd'", la primera letra de `data: {...}`).
+- **Un nodo LLM con imágenes conectadas de verdad las "ve"** — antes solo
+  insertaba la URL como texto plano en el prompt (`[imagen: url]`), así que el
+  modelo nunca recibía la imagen real, solo un string, y alucinaba. Ahora
+  `node-handlers.ts` descarga y adjunta la imagen como contenido de visión real
+  (base64 para Claude, URL directa para GPT-5 vía APIMart — cada API lo pide
+  distinto). Tope de 5 imágenes por llamada.
 - **No se toca `lib/actions/image-clone.ts` ni `lib/actions/ad-scratch.ts`** — Ad
   Nodes tiene sus propios adaptadores de generación, deliberadamente separados
   (mismo criterio de "duplicar en vez de refactorizar código de producción" ya
