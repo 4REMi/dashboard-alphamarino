@@ -82,9 +82,15 @@ export function apimartAdapter(kind: "image" | "video", model: string): Generati
         const err = unwrap(await res.json().catch(() => ({})) as ApimartTaskResponse)
         throw new Error(errorMessageOf(err.error) ?? errorMessageOf(err.message) ?? `APIMart error ${res.status}`)
       }
-      const raw = unwrap(await res.json() as ApimartTaskResponse)
+      const parsed = await res.json() as ApimartTaskResponse
+      const raw = unwrap(parsed)
       const jobId = raw.task_id ?? raw.id
-      if (!jobId) throw new Error("APIMart no regresó un task_id/id")
+      if (!jobId) {
+        // Include the actual response so a shape mismatch is diagnosable
+        // from the error message itself instead of needing to hunt for a
+        // real example separately.
+        throw new Error(`APIMart no regresó un task_id/id — respuesta recibida: ${JSON.stringify(parsed).slice(0, 500)}`)
+      }
       return { jobId }
     },
 
