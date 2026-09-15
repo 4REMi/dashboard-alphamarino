@@ -104,11 +104,16 @@ punto izquierdo de otro.
 pega una URL directamente si ya la tienes alojada en otro lado. Sube al bucket
 `ad-lab` de Storage, bajo `ad-node-workflows/{workflowId}/...`.
 
-**Duplicar/eliminar un nodo**: al pasar el cursor sobre un nodo aparecen dos
-íconos junto al pill de estado (copiar/basura) — eliminar también quita las
-aristas que tocaban ese nodo. (Están adentro de la tarjeta a propósito, no con
-offset hacia afuera — puestos afuera quedaban recortados por el contenedor de
-React Flow y nunca aparecían al hacer hover.)
+**Duplicar/eliminar un nodo**: dos íconos siempre visibles junto al pill de
+estado, en la esquina superior derecha de la tarjeta del nodo (copiar/basura) —
+eliminar también quita las aristas que tocaban ese nodo. (Están adentro de la
+tarjeta a propósito, no con offset hacia afuera — puestos afuera quedaban
+recortados por el contenedor de React Flow y nunca aparecían al hacer hover.)
+
+**Eliminar solo una conexión (sin tocar los nodos)**: botón × directo sobre la
+línea de conexión, siempre visible en su punto medio — no hace falta
+seleccionarla y presionar Backspace (que también sigue funcionando, es el
+comportamiento nativo de React Flow, pero no era descubrible).
 
 **Correr**: botón ▶ en el nodo mismo. El estado (idle/running/done/error) se ve en
 el propio nodo y en el panel.
@@ -193,7 +198,10 @@ Mismo gate que todo Ad Lab: permiso `access_ad_lab` (`lib/permissions.ts`).
 - `lib/actions/ad-nodes/node-handlers.ts` — lógica síncrona de Text/LLM/Analysis/Split Text.
 - `components/ad-lab/split-colors.ts` — paleta compartida para las partes/conexiones
   numeradas de Split Text; `components/ad-lab/edges/split-order-edge.tsx` — el
-  tipo de edge `splitOrder` que dibuja el badge numerado en medio de la conexión.
+  tipo de edge `splitOrder` que dibuja el badge numerado en medio de la conexión;
+  `components/ad-lab/edges/deletable-edge.tsx` — tipo de edge `default` (toda
+  conexión que no sale de un handle de parte de Split Text) con el botón × para
+  borrarla directo desde la línea.
 - `lib/actions/ad-nodes/providers/{types.ts,models.ts,replicate.ts,apimart.ts,registry.ts,pricing.ts}`
   — adaptadores de generación por proveedor; `pricing.ts` consulta el endpoint
   público de precios de APIMart.

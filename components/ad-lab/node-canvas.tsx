@@ -9,6 +9,7 @@ import "@xyflow/react/dist/style.css"
 import { Plus, Save, Check, Loader2, PlayCircle } from "lucide-react"
 import { AdNodeComponent, TYPE_STYLES, type AdNodeRenderData } from "@/components/ad-lab/nodes/ad-node"
 import { SplitOrderEdge } from "@/components/ad-lab/edges/split-order-edge"
+import { DeletableEdge } from "@/components/ad-lab/edges/deletable-edge"
 import { splitPartColor } from "@/components/ad-lab/split-colors"
 import { cn } from "@/lib/utils"
 import { NodeConfigPanel } from "@/components/ad-lab/node-config-panel"
@@ -17,7 +18,7 @@ import { runNode, runWorkflow, quoteWorkflow, pollNodeRun, getNodeRuns } from "@
 import type { AdNodeWorkflow, AdNodeGraphNode, AdNodeType, AdNodeRun, AdNodeConfig } from "@/lib/types"
 
 const NODE_TYPES = { adNode: AdNodeComponent }
-const EDGE_TYPES = { splitOrder: SplitOrderEdge }
+const EDGE_TYPES = { default: DeletableEdge, splitOrder: SplitOrderEdge }
 
 const PALETTE: { type: AdNodeType; label: string }[] = [
   { type: "image", label: "Image" },
@@ -212,6 +213,15 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
     setRuns((prev) => { const { [nodeId]: _removed, ...rest } = prev; return rest })
   }
 
+  // Borrar solo la conexión — antes únicamente posible seleccionándola y
+  // presionando Backspace (nada descubrible); ahora también el botón × que
+  // aparece directo sobre la línea (deletable-edge.tsx / split-order-edge.tsx).
+  function removeEdge(edgeId: string) {
+    const next = edges.filter((e) => e.id !== edgeId)
+    setEdges(next)
+    scheduleSave(nodes, next)
+  }
+
   async function handleRun(nodeId: string) {
     setRuns((prev) => ({ ...prev, [nodeId]: { ...(prev[nodeId] ?? blankRun(workflow.id, nodeId)), status: "running" } }))
     try {
@@ -256,6 +266,11 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
       onDelete: () => deleteNode(n.id),
     } satisfies AdNodeRenderData,
   })), [nodes, runs]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const renderEdges = useMemo(() => edges.map((e) => ({
+    ...e,
+    data: { ...(e.data as object | undefined), onDelete: () => removeEdge(e.id) },
+  })), [edges]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId)
 
@@ -311,7 +326,7 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
 
       <ReactFlow
         nodes={renderNodes}
-        edges={edges}
+        edges={renderEdges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
