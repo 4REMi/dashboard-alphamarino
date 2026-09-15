@@ -8,9 +8,10 @@ import { AutoTextarea } from "@/components/ui/auto-textarea"
 import { processStandup } from "@/lib/actions/standup"
 import { createTask } from "@/lib/actions/tasks"
 import { addLogEntry } from "@/lib/actions/projects"
-import { Loader2, Sparkles, X, Check, ClipboardList, MessageSquare, Lock, Users, ChevronDown, ChevronRight, Plus, ListChecks } from "lucide-react"
+import { Loader2, Sparkles, X, Check, ClipboardList, MessageSquare, Lock, Users, ChevronDown, ChevronRight, Plus, ListChecks, Bell } from "lucide-react"
 import type { Profile, Sop } from "@/lib/types"
 import { cn } from "@/lib/utils"
+import { PingRecipientsPicker } from "@/components/tasks/ping-recipients-picker"
 
 type ChecklistDraft = { text: string; is_blocking: boolean }
 
@@ -40,6 +41,10 @@ interface EditableItem {
   description: string
   sopId: string
   checklistItems: ChecklistDraft[]
+  // Ping — solo tarea + con proyecto. pingRecipientIds vacío = todo el
+  // equipo del proyecto (default), no vacío = solo esas personas.
+  isPinged: boolean
+  pingRecipientIds: string[]
 }
 
 interface Flight {
@@ -133,6 +138,8 @@ export function StandupDump({ projects, employees, sops, currentUserId, onClose,
           description: "",
           sopId: "",
           checklistItems: [],
+          isPinged: false,
+          pingRecipientIds: [],
         })))
       })
       .catch((e) => setError(e instanceof Error ? e.message : "No se pudo interpretar el texto"))
@@ -156,6 +163,8 @@ export function StandupDump({ projects, employees, sops, currentUserId, onClose,
           description: "",
           sopId: "",
           checklistItems: [],
+          isPinged: false,
+          pingRecipientIds: [],
         }))
         setItems((prev) => [...(prev ?? []), ...newItems])
         setMoreText("")
@@ -196,7 +205,9 @@ export function StandupDump({ projects, employees, sops, currentUserId, onClose,
         if (it.projectId) fd.set("project_id", it.projectId)
         fd.set("title", it.title)
         fd.set("status", "Todo")
-        fd.set("is_pinged", "false")
+        const pinged = it.isPinged && !!it.projectId
+        fd.set("is_pinged", String(pinged))
+        fd.set("ping_recipient_ids_json", pinged ? JSON.stringify(it.pingRecipientIds) : "")
         fd.set("requires_deliverable", "false")
         fd.set("is_personal", String(!!it.projectId && it.isPersonal))
         if (it.dueDate) fd.set("due_date", it.dueDate)
@@ -473,7 +484,7 @@ export function StandupDump({ projects, employees, sops, currentUserId, onClose,
                         >
                           {expandedKeys.has(it.key) ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
                           Más detalles
-                          {(it.description.trim() || it.sopId || it.checklistItems.length > 0) && !expandedKeys.has(it.key) && (
+                          {(it.description.trim() || it.sopId || it.checklistItems.length > 0 || it.isPinged) && !expandedKeys.has(it.key) && (
                             <span className="w-1.5 h-1.5 rounded-full bg-violet-500" title="Tiene detalles adicionales" />
                           )}
                         </button>
@@ -483,9 +494,14 @@ export function StandupDump({ projects, employees, sops, currentUserId, onClose,
                             sopId={it.sopId}
                             checklistItems={it.checklistItems}
                             sops={sops}
+                            projectId={it.projectId}
+                            isPinged={it.isPinged}
+                            pingRecipientIds={it.pingRecipientIds}
                             onChangeDescription={(description) => updateItem(it.key, { description })}
                             onChangeSopId={(sopId) => updateItem(it.key, { sopId })}
                             onChangeChecklist={(checklistItems) => updateItem(it.key, { checklistItems })}
+                            onChangeIsPinged={(isPinged) => updateItem(it.key, { isPinged })}
+                            onChangePingRecipientIds={(pingRecipientIds) => updateItem(it.key, { pingRecipientIds })}
                           />
                         )}
                       </div>
@@ -532,16 +548,21 @@ export function StandupDump({ projects, employees, sops, currentUserId, onClose,
 }
 
 function TaskDetailsEditor({
-  description, sopId, checklistItems, sops,
-  onChangeDescription, onChangeSopId, onChangeChecklist,
+  description, sopId, checklistItems, sops, projectId, isPinged, pingRecipientIds,
+  onChangeDescription, onChangeSopId, onChangeChecklist, onChangeIsPinged, onChangePingRecipientIds,
 }: {
   description: string
   sopId: string
   checklistItems: ChecklistDraft[]
   sops: Sop[]
+  projectId: string
+  isPinged: boolean
+  pingRecipientIds: string[]
   onChangeDescription: (v: string) => void
   onChangeSopId: (v: string) => void
   onChangeChecklist: (v: ChecklistDraft[]) => void
+  onChangeIsPinged: (v: boolean) => void
+  onChangePingRecipientIds: (v: string[]) => void
 }) {
   const [newItemText, setNewItemText] = useState("")
   const [newItemBlocking, setNewItemBlocking] = useState(false)
@@ -571,6 +592,35 @@ function TaskDetailsEditor({
         <option value="">Sin SOP</option>
         {sops.map((s) => <option key={s.id} value={s.id}>{s.title}</option>)}
       </select>
+
+      {/* Ping — solo tiene sentido con proyecto (no hay a quién avisar sin
+          uno). Igual que en el resto del dashboard, opcional y nunca
+          bloqueante: pingar o no pingar, y si se pinguea, opcionalmente a
+          quién específico en vez de todo el equipo. */}
+      {projectId && (
+        <>
+          <button
+            type="button"
+            onClick={() => onChangeIsPinged(!isPinged)}
+            className={cn(
+              "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md border text-xs transition-colors",
+              isPinged
+                ? "border-sky-300 bg-sky-50 text-sky-700"
+                : "border-input bg-background text-muted-foreground hover:bg-muted/60"
+            )}
+          >
+            <Bell className={cn("w-3.5 h-3.5", isPinged && "fill-current")} />
+            {isPinged ? "Ping — al completarse avisa al equipo" : "Sin ping"}
+          </button>
+          {isPinged && (
+            <PingRecipientsPicker
+              projectId={projectId}
+              selectedIds={pingRecipientIds}
+              onChange={onChangePingRecipientIds}
+            />
+          )}
+        </>
+      )}
 
       <div className="space-y-1">
         {checklistItems.map((item, i) => (

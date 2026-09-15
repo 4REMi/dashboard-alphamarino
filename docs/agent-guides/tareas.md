@@ -42,13 +42,15 @@ navegar a cada proyecto uno por uno.
   toggle `is_personal`) — nunca es un default silencioso, siempre hay que verlo y
   confirmarlo.
 - **"Más detalles" en Captura rápida**: cada tarjeta de tipo tarea trae, colapsado
-  por default, un desplegable con descripción, SOP y checklist — los mismos campos
-  que ya existen en una tarea normal, pero que la IA de clasificación nunca intenta
-  extraer del dictado (deliberado: la gran mayoría de dictados se resuelven solo con
-  el título, y forzar a la IA a inventar descripción/checklist agregaría costo y
-  ruido para el caso raro). Quedan vacíos hasta que alguien los abre y los llena a
-  mano. Un punto violeta junto al enlace avisa si una tarjeta colapsada ya tiene algo
-  cargado ahí.
+  por default, un desplegable con descripción, SOP, checklist, y Ping — los mismos
+  campos que ya existen en una tarea normal, pero que la IA de clasificación nunca
+  intenta extraer del dictado (deliberado: la gran mayoría de dictados se resuelven
+  solo con el título, y forzar a la IA a inventar descripción/checklist/ping
+  agregaría costo y ruido para el caso raro). Quedan vacíos/apagados hasta que
+  alguien los abre y los llena a mano. Un punto violeta junto al enlace avisa si una
+  tarjeta colapsada ya tiene algo cargado ahí. El toggle de Ping (y su selector de
+  destinatarios específicos) solo aparece si la tarea tiene proyecto — sin uno no
+  hay a quién avisar.
 - **Ping (`is_pinged`)**: reemplaza la antigua bandera "Urgente" (que nadie usaba en la
   práctica ahora que existe el sistema de notificaciones). Ícono de campana, junto al
   checkbox de estado en cada fila. Cuando una tarea pingueada se marca "Hecho", se
