@@ -3,7 +3,7 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react"
 import { Loader2, Check, X, Play, Copy, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import type { AdNodeData, AdNodeRunStatus, AdNodeType } from "@/lib/types"
+import type { AdNodeData, AdNodeRunStatus, AdNodeType, AdNodeRunOutput } from "@/lib/types"
 
 const TYPE_STYLES: Record<AdNodeType, { color: string; label: string }> = {
   text: { color: "border-sky-300 bg-sky-50", label: "Text" },
@@ -25,6 +25,7 @@ const STATUS_PILL: Record<AdNodeRunStatus, string> = {
 export interface AdNodeRenderData extends AdNodeData {
   status: AdNodeRunStatus
   errorMessage?: string | null
+  output?: AdNodeRunOutput | null
   onRun: () => void
   onOpenConfig: () => void
   onDuplicate: () => void
@@ -34,6 +35,8 @@ export interface AdNodeRenderData extends AdNodeData {
 export function AdNodeComponent({ data, selected }: NodeProps & { data: AdNodeRenderData }) {
   const style = TYPE_STYLES[data.type]
   const isSticky = data.type === "sticky_note"
+  const isImage = data.type === "image"
+  const thumbnail = isImage ? data.config.imageUrl : data.status === "done" ? data.output?.image_urls?.[0] : undefined
 
   return (
     <div
@@ -47,8 +50,12 @@ export function AdNodeComponent({ data, selected }: NodeProps & { data: AdNodeRe
       {!isSticky && <Handle type="target" position={Position.Left} className="!w-2.5 !h-2.5" />}
 
       {/* CRUD por nodo — duplicar/eliminar, visibles al pasar el cursor
-          para no saturar el canvas cuando hay muchos nodos. */}
-      <div className="absolute -top-2.5 -right-2.5 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+          para no saturar el canvas cuando hay muchos nodos. "nodrag" es
+          obligatorio en React Flow: sin esa clase, el sistema de
+          arrastre/pan del canvas intercepta el mousedown antes de que el
+          click le llegue al botón — especialmente notorio en nodos que ya
+          tienen una arista conectada encima de esta esquina. */}
+      <div className="nodrag absolute -top-2.5 -right-2.5 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-20">
         <button
           onClick={(e) => { e.stopPropagation(); data.onDuplicate() }}
           title="Duplicar nodo"
@@ -76,6 +83,15 @@ export function AdNodeComponent({ data, selected }: NodeProps & { data: AdNodeRe
           </span>
         )}
       </div>
+
+      {/* Miniatura — para Image nodes es lo que se subió; para
+          Generate Image ya corridos, el primer resultado. Da una vista
+          general del workflow sin tener que abrir cada nodo. */}
+      {thumbnail && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={thumbnail} alt="" className="w-full h-24 object-cover border-t border-black/5" />
+      )}
+
       {isSticky ? (
         <p className="px-3 pb-2.5 text-xs text-foreground/80 whitespace-pre-wrap">{data.config.value || "Nota…"}</p>
       ) : (
@@ -86,7 +102,7 @@ export function AdNodeComponent({ data, selected }: NodeProps & { data: AdNodeRe
           <button
             onClick={(e) => { e.stopPropagation(); data.onRun() }}
             disabled={data.status === "running"}
-            className="flex-shrink-0 p-1 rounded-full bg-primary text-primary-foreground disabled:opacity-50"
+            className="nodrag flex-shrink-0 p-1 rounded-full bg-primary text-primary-foreground disabled:opacity-50"
             title="Correr este nodo"
           >
             <Play className="w-3 h-3" />

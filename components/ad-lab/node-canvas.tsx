@@ -164,6 +164,7 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
       ...(n.data as unknown as { label: string; type: AdNodeType; config: AdNodeConfig }),
       status: runs[n.id]?.status ?? "idle",
       errorMessage: runs[n.id]?.error_message,
+      output: runs[n.id]?.output,
       onRun: () => handleRun(n.id),
       onOpenConfig: () => setSelectedNodeId(n.id),
       onDuplicate: () => duplicateNode(n.id),
@@ -203,6 +204,11 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
 
       {selectedNode && (
         <NodeConfigPanel
+          // Forces a fresh component instance per node — without this,
+          // React reuses the same instance across selections and its
+          // internal useState (label/config) never resets, leaking the
+          // previous node's field values into the next one.
+          key={selectedNode.id}
           workflowId={workflow.id}
           data={selectedNode.data as unknown as { label: string; type: AdNodeType; config: AdNodeConfig }}
           run={runs[selectedNode.id]}
