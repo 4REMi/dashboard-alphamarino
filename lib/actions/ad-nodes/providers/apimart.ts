@@ -1,21 +1,19 @@
 import type { GenerationAdapter, GenerationPollResult } from "./types"
 
 // APIMart (https://api.apimart.ai) — a unified async-task API over many
-// image/video models (Seedance, Sora2, Veo3, GPT-Image, etc.). One envelope
-// per operation type (submit → task_id, poll by task_id), model-specific
-// params passed through inside the same request body — confirmed against
-// real logs from the user's account, not guessed.
+// image/video models (Seedance, Sora2, Veo3, GPT-Image, etc.). Submit gets a
+// task id, poll that id for the result.
 //
-// Contract confirmed from real playground logs + docs (docs.apimart.ai):
-//   POST /v1/videos/generations | POST /v1/images/generations
-//     body: { model, prompt, image_urls?, ...model-specific params }
-//     response: { task_id }
-//   GET /v1/tasks/{task_id}
-//     response, once done: { task_id, links: [url, ...], request_body: {...} }
-//     (the docs separately describe a { status, progress, result: { images } }
-//     shape — the two accounts disagree, so parsing below accepts either:
-//     `links`/`result.*` presence means done, an explicit failed/cancelled
-//     status means failed, anything else means still running.)
+// Two DIFFERENT response shapes have turned up for this account, and neither
+// is trusted as "the" format — parsing below normalizes both:
+//   A) Real logs from the user's own playground (flat):
+//      { task_id, links: [url, ...], request_body: {...} }
+//   B) docs.apimart.ai's documented "unified task" shape (wrapped):
+//      { code: 200, data: { id, status, progress, result: { images: [{ url: [url,...] }] } } }
+// (B)'s `result.images[].url` is itself documented as an array, not a
+// string — handled below. If a THIRD shape shows up in practice, add it to
+// `unwrap`/`extractUrls` rather than assuming either of these two is
+// authoritative.
 const APIMART_BASE = "https://api.apimart.ai/v1"
 
 function apimartHeaders() {
@@ -26,17 +24,31 @@ function apimartHeaders() {
 
 interface ApimartTaskResponse {
   task_id?: string
+  id?: string
   status?: string
   links?: string[]
-  result?: { images?: { url: string }[]; videos?: { url: string }[] }
+  result?: { images?: { url: string | string[] }[]; videos?: { url: string | string[] }[] }
   error?: string
   error_message?: string
+  data?: ApimartTaskResponse // shape (B) wraps everything one level deeper
+}
+
+// Shape (B) nests the real payload under `data` — unwrap it once if present
+// so the rest of the parsing can treat both shapes identically.
+function unwrap(data: ApimartTaskResponse): ApimartTaskResponse {
+  return data.data ?? data
+}
+
+function urlsOf(field: { url: string | string[] }[] | undefined): string[] {
+  return (field ?? []).flatMap((item) => Array.isArray(item.url) ? item.url : [item.url])
 }
 
 function extractUrls(data: ApimartTaskResponse): string[] {
   if (data.links?.length) return data.links
-  if (data.result?.images?.length) return data.result.images.map((i) => i.url)
-  if (data.result?.videos?.length) return data.result.videos.map((v) => v.url)
+  const fromImages = urlsOf(data.result?.images)
+  if (fromImages.length > 0) return fromImages
+  const fromVideos = urlsOf(data.result?.videos)
+  if (fromVideos.length > 0) return fromVideos
   return []
 }
 
@@ -55,9 +67,10 @@ export function apimartAdapter(kind: "image" | "video", model: string): Generati
         const err = await res.json().catch(() => ({})) as { error?: string; message?: string }
         throw new Error(err.error ?? err.message ?? `APIMart error ${res.status}`)
       }
-      const data = await res.json() as ApimartTaskResponse
-      if (!data.task_id) throw new Error("APIMart no regresó un task_id")
-      return { jobId: data.task_id }
+      const raw = unwrap(await res.json() as ApimartTaskResponse)
+      const jobId = raw.task_id ?? raw.id
+      if (!jobId) throw new Error("APIMart no regresó un task_id/id")
+      return { jobId }
     },
 
     async poll(jobId): Promise<GenerationPollResult> {
@@ -66,7 +79,7 @@ export function apimartAdapter(kind: "image" | "video", model: string): Generati
         cache: "no-store",
       })
       if (!res.ok) return { state: "running" } // transient poll error — try again next tick
-      const data = await res.json() as ApimartTaskResponse
+      const data = unwrap(await res.json() as ApimartTaskResponse)
 
       if (data.status === "failed" || data.status === "cancelled") {
         return { state: "failed", error: data.error ?? data.error_message ?? `APIMart: ${data.status}` }
