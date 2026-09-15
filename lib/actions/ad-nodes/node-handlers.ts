@@ -76,8 +76,13 @@ export async function runLLMNode(config: AdNodeConfig, upstream: AdNodeRunOutput
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY no configurado")
 
   const imageBlocks = await Promise.all(imageUrls.map(downloadImageAsBase64))
+  // Anthropic rejects a text block with an empty string outright ("text
+  // content blocks must be non-empty") — happens whenever a node has
+  // upstream images but no text (own prompt or upstream text), e.g. fed
+  // only by an Image node. Fall back to a minimal instruction instead of
+  // sending "".
   const content = imageBlocks.length > 0
-    ? [...imageBlocks, { type: "text" as const, text: userPrompt }]
+    ? [...imageBlocks, { type: "text" as const, text: userPrompt.trim() || "Describe esta imagen con el mayor detalle posible." }]
     : userPrompt
 
   const Anthropic = (await import("@anthropic-ai/sdk")).default

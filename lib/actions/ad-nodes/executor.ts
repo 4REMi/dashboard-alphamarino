@@ -166,26 +166,75 @@ async function submitGeneration(
   await upsertRun(admin, { workflow_id: workflowId, node_id: node.id, status: "running", provider_job_id: jobId, estimated_cost_usd: estimatedCostUsd })
 }
 
-// Runs every node in topological order — "run the whole workflow" means
-// exactly that, not a smart skip-if-cached pass. Generation nodes (async)
-// only get to "submitted" here; the client polls them the same way it
-// polls a single re-run.
-export async function runWorkflow(workflowId: string): Promise<void> {
+// Cotización total ANTES de correr todo el workflow — suma el costo
+// estimado de cada nodo de generación según su configuración actual,
+// aunque nunca se haya corrido. Nunca bloquea el cálculo por un modelo sin
+// precio estimable; esos simplemente se cuentan aparte para que el aviso
+// sea honesto sobre qué tanto del total es real.
+export async function quoteWorkflow(workflowId: string): Promise<{ totalUsd: number; estimableCount: number; unestimableCount: number; generationNodeCount: number }> {
   const { supabase } = await assertAuth()
   const { data: workflow, error } = await supabase.from("ad_node_workflows").select("graph").eq("id", workflowId).single()
   if (error) throw error
   const graph = workflow.graph as AdNodeGraph
 
-  for (const node of topologicalOrder(graph)) {
-    if (node.data.type === "sticky_note") continue
+  const generationNodes = graph.nodes.filter((n) => n.data.type === "generate_image" || n.data.type === "generate_video")
+
+  let totalUsd = 0
+  let estimableCount = 0
+  let unestimableCount = 0
+
+  for (const node of generationNodes) {
+    const model = node.data.config.model
+    if (!model) { unestimableCount++; continue }
+    const kind = node.data.type === "generate_image" ? "image" : "video"
+    const cost = kind === "video"
+      ? await estimateVideoCostUsd(model.replace("apimart:", ""), node.data.config.resolution ?? "720P", node.data.config.durationSeconds ?? 30).catch(() => null)
+      : await estimateImageCostUsd(model.replace("apimart:", ""), node.data.config.aspectRatio ?? "1:1").catch(() => null)
+    if (cost === null) { unestimableCount++; continue }
+    totalUsd += cost
+    estimableCount++
+  }
+
+  return { totalUsd, estimableCount, unestimableCount, generationNodeCount: generationNodes.length }
+}
+
+// Runs every node in topological order — "run the whole workflow" means
+// exactly that, not a smart skip-if-cached pass. Generation nodes (async)
+// only get to "submitted" here; the client polls them the same way it
+// polls a single re-run. Returns a summary instead of void so the caller
+// (and the person who just clicked "Correr todo") can see the actual
+// outcome — how many nodes made it, how many didn't, and how many were
+// never attempted because their upstream failed first.
+export async function runWorkflow(workflowId: string): Promise<{ succeeded: number; failed: number; skipped: number }> {
+  const { supabase } = await assertAuth()
+  const { data: workflow, error } = await supabase.from("ad_node_workflows").select("graph").eq("id", workflowId).single()
+  if (error) throw error
+  const graph = workflow.graph as AdNodeGraph
+
+  const order = topologicalOrder(graph)
+  const attempted = new Set(order.map((n) => n.id))
+  let succeeded = 0, failed = 0
+
+  for (const node of order) {
+    if (node.data.type === "sticky_note") { attempted.delete(node.id); continue }
     try {
       await runNode(workflowId, node.id)
+      succeeded++
     } catch {
       // Error already recorded on the node's own run row by runNode —
       // continue attempting downstream nodes; a node whose upstream errored
       // will itself fail fast in runNode with a clear "no result yet" message.
+      failed++
     }
   }
+
+  // A cycle in the graph leaves some nodes out of the topological order
+  // entirely — topologicalOrder's own contract, never crashes, just skips
+  // them. Surfaced here as "skipped" so "Correr todo" doesn't silently
+  // under-report against the node count the user actually sees on canvas.
+  const skipped = graph.nodes.filter((n) => n.data.type !== "sticky_note" && !attempted.has(n.id)).length
+
+  return { succeeded, failed, skipped }
 }
 
 // Called by the client every few seconds while a generate_image/video node

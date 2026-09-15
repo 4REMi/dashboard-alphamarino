@@ -6,12 +6,12 @@ import {
   type Node, type Edge, type Connection, type NodeChange, type EdgeChange,
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
-import { Plus, Save, Check, Loader2 } from "lucide-react"
+import { Plus, Save, Check, Loader2, PlayCircle } from "lucide-react"
 import { AdNodeComponent, TYPE_STYLES, type AdNodeRenderData } from "@/components/ad-lab/nodes/ad-node"
 import { cn } from "@/lib/utils"
 import { NodeConfigPanel } from "@/components/ad-lab/node-config-panel"
 import { saveWorkflowGraph } from "@/lib/actions/ad-nodes/workflows"
-import { runNode, pollNodeRun, getNodeRuns } from "@/lib/actions/ad-nodes/executor"
+import { runNode, runWorkflow, quoteWorkflow, pollNodeRun, getNodeRuns } from "@/lib/actions/ad-nodes/executor"
 import type { AdNodeWorkflow, AdNodeGraphNode, AdNodeType, AdNodeRun, AdNodeConfig } from "@/lib/types"
 
 const NODE_TYPES = { adNode: AdNodeComponent }
@@ -37,6 +37,7 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
   const [runs, setRuns] = useState<Record<string, AdNodeRun>>({})
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [saveState, setSaveState] = useState<"idle" | "pending" | "saving" | "saved">("idle")
+  const [isRunningAll, setIsRunningAll] = useState(false)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null)
   const pendingGraph = useRef<{ nodes: Node[]; edges: Edge[] } | null>(null)
@@ -79,6 +80,46 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
   function handleSaveNow() {
     if (saveTimer.current) clearTimeout(saveTimer.current)
     persist(nodes, edges)
+  }
+
+  // "Correr todo" — re-corre el workflow completo en orden topológico.
+  // Precauciones: (1) fuerza el guardado del layout actual primero, para
+  // que el ejecutor (que lee el `graph` ya persistido, no el estado local)
+  // corra exactamente lo que se ve en pantalla; (2) cotiza el costo de los
+  // nodos de generación ANTES de correr y pide confirmación explícita —
+  // esto puede gastar dinero real; (3) deshabilita el botón mientras corre
+  // para evitar un doble-click que dispare el mismo workflow dos veces;
+  // (4) refresca `runs` al terminar para que el polling ya existente (cada
+  // 4s) recoja cualquier nodo de generación que haya quedado "running".
+  async function handleRunAll() {
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    await persist(nodes, edges)
+
+    const quote = await quoteWorkflow(workflow.id).catch(() => null)
+    let confirmMessage = "¿Correr todos los nodos del workflow?"
+    if (quote && quote.generationNodeCount > 0) {
+      confirmMessage = `Esto va a correr ${quote.generationNodeCount} nodo(s) de generación. Costo estimado: $${quote.totalUsd.toFixed(4)} USD`
+      if (quote.unestimableCount > 0) {
+        confirmMessage += ` (${quote.unestimableCount} nodo(s) sin modelo elegido o sin precio disponible, no incluido(s) en el estimado)`
+      }
+      confirmMessage += ".\n\n¿Continuar?"
+    }
+    if (!window.confirm(confirmMessage)) return
+
+    setIsRunningAll(true)
+    try {
+      const result = await runWorkflow(workflow.id)
+      const list = await getNodeRuns(workflow.id)
+      setRuns(Object.fromEntries(list.map((r) => [r.node_id, r])))
+      const parts = [`${result.succeeded} nodo(s) corrieron bien`]
+      if (result.failed > 0) parts.push(`${result.failed} fallaron`)
+      if (result.skipped > 0) parts.push(`${result.skipped} se omitieron (ciclo en el grafo)`)
+      window.alert(parts.join(", ") + ".")
+    } catch (err) {
+      window.alert(`No se pudo correr el workflow: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setIsRunningAll(false)
+    }
   }
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
@@ -232,6 +273,13 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
             className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
           >
             <Save className="w-3.5 h-3.5" /> Guardar
+          </button>
+          <button
+            onClick={handleRunAll}
+            disabled={isRunningAll}
+            className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 shadow-sm"
+          >
+            {isRunningAll ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PlayCircle className="w-3.5 h-3.5" />} Correr todo
           </button>
         </div>
         {totalEstimatedCost > 0 && (

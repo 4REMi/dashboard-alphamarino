@@ -108,10 +108,15 @@ export function AdNodeComponent({ data, selected }: NodeProps & { data: AdNodeRe
         <img src={thumbnail} alt="" className="w-full h-24 object-cover border-t border-black/5" />
       )}
 
+      {/* Preview de texto — colapsado y recortado por default; al pasar el
+          cursor se vuelve escroleable con fondo blanco (mismo patrón visual
+          que el competidor), para poder leer todo sin abrir el panel.
+          "nowheel" es de React Flow — sin eso, el scroll con el mouse
+          adentro hace zoom/pan del canvas en vez de scrollear el texto. */}
       {textPreview && (
-        <p className="px-3 py-2 text-xs text-foreground/80 leading-relaxed line-clamp-5 border-t border-black/5 whitespace-pre-wrap">
+        <div className="nowheel px-3 py-2 text-xs text-foreground/80 leading-relaxed whitespace-pre-wrap border-t border-black/5 max-h-20 overflow-hidden hover:max-h-52 hover:overflow-y-auto hover:bg-white transition-[max-height]">
           {textPreview}
-        </p>
+        </div>
       )}
 
       {isSticky ? (

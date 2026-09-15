@@ -92,6 +92,16 @@ React Flow y nunca aparecían al hacer hover.)
 **Correr**: botón ▶ en el nodo mismo. El estado (idle/running/done/error) se ve en
 el propio nodo y en el panel.
 
+**Correr todo el workflow**: botón "Correr todo" junto a "Guardar" — antes de
+correr nada, guarda el layout actual (para que el ejecutor corra exactamente lo que
+se ve en pantalla) y cotiza el costo de TODOS los nodos de generación del grafo
+según su configuración actual (aunque nunca se hayan corrido), mostrando el total
+en un `confirm()` antes de proceder — es dinero real, nunca corre sin que la
+persona vea el estimado primero. Al terminar, muestra cuántos nodos corrieron bien,
+cuántos fallaron, y cuántos se omitieron por un ciclo en el grafo. El botón se
+deshabilita mientras corre para evitar disparar el mismo workflow dos veces; los
+nodos de generación que queden "running" los recoge el polling normal (cada 4s).
+
 **Guardar el layout manualmente**: botón "Guardar" arriba a la derecha del
 canvas — fuerza el guardado inmediato en vez de esperar el autoguardado
 (~800ms). Un indicador junto a él dice "Guardando…"/"Guardado"/"Sin guardar".
@@ -128,7 +138,14 @@ canvas — fuerza el guardado inmediato en vez de esperar el autoguardado
 - **Preview de texto en la tarjeta** (`textPreview` en `ad-node.tsx`): los nodos
   Text muestran su valor literal; los LLM/Analysis ya corridos muestran el
   texto/análisis real generado, directo en el canvas — para tener overview
-  general sin abrir cada nodo, igual que hace el competidor.
+  general sin abrir cada nodo, igual que hace el competidor. Colapsado por
+  default; al pasar el cursor se expande y se vuelve escroleable con fondo
+  blanco (mismo patrón visual del competidor).
+- **Un nodo LLM sin texto pero con imagen upstream ya no truena**: Anthropic
+  rechaza un bloque de texto vacío (`"text content blocks must be non-empty"`) —
+  pasaba cuando el nodo LLM solo tenía una imagen conectada (sin prompt propio ni
+  texto upstream). Ahora cae a una instrucción mínima por default en vez de mandar
+  un string vacío.
 - **No se toca `lib/actions/image-clone.ts` ni `lib/actions/ad-scratch.ts`** — Ad
   Nodes tiene sus propios adaptadores de generación, deliberadamente separados
   (mismo criterio de "duplicar en vez de refactorizar código de producción" ya
@@ -149,8 +166,9 @@ Mismo gate que todo Ad Lab: permiso `access_ad_lab` (`lib/permissions.ts`).
 - `supabase/migrations/079_ad_node_workflows.sql` — `ad_node_workflows`,
   `ad_node_runs`.
 - `lib/actions/ad-nodes/workflows.ts` — CRUD de workflows.
-- `lib/actions/ad-nodes/executor.ts` — `runNode`, `runWorkflow`, `pollNodeRun`,
-  orden topológico (Kahn).
+- `lib/actions/ad-nodes/executor.ts` — `runNode`, `runWorkflow` (regresa
+  `{succeeded, failed, skipped}`), `quoteWorkflow` (cotización total antes de
+  correr todo), `pollNodeRun`, orden topológico (Kahn).
 - `lib/actions/ad-nodes/node-handlers.ts` — lógica síncrona de Text/LLM/Analysis.
 - `lib/actions/ad-nodes/providers/{types.ts,models.ts,replicate.ts,apimart.ts,registry.ts,pricing.ts}`
   — adaptadores de generación por proveedor; `pricing.ts` consulta el endpoint
