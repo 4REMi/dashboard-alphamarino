@@ -1372,7 +1372,7 @@ export interface AutomationLog {
 // AD LAB — AD NODES (canvas visual de workflows de IA)
 // ============================================================
 
-export type AdNodeType = "text" | "image" | "analysis" | "llm" | "generate_image" | "generate_video" | "sticky_note"
+export type AdNodeType = "text" | "image" | "analysis" | "llm" | "generate_image" | "generate_video" | "sticky_note" | "split_text"
 
 export interface AdNodeConfig {
   // text / sticky_note
@@ -1395,6 +1395,12 @@ export interface AdNodeConfig {
   // (e.g. "720P") — separate from aspectRatio, which controls shape not
   // resolution tier.
   resolution?: string
+  // split_text only — "newline" splits on \n (trimmed, empty lines
+  // dropped); "json" expects a JSON array of strings or a JSON object
+  // (its values become the parts) — deliberately just these two, no custom
+  // regex delimiter, to keep the node predictable instead of reinventing a
+  // parsing DSL.
+  splitDelimiter?: "newline" | "json"
 }
 
 export interface AdNodeData {
@@ -1419,6 +1425,13 @@ export interface AdNodeGraphEdge {
   target: string
   sourceHandle?: string | null
   targetHandle?: string | null
+  // Set only for edges coming out of a split_text node's numbered part
+  // handles — "splitOrder" renders a colored numbered badge at the edge's
+  // midpoint (assigned in the order the connections were made), so it's
+  // visually obvious which downstream node consumes which split part.
+  // Edges from any other node type omit both fields entirely.
+  type?: "splitOrder"
+  data?: { order: number; color: string }
 }
 
 export interface AdNodeGraph {
@@ -1443,6 +1456,8 @@ export interface AdNodeRunOutput {
   image_urls?: string[]
   video_url?: string
   analysis?: string
+  // split_text only — the pieces the input text was split into, in order.
+  parts?: string[]
 }
 
 export interface AdNodeRun {

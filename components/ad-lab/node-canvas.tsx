@@ -8,6 +8,8 @@ import {
 import "@xyflow/react/dist/style.css"
 import { Plus, Save, Check, Loader2, PlayCircle } from "lucide-react"
 import { AdNodeComponent, TYPE_STYLES, type AdNodeRenderData } from "@/components/ad-lab/nodes/ad-node"
+import { SplitOrderEdge } from "@/components/ad-lab/edges/split-order-edge"
+import { splitPartColor } from "@/components/ad-lab/split-colors"
 import { cn } from "@/lib/utils"
 import { NodeConfigPanel } from "@/components/ad-lab/node-config-panel"
 import { saveWorkflowGraph } from "@/lib/actions/ad-nodes/workflows"
@@ -15,11 +17,13 @@ import { runNode, runWorkflow, quoteWorkflow, pollNodeRun, getNodeRuns } from "@
 import type { AdNodeWorkflow, AdNodeGraphNode, AdNodeType, AdNodeRun, AdNodeConfig } from "@/lib/types"
 
 const NODE_TYPES = { adNode: AdNodeComponent }
+const EDGE_TYPES = { splitOrder: SplitOrderEdge }
 
 const PALETTE: { type: AdNodeType; label: string }[] = [
   { type: "image", label: "Image" },
   { type: "analysis", label: "Image/Video Analysis" },
   { type: "text", label: "Text" },
+  { type: "split_text", label: "Split Text" },
   { type: "llm", label: "LLM" },
   { type: "generate_image", label: "Generate Image" },
   { type: "generate_video", label: "Generate Video" },
@@ -28,6 +32,7 @@ const PALETTE: { type: AdNodeType; label: string }[] = [
 
 function defaultConfig(type: AdNodeType): AdNodeConfig {
   if (type === "generate_image" || type === "generate_video") return { aspectRatio: "1:1", safetyFilterLevel: "block_only_high" }
+  if (type === "split_text") return { splitDelimiter: "newline" }
   return {}
 }
 
@@ -57,7 +62,7 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
     try {
       await saveWorkflowGraph(workflow.id, {
         nodes: nextNodes.map((n) => ({ id: n.id, type: "adNode", position: n.position, data: n.data as never })),
-        edges: nextEdges.map((e) => ({ id: e.id, source: e.source, target: e.target, sourceHandle: e.sourceHandle, targetHandle: e.targetHandle })),
+        edges: nextEdges.map((e) => ({ id: e.id, source: e.source, target: e.target, sourceHandle: e.sourceHandle, targetHandle: e.targetHandle, type: e.type as "splitOrder" | undefined, data: e.data as { order: number; color: string } | undefined })),
       })
       setSaveState("saved")
     } catch {
@@ -140,9 +145,24 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodes])
 
+  // Una conexión que sale de un handle de parte de un nodo Split Text
+  // ("part-0", "part-1", ...) se numera en el orden en que se hizo esa
+  // conexión (1ra conexión de ESE nodo = 1, 2da = 2, ...) y se le asigna un
+  // color fijo de la paleta compartida — así se ve de un vistazo qué parte
+  // alimenta a qué nodo downstream, igual que pidió el usuario. Conexiones
+  // desde cualquier otro tipo de nodo quedan como el edge default de
+  // siempre, sin número ni color especial.
   const onConnect = useCallback((connection: Connection) => {
     setEdges((prev) => {
-      const next = addEdge(connection, prev)
+      const sourceNode = nodes.find((n) => n.id === connection.source)
+      const isSplitPart = (sourceNode?.data as { type?: AdNodeType } | undefined)?.type === "split_text" && connection.sourceHandle?.startsWith("part-")
+      let newEdge: Connection & { type?: "splitOrder"; data?: { order: number; color: string } } = connection
+      if (isSplitPart) {
+        const existingOrders = prev.filter((e) => e.source === connection.source && e.type === "splitOrder").length
+        const order = existingOrders + 1
+        newEdge = { ...connection, type: "splitOrder", data: { order, color: splitPartColor(order - 1) } }
+      }
+      const next = addEdge(newEdge, prev)
       scheduleSave(nodes, next)
       return next
     })
@@ -296,6 +316,7 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         nodeTypes={NODE_TYPES}
+        edgeTypes={EDGE_TYPES}
         fitView
       >
         <Background />

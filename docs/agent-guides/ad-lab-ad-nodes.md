@@ -11,18 +11,39 @@ conectar nodos de texto, imagen, análisis, prompting (LLM) y generación de
 imagen/video, donde el output de un nodo alimenta al siguiente. Inspirado en un
 SaaS competidor que usa este patrón para generar creativos publicitarios en
 volumen (varios hooks/variantes a la vez, eligiendo distinto modelo por nodo según
-costo/calidad). Deliberadamente más simple que ComfyUI — solo 7 tipos de nodo
+costo/calidad). Deliberadamente más simple que ComfyUI — solo 8 tipos de nodo
 fijos, no un catálogo abierto.
 
 ## Conceptos y vocabulario clave
 
 - **Workflow** (`ad_node_workflows`): un grafo guardado — `graph` es un JSON con
   `{nodes, edges}`, mismo shape que usa React Flow nativamente.
-- **7 tipos de nodo**: `text`, `image`, `analysis` (visión — describe una imagen),
-  `llm` (prompting de texto), `generate_image`, `generate_video`, `sticky_note`
-  (anotación, nunca se ejecuta). No existe un nodo "Split Text" como en el
-  competidor — ahí es literalmente otra llamada de IA para partir un string; si se
-  necesita, se resuelve en código, no gastando otra llamada.
+- **8 tipos de nodo**: `text`, `image`, `analysis` (visión — describe una imagen),
+  `llm` (prompting de texto), `split_text`, `generate_image`, `generate_video`,
+  `sticky_note` (anotación, nunca se ejecuta).
+- **Split Text — a diferencia del competidor, parte el string en código, no con
+  IA**: en su competidor "Split Text" es literalmente otra llamada de IA para
+  hacer lo que sería una línea de código; acá se resuelve con `String.split`/
+  `JSON.parse` normal, sin gastar una llamada extra. Dos delimitadores nada más
+  (`splitDelimiter` en la config): `newline` (una parte por línea, líneas vacías
+  se descartan) o `json` (array de strings, o un objeto — sus valores se vuelven
+  las partes) — deliberadamente sin un delimitador custom/regex, para no
+  convertir el nodo en su propio mini-lenguaje de parseo. El texto de entrada es
+  el `value` propio del nodo, o si se deja vacío, el texto de un nodo conectado.
+  Al correrlo, cada parte resultante aparece como su propia fila dentro del nodo
+  (numerada y con un color fijo de una paleta compartida,
+  `components/ad-lab/split-colors.ts`), cada una con su propio handle de salida
+  (`part-0`, `part-1`, ...) — así cada parte se conecta a un nodo downstream
+  distinto en vez de mandarlas todas juntas. Un nodo downstream conectado a un
+  handle de parte específico solo recibe ESA parte como texto, no el arreglo
+  completo (ningún otro tipo de nodo sabe leer `{parts: [...]}`).
+- **Conexiones numeradas y coloreadas desde Split Text**: cada vez que se conecta
+  un handle de parte a otro nodo, esa conexión se numera en el orden en que se
+  hizo (1ra conexión de ese nodo Split Text = 1, 2da = 2, ...) y se pinta con el
+  mismo color de esa parte — un círculo con el número aparece en medio de la
+  línea de conexión (`components/ad-lab/edges/split-order-edge.tsx`, tipo de
+  edge `splitOrder`). Conexiones desde cualquier otro tipo de nodo son el edge
+  default de siempre, sin número ni color especial.
 - **Run de un nodo** (`ad_node_runs`): estado y output cacheado, por nodo, aparte
   del JSON del grafo. Correr un nodo puntual (botón ▶ en el nodo) SIEMPRE usa el
   output ya cacheado de sus nodos upstream — nunca los re-corre automáticamente.
@@ -169,7 +190,10 @@ Mismo gate que todo Ad Lab: permiso `access_ad_lab` (`lib/permissions.ts`).
 - `lib/actions/ad-nodes/executor.ts` — `runNode`, `runWorkflow` (regresa
   `{succeeded, failed, skipped}`), `quoteWorkflow` (cotización total antes de
   correr todo), `pollNodeRun`, orden topológico (Kahn).
-- `lib/actions/ad-nodes/node-handlers.ts` — lógica síncrona de Text/LLM/Analysis.
+- `lib/actions/ad-nodes/node-handlers.ts` — lógica síncrona de Text/LLM/Analysis/Split Text.
+- `components/ad-lab/split-colors.ts` — paleta compartida para las partes/conexiones
+  numeradas de Split Text; `components/ad-lab/edges/split-order-edge.tsx` — el
+  tipo de edge `splitOrder` que dibuja el badge numerado en medio de la conexión.
 - `lib/actions/ad-nodes/providers/{types.ts,models.ts,replicate.ts,apimart.ts,registry.ts,pricing.ts}`
   — adaptadores de generación por proveedor; `pricing.ts` consulta el endpoint
   público de precios de APIMart.

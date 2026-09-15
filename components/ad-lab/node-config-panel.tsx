@@ -6,6 +6,7 @@ import type { AdNodeData, AdNodeConfig, AdNodeRun } from "@/lib/types"
 import { LLM_MODELS, IMAGE_MODELS, VIDEO_MODELS } from "@/lib/actions/ad-nodes/providers/models"
 import { uploadNodeImage } from "@/lib/actions/ad-nodes/workflows"
 import { estimateImageCostUsd, estimateVideoCostUsd } from "@/lib/actions/ad-nodes/providers/pricing"
+import { SPLIT_PART_COLORS } from "@/components/ad-lab/split-colors"
 
 interface Props {
   workflowId: string
@@ -73,6 +74,7 @@ export function NodeConfigPanel({ workflowId, data, run, onClose, onSave }: Prop
     generate_image: "Opcional: texto (para el prompt) e imágenes (como referencia) de nodos conectados.",
     generate_video: "Opcional: texto (para el prompt) e imágenes (como referencia) de nodos conectados.",
     sticky_note: "No aplica — es solo una nota visual.",
+    split_text: "Texto propio (abajo) o, si se deja vacío, el texto de un nodo conectado.",
   }
 
   return (
@@ -105,6 +107,32 @@ export function NodeConfigPanel({ workflowId, data, run, onClose, onSave }: Prop
               placeholder="Texto…"
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
             />
+          )}
+
+          {data.type === "split_text" && (
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Delimitador</label>
+                <select
+                  value={config.splitDelimiter ?? "newline"}
+                  onChange={(e) => set("splitDelimiter", e.target.value as "newline" | "json")}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  <option value="newline">Salto de línea (una parte por línea)</option>
+                  <option value="json">JSON (array de strings, u objeto — sus valores)</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Texto (opcional si viene de un nodo conectado)</label>
+                <textarea
+                  value={config.value ?? ""}
+                  onChange={(e) => set("value", e.target.value)}
+                  rows={4}
+                  placeholder={config.splitDelimiter === "json" ? '["hook 1", "hook 2", "hook 3"]' : "Línea 1\nLínea 2\nLínea 3"}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+                />
+              </div>
+            </div>
           )}
 
           {data.type === "image" && (
@@ -285,6 +313,12 @@ export function NodeConfigPanel({ workflowId, data, run, onClose, onSave }: Prop
                 </p>
               )}
               {run.output?.text && <p className="text-xs whitespace-pre-wrap bg-muted/40 rounded-md p-2">{run.output.text}</p>}
+              {run.output?.parts?.map((part, i) => (
+                <div key={i} className="flex items-start gap-2 text-xs bg-muted/40 rounded-md p-2">
+                  <span className="flex-shrink-0 w-4 h-4 rounded-full text-[10px] font-semibold flex items-center justify-center text-white" style={{ backgroundColor: SPLIT_PART_COLORS[i % SPLIT_PART_COLORS.length] }}>{i + 1}</span>
+                  <span className="whitespace-pre-wrap">{part}</span>
+                </div>
+              ))}
               {run.output?.analysis && <p className="text-xs whitespace-pre-wrap bg-muted/40 rounded-md p-2">{run.output.analysis}</p>}
               {run.output?.image_urls?.map((url) => (
                 // eslint-disable-next-line @next/next/no-img-element

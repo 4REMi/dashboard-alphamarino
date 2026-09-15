@@ -3,7 +3,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import type { AdNodeGraph, AdNodeGraphNode, AdNodeRun, AdNodeRunOutput } from "@/lib/types"
-import { runTextNode, runLLMNode, runAnalysisNode } from "./node-handlers"
+import { runTextNode, runLLMNode, runAnalysisNode, runSplitTextNode } from "./node-handlers"
 import { getGenerationAdapter } from "./providers/registry"
 import { estimateImageCostUsd, estimateVideoCostUsd } from "./providers/pricing"
 
@@ -92,15 +92,24 @@ export async function runNode(workflowId: string, nodeId: string): Promise<void>
   if (!node) throw new Error("Nodo no encontrado en el workflow")
   if (node.data.type === "sticky_note") return // never executes
 
-  const upstreamIds = graph.edges.filter((e) => e.target === nodeId).map((e) => e.source)
+  // A Split Text node has one output per part, each with its own source
+  // handle ("part-0", "part-1", ...) — a downstream node connected to a
+  // specific handle only gets that one part as text, not the whole
+  // {parts: [...]} blob (which no other node type knows how to read).
+  const incomingEdges = graph.edges.filter((e) => e.target === nodeId)
   const upstreamOutputs: AdNodeRunOutput[] = []
-  for (const upId of upstreamIds) {
-    const output = await getNodeRunOutput(supabase, workflowId, upId)
-    if (!output) {
-      const upNode = graph.nodes.find((n) => n.id === upId)
-      throw new Error(`El nodo "${upNode?.data.label ?? upId}" todavía no tiene un resultado — córrelo primero.`)
+  for (const edge of incomingEdges) {
+    const upNode = graph.nodes.find((n) => n.id === edge.source)
+    const output = await getNodeRunOutput(supabase, workflowId, edge.source)
+    if (!output) throw new Error(`El nodo "${upNode?.data.label ?? edge.source}" todavía no tiene un resultado — córrelo primero.`)
+    if (upNode?.data.type === "split_text" && edge.sourceHandle?.startsWith("part-")) {
+      const partIndex = Number(edge.sourceHandle.replace("part-", ""))
+      const part = output.parts?.[partIndex]
+      if (part === undefined) throw new Error(`El nodo "${upNode.data.label}" no tiene una parte #${partIndex + 1} en su último resultado — vuelve a correrlo.`)
+      upstreamOutputs.push({ text: part })
+    } else {
+      upstreamOutputs.push(output)
     }
-    upstreamOutputs.push(output)
   }
 
   await upsertRun(admin, { workflow_id: workflowId, node_id: nodeId, status: "running", started_at: new Date().toISOString(), error_message: null })
@@ -117,6 +126,9 @@ export async function runNode(workflowId: string, nodeId: string): Promise<void>
       await upsertRun(admin, { workflow_id: workflowId, node_id: nodeId, status: "done", output, finished_at: new Date().toISOString() })
     } else if (node.data.type === "analysis") {
       const output = await runAnalysisNode(node.data.config, upstreamOutputs)
+      await upsertRun(admin, { workflow_id: workflowId, node_id: nodeId, status: "done", output, finished_at: new Date().toISOString() })
+    } else if (node.data.type === "split_text") {
+      const output = await runSplitTextNode(node.data.config, upstreamOutputs)
       await upsertRun(admin, { workflow_id: workflowId, node_id: nodeId, status: "done", output, finished_at: new Date().toISOString() })
     } else if (node.data.type === "generate_image" || node.data.type === "generate_video") {
       await submitGeneration(admin, workflowId, node, upstreamOutputs)

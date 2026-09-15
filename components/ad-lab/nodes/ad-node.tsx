@@ -4,6 +4,7 @@ import { Handle, Position, type NodeProps } from "@xyflow/react"
 import { Loader2, Check, X, Play, Copy, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { AdNodeData, AdNodeRunStatus, AdNodeType, AdNodeRunOutput } from "@/lib/types"
+import { splitPartColor } from "@/components/ad-lab/split-colors"
 
 // Single source of truth for the color-per-type coding — used both by the
 // node card itself and the "+ Text / + Image / ..." toolbar buttons
@@ -17,6 +18,7 @@ export const TYPE_STYLES: Record<AdNodeType, { border: string; bg: string; badge
   generate_image: { border: "border-pink-300",      bg: "bg-pink-50",    badge: "border-pink-300 bg-pink-50 text-pink-700",       label: "Generate Image" },
   generate_video: { border: "border-orange-300",    bg: "bg-orange-50",  badge: "border-orange-300 bg-orange-50 text-orange-700", label: "Generate Video" },
   sticky_note:    { border: "border-amber-300",     bg: "bg-amber-50",   badge: "border-amber-300 bg-amber-50 text-amber-700",    label: "Sticky Note" },
+  split_text:     { border: "border-indigo-300",    bg: "bg-indigo-50",  badge: "border-indigo-300 bg-indigo-50 text-indigo-700", label: "Split Text" },
 }
 
 const STATUS_PILL: Record<AdNodeRunStatus, string> = {
@@ -138,7 +140,36 @@ export function AdNodeComponent({ data, selected }: NodeProps & { data: AdNodeRe
           </button>
         </div>
       )}
-      {!isSticky && <Handle type="source" position={Position.Right} className="!w-2.5 !h-2.5" />}
+
+      {/* Split Text, corrido: cada parte es su propia fila con su propio
+          handle de salida ("part-0", "part-1", ...) — reemplaza el handle
+          genérico de la derecha, para poder conectar cada parte a un nodo
+          downstream distinto. El color de cada fila es el mismo que el de
+          la conexión numerada una vez conectada (ver split-colors.ts). */}
+      {data.type === "split_text" && data.status === "done" && data.output?.parts && data.output.parts.length > 0 && (
+        <div className="border-t border-black/5">
+          {data.output.parts.map((part, i) => (
+            <div key={i} className="relative flex items-center gap-2 px-3 py-1.5 border-b border-black/5 last:border-b-0">
+              <span
+                className="flex-shrink-0 w-4 h-4 rounded-full text-[9px] font-semibold flex items-center justify-center text-white"
+                style={{ backgroundColor: splitPartColor(i) }}
+              >
+                {i + 1}
+              </span>
+              <span className="text-[11px] text-foreground/80 truncate">{part || "(vacío)"}</span>
+              <Handle
+                type="source"
+                position={Position.Right}
+                id={`part-${i}`}
+                className="!w-2.5 !h-2.5"
+                style={{ backgroundColor: splitPartColor(i), borderColor: splitPartColor(i) }}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!isSticky && data.type !== "split_text" && <Handle type="source" position={Position.Right} className="!w-2.5 !h-2.5" />}
     </div>
   )
 }

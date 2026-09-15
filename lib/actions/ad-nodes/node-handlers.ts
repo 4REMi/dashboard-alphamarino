@@ -53,6 +53,37 @@ export async function runTextNode(config: AdNodeConfig): Promise<AdNodeRunOutput
   return { text: config.value ?? "" }
 }
 
+// Split Text — deliberately just two delimiter modes (newline / JSON), no
+// custom regex, so the node stays predictable instead of becoming its own
+// tiny parsing DSL. "json" accepts either a JSON array of strings (used
+// as-is) or a JSON object (its values become the parts, in key order) —
+// covers an LLM node that was asked to return structured JSON without
+// forcing it into an array shape.
+export async function runSplitTextNode(config: AdNodeConfig, upstream: AdNodeRunOutput[]): Promise<AdNodeRunOutput> {
+  const input = (config.value?.trim() || summarizeUpstream(upstream)).trim()
+  if (!input) throw new Error("Este nodo Split Text no tiene ningún texto de entrada")
+
+  if (config.splitDelimiter === "json") {
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(input)
+    } catch {
+      throw new Error("El texto de entrada no es JSON válido — debe ser un array de strings o un objeto.")
+    }
+    const parts = Array.isArray(parsed)
+      ? parsed.map((v) => String(v))
+      : typeof parsed === "object" && parsed !== null
+        ? Object.values(parsed).map((v) => String(v))
+        : null
+    if (!parts || parts.length === 0) throw new Error("El JSON no es un array ni un objeto con valores para separar en partes.")
+    return { parts }
+  }
+
+  const parts = input.split("\n").map((line) => line.trim()).filter(Boolean)
+  if (parts.length === 0) throw new Error("El texto de entrada no tiene ninguna línea con contenido")
+  return { parts }
+}
+
 // Model choice decides the provider — Claude runs through this account's
 // own direct Anthropic integration (no APIMart markup), GPT-5 has no such
 // direct integration so it goes through APIMart's chat completions.
