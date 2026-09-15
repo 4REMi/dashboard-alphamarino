@@ -65,24 +65,25 @@ export function AdNodeComponent({ data, selected }: NodeProps & { data: AdNodeRe
               {data.status === "running" ? <Loader2 className="w-3 h-3 animate-spin" /> : data.status === "done" ? <Check className="w-3 h-3" /> : data.status === "error" ? <X className="w-3 h-3" /> : "idle"}
             </span>
           )}
-          {/* CRUD por nodo — visible al pasar el cursor. Dentro de la
-              tarjeta (no con offset negativo hacia afuera) para que nunca
-              quede recortado por el contenedor de React Flow. "nodrag" es
-              obligatorio: sin esa clase, el sistema de arrastre/pan del
-              canvas intercepta el mousedown antes de que el click le
-              llegue al botón. */}
-          <div className="nodrag flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          {/* CRUD por nodo — siempre visibles (no ocultos tras hover: el
+              hover vía `group-hover` resultó poco confiable dentro del
+              contenedor de React Flow, así que en vez de seguir
+              apostándole se deja el botón a la vista todo el tiempo).
+              "nodrag" es obligatorio: sin esa clase, el sistema de
+              arrastre/pan del canvas intercepta el mousedown antes de que
+              el click le llegue al botón. */}
+          <div className="nodrag flex items-center gap-0.5">
             <button
               onClick={(e) => { e.stopPropagation(); data.onDuplicate() }}
               title="Duplicar nodo"
-              className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-black/5"
+              className="p-1 rounded text-muted-foreground/70 hover:text-foreground hover:bg-black/5"
             >
               <Copy className="w-3 h-3" />
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); data.onDelete() }}
               title="Eliminar nodo"
-              className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-black/5"
+              className="p-1 rounded text-muted-foreground/70 hover:text-destructive hover:bg-black/5"
             >
               <Trash2 className="w-3 h-3" />
             </button>
