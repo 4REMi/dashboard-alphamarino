@@ -42,6 +42,15 @@ export function AdNodeComponent({ data, selected }: NodeProps & { data: AdNodeRe
   const isSticky = data.type === "sticky_note"
   const isImage = data.type === "image"
   const thumbnail = isImage ? data.config.imageUrl : data.status === "done" ? data.output?.image_urls?.[0] : undefined
+  // Text preview — for Text nodes it's the literal input; for LLM/Analysis
+  // once run, it's the actual generated text. Matches the competitor's
+  // cards showing the real content directly, no need to open the node
+  // just to see what it's actually saying.
+  const textPreview = data.type === "text"
+    ? data.config.value
+    : (data.type === "llm" || data.type === "analysis") && data.status === "done"
+      ? data.output?.text ?? data.output?.analysis
+      : undefined
 
   return (
     <div
@@ -97,6 +106,12 @@ export function AdNodeComponent({ data, selected }: NodeProps & { data: AdNodeRe
       {thumbnail && (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={thumbnail} alt="" className="w-full h-24 object-cover border-t border-black/5" />
+      )}
+
+      {textPreview && (
+        <p className="px-3 py-2 text-xs text-foreground/80 leading-relaxed line-clamp-5 border-t border-black/5 whitespace-pre-wrap">
+          {textPreview}
+        </p>
       )}
 
       {isSticky ? (

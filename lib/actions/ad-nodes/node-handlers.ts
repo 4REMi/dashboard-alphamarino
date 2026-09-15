@@ -26,18 +26,27 @@ function upstreamImageUrls(upstream: AdNodeRunOutput[]): string[] {
 
 // Anthropic's vision API needs the image bytes (base64), not a bare URL —
 // download and encode. Capped at 5 images per call so a workflow with many
-// reference images doesn't build an enormous request.
-async function downloadImageAsBase64(url: string): Promise<{ type: "image"; source: { type: "base64"; media_type: "image/jpeg" | "image/png" | "image/webp" | "image/gif"; data: string } } | null> {
+// reference images doesn't build an enormous request. Throws instead of
+// silently returning null on failure: a swallowed download error used to
+// mean the node ran text-only with no image and no indication why —
+// exactly the kind of silent failure that looked like "Claude hallucinates
+// and doesn't see the image" when the real problem was a failed fetch.
+async function downloadImageAsBase64(url: string): Promise<{ type: "image"; source: { type: "base64"; media_type: "image/jpeg" | "image/png" | "image/webp" | "image/gif"; data: string } }> {
+  let res: Response
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(15_000) })
-    if (!res.ok) return null
-    const buffer = await res.arrayBuffer()
-    const base64 = Buffer.from(buffer).toString("base64")
-    const mediaType = (res.headers.get("content-type") ?? "image/jpeg") as "image/jpeg" | "image/png" | "image/webp" | "image/gif"
-    return { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } }
-  } catch {
-    return null
+    res = await fetch(url, { signal: AbortSignal.timeout(15_000) })
+  } catch (err) {
+    throw new Error(`No se pudo descargar la imagen (${url}): ${err instanceof Error ? err.message : String(err)}`)
   }
+  if (!res.ok) throw new Error(`No se pudo descargar la imagen (${url}): HTTP ${res.status}`)
+  const buffer = await res.arrayBuffer()
+  const base64 = Buffer.from(buffer).toString("base64")
+  // Content-Type can carry extra params (e.g. "image/png; charset=binary")
+  // that Anthropic's media_type field rejects outright — keep only the
+  // "image/xxx" portion.
+  const rawType = (res.headers.get("content-type") ?? "image/jpeg").split(";")[0].trim()
+  const mediaType = (["image/jpeg", "image/png", "image/webp", "image/gif"].includes(rawType) ? rawType : "image/jpeg") as "image/jpeg" | "image/png" | "image/webp" | "image/gif"
+  return { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } }
 }
 
 export async function runTextNode(config: AdNodeConfig): Promise<AdNodeRunOutput> {
@@ -66,7 +75,7 @@ export async function runLLMNode(config: AdNodeConfig, upstream: AdNodeRunOutput
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY no configurado")
 
-  const imageBlocks = (await Promise.all(imageUrls.map(downloadImageAsBase64))).filter((b) => b !== null)
+  const imageBlocks = await Promise.all(imageUrls.map(downloadImageAsBase64))
   const content = imageBlocks.length > 0
     ? [...imageBlocks, { type: "text" as const, text: userPrompt }]
     : userPrompt
@@ -91,7 +100,6 @@ export async function runAnalysisNode(config: AdNodeConfig, upstream: AdNodeRunO
   if (imageUrls.length === 0) throw new Error("Este nodo de análisis necesita una imagen de un nodo Image conectado")
 
   const imageBlock = await downloadImageAsBase64(imageUrls[0])
-  if (!imageBlock) throw new Error("No se pudo descargar la imagen a analizar")
 
   const Anthropic = (await import("@anthropic-ai/sdk")).default
   const client = new Anthropic({ apiKey })

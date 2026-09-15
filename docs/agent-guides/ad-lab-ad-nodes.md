@@ -122,7 +122,13 @@ canvas — fuerza el guardado inmediato en vez de esperar el autoguardado
   modelo nunca recibía la imagen real, solo un string, y alucinaba. Ahora
   `node-handlers.ts` descarga y adjunta la imagen como contenido de visión real
   (base64 para Claude, URL directa para GPT-5 vía APIMart — cada API lo pide
-  distinto). Tope de 5 imágenes por llamada.
+  distinto). Tope de 5 imágenes por llamada. La descarga para Claude **truena
+  con error explícito si falla** (antes fallaba en silencio y el nodo corría
+  sin imagen sin avisar — otra causa posible de "alucina y no ve la imagen").
+- **Preview de texto en la tarjeta** (`textPreview` en `ad-node.tsx`): los nodos
+  Text muestran su valor literal; los LLM/Analysis ya corridos muestran el
+  texto/análisis real generado, directo en el canvas — para tener overview
+  general sin abrir cada nodo, igual que hace el competidor.
 - **No se toca `lib/actions/image-clone.ts` ni `lib/actions/ad-scratch.ts`** — Ad
   Nodes tiene sus propios adaptadores de generación, deliberadamente separados
   (mismo criterio de "duplicar en vez de refactorizar código de producción" ya
