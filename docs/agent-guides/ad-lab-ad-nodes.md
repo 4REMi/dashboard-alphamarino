@@ -55,12 +55,18 @@ el propio nodo y en el panel.
 
 - **El grafo se autoguarda** (debounced ~800ms) en cada cambio de nodos/aristas —
   no hay botón "Guardar" separado para el layout.
-- **APIMart NO está integrado todavía** — los modelos de video en el dropdown
-  existen pero tiran error explícito al correrlos ("todavía no está integrado").
-  Antes de escribir `lib/actions/ad-nodes/providers/apimart.ts` de verdad, se
-  necesita un ejemplo real de request/respuesta de sus endpoints (de la cuenta del
-  usuario) — la documentación pública no da los nombres exactos de campos JSON.
-  Ver el comentario en ese archivo.
+- **APIMart ya está integrado** (`lib/actions/ad-nodes/providers/apimart.ts`) —
+  confirmado contra logs reales de la cuenta del usuario, no adivinado. `POST
+  /v1/videos/generations` y `POST /v1/images/generations` regresan `task_id`;
+  `GET /v1/tasks/{task_id}` se consulta con polling. El parseo del estado acepta
+  dos shapes distintos (la doc pública describe `{status, progress,
+  result.images}`, los logs reales muestran `{links: [...]}` directo) — se trata
+  como "listo" cualquiera de los dos, y como "fallido" solo si `status` es
+  explícitamente `failed`/`cancelled`. Requiere `APIMART_API_KEY` en las
+  variables de entorno.
+  - Modelos confirmados: `seedance-2.5` (video), `gpt-image-2.5-flare` (imagen).
+    Agregar otro modelo de APIMart es solo una entrada nueva en
+    `lib/actions/ad-nodes/providers/models.ts`.
 - **No se toca `lib/actions/image-clone.ts` ni `lib/actions/ad-scratch.ts`** — Ad
   Nodes tiene sus propios adaptadores de Replicate/generación, deliberadamente
   separados (mismo criterio de "duplicar en vez de refactorizar código de

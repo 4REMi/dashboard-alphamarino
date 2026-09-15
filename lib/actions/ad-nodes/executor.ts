@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import type { AdNodeGraph, AdNodeGraphNode, AdNodeRun, AdNodeRunOutput } from "@/lib/types"
 import { runTextNode, runLLMNode, runAnalysisNode } from "./node-handlers"
-import { getGenerationAdapter } from "./providers/registry"
+import { getGenerationAdapter, getModelProvider } from "./providers/registry"
 
 async function assertAuth() {
   const supabase = await createClient()
@@ -129,14 +129,28 @@ async function submitGeneration(
 
   const prompt = [node.data.config.prompt, ...upstream.map((o) => o.text ?? o.analysis ?? "")].filter(Boolean).join("\n\n")
   const referenceImages = upstream.flatMap((o) => o.image_urls ?? [])
+  const aspectRatio = node.data.config.aspectRatio ?? "1:1"
+
+  const provider = getModelProvider(kind, model)
+  // Same node config (prompt/reference images/aspect ratio), different field
+  // names per provider — Replicate's nano-banana-pro uses image_input/
+  // aspect_ratio/safety_filter_level; APIMart's unified task API (confirmed
+  // against real account logs, see providers/apimart.ts) uses image_urls/size.
+  const input = provider === "replicate"
+    ? {
+        prompt,
+        image_input: referenceImages,
+        aspect_ratio: aspectRatio,
+        safety_filter_level: node.data.config.safetyFilterLevel ?? "block_only_high",
+      }
+    : {
+        prompt,
+        image_urls: referenceImages,
+        size: aspectRatio,
+      }
 
   const adapter = getGenerationAdapter(kind, model)
-  const { jobId } = await adapter.submit({
-    prompt,
-    image_input: referenceImages,
-    aspect_ratio: node.data.config.aspectRatio ?? "1:1",
-    safety_filter_level: node.data.config.safetyFilterLevel ?? "block_only_high",
-  })
+  const { jobId } = await adapter.submit(input)
   await upsertRun(admin, { workflow_id: workflowId, node_id: node.id, status: "running", provider_job_id: jobId })
 }
 
