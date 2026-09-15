@@ -31,13 +31,17 @@ interface ApimartTaskResponse {
   error?: string | { code?: string; message?: string; type?: string }
   error_message?: string
   message?: string
-  data?: ApimartTaskResponse // shape (B) wraps everything one level deeper
+  // Confirmed real shape: { code, data: [{ status, task_id }] } — data is an
+  // ARRAY with one entry, not a bare object as the docs suggested.
+  data?: ApimartTaskResponse | ApimartTaskResponse[]
 }
 
-// Shape (B) nests the real payload under `data` — unwrap it once if present
-// so the rest of the parsing can treat both shapes identically.
+// Unwraps the `data` envelope if present — it can be a bare object (as
+// docs.apimart.ai describes) or a one-element array (confirmed from a real
+// submit response) — either way, the actual payload is what we want.
 function unwrap(data: ApimartTaskResponse): ApimartTaskResponse {
-  return data.data ?? data
+  if (!data.data) return data
+  return Array.isArray(data.data) ? (data.data[0] ?? data) : data.data
 }
 
 function urlsOf(field: { url: string | string[] }[] | undefined): string[] {
