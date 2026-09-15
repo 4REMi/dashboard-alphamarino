@@ -28,8 +28,9 @@ interface ApimartTaskResponse {
   status?: string
   links?: string[]
   result?: { images?: { url: string | string[] }[]; videos?: { url: string | string[] }[] }
-  error?: string
+  error?: string | { code?: string; message?: string; type?: string }
   error_message?: string
+  message?: string
   data?: ApimartTaskResponse // shape (B) wraps everything one level deeper
 }
 
@@ -41,6 +42,20 @@ function unwrap(data: ApimartTaskResponse): ApimartTaskResponse {
 
 function urlsOf(field: { url: string | string[] }[] | undefined): string[] {
   return (field ?? []).flatMap((item) => Array.isArray(item.url) ? item.url : [item.url])
+}
+
+// APIMart's error field can be a plain string OR a nested object ({code,
+// message, type} per their docs) — passing an object straight to
+// `new Error()` silently stringifies it to the useless "[object Object]"
+// instead of throwing/surfacing the real message. Always resolve to a
+// readable string first.
+function errorMessageOf(value: unknown): string | null {
+  if (!value) return null
+  if (typeof value === "string") return value
+  if (typeof value === "object" && "message" in value && typeof (value as { message?: unknown }).message === "string") {
+    return (value as { message: string }).message
+  }
+  try { return JSON.stringify(value) } catch { return String(value) }
 }
 
 function extractUrls(data: ApimartTaskResponse): string[] {
@@ -64,8 +79,8 @@ export function apimartAdapter(kind: "image" | "video", model: string): Generati
         cache: "no-store",
       })
       if (!res.ok) {
-        const err = await res.json().catch(() => ({})) as { error?: string; message?: string }
-        throw new Error(err.error ?? err.message ?? `APIMart error ${res.status}`)
+        const err = unwrap(await res.json().catch(() => ({})) as ApimartTaskResponse)
+        throw new Error(errorMessageOf(err.error) ?? errorMessageOf(err.message) ?? `APIMart error ${res.status}`)
       }
       const raw = unwrap(await res.json() as ApimartTaskResponse)
       const jobId = raw.task_id ?? raw.id
@@ -82,7 +97,7 @@ export function apimartAdapter(kind: "image" | "video", model: string): Generati
       const data = unwrap(await res.json() as ApimartTaskResponse)
 
       if (data.status === "failed" || data.status === "cancelled") {
-        return { state: "failed", error: data.error ?? data.error_message ?? `APIMart: ${data.status}` }
+        return { state: "failed", error: errorMessageOf(data.error) ?? data.error_message ?? `APIMart: ${data.status}` }
       }
 
       const urls = extractUrls(data)

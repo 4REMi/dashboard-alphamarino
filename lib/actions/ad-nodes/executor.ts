@@ -6,6 +6,15 @@ import type { AdNodeGraph, AdNodeGraphNode, AdNodeRun, AdNodeRunOutput } from "@
 import { runTextNode, runLLMNode, runAnalysisNode } from "./node-handlers"
 import { getGenerationAdapter, getModelProvider } from "./providers/registry"
 
+// Guards against `new Error(someObject)` silently turning into the useless
+// "[object Object]" (e.g. a provider's error field being a nested object
+// instead of a string) — always resolve to a readable message.
+function messageOf(err: unknown): string {
+  if (err instanceof Error) return err.message
+  if (typeof err === "string") return err
+  try { return JSON.stringify(err) } catch { return String(err) }
+}
+
 async function assertAuth() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -112,7 +121,7 @@ export async function runNode(workflowId: string, nodeId: string): Promise<void>
       await submitGeneration(admin, workflowId, node, upstreamOutputs)
     }
   } catch (err) {
-    await upsertRun(admin, { workflow_id: workflowId, node_id: nodeId, status: "error", error_message: String(err instanceof Error ? err.message : err), finished_at: new Date().toISOString() })
+    await upsertRun(admin, { workflow_id: workflowId, node_id: nodeId, status: "error", error_message: messageOf(err), finished_at: new Date().toISOString() })
     throw err
   }
 }
