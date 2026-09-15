@@ -104,6 +104,30 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
     scheduleSave(next, edges)
   }
 
+  function duplicateNode(nodeId: string) {
+    const source = nodes.find((n) => n.id === nodeId)
+    if (!source) return
+    const copy: Node = {
+      ...source,
+      id: crypto.randomUUID(),
+      position: { x: source.position.x + 40, y: source.position.y + 40 },
+      selected: false,
+    }
+    const next = [...nodes, copy]
+    setNodes(next)
+    scheduleSave(next, edges)
+  }
+
+  function deleteNode(nodeId: string) {
+    const next = nodes.filter((n) => n.id !== nodeId)
+    const nextEdges = edges.filter((e) => e.source !== nodeId && e.target !== nodeId)
+    setNodes(next)
+    setEdges(nextEdges)
+    scheduleSave(next, nextEdges)
+    if (selectedNodeId === nodeId) setSelectedNodeId(null)
+    setRuns((prev) => { const { [nodeId]: _removed, ...rest } = prev; return rest })
+  }
+
   async function handleRun(nodeId: string) {
     setRuns((prev) => ({ ...prev, [nodeId]: { ...(prev[nodeId] ?? blankRun(workflow.id, nodeId)), status: "running" } }))
     try {
@@ -142,6 +166,8 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
       errorMessage: runs[n.id]?.error_message,
       onRun: () => handleRun(n.id),
       onOpenConfig: () => setSelectedNodeId(n.id),
+      onDuplicate: () => duplicateNode(n.id),
+      onDelete: () => deleteNode(n.id),
     } satisfies AdNodeRenderData,
   })), [nodes, runs]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -177,6 +203,7 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
 
       {selectedNode && (
         <NodeConfigPanel
+          workflowId={workflow.id}
           data={selectedNode.data as unknown as { label: string; type: AdNodeType; config: AdNodeConfig }}
           run={runs[selectedNode.id]}
           onClose={() => setSelectedNodeId(null)}

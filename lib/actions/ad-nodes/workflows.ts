@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import type { AdNodeWorkflow, AdNodeGraph } from "@/lib/types"
 
 async function assertAuth() {
@@ -75,4 +76,26 @@ export async function deleteWorkflow(workflowId: string): Promise<void> {
   const { error } = await supabase.from("ad_node_workflows").delete().eq("id", workflowId)
   if (error) throw error
   revalidatePath("/ad-lab/nodes")
+}
+
+// Lets an Image node upload a file directly instead of only accepting a
+// pasted URL — same "ad-lab" storage bucket the rest of Ad Lab already
+// uses, under its own workflow-scoped path.
+export async function uploadNodeImage(workflowId: string, formData: FormData): Promise<string> {
+  await assertAuth()
+  const file = formData.get("file") as File | null
+  if (!file) throw new Error("Ningún archivo recibido")
+
+  const adminStorage = createAdminClient()
+  const ext = file.name.split(".").pop() ?? "jpg"
+  const path = `ad-node-workflows/${workflowId}/${Date.now()}.${ext}`
+  const buffer = await file.arrayBuffer()
+
+  const { error } = await adminStorage.storage
+    .from("ad-lab")
+    .upload(path, buffer, { contentType: file.type, upsert: false })
+  if (error) throw new Error(`Error subiendo imagen: ${error.message}`)
+
+  const { data: { publicUrl } } = adminStorage.storage.from("ad-lab").getPublicUrl(path)
+  return publicUrl
 }

@@ -1,7 +1,7 @@
 "use client"
 
 import { Handle, Position, type NodeProps } from "@xyflow/react"
-import { Loader2, Check, X, Play } from "lucide-react"
+import { Loader2, Check, X, Play, Copy, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { AdNodeData, AdNodeRunStatus, AdNodeType } from "@/lib/types"
 
@@ -27,6 +27,8 @@ export interface AdNodeRenderData extends AdNodeData {
   errorMessage?: string | null
   onRun: () => void
   onOpenConfig: () => void
+  onDuplicate: () => void
+  onDelete: () => void
 }
 
 export function AdNodeComponent({ data, selected }: NodeProps & { data: AdNodeRenderData }) {
@@ -37,12 +39,32 @@ export function AdNodeComponent({ data, selected }: NodeProps & { data: AdNodeRe
     <div
       onClick={data.onOpenConfig}
       className={cn(
-        "rounded-lg border-2 shadow-sm w-56 cursor-pointer transition-shadow",
+        "group relative rounded-lg border-2 shadow-sm w-56 cursor-pointer transition-shadow",
         style.color,
         selected && "ring-2 ring-primary"
       )}
     >
       {!isSticky && <Handle type="target" position={Position.Left} className="!w-2.5 !h-2.5" />}
+
+      {/* CRUD por nodo — duplicar/eliminar, visibles al pasar el cursor
+          para no saturar el canvas cuando hay muchos nodos. */}
+      <div className="absolute -top-2.5 -right-2.5 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+        <button
+          onClick={(e) => { e.stopPropagation(); data.onDuplicate() }}
+          title="Duplicar nodo"
+          className="p-1 rounded-full bg-card border border-border shadow-sm text-muted-foreground hover:text-foreground"
+        >
+          <Copy className="w-3 h-3" />
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); data.onDelete() }}
+          title="Eliminar nodo"
+          className="p-1 rounded-full bg-card border border-border shadow-sm text-muted-foreground hover:text-destructive"
+        >
+          <Trash2 className="w-3 h-3" />
+        </button>
+      </div>
+
       <div className="px-3 py-2 flex items-center justify-between gap-2">
         <div className="min-w-0">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">{style.label}</p>

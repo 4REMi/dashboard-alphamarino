@@ -1,11 +1,13 @@
 "use client"
 
-import { useState } from "react"
-import { X } from "lucide-react"
+import { useRef, useState } from "react"
+import { X, Upload, Loader2 } from "lucide-react"
 import type { AdNodeData, AdNodeConfig, AdNodeRun } from "@/lib/types"
 import { IMAGE_MODELS, VIDEO_MODELS } from "@/lib/actions/ad-nodes/providers/models"
+import { uploadNodeImage } from "@/lib/actions/ad-nodes/workflows"
 
 interface Props {
+  workflowId: string
   data: AdNodeData
   run: AdNodeRun | undefined
   onClose: () => void
@@ -15,12 +17,31 @@ interface Props {
 // 3-column layout matching the competitor screenshots: INPUT (read-only —
 // what this node type expects from upstream edges), PARAMETERS (the
 // editable model/prompt/config), OUTPUT (the last cached result, if any).
-export function NodeConfigPanel({ data, run, onClose, onSave }: Props) {
+export function NodeConfigPanel({ workflowId, data, run, onClose, onSave }: Props) {
   const [label, setLabel] = useState(data.label)
   const [config, setConfig] = useState<AdNodeConfig>(data.config)
+  const [isUploading, setIsUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   function set<K extends keyof AdNodeConfig>(key: K, value: AdNodeConfig[K]) {
     setConfig((prev) => ({ ...prev, [key]: value }))
+  }
+
+  async function handleFilePick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setIsUploading(true)
+    try {
+      const fd = new FormData()
+      fd.set("file", file)
+      const url = await uploadNodeImage(workflowId, fd)
+      set("imageUrl", url)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "No se pudo subir la imagen")
+    } finally {
+      setIsUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ""
+    }
   }
 
   function handleSave() {
@@ -71,12 +92,37 @@ export function NodeConfigPanel({ data, run, onClose, onSave }: Props) {
           )}
 
           {data.type === "image" && (
-            <input
-              value={config.imageUrl ?? ""}
-              onChange={(e) => set("imageUrl", e.target.value)}
-              placeholder="URL de la imagen"
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            />
+            <div className="space-y-2">
+              {config.imageUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={config.imageUrl} alt="" className="rounded-md w-full max-h-48 object-contain bg-muted/30" />
+              )}
+              <div className="flex items-center gap-2">
+                <input
+                  type="file"
+                  accept="image/*"
+                  ref={fileInputRef}
+                  onChange={handleFilePick}
+                  className="hidden"
+                  id="node-image-upload"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploading}
+                  className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-input bg-background hover:bg-muted disabled:opacity-50"
+                >
+                  {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                  Subir imagen
+                </button>
+              </div>
+              <input
+                value={config.imageUrl ?? ""}
+                onChange={(e) => set("imageUrl", e.target.value)}
+                placeholder="O pega una URL de imagen"
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
           )}
 
           {(data.type === "llm" || data.type === "analysis") && (

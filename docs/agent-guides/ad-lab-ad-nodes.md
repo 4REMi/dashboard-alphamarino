@@ -48,6 +48,14 @@ punto izquierdo de otro.
 **Configurar un nodo**: clic en el nodo → panel lateral (INPUT/PARAMETERS/OUTPUT) →
 "Guardar".
 
+**Subir una imagen a un nodo Image**: dentro del panel, botón "Subir imagen" — o
+pega una URL directamente si ya la tienes alojada en otro lado. Sube al bucket
+`ad-lab` de Storage, bajo `ad-node-workflows/{workflowId}/...`.
+
+**Duplicar/eliminar un nodo**: al pasar el cursor sobre un nodo aparecen dos
+íconos arriba a la derecha (copiar/basura) — eliminar también quita las aristas
+que tocaban ese nodo.
+
 **Correr**: botón ▶ en el nodo mismo. El estado (idle/running/done/error) se ve en
 el propio nodo y en el panel.
 
