@@ -2,7 +2,7 @@
 
 **Ruta:** dentro de `/projects/[id]` — tarjeta "Ciclo Activo" (solo proyectos de tipo Paid Media)
 **Para quién:** ambos, con partes admin-only (ver "Quién puede ver/hacer qué")
-**Actualizado:** 2026-09-14
+**Actualizado:** 2026-09-15
 
 ## Qué es y para qué sirve
 
@@ -47,6 +47,9 @@ ciclo, solo visible para admin/subadmin.
 
 ## Reglas y restricciones
 
+- El chequeo diario **solo considera proyectos con `status = "Active"`** — un ciclo
+  vencido dentro de un proyecto ya archivado/completado no genera ningún aviso
+  (nadie está trabajando ahí, no es un pendiente real de nadie).
 - El chequeo diario es **idempotente por ciclo** — corre las veces que sea, cada aviso
   (`end_warning_sent_at`/`overdue_notice_sent_at`) se manda una sola vez por ciclo. No
   hay riesgo de duplicar notificaciones si se dispara más de una vez el mismo día.

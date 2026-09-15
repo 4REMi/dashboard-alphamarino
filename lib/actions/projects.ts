@@ -1034,15 +1034,18 @@ export async function runDailyCycleCheck(): Promise<{ warned: number; overdueNot
 
   const { data: cycles, error } = await admin
     .from("paid_media_cycles")
-    .select("id, project_id, end_date, end_warning_sent_at, overdue_notice_sent_at, project:projects(name, auto_close_cycles)")
+    .select("id, project_id, end_date, end_warning_sent_at, overdue_notice_sent_at, project:projects(name, status, auto_close_cycles)")
     .eq("is_active", true)
   if (error) throw error
 
   let warned = 0, overdueNotified = 0, autoClosed = 0
 
   for (const cycle of cycles ?? []) {
-    const project = cycle.project as unknown as { name: string; auto_close_cycles: boolean } | null
-    if (!project) continue
+    const project = cycle.project as unknown as { name: string; status: string; auto_close_cycles: boolean } | null
+    // A project that's Archived/Completed isn't being worked on anymore —
+    // its cycle being left open is no longer anyone's problem to close, so
+    // skip it rather than nagging about a project nobody's touching.
+    if (!project || project.status !== "Active") continue
 
     if (cycle.end_date < today) {
       if (project.auto_close_cycles) {
