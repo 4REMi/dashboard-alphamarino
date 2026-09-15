@@ -47,12 +47,13 @@ export default async function AdLabPage() {
 
       {/* Hub cards — emoji, count, name and description together, no more
           duplicating the same 4 sections as separate stat + nav cards. */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-7 gap-4">
         <HubCard href="/ad-lab/discovery"  icon="🔍" title="Discovery"    value={savedAdCount}   valueLabel="anuncios guardados" description="Busca anuncios en Meta Ads Library por marca o competidor." />
         <HubCard href="/ad-lab/boards"     icon="🗂️" title="Boards"       value={boardCount}     valueLabel="boards"             description="Colecciones de anuncios guardados organizados por tema o cliente." />
         <HubCard href="/ad-lab/brands"     icon="📡" title="Marcas"       value={brandCount}     valueLabel="marcas trackeadas"  description="Gestiona las marcas competidoras trackeadas por cliente." />
         <HubCard href="/ad-lab/creatives"  icon="🎨" title="Creatives"    value={creativesCount} valueLabel="creativos generados" description="Todos los estáticos clonados y adaptados para tus marcas." />
         <HubCard href="/ad-lab/scratch"    icon="✨" title="Crear desde cero" description="Genera creativos estáticos sin necesidad de un anuncio de referencia." />
+        <HubCard href="/ad-lab/nodes"      icon="🧩" title="Ad Nodes"     description="Workflows visuales de IA — conecta nodos de texto, imagen, análisis y generación." />
         <HubCard href="/ad-lab/resize"     icon="📐" title="Image Resize" description="Expande creativos a múltiples aspect ratios usando IA." />
       </div>
     </div>

@@ -1367,3 +1367,87 @@ export interface AutomationLog {
   error_message: string | null
   created_at: string
 }
+
+// ============================================================
+// AD LAB — AD NODES (canvas visual de workflows de IA)
+// ============================================================
+
+export type AdNodeType = "text" | "image" | "analysis" | "llm" | "generate_image" | "generate_video" | "sticky_note"
+
+export interface AdNodeConfig {
+  // text / sticky_note
+  value?: string
+  // image
+  imageUrl?: string
+  // llm / analysis
+  prompt?: string
+  systemPrompt?: string
+  // generate_image / generate_video
+  provider?: "replicate" | "apimart"
+  model?: string
+  aspectRatio?: string
+  numImages?: number
+  safetyFilterLevel?: string
+}
+
+export interface AdNodeData {
+  label: string
+  type: AdNodeType
+  config: AdNodeConfig
+}
+
+// Matches @xyflow/react's Node/Edge shape closely enough to persist as-is —
+// kept as a plain interface here (not importing the library's own types
+// into lib/types.ts) so this file has no client-library dependency.
+export interface AdNodeGraphNode {
+  id: string
+  type: "adNode"
+  position: { x: number; y: number }
+  data: AdNodeData
+}
+
+export interface AdNodeGraphEdge {
+  id: string
+  source: string
+  target: string
+  sourceHandle?: string | null
+  targetHandle?: string | null
+}
+
+export interface AdNodeGraph {
+  nodes: AdNodeGraphNode[]
+  edges: AdNodeGraphEdge[]
+}
+
+export interface AdNodeWorkflow {
+  id: string
+  name: string
+  brand_brain_id: string | null
+  graph: AdNodeGraph
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type AdNodeRunStatus = "idle" | "running" | "done" | "error"
+
+export interface AdNodeRunOutput {
+  text?: string
+  image_urls?: string[]
+  video_url?: string
+  analysis?: string
+}
+
+export interface AdNodeRun {
+  id: string
+  workflow_id: string
+  node_id: string
+  status: AdNodeRunStatus
+  input_snapshot: Record<string, unknown> | null
+  output: AdNodeRunOutput | null
+  error_message: string | null
+  provider_job_id: string | null
+  started_at: string | null
+  finished_at: string | null
+  updated_at: string
+}
