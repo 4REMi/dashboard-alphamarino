@@ -61,6 +61,34 @@ export async function saveWorkflowGraph(workflowId: string, graph: AdNodeGraph):
   if (error) throw error
 }
 
+// For reusing a workflow as a starting point ("plantilla maestra") without
+// touching the original — copies name + graph into a brand new row. Run
+// state (ad_node_runs) is deliberately NOT copied: a duplicate starts
+// clean, it isn't a fork of in-progress generations.
+export async function duplicateWorkflow(workflowId: string): Promise<AdNodeWorkflow> {
+  const { supabase, user } = await assertAuth()
+  const { data: source, error: fetchError } = await supabase
+    .from("ad_node_workflows")
+    .select("name, brand_brain_id, graph")
+    .eq("id", workflowId)
+    .single()
+  if (fetchError) throw fetchError
+
+  const { data, error } = await supabase
+    .from("ad_node_workflows")
+    .insert({
+      name: `${source.name} (copia)`,
+      brand_brain_id: source.brand_brain_id,
+      graph: source.graph,
+      created_by: user.id,
+    })
+    .select("*")
+    .single()
+  if (error) throw error
+  revalidatePath("/ad-lab/nodes")
+  return data as AdNodeWorkflow
+}
+
 export async function renameWorkflow(workflowId: string, name: string): Promise<void> {
   const { supabase } = await assertAuth()
   const { error } = await supabase

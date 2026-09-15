@@ -6,8 +6,9 @@ import {
   type Node, type Edge, type Connection, type NodeChange, type EdgeChange,
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
-import { Plus } from "lucide-react"
-import { AdNodeComponent, type AdNodeRenderData } from "@/components/ad-lab/nodes/ad-node"
+import { Plus, Save, Check, Loader2 } from "lucide-react"
+import { AdNodeComponent, TYPE_STYLES, type AdNodeRenderData } from "@/components/ad-lab/nodes/ad-node"
+import { cn } from "@/lib/utils"
 import { NodeConfigPanel } from "@/components/ad-lab/node-config-panel"
 import { saveWorkflowGraph } from "@/lib/actions/ad-nodes/workflows"
 import { runNode, pollNodeRun, getNodeRuns } from "@/lib/actions/ad-nodes/executor"
@@ -35,8 +36,10 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
   const [edges, setEdges] = useState<Edge[]>(() => workflow.graph.edges as Edge[])
   const [runs, setRuns] = useState<Record<string, AdNodeRun>>({})
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const [saveState, setSaveState] = useState<"idle" | "pending" | "saving" | "saved">("idle")
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const pendingGraph = useRef<{ nodes: Node[]; edges: Edge[] } | null>(null)
 
   useEffect(() => {
     getNodeRuns(workflow.id).then((list) => {
@@ -48,14 +51,34 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
     return { id: n.id, type: "adNode", position: n.position, data: n.data as unknown as Record<string, unknown> }
   }
 
-  function scheduleSave(nextNodes: Node[], nextEdges: Edge[]) {
-    if (saveTimer.current) clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(() => {
-      saveWorkflowGraph(workflow.id, {
+  async function persist(nextNodes: Node[], nextEdges: Edge[]) {
+    setSaveState("saving")
+    try {
+      await saveWorkflowGraph(workflow.id, {
         nodes: nextNodes.map((n) => ({ id: n.id, type: "adNode", position: n.position, data: n.data as never })),
         edges: nextEdges.map((e) => ({ id: e.id, source: e.source, target: e.target, sourceHandle: e.sourceHandle, targetHandle: e.targetHandle })),
-      }).catch(() => {})
+      })
+      setSaveState("saved")
+    } catch {
+      setSaveState("pending") // keep showing "sin guardar" so it's obvious a retry is needed
+    }
+  }
+
+  function scheduleSave(nextNodes: Node[], nextEdges: Edge[]) {
+    pendingGraph.current = { nodes: nextNodes, edges: nextEdges }
+    setSaveState("pending")
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => {
+      if (pendingGraph.current) persist(pendingGraph.current.nodes, pendingGraph.current.edges)
     }, 800)
+  }
+
+  // Explicit "Guardar" — flushes the debounce immediately instead of
+  // waiting ~800ms, for the moment right before navigating away or when
+  // the user just wants confirmation it's actually saved.
+  function handleSaveNow() {
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    persist(nodes, edges)
   }
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
@@ -176,16 +199,33 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
 
   return (
     <div className="relative w-full h-[calc(100vh-8rem)] rounded-xl border border-border overflow-hidden">
-      <div className="absolute top-3 left-3 z-10 flex flex-wrap gap-1.5 bg-card/95 backdrop-blur rounded-lg border border-border p-2 shadow-sm max-w-[90%]">
+      <div className="absolute top-3 left-3 z-10 flex flex-wrap gap-1.5 bg-card/95 backdrop-blur rounded-lg border border-border p-2 shadow-sm max-w-[75%]">
         {PALETTE.map((p) => (
           <button
             key={p.type}
             onClick={() => addNode(p.type)}
-            className="flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-md border border-border bg-background hover:bg-muted transition-colors"
+            className={cn(
+              "flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-md border transition-colors hover:brightness-95",
+              TYPE_STYLES[p.type].badge
+            )}
           >
             <Plus className="w-3 h-3" /> {p.label}
           </button>
         ))}
+      </div>
+
+      <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
+        <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+          {saveState === "saving" && <><Loader2 className="w-3 h-3 animate-spin" /> Guardando…</>}
+          {saveState === "saved" && <><Check className="w-3 h-3 text-emerald-600" /> Guardado</>}
+          {saveState === "pending" && "Sin guardar"}
+        </span>
+        <button
+          onClick={handleSaveNow}
+          className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
+        >
+          <Save className="w-3.5 h-3.5" /> Guardar
+        </button>
       </div>
 
       <ReactFlow

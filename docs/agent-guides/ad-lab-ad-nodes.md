@@ -30,6 +30,15 @@ fijos, no un catálogo abierto.
 - **Modelo por nodo**: cada nodo `generate_image`/`generate_video` elige su propio
   modelo (`lib/actions/ad-nodes/providers/models.ts`) — así se puede usar uno
   barato para un hook y uno más caro/mejor para otro, dentro del mismo workflow.
+- **Código de color por tipo** (`TYPE_STYLES` en `components/ad-lab/nodes/ad-node.tsx`):
+  cada tipo tiene un color fijo — verde=Image, rosa=Generate Image, etc. — y es la
+  MISMA fuente de verdad tanto para el borde/fondo del nodo en el canvas como para
+  el botón "+ Tipo" de la barra de herramientas, para que un tipo se reconozca por
+  color en cualquier parte de la UI.
+- **Plantillas maestras**: un workflow se puede duplicar (desde `/ad-lab/nodes`) —
+  copia el grafo completo a un workflow nuevo, sin arrastrar el estado de
+  ejecución (`ad_node_runs`) del original. Pensado para tener una plantilla base y
+  reusarla/modificarla por cliente sin tocar la original.
 - **Nivel de seguridad por nodo**: configurable (ej. `safety_filter_level` de
   Replicate), nunca un interruptor global de "sin moderación" — decisión explícita,
   no construir eso.
@@ -53,11 +62,20 @@ pega una URL directamente si ya la tienes alojada en otro lado. Sube al bucket
 `ad-lab` de Storage, bajo `ad-node-workflows/{workflowId}/...`.
 
 **Duplicar/eliminar un nodo**: al pasar el cursor sobre un nodo aparecen dos
-íconos arriba a la derecha (copiar/basura) — eliminar también quita las aristas
-que tocaban ese nodo.
+íconos junto al pill de estado (copiar/basura) — eliminar también quita las
+aristas que tocaban ese nodo. (Están adentro de la tarjeta a propósito, no con
+offset hacia afuera — puestos afuera quedaban recortados por el contenedor de
+React Flow y nunca aparecían al hacer hover.)
 
 **Correr**: botón ▶ en el nodo mismo. El estado (idle/running/done/error) se ve en
 el propio nodo y en el panel.
+
+**Guardar el layout manualmente**: botón "Guardar" arriba a la derecha del
+canvas — fuerza el guardado inmediato en vez de esperar el autoguardado
+(~800ms). Un indicador junto a él dice "Guardando…"/"Guardado"/"Sin guardar".
+
+**Duplicar/renombrar/eliminar un workflow completo**: desde `/ad-lab/nodes`,
+íconos en cada tarjeta de la lista.
 
 ## Reglas y restricciones
 
