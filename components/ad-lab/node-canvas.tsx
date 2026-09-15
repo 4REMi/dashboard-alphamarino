@@ -187,6 +187,7 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
       ...(n.data as unknown as { label: string; type: AdNodeType; config: AdNodeConfig }),
       status: runs[n.id]?.status ?? "idle",
       errorMessage: runs[n.id]?.error_message,
+      estimatedCostUsd: runs[n.id]?.estimated_cost_usd,
       output: runs[n.id]?.output,
       onRun: () => handleRun(n.id),
       onOpenConfig: () => setSelectedNodeId(n.id),
@@ -196,6 +197,11 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
   })), [nodes, runs]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId)
+
+  // Suma de lo ya gastado (estimado) en este workflow — solo nodos que de
+  // verdad corrieron (done/running/error todos dejan su estimate, ya que
+  // se calcula ANTES de enviar a APIMart, no después).
+  const totalEstimatedCost = Object.values(runs).reduce((sum, r) => sum + (r.estimated_cost_usd ?? 0), 0)
 
   return (
     <div className="relative w-full h-[calc(100vh-8rem)] rounded-xl border border-border overflow-hidden">
@@ -214,18 +220,25 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
         ))}
       </div>
 
-      <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
-        <span className="text-[11px] text-muted-foreground flex items-center gap-1">
-          {saveState === "saving" && <><Loader2 className="w-3 h-3 animate-spin" /> Guardando…</>}
-          {saveState === "saved" && <><Check className="w-3 h-3 text-emerald-600" /> Guardado</>}
-          {saveState === "pending" && "Sin guardar"}
-        </span>
-        <button
-          onClick={handleSaveNow}
-          className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
-        >
-          <Save className="w-3.5 h-3.5" /> Guardar
-        </button>
+      <div className="absolute top-3 right-3 z-10 flex flex-col items-end gap-1.5">
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+            {saveState === "saving" && <><Loader2 className="w-3 h-3 animate-spin" /> Guardando…</>}
+            {saveState === "saved" && <><Check className="w-3 h-3 text-emerald-600" /> Guardado</>}
+            {saveState === "pending" && "Sin guardar"}
+          </span>
+          <button
+            onClick={handleSaveNow}
+            className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
+          >
+            <Save className="w-3.5 h-3.5" /> Guardar
+          </button>
+        </div>
+        {totalEstimatedCost > 0 && (
+          <div className="flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full bg-emerald-600 text-white shadow-sm">
+            Costo estimado del workflow: ${totalEstimatedCost.toFixed(4)} USD
+          </div>
+        )}
       </div>
 
       <ReactFlow
@@ -264,6 +277,6 @@ function blankRun(workflowId: string, nodeId: string): AdNodeRun {
   return {
     id: "", workflow_id: workflowId, node_id: nodeId, status: "idle",
     input_snapshot: null, output: null, error_message: null, provider_job_id: null,
-    started_at: null, finished_at: null, updated_at: new Date().toISOString(),
+    estimated_cost_usd: null, started_at: null, finished_at: null, updated_at: new Date().toISOString(),
   }
 }

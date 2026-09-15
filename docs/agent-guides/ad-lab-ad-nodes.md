@@ -42,6 +42,16 @@ fijos, no un catálogo abierto.
 - **Nivel de seguridad por nodo**: configurable (ej. `safety_filter_level` de
   Replicate), nunca un interruptor global de "sin moderación" — decisión explícita,
   no construir eso.
+- **Costo estimado** (`ad_node_runs.estimated_cost_usd`): jalado en vivo del
+  endpoint público de precios de APIMart (`GET api.apimart.ai/api/pricing/model?model=...`,
+  sin necesitar API key) en el momento exacto en que se manda a generar un nodo —
+  nunca un número fijo en el código, así se mantiene correcto aunque APIMart
+  cambie tarifas. Solo existe para modelos de APIMart (Replicate no tiene un
+  endpoint de precios equivalente). Se ve en tres lugares: en vivo mientras
+  configuras el nodo (antes de correrlo), en el nodo mismo una vez corrido, y
+  sumado como total del workflow completo (esquina superior derecha del canvas).
+  Es un ESTIMADO contra la tarifa oficial, no el costo exacto ya cobrado — APIMart
+  no regresa ese dato en la respuesta de la tarea.
 
 ## Cómo hacer las acciones comunes
 
@@ -114,8 +124,10 @@ Mismo gate que todo Ad Lab: permiso `access_ad_lab` (`lib/permissions.ts`).
 - `lib/actions/ad-nodes/executor.ts` — `runNode`, `runWorkflow`, `pollNodeRun`,
   orden topológico (Kahn).
 - `lib/actions/ad-nodes/node-handlers.ts` — lógica síncrona de Text/LLM/Analysis.
-- `lib/actions/ad-nodes/providers/{types.ts,models.ts,replicate.ts,apimart.ts,registry.ts}`
-  — adaptadores de generación por proveedor.
+- `lib/actions/ad-nodes/providers/{types.ts,models.ts,replicate.ts,apimart.ts,registry.ts,pricing.ts}`
+  — adaptadores de generación por proveedor; `pricing.ts` consulta el endpoint
+  público de precios de APIMart.
+- `supabase/migrations/080_ad_node_run_cost.sql` — `ad_node_runs.estimated_cost_usd`.
 - `components/ad-lab/node-canvas.tsx`, `node-config-panel.tsx`,
   `nodes/ad-node.tsx`, `workflow-list.tsx`.
 - `lib/types.ts` — `AdNodeWorkflow`, `AdNodeRun`, `AdNodeGraph`, etc.

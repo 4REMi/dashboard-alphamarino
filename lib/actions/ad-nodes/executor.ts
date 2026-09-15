@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import type { AdNodeGraph, AdNodeGraphNode, AdNodeRun, AdNodeRunOutput } from "@/lib/types"
 import { runTextNode, runLLMNode, runAnalysisNode } from "./node-handlers"
 import { getGenerationAdapter, getModelProvider } from "./providers/registry"
+import { estimateImageCostUsd, estimateVideoCostUsd } from "./providers/pricing"
 
 // Guards against `new Error(someObject)` silently turning into the useless
 // "[object Object]" (e.g. a provider's error field being a nested object
@@ -141,10 +142,15 @@ async function submitGeneration(
   const aspectRatio = node.data.config.aspectRatio ?? "1:1"
 
   const provider = getModelProvider(kind, model)
+  const durationSeconds = node.data.config.durationSeconds ?? 30
+  const resolution = node.data.config.resolution ?? "720P"
+
   // Same node config (prompt/reference images/aspect ratio), different field
   // names per provider — Replicate's nano-banana-pro uses image_input/
   // aspect_ratio/safety_filter_level; APIMart's unified task API (confirmed
-  // against real account logs, see providers/apimart.ts) uses image_urls/size.
+  // against real account logs, see providers/apimart.ts) uses image_urls/size
+  // (video adds duration/resolution, both of which matter for its
+  // per-second billing — see the cost estimate below).
   const input = provider === "replicate"
     ? {
         prompt,
@@ -152,15 +158,24 @@ async function submitGeneration(
         aspect_ratio: aspectRatio,
         safety_filter_level: node.data.config.safetyFilterLevel ?? "block_only_high",
       }
-    : {
-        prompt,
-        image_urls: referenceImages,
-        size: aspectRatio,
-      }
+    : kind === "video"
+    ? { prompt, image_urls: referenceImages, size: aspectRatio, duration: durationSeconds, resolution }
+    : { prompt, image_urls: referenceImages, size: aspectRatio }
+
+  // Cost estimate — fetched live from APIMart's public pricing endpoint
+  // (see providers/pricing.ts) right before submitting, so it reflects
+  // whatever they're actually charging today. Never blocks the run if the
+  // pricing lookup fails (network hiccup, unlisted model) — just stored as
+  // null, surfaced as "—" in the UI instead of a guess.
+  const estimatedCostUsd = provider === "apimart"
+    ? kind === "video"
+      ? await estimateVideoCostUsd(model.replace("apimart:", ""), resolution, durationSeconds).catch(() => null)
+      : await estimateImageCostUsd(model.replace("apimart:", ""), aspectRatio).catch(() => null)
+    : null
 
   const adapter = getGenerationAdapter(kind, model)
   const { jobId } = await adapter.submit(input)
-  await upsertRun(admin, { workflow_id: workflowId, node_id: node.id, status: "running", provider_job_id: jobId })
+  await upsertRun(admin, { workflow_id: workflowId, node_id: node.id, status: "running", provider_job_id: jobId, estimated_cost_usd: estimatedCostUsd })
 }
 
 // Runs every node in topological order — "run the whole workflow" means

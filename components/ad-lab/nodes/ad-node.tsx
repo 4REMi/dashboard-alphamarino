@@ -29,6 +29,7 @@ const STATUS_PILL: Record<AdNodeRunStatus, string> = {
 export interface AdNodeRenderData extends AdNodeData {
   status: AdNodeRunStatus
   errorMessage?: string | null
+  estimatedCostUsd?: number | null
   output?: AdNodeRunOutput | null
   onRun: () => void
   onOpenConfig: () => void
@@ -102,7 +103,9 @@ export function AdNodeComponent({ data, selected }: NodeProps & { data: AdNodeRe
       ) : (
         <div className="px-3 pb-2.5 flex items-center justify-between">
           <p className="text-[11px] text-muted-foreground truncate max-w-[70%]">
-            {data.status === "error" ? data.errorMessage : "Click para configurar"}
+            {data.status === "error" ? data.errorMessage
+              : data.estimatedCostUsd != null ? `$${data.estimatedCostUsd.toFixed(4)} USD`
+              : "Click para configurar"}
           </p>
           <button
             onClick={(e) => { e.stopPropagation(); data.onRun() }}

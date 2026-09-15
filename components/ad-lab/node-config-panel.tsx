@@ -1,10 +1,11 @@
 "use client"
 
-import { useRef, useState } from "react"
-import { X, Upload, Loader2 } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+import { X, Upload, Loader2, DollarSign } from "lucide-react"
 import type { AdNodeData, AdNodeConfig, AdNodeRun } from "@/lib/types"
 import { IMAGE_MODELS, VIDEO_MODELS } from "@/lib/actions/ad-nodes/providers/models"
 import { uploadNodeImage } from "@/lib/actions/ad-nodes/workflows"
+import { estimateImageCostUsd, estimateVideoCostUsd } from "@/lib/actions/ad-nodes/providers/pricing"
 
 interface Props {
   workflowId: string
@@ -22,10 +23,25 @@ export function NodeConfigPanel({ workflowId, data, run, onClose, onSave }: Prop
   const [config, setConfig] = useState<AdNodeConfig>(data.config)
   const [isUploading, setIsUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [estimatedCost, setEstimatedCost] = useState<number | null | "loading">(null)
 
   function set<K extends keyof AdNodeConfig>(key: K, value: AdNodeConfig[K]) {
     setConfig((prev) => ({ ...prev, [key]: value }))
   }
+
+  // Live cost estimate — refetched from APIMart's public pricing endpoint
+  // whenever the fields that affect price change, so it's never stale
+  // relative to what's actually configured.
+  const isGeneration = data.type === "generate_image" || data.type === "generate_video"
+  useEffect(() => {
+    if (!isGeneration || !config.model?.startsWith("apimart:")) { setEstimatedCost(null); return }
+    const model = config.model.replace("apimart:", "")
+    setEstimatedCost("loading")
+    const promise = data.type === "generate_video"
+      ? estimateVideoCostUsd(model, config.resolution ?? "720P", config.durationSeconds ?? 30)
+      : estimateImageCostUsd(model, config.aspectRatio ?? "1:1")
+    promise.then(setEstimatedCost).catch(() => setEstimatedCost(null))
+  }, [isGeneration, data.type, config.model, config.aspectRatio, config.resolution, config.durationSeconds])
 
   async function handleFilePick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -199,7 +215,44 @@ export function NodeConfigPanel({ workflowId, data, run, onClose, onSave }: Prop
                     </select>
                   </div>
                 )}
+                {data.type === "generate_video" && (
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground mb-1 block">Resolución</label>
+                    <select
+                      value={config.resolution ?? "720P"}
+                      onChange={(e) => set("resolution", e.target.value)}
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    >
+                      {["480P", "720P", "1080P"].map((r) => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                  </div>
+                )}
               </div>
+              {data.type === "generate_video" && (
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">Duración (segundos)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={config.durationSeconds ?? 30}
+                    onChange={(e) => set("durationSeconds", Number(e.target.value))}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  />
+                </div>
+              )}
+
+              {/* Costo estimado — jalado en vivo de la tabla de precios
+                  pública de APIMart, nunca un número fijo en el código.
+                  Solo aplica a modelos de APIMart; Replicate no tiene un
+                  endpoint de precios equivalente que podamos consultar. */}
+              {isGeneration && config.model?.startsWith("apimart:") && (
+                <div className="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <DollarSign className="w-3.5 h-3.5 flex-shrink-0" />
+                  {estimatedCost === "loading" ? "Calculando costo estimado…"
+                    : estimatedCost === null ? "No se pudo estimar el costo para esta configuración"
+                    : `Costo estimado: $${estimatedCost.toFixed(4)} USD (precio oficial de APIMart, en vivo)`}
+                </div>
+              )}
             </>
           )}
         </section>
@@ -214,6 +267,11 @@ export function NodeConfigPanel({ workflowId, data, run, onClose, onSave }: Prop
             <p className="text-xs text-destructive">{run.error_message}</p>
           ) : (
             <div className="space-y-2">
+              {run.estimated_cost_usd !== null && (
+                <p className="text-[11px] font-medium text-emerald-700">
+                  Costo estimado de esta corrida: ${run.estimated_cost_usd.toFixed(4)} USD
+                </p>
+              )}
               {run.output?.text && <p className="text-xs whitespace-pre-wrap bg-muted/40 rounded-md p-2">{run.output.text}</p>}
               {run.output?.analysis && <p className="text-xs whitespace-pre-wrap bg-muted/40 rounded-md p-2">{run.output.analysis}</p>}
               {run.output?.image_urls?.map((url) => (

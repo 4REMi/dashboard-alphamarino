@@ -1388,6 +1388,13 @@ export interface AdNodeConfig {
   aspectRatio?: string
   numImages?: number
   safetyFilterLevel?: string
+  // generate_video only — seconds, matters for APIMart's per-second video
+  // billing (Seedance-style models).
+  durationSeconds?: number
+  // generate_video only — the resolution key APIMart's pricing table uses
+  // (e.g. "720P") — separate from aspectRatio, which controls shape not
+  // resolution tier.
+  resolution?: string
 }
 
 export interface AdNodeData {
@@ -1447,6 +1454,11 @@ export interface AdNodeRun {
   output: AdNodeRunOutput | null
   error_message: string | null
   provider_job_id: string | null
+  // Fetched live from APIMart's public pricing endpoint at submit time —
+  // an estimate against their official rate, never a hardcoded number, so
+  // it stays accurate as prices change. Null for Replicate-backed nodes
+  // (no live pricing source for those) or non-generation node types.
+  estimated_cost_usd: number | null
   started_at: string | null
   finished_at: string | null
   updated_at: string
