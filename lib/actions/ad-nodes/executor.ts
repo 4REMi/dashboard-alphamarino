@@ -275,9 +275,14 @@ export async function pollNodeRun(workflowId: string, nodeId: string): Promise<A
   const result = await adapter.poll(run.provider_job_id)
 
   if (result.state === "running") {
+    // Video toma mucho más que imagen (Seedance/Veo fácilmente pasan de
+    // 5-10 minutos, sobre todo en resoluciones/duraciones altas) — el
+    // límite de 5 minutos que compartían ambos venía de copiar el de
+    // pollImageGeneration (image-clone.ts), pensado solo para imagen.
+    const timeoutMs = kind === "video" ? 30 * 60 * 1000 : 10 * 60 * 1000
     const ageMs = run.started_at ? Date.now() - new Date(run.started_at).getTime() : 0
-    if (ageMs > 5 * 60 * 1000) {
-      const timeoutMsg = "Tiempo de espera agotado generando el resultado"
+    if (ageMs > timeoutMs) {
+      const timeoutMsg = `Tiempo de espera agotado generando el resultado (más de ${Math.round(timeoutMs / 60000)} minutos) — el proveedor puede seguir procesándolo, pero dejamos de esperar aquí.`
       await upsertRun(admin, { workflow_id: workflowId, node_id: nodeId, status: "error", error_message: timeoutMsg, finished_at: new Date().toISOString() })
       return { ...run, status: "error", error_message: timeoutMsg } as AdNodeRun
     }

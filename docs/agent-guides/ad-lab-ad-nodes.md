@@ -148,6 +148,12 @@ canvas — fuerza el guardado inmediato en vez de esperar el autoguardado
   como "listo" cualquiera de los dos, y como "fallido" solo si `status` es
   explícitamente `failed`/`cancelled`. Requiere `APIMART_API_KEY` en las
   variables de entorno.
+  - **Timeout de espera por si el job se queda pegado** (`pollNodeRun` en
+    `executor.ts`): 10 minutos para imagen, **30 minutos para video** — video
+    tarda mucho más que imagen (Seedance/Veo fácilmente pasan de 5-10 minutos),
+    así que comparten el mismo límite que imagen causaba el error "tiempo de
+    espera agotado" en generaciones de video que en realidad seguían en curso.
+    Si algún modelo de video sigue topando este límite, subirlo de nuevo aquí.
   - `callApimartChat` (mismo archivo) es la contraparte síncrona para el nodo LLM
     con GPT-5 — chat completions estilo OpenAI, sin task_id/polling. Requiere
     `stream: false` explícito — sin eso, este endpoint regresa Server-Sent Events
