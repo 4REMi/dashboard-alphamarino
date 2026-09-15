@@ -1,5 +1,4 @@
 import type { GenerationAdapter } from "./types"
-import { replicateAdapter } from "./replicate"
 import { apimartAdapter } from "./apimart"
 import { IMAGE_MODELS, VIDEO_MODELS } from "./models"
 
@@ -12,13 +11,11 @@ function findModel(kind: "image" | "video", modelValue: string) {
   return model
 }
 
-export function getModelProvider(kind: "image" | "video", modelValue: string): "replicate" | "apimart" {
-  return findModel(kind, modelValue).provider
-}
-
+// Every curated image/video model routes through APIMart today (see
+// providers/models.ts) — the Replicate adapter (providers/replicate.ts)
+// stays available for a future model that needs it, just unused right now.
 export function getGenerationAdapter(kind: "image" | "video", modelValue: string): GenerationAdapter {
   const model = findModel(kind, modelValue)
-  if (model.provider === "replicate") return replicateAdapter(model.value)
   const apimartModel = model.value.replace("apimart:", "")
   return apimartAdapter(kind, apimartModel)
 }

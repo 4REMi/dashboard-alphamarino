@@ -1383,7 +1383,7 @@ export interface AdNodeConfig {
   prompt?: string
   systemPrompt?: string
   // generate_image / generate_video
-  provider?: "replicate" | "apimart"
+  provider?: "replicate" | "apimart" | "anthropic"
   model?: string
   aspectRatio?: string
   numImages?: number

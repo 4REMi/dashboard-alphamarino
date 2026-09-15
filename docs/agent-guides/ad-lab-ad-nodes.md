@@ -27,9 +27,21 @@ fijos, no un catálogo abierto.
   del JSON del grafo. Correr un nodo puntual (botón ▶ en el nodo) SIEMPRE usa el
   output ya cacheado de sus nodos upstream — nunca los re-corre automáticamente.
   "Correr todo el workflow" sí re-corre todos en orden topológico.
-- **Modelo por nodo**: cada nodo `generate_image`/`generate_video` elige su propio
-  modelo (`lib/actions/ad-nodes/providers/models.ts`) — así se puede usar uno
-  barato para un hook y uno más caro/mejor para otro, dentro del mismo workflow.
+- **Modelo por nodo — catálogo curado, no todo APIMart**: `lib/actions/ad-nodes/providers/models.ts`
+  es deliberadamente una lista chica de flagships de la industria, no "todo lo que
+  ofrece APIMart" — la interfaz gira alrededor de un set estable en vez de un
+  catálogo infinito y cambiante. Hoy: **LLM** — Claude Sonnet (directo vía
+  Anthropic, sin margen de APIMart) o GPT-5 (APIMart); **Generate Image** —
+  Nano Banana Pro, Nano Banana 2, GPT Image 2, Flux 2 Pro (los 4 vía APIMart);
+  **Generate Video** — Veo 3.1 / 3.1 Fast / 3.1 Lite, Seedance 2.5 / 2.0 / 2.0
+  Fast / 1.5 Pro, Kling Video O3 Pro (todos vía APIMart). Agregar un modelo nuevo
+  es solo una entrada más en ese archivo — nada más necesita cambiar
+  estructuralmente.
+- **Ojo con el endpoint de precios de APIMart al agregar un modelo**: NO valida
+  que el modelo exista — un nombre inventado también regresa `success: true` con
+  una plantilla genérica vacía (sin `resolution_prices`/`billing_type`). La única
+  forma real de confirmar un modelo nuevo es correrlo de verdad y ver si la
+  generación (no el precio) tira error.
 - **Código de color por tipo** (`TYPE_STYLES` en `components/ad-lab/nodes/ad-node.tsx`):
   cada tipo tiene un color fijo — verde=Image, rosa=Generate Image, etc. — y es la
   MISMA fuente de verdad tanto para el borde/fondo del nodo en el canvas como para
@@ -100,13 +112,14 @@ canvas — fuerza el guardado inmediato en vez de esperar el autoguardado
   como "listo" cualquiera de los dos, y como "fallido" solo si `status` es
   explícitamente `failed`/`cancelled`. Requiere `APIMART_API_KEY` en las
   variables de entorno.
-  - Modelos confirmados: `seedance-2.5` (video), `gpt-image-2.5-flare` (imagen).
-    Agregar otro modelo de APIMart es solo una entrada nueva en
-    `lib/actions/ad-nodes/providers/models.ts`.
+  - `callApimartChat` (mismo archivo) es la contraparte síncrona para el nodo LLM
+    con GPT-5 — chat completions estilo OpenAI, sin task_id/polling.
 - **No se toca `lib/actions/image-clone.ts` ni `lib/actions/ad-scratch.ts`** — Ad
-  Nodes tiene sus propios adaptadores de Replicate/generación, deliberadamente
-  separados (mismo criterio de "duplicar en vez de refactorizar código de
-  producción" ya usado en `ad-scratch.ts`).
+  Nodes tiene sus propios adaptadores de generación, deliberadamente separados
+  (mismo criterio de "duplicar en vez de refactorizar código de producción" ya
+  usado en `ad-scratch.ts`). El adaptador de Replicate (`providers/replicate.ts`)
+  sigue en el repo pero sin uso hoy — ningún modelo curado lo necesita, se dejó
+  disponible por si algún flagship futuro solo existe ahí.
 - Un nodo cuyo upstream no tiene resultado todavía tira error claro al correrlo —
   nunca ejecuta con input vacío en silencio.
 - Un ciclo en el grafo simplemente deja esos nodos sin ejecutar (el orden

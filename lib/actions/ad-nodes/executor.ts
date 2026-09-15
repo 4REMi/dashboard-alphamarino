@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import type { AdNodeGraph, AdNodeGraphNode, AdNodeRun, AdNodeRunOutput } from "@/lib/types"
 import { runTextNode, runLLMNode, runAnalysisNode } from "./node-handlers"
-import { getGenerationAdapter, getModelProvider } from "./providers/registry"
+import { getGenerationAdapter } from "./providers/registry"
 import { estimateImageCostUsd, estimateVideoCostUsd } from "./providers/pricing"
 
 // Guards against `new Error(someObject)` silently turning into the useless
@@ -141,24 +141,14 @@ async function submitGeneration(
   const referenceImages = upstream.flatMap((o) => o.image_urls ?? [])
   const aspectRatio = node.data.config.aspectRatio ?? "1:1"
 
-  const provider = getModelProvider(kind, model)
   const durationSeconds = node.data.config.durationSeconds ?? 30
   const resolution = node.data.config.resolution ?? "720P"
 
-  // Same node config (prompt/reference images/aspect ratio), different field
-  // names per provider — Replicate's nano-banana-pro uses image_input/
-  // aspect_ratio/safety_filter_level; APIMart's unified task API (confirmed
-  // against real account logs, see providers/apimart.ts) uses image_urls/size
-  // (video adds duration/resolution, both of which matter for its
-  // per-second billing — see the cost estimate below).
-  const input = provider === "replicate"
-    ? {
-        prompt,
-        image_input: referenceImages,
-        aspect_ratio: aspectRatio,
-        safety_filter_level: node.data.config.safetyFilterLevel ?? "block_only_high",
-      }
-    : kind === "video"
+  // Every curated model routes through APIMart's unified task API
+  // (confirmed against real account logs, see providers/apimart.ts) —
+  // image_urls/size, plus duration/resolution for video (matters for its
+  // per-second billing, see the cost estimate below).
+  const input = kind === "video"
     ? { prompt, image_urls: referenceImages, size: aspectRatio, duration: durationSeconds, resolution }
     : { prompt, image_urls: referenceImages, size: aspectRatio }
 
@@ -167,11 +157,9 @@ async function submitGeneration(
   // whatever they're actually charging today. Never blocks the run if the
   // pricing lookup fails (network hiccup, unlisted model) — just stored as
   // null, surfaced as "—" in the UI instead of a guess.
-  const estimatedCostUsd = provider === "apimart"
-    ? kind === "video"
-      ? await estimateVideoCostUsd(model.replace("apimart:", ""), resolution, durationSeconds).catch(() => null)
-      : await estimateImageCostUsd(model.replace("apimart:", ""), aspectRatio).catch(() => null)
-    : null
+  const estimatedCostUsd = kind === "video"
+    ? await estimateVideoCostUsd(model.replace("apimart:", ""), resolution, durationSeconds).catch(() => null)
+    : await estimateImageCostUsd(model.replace("apimart:", ""), aspectRatio).catch(() => null)
 
   const adapter = getGenerationAdapter(kind, model)
   const { jobId } = await adapter.submit(input)

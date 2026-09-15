@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { X, Upload, Loader2, DollarSign } from "lucide-react"
 import type { AdNodeData, AdNodeConfig, AdNodeRun } from "@/lib/types"
-import { IMAGE_MODELS, VIDEO_MODELS } from "@/lib/actions/ad-nodes/providers/models"
+import { LLM_MODELS, IMAGE_MODELS, VIDEO_MODELS } from "@/lib/actions/ad-nodes/providers/models"
 import { uploadNodeImage } from "@/lib/actions/ad-nodes/workflows"
 import { estimateImageCostUsd, estimateVideoCostUsd } from "@/lib/actions/ad-nodes/providers/pricing"
 
@@ -143,6 +143,18 @@ export function NodeConfigPanel({ workflowId, data, run, onClose, onSave }: Prop
 
           {(data.type === "llm" || data.type === "analysis") && (
             <>
+              {data.type === "llm" && (
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">Modelo</label>
+                  <select
+                    value={config.model ?? "claude-sonnet-4-6"}
+                    onChange={(e) => set("model", e.target.value)}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    {LLM_MODELS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+                  </select>
+                </div>
+              )}
               {data.type === "llm" && (
                 <div>
                   <label className="text-xs font-medium text-muted-foreground mb-1 block">System prompt (opcional)</label>

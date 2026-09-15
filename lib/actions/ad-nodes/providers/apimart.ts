@@ -71,6 +71,31 @@ function extractUrls(data: ApimartTaskResponse): string[] {
   return []
 }
 
+// Chat Completion — synchronous, OpenAI-compatible (per docs.apimart.ai),
+// used by the LLM node for GPT-5 (Claude goes through the direct Anthropic
+// integration instead, see node-handlers.ts — no APIMart markup for that
+// one). Unlike image/video generation this has no task_id/polling step.
+export async function callApimartChat(model: string, prompt: string, systemPrompt?: string): Promise<string> {
+  const messages = [
+    ...(systemPrompt ? [{ role: "system", content: systemPrompt }] : []),
+    { role: "user", content: prompt },
+  ]
+  const res = await fetch(`${APIMART_BASE}/chat/completions`, {
+    method: "POST",
+    headers: apimartHeaders(),
+    body: JSON.stringify({ model, messages }),
+    cache: "no-store",
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: string | { message?: string }; message?: string }
+    throw new Error(errorMessageOf(err.error) ?? errorMessageOf(err.message) ?? `APIMart error ${res.status}`)
+  }
+  const data = await res.json() as { choices?: { message?: { content?: string } }[] }
+  const content = data.choices?.[0]?.message?.content
+  if (!content) throw new Error(`APIMart no regresó contenido — respuesta: ${JSON.stringify(data).slice(0, 500)}`)
+  return content
+}
+
 export function apimartAdapter(kind: "image" | "video", model: string): GenerationAdapter {
   const submitPath = kind === "image" ? "images/generations" : "videos/generations"
 

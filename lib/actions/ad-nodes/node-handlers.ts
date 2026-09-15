@@ -1,4 +1,5 @@
 import type { AdNodeConfig, AdNodeRunOutput } from "@/lib/types"
+import { callApimartChat } from "./providers/apimart"
 
 // Synchronous node handlers — Text, LLM, and Image/Video Analysis all
 // resolve in one await, same as generateCreativeConcepts's single-call
@@ -23,18 +24,28 @@ export async function runTextNode(config: AdNodeConfig): Promise<AdNodeRunOutput
   return { text: config.value ?? "" }
 }
 
+// Model choice decides the provider — Claude runs through this account's
+// own direct Anthropic integration (no APIMart markup), GPT-5 has no such
+// direct integration so it goes through APIMart's chat completions.
 export async function runLLMNode(config: AdNodeConfig, upstream: AdNodeRunOutput[]): Promise<AdNodeRunOutput> {
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY no configurado")
-
   const context = summarizeUpstream(upstream)
   const userPrompt = [context, config.prompt ?? ""].filter(Boolean).join("\n\n")
   if (!userPrompt.trim()) throw new Error("Este nodo LLM no tiene ningún input ni prompt propio")
 
+  const model = config.model || "claude-sonnet-4-6"
+
+  if (model.startsWith("apimart:")) {
+    const text = await callApimartChat(model.replace("apimart:", ""), userPrompt, config.systemPrompt)
+    return { text }
+  }
+
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY no configurado")
+
   const Anthropic = (await import("@anthropic-ai/sdk")).default
   const client = new Anthropic({ apiKey })
   const message = await client.messages.create({
-    model: "claude-sonnet-4-6",
+    model,
     max_tokens: 2048,
     messages: [{ role: "user", content: userPrompt }],
     ...(config.systemPrompt ? { system: config.systemPrompt } : {}),
