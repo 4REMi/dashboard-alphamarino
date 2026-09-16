@@ -32,10 +32,9 @@ export const VIDEO_MODELS = [
   { value: "apimart:seedance-2.0-fast", label: "Seedance 2.0 Fast (APIMart)", provider: "apimart" as const },
   { value: "apimart:seedance-1.5-pro", label: "Seedance 1.5 Pro (APIMart)", provider: "apimart" as const },
   { value: "apimart:kling-video-o3-pro", label: "Kling Video O3 Pro (APIMart)", provider: "apimart" as const },
-  // Slug sin confirmar — no aparece en la documentación pública de APIMart
-  // ni el endpoint de precios lo valida (regresa la misma plantilla
-  // genérica para cualquier string). Se corrige si al correrlo real
-  // APIMart tira "modelo no encontrado" — mismo patrón ya usado para
-  // Seedance/GPT-Image antes de confirmarlos.
-  { value: "apimart:omniflash-1.1", label: "OmniFlash 1.1 (APIMart)", provider: "apimart" as const },
+  // Confirmado en apimart.ai/model/gemini-omni-1-1-flash y contra el
+  // endpoint de precios (regresa resolution_prices reales para
+  // 360P/720P/1080P/4K, no la plantilla genérica) — el slug real es
+  // "gemini-omni-1.1-flash", NO "omniflash-1.1" como se había adivinado.
+  { value: "apimart:gemini-omni-1.1-flash", label: "Gemini Omni 1.1 Flash (APIMart)", provider: "apimart" as const },
 ] as const
