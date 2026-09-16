@@ -21,7 +21,11 @@ export function SplitOrderEdge({ id, sourceX, sourceY, targetX, targetY, sourceP
       <BaseEdge id={id} path={edgePath} markerEnd={markerEnd} style={{ stroke: color, strokeWidth: 2 }} />
       <EdgeLabelRenderer>
         <div
-          style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
+          // pointerEvents: "all" is required — EdgeLabelRenderer's wrapper
+          // has pointer-events: none by default so it never blocks the
+          // canvas, which also swallows clicks on children unless
+          // explicitly re-enabled here.
+          style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`, pointerEvents: "all" }}
           className="nodrag nopan absolute flex items-center gap-1"
         >
           <div

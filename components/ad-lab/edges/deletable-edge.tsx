@@ -22,7 +22,11 @@ export function DeletableEdge({ id, sourceX, sourceY, targetX, targetY, sourcePo
       <EdgeLabelRenderer>
         <button
           onClick={(e) => { e.stopPropagation(); onDelete?.() }}
-          style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
+          // EdgeLabelRenderer's wrapper div has pointer-events: none so it
+          // never blocks the canvas — without pointerEvents: "all" here,
+          // clicks on this button fall straight through to the pane
+          // underneath and never reach onClick at all.
+          style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`, pointerEvents: "all" }}
           className="nodrag nopan absolute w-4 h-4 rounded-full bg-white border border-border text-muted-foreground hover:text-destructive hover:border-destructive flex items-center justify-center shadow"
           title="Eliminar conexión"
         >
