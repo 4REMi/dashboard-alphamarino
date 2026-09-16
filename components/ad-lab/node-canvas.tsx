@@ -325,6 +325,18 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
     scheduleSave(next, edges)
   }
 
+  // Igual que updateNodeData pero solo mezcla un pedazo de config — para
+  // los controles rápidos que viven directo en la tarjeta del nodo
+  // (modelo, aspect ratio) sin necesidad de abrir el panel lateral.
+  function updateNodeConfig(nodeId: string, partial: Partial<AdNodeConfig>) {
+    recordHistory()
+    const next = nodes.map((n) => n.id === nodeId
+      ? { ...n, data: { ...n.data, config: { ...(n.data as { config: AdNodeConfig }).config, ...partial } } }
+      : n)
+    setNodes(next)
+    scheduleSave(next, edges)
+  }
+
   function duplicateNode(nodeId: string) {
     const source = nodes.find((n) => n.id === nodeId)
     if (!source) return
@@ -442,6 +454,7 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
       onOpenConfig: () => setSelectedNodeId(n.id),
       onDuplicate: () => duplicateNode(n.id),
       onDelete: () => deleteNode(n.id),
+      onUpdateConfig: (partial: Partial<AdNodeConfig>) => updateNodeConfig(n.id, partial),
     } satisfies AdNodeRenderData,
   })), [nodes, runs]) // eslint-disable-line react-hooks/exhaustive-deps
 

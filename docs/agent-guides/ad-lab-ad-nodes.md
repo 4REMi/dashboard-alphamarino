@@ -127,7 +127,10 @@ aparece en una posición aleatoria, se arrastra a donde se quiera.
 punto izquierdo de otro.
 
 **Configurar un nodo**: clic en el nodo → panel lateral (INPUT/PARAMETERS/OUTPUT) →
-"Guardar".
+"Guardar". Generate Image/Video también traen Modelo y Aspect Ratio como
+selects directo en la tarjeta (ver "Controles rápidos en la tarjeta misma"
+abajo) — cambiar esos dos ahí no necesita abrir el panel ni pasar por
+"Guardar", se autoguarda igual que cualquier otro cambio del grafo.
 
 **Subir una imagen a un nodo Image**: dentro del panel, botón "Subir imagen" — o
 pega una URL directamente si ya la tienes alojada en otro lado. Sube al bucket
@@ -232,25 +235,42 @@ canvas — fuerza el guardado inmediato en vez de esperar el autoguardado
   distinto). Tope de 5 imágenes por llamada. La descarga para Claude **truena
   con error explícito si falla** (antes fallaba en silencio y el nodo corría
   sin imagen sin avisar — otra causa posible de "alucina y no ve la imagen").
-- **Preview de texto en la tarjeta** (`textPreview` en `ad-node.tsx`): los nodos
-  Text muestran su valor literal; los LLM/Analysis ya corridos muestran el
-  texto/análisis real generado, directo en el canvas — para tener overview
-  general sin abrir cada nodo, igual que hace el competidor. Colapsado por
-  default; al pasar el cursor se expande y se vuelve escroleable con fondo
-  blanco (mismo patrón visual del competidor).
-- **Miniatura de imagen — proporción real, no recortada**: Image y Generate
-  Image (ya corridos) muestran su miniatura con `object-contain` y sin alto
-  fijo (solo un tope `max-h-48`) — antes era `object-cover` a una altura fija,
-  que recortaba a la fuerza cualquier imagen que no fuera cuadrada. No es
-  tamaño real, es proporción real dentro de un tope razonable de alto.
-- **Miniatura de video** (`videoThumbnail` en `ad-node.tsx`): Generate Video ya
-  corrido muestra el resultado directo en la tarjeta con un `<video controls>`
-  — antes no mostraba nada, había que abrir el panel para verlo.
-- **Modelo elegido visible sin abrir el nodo** (`modelLabelFor` en
-  `ad-node.tsx`): LLM, Generate Image y Generate Video muestran el label del
-  modelo elegido (ej. "Gemini Omni 1.1 Flash") justo debajo del nombre del
-  nodo, buscándolo en el catálogo curado correspondiente
-  (`providers/models.ts`). Analysis no aplica — usa un modelo fijo, no elegible.
+- **Rediseño de tarjeta (segunda pasada, sobre diseño de referencia del
+  usuario)** — `ad-node.tsx`:
+  - **Tipo + modelo elegido son lo más prominente**: bajo el nombre del nodo,
+    texto de color (`accentText` en `TYPE_STYLES`, no un badge chiquito) del
+    tipo de nodo, con el modelo elegido pegado al lado (ej. "GENERATE IMAGE ·
+    Gemini Omni 1.1 Flash") — deliberado, era el pedido explícito del usuario:
+    que el tipo/modelo sean lo primero que se lea sin abrir el nodo.
+  - **Preview de texto — alto FIJO, nunca crece el nodo**: Text/LLM/Analysis
+    muestran su contenido en una caja de `h-24` con scroll siempre disponible
+    (no expandible en hover). La versión anterior crecía el nodo al pasar el
+    mouse — el usuario lo pidió revertir explícitamente ("mal diseño", movía
+    todo lo demás en el canvas).
+  - **Miniaturas con proporción real, no recortada**: Image/Generate Image
+    (`object-contain`, sin alto fijo, solo un tope `max-h-52`) y Generate
+    Video (`<video controls>`, mismo tope) — con padding/esquinas redondeadas
+    dentro de la tarjeta en vez de ir a los bordes. Botón de descarga flotante
+    sobre la miniatura cuando hay un resultado generado real (no para la
+    imagen que subiste tú a un nodo Image).
+  - **Controles rápidos en la tarjeta misma**: Generate Image/Video traen
+    selects de Modelo y Aspect Ratio directo en el nodo — cambian el config
+    sin abrir el panel lateral (`onUpdateConfig`, nuevo en `AdNodeRenderData`,
+    resuelto por `updateNodeConfig` en `node-canvas.tsx`, que mezcla un
+    pedazo de config y sigue pasando por historial/autoguardado igual que
+    cualquier otro cambio). El aspect ratio usa el mismo fallback estático que
+    el panel (`FALLBACK_ASPECT_RATIOS`, exportado desde
+    `node-config-panel.tsx` para no duplicarlo) — la Resolución de video (que
+    sí tiene fuente en vivo por modelo) se quedó solo en el panel, no en la
+    tarjeta, para no tener que resolver el fetch por-modelo en cada nodo del
+    canvas a la vez.
+  - **Botón "Run" ancho, negro, con label** — reemplaza el botón circular
+    chico de antes, mismo estilo que el diseño de referencia.
+  - **Sin pill de estado en el header**: el estado se ve como un anillo de
+    color alrededor de toda la tarjeta (`STATUS_RING` — verde si `done`, rojo
+    si `error`) en vez de competir por espacio con el tipo/modelo; "running"
+    se refleja en el ícono de editar (spinner) y en el botón Run
+    (deshabilitado + spinner).
 - **Un nodo LLM sin texto pero con imagen upstream ya no truena**: Anthropic
   rechaza un bloque de texto vacío (`"text content blocks must be non-empty"`) —
   pasaba cuando el nodo LLM solo tenía una imagen conectada (sin prompt propio ni

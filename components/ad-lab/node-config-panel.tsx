@@ -23,7 +23,7 @@ interface Props {
 // ratios más comunes entre estos modelos, no una confirmación por modelo.
 // Si un modelo específico rechaza uno, el error real de APIMart se muestra
 // tal cual al correr el nodo.
-const FALLBACK_ASPECT_RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4", "4:5", "5:4", "3:2", "2:3", "21:9", "9:21", "2:1", "1:2"]
+export const FALLBACK_ASPECT_RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4", "4:5", "5:4", "3:2", "2:3", "21:9", "9:21", "2:1", "1:2"]
 
 // 3-column layout matching the competitor screenshots: INPUT (read-only —
 // what this node type expects from upstream edges), PARAMETERS (the
