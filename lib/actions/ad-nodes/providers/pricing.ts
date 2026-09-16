@@ -12,6 +12,12 @@ interface ApimartPricingResponse {
     billing_type?: string
     resolution_prices?: Record<string, number>
     size_quality_prices?: Record<string, Record<string, number>>
+    // Solo presente para algunos modelos (ej. gpt-image-2.5-flare, que no
+    // está en nuestro catálogo hoy) — cuando existe, es la lista real y
+    // completa de aspect ratios que ese modelo acepta. Confirmado que
+    // NINGUNO de los modelos actuales de nuestro catálogo (imagen o video)
+    // la trae — ver getModelAspectRatioOptions.
+    supported_sizes?: string[]
   }
 }
 
@@ -71,4 +77,29 @@ export async function estimateImageCostUsd(model: string, aspectRatio: string): 
     if (data.resolution_prices[key] !== undefined) return data.resolution_prices[key]
   }
   return null
+}
+
+// Aspect ratios REALES de un modelo, cuando APIMart los publica — igual
+// idea que getVideoModelResolutionOptions pero para "size" en vez de
+// "resolution". A diferencia de la resolución, NINGÚN modelo de nuestro
+// catálogo actual (imagen o video) trae `supported_sizes` ni usa keys de
+// resolution_prices con forma de ratio ("9:16", etc.) — se confirmó
+// consultando el endpoint uno por uno. Por eso esto regresa `[]` para
+// todos ellos hoy: NO hay una fuente en vivo que confirme sus aspect
+// ratios reales, a diferencia de la resolución. Se deja implementado para
+// cuando algún modelo sí la publique (o si APIMart la agrega después) —
+// mientras tanto, el panel de config cae a una lista estática amplia
+// cuando esto regresa vacío, y el error real de APIMart al correr el nodo
+// es la señal definitiva si un ratio específico no es válido.
+export async function getModelAspectRatioOptions(model: string): Promise<string[]> {
+  const data = await fetchModelPricing(model)
+  if (data?.supported_sizes?.length) {
+    const bare = data.supported_sizes.filter((s) => /^\d+:\d+$/.test(s))
+    if (bare.length > 0) return Array.from(new Set(bare))
+  }
+  if (data?.resolution_prices) {
+    const ratioKeys = Object.keys(data.resolution_prices).filter((k) => /^\d+:\d+$/.test(k))
+    if (ratioKeys.length > 0) return Array.from(new Set(ratioKeys))
+  }
+  return []
 }

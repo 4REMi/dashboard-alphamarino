@@ -5,6 +5,18 @@ import { Loader2, Check, X, Play, Copy, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { AdNodeData, AdNodeRunStatus, AdNodeType, AdNodeRunOutput } from "@/lib/types"
 import { splitPartColor } from "@/components/ad-lab/split-colors"
+import { LLM_MODELS, IMAGE_MODELS, VIDEO_MODELS } from "@/lib/actions/ad-nodes/providers/models"
+
+// Muestra qué modelo está eligiendo un nodo sin tener que abrirlo — busca
+// en el catálogo curado correspondiente al tipo de nodo y devuelve su
+// label legible (sin el sufijo "(APIMart)", ya redundante en un chip tan
+// chico). Solo aplica a los tipos con modelo elegible por el usuario —
+// Analysis usa un modelo fijo internamente, no hay nada que mostrar ahí.
+function modelLabelFor(type: AdNodeType, model: string | undefined): string | undefined {
+  if (!model) return undefined
+  const list = type === "llm" ? LLM_MODELS : type === "generate_image" ? IMAGE_MODELS : type === "generate_video" ? VIDEO_MODELS : undefined
+  return list?.find((m) => m.value === model)?.label.replace(/\s*\(APIMart\)$/, "")
+}
 
 // Single source of truth for the color-per-type coding — used both by the
 // node card itself and the "+ Text / + Image / ..." toolbar buttons
@@ -43,7 +55,8 @@ export function AdNodeComponent({ data, selected }: NodeProps & { data: AdNodeRe
   const style = TYPE_STYLES[data.type]
   const isSticky = data.type === "sticky_note"
   const isImage = data.type === "image"
-  const thumbnail = isImage ? data.config.imageUrl : data.status === "done" ? data.output?.image_urls?.[0] : undefined
+  const imageThumbnail = isImage ? data.config.imageUrl : data.status === "done" ? data.output?.image_urls?.[0] : undefined
+  const videoThumbnail = data.type === "generate_video" && data.status === "done" ? data.output?.video_url : undefined
   // Text preview — for Text nodes it's the literal input; for LLM/Analysis
   // once run, it's the actual generated text. Matches the competitor's
   // cards showing the real content directly, no need to open the node
@@ -53,6 +66,7 @@ export function AdNodeComponent({ data, selected }: NodeProps & { data: AdNodeRe
     : (data.type === "llm" || data.type === "analysis") && data.status === "done"
       ? data.output?.text ?? data.output?.analysis
       : undefined
+  const modelLabel = modelLabelFor(data.type, data.config.model)
 
   return (
     <div
@@ -69,6 +83,10 @@ export function AdNodeComponent({ data, selected }: NodeProps & { data: AdNodeRe
         <div className="min-w-0">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">{style.label}</p>
           <p className="text-sm font-medium truncate">{data.label}</p>
+          {/* Qué modelo tiene elegido, visible sin abrir el nodo — para
+              LLM/Generate Image/Generate Video, los únicos tipos con un
+              modelo elegible por el usuario. */}
+          {modelLabel && <p className="text-[10px] text-muted-foreground/70 truncate">{modelLabel}</p>}
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
           {!isSticky && (
@@ -102,12 +120,23 @@ export function AdNodeComponent({ data, selected }: NodeProps & { data: AdNodeRe
         </div>
       </div>
 
-      {/* Miniatura — para Image nodes es lo que se subió; para
-          Generate Image ya corridos, el primer resultado. Da una vista
-          general del workflow sin tener que abrir cada nodo. */}
-      {thumbnail && (
+      {/* Miniatura — para Image nodes es lo que se subió; para Generate
+          Image ya corridos, el primer resultado. object-contain + sin
+          alto fijo (solo un tope) en vez del object-cover recortado de
+          antes — así se aprecia la proporción real de la imagen (un 9:16
+          ya no se ve recortado a la fuerza en un cuadro cuadrado), nomás
+          limitando qué tan alta puede crecer la tarjeta. */}
+      {imageThumbnail && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={thumbnail} alt="" className="w-full h-24 object-cover border-t border-black/5" />
+        <img src={imageThumbnail} alt="" className="w-full max-h-48 object-contain bg-black/5 border-t border-black/5" />
+      )}
+
+      {/* Miniatura de video — antes Generate Video no mostraba nada del
+          resultado en la tarjeta, había que abrir el panel para verlo.
+          "nodrag" para que arrastrar los controles nativos no mueva el
+          nodo en el canvas. */}
+      {videoThumbnail && (
+        <video src={videoThumbnail} controls className="nodrag w-full max-h-48 bg-black border-t border-black/5" />
       )}
 
       {/* Preview de texto — colapsado y recortado por default; al pasar el

@@ -80,6 +80,18 @@ fijos, no un catálogo abierto.
   Video O1, que cobra por tiers de calidad — `billing_tiers` — no por
   resolución), el campo se oculta por completo y no se manda `resolution` en el
   request.
+- **Aspect ratio — mismo intento, pero SIN fuente en vivo confirmada**: se buscó
+  el mismo mecanismo que la resolución (`getModelAspectRatioOptions`,
+  `providers/pricing.ts`, lee `supported_sizes` o keys con forma de ratio en
+  `resolution_prices`) pero, a diferencia de la resolución, **ningún modelo del
+  catálogo actual publica sus aspect ratios reales** vía ese endpoint —
+  confirmado consultando cada uno. Por eso hoy siempre cae al fallback estático
+  `FALLBACK_ASPECT_RATIOS` (`node-config-panel.tsx`) — una superset amplia de
+  ratios comunes, NO una lista confirmada por modelo. El mecanismo dinámico
+  queda implementado y listo para cuando algún modelo sí publique su lista (o
+  si a futuro APIMart agrega ese dato); mientras tanto, si un modelo rechaza un
+  ratio específico, el error real de APIMart se muestra tal cual al correr el
+  nodo — no hay forma honesta de prevenirlo de antemano sin esa fuente.
 - **Código de color por tipo** (`TYPE_STYLES` en `components/ad-lab/nodes/ad-node.tsx`):
   cada tipo tiene un color fijo — verde=Image, rosa=Generate Image, etc. — y es la
   MISMA fuente de verdad tanto para el borde/fondo del nodo en el canvas como para
@@ -219,6 +231,19 @@ canvas — fuerza el guardado inmediato en vez de esperar el autoguardado
   general sin abrir cada nodo, igual que hace el competidor. Colapsado por
   default; al pasar el cursor se expande y se vuelve escroleable con fondo
   blanco (mismo patrón visual del competidor).
+- **Miniatura de imagen — proporción real, no recortada**: Image y Generate
+  Image (ya corridos) muestran su miniatura con `object-contain` y sin alto
+  fijo (solo un tope `max-h-48`) — antes era `object-cover` a una altura fija,
+  que recortaba a la fuerza cualquier imagen que no fuera cuadrada. No es
+  tamaño real, es proporción real dentro de un tope razonable de alto.
+- **Miniatura de video** (`videoThumbnail` en `ad-node.tsx`): Generate Video ya
+  corrido muestra el resultado directo en la tarjeta con un `<video controls>`
+  — antes no mostraba nada, había que abrir el panel para verlo.
+- **Modelo elegido visible sin abrir el nodo** (`modelLabelFor` en
+  `ad-node.tsx`): LLM, Generate Image y Generate Video muestran el label del
+  modelo elegido (ej. "Gemini Omni 1.1 Flash") justo debajo del nombre del
+  nodo, buscándolo en el catálogo curado correspondiente
+  (`providers/models.ts`). Analysis no aplica — usa un modelo fijo, no elegible.
 - **Un nodo LLM sin texto pero con imagen upstream ya no truena**: Anthropic
   rechaza un bloque de texto vacío (`"text content blocks must be non-empty"`) —
   pasaba cuando el nodo LLM solo tenía una imagen conectada (sin prompt propio ni

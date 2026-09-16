@@ -5,7 +5,7 @@ import { X, Upload, Loader2, DollarSign } from "lucide-react"
 import type { AdNodeData, AdNodeConfig, AdNodeRun } from "@/lib/types"
 import { LLM_MODELS, IMAGE_MODELS, VIDEO_MODELS } from "@/lib/actions/ad-nodes/providers/models"
 import { uploadNodeImage } from "@/lib/actions/ad-nodes/workflows"
-import { estimateImageCostUsd, estimateVideoCostUsd, getVideoModelResolutionOptions } from "@/lib/actions/ad-nodes/providers/pricing"
+import { estimateImageCostUsd, estimateVideoCostUsd, getVideoModelResolutionOptions, getModelAspectRatioOptions } from "@/lib/actions/ad-nodes/providers/pricing"
 import { SPLIT_PART_COLORS } from "@/components/ad-lab/split-colors"
 
 interface Props {
@@ -15,6 +15,15 @@ interface Props {
   onClose: () => void
   onSave: (label: string, config: AdNodeConfig) => void
 }
+
+// A diferencia de la resolución, ningún modelo de nuestro catálogo publica
+// sus aspect ratios reales vía el endpoint de precios de APIMart
+// (confirmado uno por uno — ver getModelAspectRatioOptions). Esta lista es
+// el fallback cuando ese endpoint no da nada: una superset amplia de los
+// ratios más comunes entre estos modelos, no una confirmación por modelo.
+// Si un modelo específico rechaza uno, el error real de APIMart se muestra
+// tal cual al correr el nodo.
+const FALLBACK_ASPECT_RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4", "4:5", "5:4", "3:2", "2:3", "21:9", "9:21", "2:1", "1:2"]
 
 // 3-column layout matching the competitor screenshots: INPUT (read-only —
 // what this node type expects from upstream edges), PARAMETERS (the
@@ -38,6 +47,7 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({ workflowId, data,
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [estimatedCost, setEstimatedCost] = useState<number | null | "loading">(null)
   const [resolutionOptions, setResolutionOptions] = useState<string[] | "loading">("loading")
+  const [aspectRatioOptions, setAspectRatioOptions] = useState<string[]>(FALLBACK_ASPECT_RATIOS)
 
   function set<K extends keyof AdNodeConfig>(key: K, value: AdNodeConfig[K]) {
     setConfig((prev) => ({ ...prev, [key]: value }))
@@ -65,6 +75,28 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({ workflowId, data,
       // rechazar al correr el nodo.
       if (options.length > 0 && !options.includes(config.resolution ?? "")) {
         set("resolution", options[0])
+      }
+    })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.type, config.model])
+
+  // Aspect ratios reales del modelo elegido, cuando APIMart los publica —
+  // misma idea que la resolución, pero (a diferencia de la resolución)
+  // ningún modelo de nuestro catálogo los expone hoy vía el endpoint de
+  // precios, así que esto normalmente cae al fallback estático de arriba.
+  // Se deja el mecanismo completo (incluyendo el auto-corrección del valor
+  // elegido) para cuando algún modelo sí los publique.
+  useEffect(() => {
+    const isGen = data.type === "generate_image" || data.type === "generate_video"
+    if (!isGen || !config.model?.startsWith("apimart:")) { setAspectRatioOptions(FALLBACK_ASPECT_RATIOS); return }
+    let cancelled = false
+    getModelAspectRatioOptions(config.model.replace("apimart:", "")).then((options) => {
+      if (cancelled) return
+      const finalOptions = options.length > 0 ? options : FALLBACK_ASPECT_RATIOS
+      setAspectRatioOptions(finalOptions)
+      if (!finalOptions.includes(config.aspectRatio ?? "1:1")) {
+        set("aspectRatio", finalOptions[0])
       }
     })
     return () => { cancelled = true }
@@ -284,7 +316,7 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({ workflowId, data,
                     onChange={(e) => set("aspectRatio", e.target.value)}
                     className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   >
-                    {["1:1", "9:16", "16:9", "4:5"].map((r) => <option key={r} value={r}>{r}</option>)}
+                    {aspectRatioOptions.map((r) => <option key={r} value={r}>{r}</option>)}
                   </select>
                 </div>
                 {data.type === "generate_image" && (
