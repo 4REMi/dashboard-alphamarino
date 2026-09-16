@@ -56,7 +56,7 @@ export function AdNodeComponent({ data, selected }: NodeProps & { data: AdNodeRe
 
   return (
     <div
-      onClick={data.onOpenConfig}
+      onClick={(e) => { if (e.ctrlKey || e.metaKey) return; data.onOpenConfig() }}
       className={cn(
         "group relative rounded-lg border-2 shadow-sm w-56 cursor-pointer transition-shadow",
         style.border, style.bg,

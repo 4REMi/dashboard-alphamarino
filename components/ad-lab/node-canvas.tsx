@@ -6,7 +6,7 @@ import {
   type Node, type Edge, type Connection, type NodeChange, type EdgeChange,
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
-import { Plus, Save, Check, Loader2, PlayCircle } from "lucide-react"
+import { Plus, Save, Check, Loader2, PlayCircle, Copy, Trash2 } from "lucide-react"
 import { AdNodeComponent, TYPE_STYLES, type AdNodeRenderData } from "@/components/ad-lab/nodes/ad-node"
 import { SplitOrderEdge } from "@/components/ad-lab/edges/split-order-edge"
 import { DeletableEdge } from "@/components/ad-lab/edges/deletable-edge"
@@ -42,6 +42,7 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
   const [edges, setEdges] = useState<Edge[]>(() => workflow.graph.edges as Edge[])
   const [runs, setRuns] = useState<Record<string, AdNodeRun>>({})
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([])
   const [saveState, setSaveState] = useState<"idle" | "pending" | "saving" | "saved">("idle")
   const [isRunningAll, setIsRunningAll] = useState(false)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -213,6 +214,43 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
     setRuns((prev) => { const { [nodeId]: _removed, ...rest } = prev; return rest })
   }
 
+  // Selección múltiple: mantener Ctrl (selectionKeyCode más abajo) y
+  // arrastrar sobre el canvas dibuja un cuadro de selección; Ctrl+clic
+  // agrega/quita un nodo puntual a la selección. Mover ya funciona nativo
+  // de React Flow (arrastrar cualquiera de los seleccionados mueve a
+  // todos) — solo duplicar/eliminar en lote necesitaban código propio.
+  function duplicateSelection() {
+    const sources = nodes.filter((n) => selectedNodeIds.includes(n.id))
+    if (sources.length === 0) return
+    const copies: Node[] = sources.map((source) => ({
+      ...source,
+      id: crypto.randomUUID(),
+      position: { x: source.position.x + 40, y: source.position.y + 40 },
+      selected: false,
+    }))
+    const next = [...nodes, ...copies]
+    setNodes(next)
+    scheduleSave(next, edges)
+    setSelectedNodeIds([])
+  }
+
+  function deleteSelection() {
+    const idsToDelete = new Set(selectedNodeIds)
+    if (idsToDelete.size === 0) return
+    const next = nodes.filter((n) => !idsToDelete.has(n.id))
+    const nextEdges = edges.filter((e) => !idsToDelete.has(e.source) && !idsToDelete.has(e.target))
+    setNodes(next)
+    setEdges(nextEdges)
+    scheduleSave(next, nextEdges)
+    if (selectedNodeId && idsToDelete.has(selectedNodeId)) setSelectedNodeId(null)
+    setRuns((prev) => {
+      const rest = { ...prev }
+      for (const id of idsToDelete) delete rest[id]
+      return rest
+    })
+    setSelectedNodeIds([])
+  }
+
   // Borrar solo la conexión — antes únicamente posible seleccionándola y
   // presionando Backspace (nada descubrible); ahora también el botón × que
   // aparece directo sobre la línea (deletable-edge.tsx / split-order-edge.tsx).
@@ -330,14 +368,34 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onSelectionChange={({ nodes: selected }) => setSelectedNodeIds(selected.map((n) => n.id))}
         nodeTypes={NODE_TYPES}
         edgeTypes={EDGE_TYPES}
+        selectionKeyCode="Control"
+        multiSelectionKeyCode="Control"
         fitView
       >
         <Background />
         <Controls />
         <MiniMap pannable zoomable className="!bottom-3 !right-3" />
       </ReactFlow>
+
+      {/* Barra de selección múltiple — mantener Ctrl y arrastrar dibuja un
+          cuadro de selección sobre el canvas; Ctrl+clic agrega/quita un nodo
+          puntual. Mover ya es nativo de React Flow (arrastrar cualquiera de
+          los seleccionados mueve a todos juntos); duplicar/eliminar en lote
+          se resuelven aquí. */}
+      {selectedNodeIds.length > 1 && (
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 bg-card/95 backdrop-blur rounded-lg border border-border px-3 py-2 shadow-lg">
+          <span className="text-xs font-medium text-muted-foreground">{selectedNodeIds.length} nodos seleccionados</span>
+          <button onClick={duplicateSelection} className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-md border border-input bg-background hover:bg-muted">
+            <Copy className="w-3.5 h-3.5" /> Duplicar
+          </button>
+          <button onClick={deleteSelection} className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-md border border-destructive/40 text-destructive bg-background hover:bg-destructive/10">
+            <Trash2 className="w-3.5 h-3.5" /> Eliminar
+          </button>
+        </div>
+      )}
 
       {selectedNode && (
         <NodeConfigPanel

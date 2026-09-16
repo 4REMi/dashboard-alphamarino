@@ -115,6 +115,16 @@ línea de conexión, siempre visible en su punto medio — no hace falta
 seleccionarla y presionar Backspace (que también sigue funcionando, es el
 comportamiento nativo de React Flow, pero no era descubrible).
 
+**Seleccionar/mover/duplicar/eliminar varios nodos a la vez**: mantener **Ctrl**
+y arrastrar sobre el canvas dibuja un cuadro de selección; Ctrl+clic
+agrega/quita un nodo puntual de la selección. Con 2+ nodos seleccionados
+aparece una barra flotante abajo del canvas con "Duplicar"/"Eliminar" para
+todo el grupo a la vez. Mover el grupo es nativo de React Flow — arrastrar
+cualquiera de los nodos seleccionados mueve a todos juntos, sin código propio
+para eso. (Ctrl+clic en un nodo NO abre su panel de configuración — solo lo
+agrega/quita de la selección; un clic normal, sin Ctrl, sí abre el panel como
+siempre.)
+
 **Correr**: botón ▶ en el nodo mismo. El estado (idle/running/done/error) se ve en
 el propio nodo y en el panel.
 
