@@ -5,7 +5,7 @@ import { X, Upload, Loader2, DollarSign } from "lucide-react"
 import type { AdNodeData, AdNodeConfig, AdNodeRun } from "@/lib/types"
 import { LLM_MODELS, IMAGE_MODELS, VIDEO_MODELS } from "@/lib/actions/ad-nodes/providers/models"
 import { uploadNodeImage } from "@/lib/actions/ad-nodes/workflows"
-import { estimateImageCostUsd, estimateVideoCostUsd } from "@/lib/actions/ad-nodes/providers/pricing"
+import { estimateImageCostUsd, estimateVideoCostUsd, getVideoModelResolutionOptions } from "@/lib/actions/ad-nodes/providers/pricing"
 import { SPLIT_PART_COLORS } from "@/components/ad-lab/split-colors"
 
 interface Props {
@@ -37,10 +37,39 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({ workflowId, data,
   const [isUploading, setIsUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [estimatedCost, setEstimatedCost] = useState<number | null | "loading">(null)
+  const [resolutionOptions, setResolutionOptions] = useState<string[] | "loading">("loading")
 
   function set<K extends keyof AdNodeConfig>(key: K, value: AdNodeConfig[K]) {
     setConfig((prev) => ({ ...prev, [key]: value }))
   }
+
+  // Resoluciones válidas para el modelo elegido — cada modelo de video
+  // acepta un set distinto (confirmado: Gemini Omni 1.1 Flash solo acepta
+  // 360P/720P/1080P/4K, no la lista fija de siempre) y APIMart lo rechaza
+  // con un error si mandas una resolución que no soporta. Se saca en vivo
+  // de las mismas keys de resolution_prices que ya usa el costo estimado —
+  // la misma fuente de verdad, sin mantener un mapa duplicado a mano. Si el
+  // modelo no tiene resolution_prices (ej. Kling, que cobra por tiers de
+  // calidad en vez de resolución), la lista queda vacía y el campo se
+  // oculta — no tiene sentido mandar un parámetro que ese modelo no usa.
+  useEffect(() => {
+    if (data.type !== "generate_video" || !config.model?.startsWith("apimart:")) { setResolutionOptions([]); return }
+    let cancelled = false
+    setResolutionOptions("loading")
+    getVideoModelResolutionOptions(config.model.replace("apimart:", "")).then((options) => {
+      if (cancelled) return
+      setResolutionOptions(options)
+      // La resolución que ya estaba elegida (o el default "720P") puede no
+      // existir para el modelo nuevo — se corrige sola al primer valor
+      // válido en vez de dejar guardada una resolución que APIMart va a
+      // rechazar al correr el nodo.
+      if (options.length > 0 && !options.includes(config.resolution ?? "")) {
+        set("resolution", options[0])
+      }
+    })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.type, config.model])
 
   // Live cost estimate — refetched from APIMart's public pricing endpoint
   // whenever the fields that affect price change, so it's never stale
@@ -51,7 +80,12 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({ workflowId, data,
     const model = config.model.replace("apimart:", "")
     setEstimatedCost("loading")
     const promise = data.type === "generate_video"
-      ? estimateVideoCostUsd(model, config.resolution ?? "720P", config.durationSeconds ?? 30)
+      // No "720P" fallback — the resolution-options effect above keeps
+      // config.resolution synced to a value this model actually supports
+      // (or unset if the model has no resolution tiers at all); guessing a
+      // tier here could silently show a cost for a resolution APIMart
+      // would reject at submit time.
+      ? estimateVideoCostUsd(model, config.resolution ?? "", config.durationSeconds ?? 30)
       : estimateImageCostUsd(model, config.aspectRatio ?? "1:1")
     promise.then(setEstimatedCost).catch(() => setEstimatedCost(null))
   }, [isGeneration, data.type, config.model, config.aspectRatio, config.resolution, config.durationSeconds])
@@ -267,16 +301,32 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({ workflowId, data,
                     </select>
                   </div>
                 )}
-                {data.type === "generate_video" && (
+                {data.type === "generate_video" && resolutionOptions === "loading" && (
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground mb-1 block">Resolución</label>
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground px-3 py-2 rounded-md border border-input bg-background">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Consultando resoluciones válidas…
+                    </div>
+                  </div>
+                )}
+                {data.type === "generate_video" && resolutionOptions !== "loading" && resolutionOptions.length > 0 && (
                   <div>
                     <label className="text-xs font-medium text-muted-foreground mb-1 block">Resolución</label>
                     <select
-                      value={config.resolution ?? "720P"}
+                      value={config.resolution ?? resolutionOptions[0]}
                       onChange={(e) => set("resolution", e.target.value)}
                       className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                     >
-                      {["480P", "720P", "1080P"].map((r) => <option key={r} value={r}>{r}</option>)}
+                      {resolutionOptions.map((r) => <option key={r} value={r}>{r}</option>)}
                     </select>
+                  </div>
+                )}
+                {data.type === "generate_video" && resolutionOptions !== "loading" && resolutionOptions.length === 0 && config.model && (
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground mb-1 block">Resolución</label>
+                    <p className="text-xs text-muted-foreground px-3 py-2 rounded-md border border-dashed border-input">
+                      Este modelo no usa un parámetro de resolución.
+                    </p>
                   </div>
                 )}
               </div>

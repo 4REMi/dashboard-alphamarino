@@ -35,6 +35,22 @@ export async function estimateVideoCostUsd(model: string, resolution: string, du
   return perSecond * durationSeconds
 }
 
+// Resoluciones REALES que un modelo de video acepta — sacadas directo de
+// las keys de resolution_prices en vez de una lista fija que asume que
+// todos los modelos soportan lo mismo (ese fue exactamente el bug: se
+// mandaba "480P" a gemini-omni-1.1-flash, que solo acepta
+// 360P/720P/1080P/4K, y APIMart lo rechazaba). Confirmado que esto
+// coincide con el propio selector de resolución de apimart.ai para ese
+// modelo (captura del usuario). Las keys con sufijo "-input" (precio
+// distinto cuando el request trae una imagen de referencia) no son
+// resoluciones separadas — se filtran y deduplican.
+export async function getVideoModelResolutionOptions(model: string): Promise<string[]> {
+  const data = await fetchModelPricing(model)
+  if (!data?.resolution_prices) return []
+  const keys = Object.keys(data.resolution_prices).filter((k) => !k.endsWith("-input"))
+  return Array.from(new Set(keys))
+}
+
 // Image models each key resolution_prices by a DIFFERENT convention —
 // confirmed by checking all four flagships directly against the pricing
 // endpoint:

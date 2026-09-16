@@ -54,15 +54,32 @@ fijos, no un catálogo abierto.
   catálogo infinito y cambiante. Hoy: **LLM** — Claude Sonnet (directo vía
   Anthropic, sin margen de APIMart) o GPT-5 (APIMart); **Generate Image** —
   Nano Banana Pro, Nano Banana 2, GPT Image 2, Flux 2 Pro (los 4 vía APIMart);
-  **Generate Video** — Veo 3.1 / 3.1 Fast / 3.1 Lite, Seedance 2.5 / 2.0 / 2.0
-  Fast / 1.5 Pro, Kling Video O3 Pro, Gemini Omni 1.1 Flash (todos vía APIMart).
-  Agregar un modelo nuevo es solo una entrada más en ese archivo — nada más
-  necesita cambiar estructuralmente.
+  **Generate Video** — Veo 3.1 Fast / 3.1 Quality, Seedance 2.5 / 2.0 / 2.0 Fast
+  / 1.5 Pro, Kling Video O1, Gemini Omni 1.1 Flash (todos vía APIMart). Agregar
+  un modelo nuevo es solo una entrada más en ese archivo — nada más necesita
+  cambiar estructuralmente.
 - **Ojo con el endpoint de precios de APIMart al agregar un modelo**: NO valida
   que el modelo exista — un nombre inventado también regresa `success: true` con
   una plantilla genérica vacía (sin `resolution_prices`/`billing_type`). La única
   forma real de confirmar un modelo nuevo es correrlo de verdad y ver si la
-  generación (no el precio) tira error.
+  generación (no el precio) tira error. Así se detectaron y corrigieron slugs
+  adivinados que NO existían: "veo-3.1-fast"/"veo-3.1"/"veo-3.1-lite" →
+  reales `veo3.1-fast`/`veo3.1-quality` (sin variante Lite);
+  "seedance-1.5-pro" → real `doubao-seedance-1-5-pro`; "kling-video-o3-pro"
+  (no existe) → real `kling-video-o1`.
+- **Resolución de video — dinámica por modelo, no una lista fija**: cada modelo
+  acepta un set de resoluciones distinto (confirmado: Gemini Omni 1.1 Flash solo
+  acepta 360P/720P/1080P/4K; mandarle "480P", que sí acepta Seedance, lo rechaza
+  con un error de APIMart). El dropdown de "Resolución" en el panel de config se
+  llena en vivo con `getVideoModelResolutionOptions` (`providers/pricing.ts`),
+  que saca las resoluciones válidas directo de las keys de `resolution_prices`
+  del endpoint de precios — confirmado que coincide exactamente con el propio
+  selector de resolución de apimart.ai para ese modelo. Si el modelo cambia y la
+  resolución ya elegida no existe en el nuevo set, se corrige sola al primer
+  valor válido. Si el modelo no tiene `resolution_prices` en absoluto (ej. Kling
+  Video O1, que cobra por tiers de calidad — `billing_tiers` — no por
+  resolución), el campo se oculta por completo y no se manda `resolution` en el
+  request.
 - **Código de color por tipo** (`TYPE_STYLES` en `components/ad-lab/nodes/ad-node.tsx`):
   cada tipo tiene un color fijo — verde=Image, rosa=Generate Image, etc. — y es la
   MISMA fuente de verdad tanto para el borde/fondo del nodo en el canvas como para

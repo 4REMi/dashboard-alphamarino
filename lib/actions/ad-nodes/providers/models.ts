@@ -24,14 +24,27 @@ export const IMAGE_MODELS = [
 ] as const
 
 export const VIDEO_MODELS = [
-  { value: "apimart:veo-3.1-fast", label: "Veo 3.1 Fast (APIMart)", provider: "apimart" as const },
-  { value: "apimart:veo-3.1", label: "Veo 3.1 (APIMart)", provider: "apimart" as const },
-  { value: "apimart:veo-3.1-lite", label: "Veo 3.1 Lite (APIMart)", provider: "apimart" as const },
+  // Slugs de Veo corregidos: "veo-3.1-fast"/"veo-3.1"/"veo-3.1-lite" (los
+  // adivinados originalmente) NO EXISTEN — el endpoint de precios los
+  // regresaba con la plantilla genérica. Los reales, confirmados en
+  // apimart.ai/model/veo-3-1 y contra el endpoint de precios (traen
+  // resolution_prices real, no la plantilla), son "veo3.1-fast" y
+  // "veo3.1-quality" (sin guion entre "veo" y "3.1"). No existe una
+  // variante "Lite" — se quita del catálogo.
+  { value: "apimart:veo3.1-fast", label: "Veo 3.1 Fast (APIMart)", provider: "apimart" as const },
+  { value: "apimart:veo3.1-quality", label: "Veo 3.1 Quality (APIMart)", provider: "apimart" as const },
   { value: "apimart:seedance-2.5", label: "Seedance 2.5 (APIMart)", provider: "apimart" as const },
   { value: "apimart:seedance-2.0", label: "Seedance 2.0 (APIMart)", provider: "apimart" as const },
   { value: "apimart:seedance-2.0-fast", label: "Seedance 2.0 Fast (APIMart)", provider: "apimart" as const },
-  { value: "apimart:seedance-1.5-pro", label: "Seedance 1.5 Pro (APIMart)", provider: "apimart" as const },
-  { value: "apimart:kling-video-o3-pro", label: "Kling Video O3 Pro (APIMart)", provider: "apimart" as const },
+  // Slug corregido: "seedance-1.5-pro" (adivinado) no existe — el real es
+  // "doubao-seedance-1-5-pro" (apimart.ai/model/doubao-seedance-1-5-pro).
+  { value: "apimart:doubao-seedance-1-5-pro", label: "Seedance 1.5 Pro (APIMart)", provider: "apimart" as const },
+  // "Kling Video O3 Pro" no existe en APIMart — el modelo real es
+  // "Kling Video O1" (kling-video-o1). Se cobra por "billing_tiers"
+  // (pro/pro-video/video), no por resolution_prices como los demás — el
+  // selector de "Resolución" no aplica para este modelo (se oculta en el
+  // panel de config si el modelo no trae resolution_prices).
+  { value: "apimart:kling-video-o1", label: "Kling Video O1 (APIMart)", provider: "apimart" as const },
   // Confirmado en apimart.ai/model/gemini-omni-1-1-flash y contra el
   // endpoint de precios (regresa resolution_prices reales para
   // 360P/720P/1080P/4K, no la plantilla genérica) — el slug real es

@@ -154,14 +154,19 @@ async function submitGeneration(
   const aspectRatio = node.data.config.aspectRatio ?? "1:1"
 
   const durationSeconds = node.data.config.durationSeconds ?? 30
-  const resolution = node.data.config.resolution ?? "720P"
+  const resolution = node.data.config.resolution
 
   // Every curated model routes through APIMart's unified task API
   // (confirmed against real account logs, see providers/apimart.ts) —
   // image_urls/size, plus duration/resolution for video (matters for its
-  // per-second billing, see the cost estimate below).
+  // per-second billing, see the cost estimate below). "resolution" is only
+  // included when the config panel actually set one — models that price by
+  // quality tier instead of resolution (e.g. Kling) never get a resolution
+  // picker in the UI (see getVideoModelResolutionOptions), so there's
+  // nothing valid to send; a leftover default like "720P" would just be an
+  // unsupported param that model doesn't expect.
   const input = kind === "video"
-    ? { prompt, image_urls: referenceImages, size: aspectRatio, duration: durationSeconds, resolution }
+    ? { prompt, image_urls: referenceImages, size: aspectRatio, duration: durationSeconds, ...(resolution ? { resolution } : {}) }
     : { prompt, image_urls: referenceImages, size: aspectRatio }
 
   // Cost estimate — fetched live from APIMart's public pricing endpoint
@@ -170,7 +175,7 @@ async function submitGeneration(
   // pricing lookup fails (network hiccup, unlisted model) — just stored as
   // null, surfaced as "—" in the UI instead of a guess.
   const estimatedCostUsd = kind === "video"
-    ? await estimateVideoCostUsd(model.replace("apimart:", ""), resolution, durationSeconds).catch(() => null)
+    ? await estimateVideoCostUsd(model.replace("apimart:", ""), resolution ?? "", durationSeconds).catch(() => null)
     : await estimateImageCostUsd(model.replace("apimart:", ""), aspectRatio).catch(() => null)
 
   const adapter = getGenerationAdapter(kind, model)
@@ -199,8 +204,12 @@ export async function quoteWorkflow(workflowId: string): Promise<{ totalUsd: num
     const model = node.data.config.model
     if (!model) { unestimableCount++; continue }
     const kind = node.data.type === "generate_image" ? "image" : "video"
+    // No default fallback resolution here — a guessed tier the model
+    // doesn't actually support would silently give a wrong quote right
+    // before the user commits to spending real money on it. Unset/invalid
+    // resolution just counts as unestimable instead.
     const cost = kind === "video"
-      ? await estimateVideoCostUsd(model.replace("apimart:", ""), node.data.config.resolution ?? "720P", node.data.config.durationSeconds ?? 30).catch(() => null)
+      ? await estimateVideoCostUsd(model.replace("apimart:", ""), node.data.config.resolution ?? "", node.data.config.durationSeconds ?? 30).catch(() => null)
       : await estimateImageCostUsd(model.replace("apimart:", ""), node.data.config.aspectRatio ?? "1:1").catch(() => null)
     if (cost === null) { unestimableCount++; continue }
     totalUsd += cost
