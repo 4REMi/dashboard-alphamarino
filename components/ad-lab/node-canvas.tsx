@@ -13,7 +13,7 @@ import { DeletableEdge } from "@/components/ad-lab/edges/deletable-edge"
 import { splitPartColor } from "@/components/ad-lab/split-colors"
 import { cn } from "@/lib/utils"
 import { NodeConfigPanel } from "@/components/ad-lab/node-config-panel"
-import { saveWorkflowGraph } from "@/lib/actions/ad-nodes/workflows"
+import { saveWorkflowGraph, uploadNodeImage } from "@/lib/actions/ad-nodes/workflows"
 import { runNode, runWorkflow, quoteWorkflow, pollNodeRun, getNodeRuns } from "@/lib/actions/ad-nodes/executor"
 import type { AdNodeWorkflow, AdNodeGraphNode, AdNodeType, AdNodeRun, AdNodeConfig } from "@/lib/types"
 
@@ -61,6 +61,17 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
   const futureRef = useRef<{ nodes: Node[]; edges: Edge[] }[]>([])
   const [historyTick, setHistoryTick] = useState(0)
   const isDraggingRef = useRef(false)
+  const [isDraggingFile, setIsDraggingFile] = useState(false)
+  // Solo necesitamos screenToFlowPosition — se tipa mínimo así para no
+  // pelearse con el tipo genérico de ReactFlowInstance (que se infiere del
+  // shape de datos de renderNodes, no de nuestro Node plano).
+  const rfInstanceRef = useRef<{ screenToFlowPosition: (pos: { x: number; y: number }) => { x: number; y: number } } | null>(null)
+  // Espejo de `edges` legible desde el callback async de subida de imagen
+  // arrastrada — para cuando el upload termina (después de que React haya
+  // vuelto a renderizar varias veces) sin capturar un `edges` obsoleto del
+  // closure original.
+  const edgesRef = useRef<Edge[]>(edges)
+  useEffect(() => { edgesRef.current = edges }, [edges])
 
   useEffect(() => {
     getNodeRuns(workflow.id).then((list) => {
@@ -259,6 +270,54 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
     scheduleSave(next, edges)
   }
 
+  // Arrastrar un archivo de imagen directo al canvas (desde el explorador
+  // de archivos del sistema) crea un nodo Image ya con esa imagen — sin
+  // pasar por "+ Image" → abrir el panel → "Subir imagen". Un nodo por
+  // archivo si sueltas varios a la vez, colocados uno junto al otro en el
+  // punto exacto donde soltaste (convertido de coordenadas de pantalla a
+  // coordenadas del canvas vía la instancia de React Flow capturada en
+  // onInit). El nodo aparece de inmediato en estado "subiendo…"; la URL
+  // real se guarda cuando el upload a Storage termina.
+  async function handleDropFiles(e: React.DragEvent) {
+    e.preventDefault()
+    setIsDraggingFile(false)
+    const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith("image/"))
+    if (files.length === 0) return
+    const instance = rfInstanceRef.current
+    const basePosition = instance
+      ? instance.screenToFlowPosition({ x: e.clientX, y: e.clientY })
+      : { x: 100 + Math.random() * 300, y: 100 + Math.random() * 300 }
+
+    recordHistory()
+    const newNodes: Node[] = files.map((_, i) => ({
+      id: crypto.randomUUID(),
+      type: "adNode",
+      position: { x: basePosition.x + i * 40, y: basePosition.y + i * 40 },
+      data: { label: "Image", type: "image" as AdNodeType, config: {} },
+    }))
+    const next = [...nodes, ...newNodes]
+    setNodes(next)
+    scheduleSave(next, edges)
+
+    // Cada imagen sube en paralelo y actualiza SU nodo cuando termina — un
+    // archivo grande no bloquea a los demás.
+    files.forEach((file, i) => {
+      const fd = new FormData()
+      fd.set("file", file)
+      uploadNodeImage(workflow.id, fd)
+        .then((url) => {
+          setNodes((prev) => {
+            const withImage = prev.map((n) => n.id === newNodes[i].id ? { ...n, data: { ...n.data, config: { imageUrl: url } } } : n)
+            scheduleSave(withImage, edgesRef.current)
+            return withImage
+          })
+        })
+        .catch((err) => {
+          window.alert(`No se pudo subir "${file.name}": ${err instanceof Error ? err.message : String(err)}`)
+        })
+    })
+  }
+
   function updateNodeData(nodeId: string, label: string, config: AdNodeConfig) {
     recordHistory()
     const next = nodes.map((n) => n.id === nodeId ? { ...n, data: { ...n.data, label, config } } : n)
@@ -416,7 +475,19 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
   const totalEstimatedCost = Object.values(runs).reduce((sum, r) => sum + (r.estimated_cost_usd ?? 0), 0)
 
   return (
-    <div className="relative w-full h-[calc(100vh-8rem)] rounded-xl border border-border overflow-hidden">
+    <div
+      className="relative w-full h-[calc(100vh-8rem)] rounded-xl border border-border overflow-hidden"
+      onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setIsDraggingFile(true) } }}
+      onDragLeave={(e) => { if (e.currentTarget === e.target) setIsDraggingFile(false) }}
+      onDrop={handleDropFiles}
+    >
+      {/* Overlay al arrastrar un archivo de imagen sobre el canvas — mismo
+          patrón visual de "zona de drop" que el resto del dashboard. */}
+      {isDraggingFile && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-primary/10 border-2 border-dashed border-primary pointer-events-none">
+          <p className="text-sm font-medium text-primary bg-card/90 px-4 py-2 rounded-lg shadow-sm">Suelta para crear un nodo Image</p>
+        </div>
+      )}
       <div className="absolute top-3 left-3 z-10 flex flex-wrap gap-1.5 bg-card/95 backdrop-blur rounded-lg border border-border p-2 shadow-sm max-w-[75%]">
         {PALETTE.map((p) => (
           <button
@@ -485,6 +556,7 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onSelectionChange={({ nodes: selected }) => setSelectedNodeIds(selected.map((n) => n.id))}
+        onInit={(instance) => { rfInstanceRef.current = instance }}
         nodeTypes={NODE_TYPES}
         edgeTypes={EDGE_TYPES}
         selectionKeyCode="Control"

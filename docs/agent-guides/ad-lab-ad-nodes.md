@@ -133,6 +133,13 @@ punto izquierdo de otro.
 pega una URL directamente si ya la tienes alojada en otro lado. Sube al bucket
 `ad-lab` de Storage, bajo `ad-node-workflows/{workflowId}/...`.
 
+**Arrastrar un archivo de imagen directo al canvas**: crea un nodo Image en el
+punto exacto donde lo sueltas, ya con esa imagen — sin pasar por "+ Image" →
+abrir el panel → "Subir imagen". Soltar varios archivos a la vez crea un nodo
+por archivo, cada uno subiendo en paralelo (un archivo grande no bloquea a los
+demás). Mismo bucket/ruta de Storage que el botón "Subir imagen" del panel —
+mismo `uploadNodeImage`, dos puntos de entrada distintos.
+
 **Deshacer/rehacer**: botones ↶/↷ junto a "Guardar", o `Ctrl+Z`/`Ctrl+Shift+Z`
 (`Cmd` en Mac) — cubre agregar/borrar/duplicar nodos, conectar/borrar aristas,
 mover un nodo (una entrada por arrastre completo, no por cada pixel), y guardar
