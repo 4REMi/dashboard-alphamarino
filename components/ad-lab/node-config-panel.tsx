@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { memo, useEffect, useRef, useState } from "react"
 import { X, Upload, Loader2, DollarSign } from "lucide-react"
 import type { AdNodeData, AdNodeConfig, AdNodeRun } from "@/lib/types"
 import { LLM_MODELS, IMAGE_MODELS, VIDEO_MODELS } from "@/lib/actions/ad-nodes/providers/models"
@@ -19,7 +19,19 @@ interface Props {
 // 3-column layout matching the competitor screenshots: INPUT (read-only —
 // what this node type expects from upstream edges), PARAMETERS (the
 // editable model/prompt/config), OUTPUT (the last cached result, if any).
-export function NodeConfigPanel({ workflowId, data, run, onClose, onSave }: Props) {
+//
+// Wrapped in memo() — without it, every re-render of the parent canvas
+// (polling any running node every 4s, the autosave "saving…"/"saved" tick)
+// re-rendered this panel too, even though nothing about the open node
+// actually changed. That extra churn landing mid-click on a native
+// <select> could silently drop the click (a real Chromium quirk — a
+// controlled element re-rendering while its native dropdown is open can
+// swallow the pending selection), which is exactly what showed up as
+// "necesito doble clic en los dropdowns, y a veces sí funciona". Requires
+// node-canvas.tsx to pass stable onClose/onSave (via useCallback) — a
+// fresh function reference every render would defeat this memoization the
+// same way.
+export const NodeConfigPanel = memo(function NodeConfigPanel({ workflowId, data, run, onClose, onSave }: Props) {
   const [label, setLabel] = useState(data.label)
   const [config, setConfig] = useState<AdNodeConfig>(data.config)
   const [isUploading, setIsUploading] = useState(false)
@@ -338,4 +350,4 @@ export function NodeConfigPanel({ workflowId, data, run, onClose, onSave }: Prop
       </div>
     </div>
   )
-}
+})

@@ -312,6 +312,23 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId)
 
+  // Referencias estables para el panel — sin esto, NodeConfigPanel recibía
+  // una función NUEVA en cada render de NodeCanvas (que pasa a cada rato:
+  // el polling de CUALQUIER nodo corriendo cada 4s, el ciclo
+  // guardando/guardado del autoguardado, etc.), y como NodeConfigPanel está
+  // memoizado (ver más abajo), esas referencias nuevas forzaban un
+  // re-render igual — justo en medio de esos re-renders "de fondo" es
+  // cuando un clic en un <select> a veces no se registraba (bug reportado:
+  // "necesito doble clic en los dropdowns"). Solo cambian cuando de verdad
+  // cambia el nodo seleccionado o el grafo (nodes/edges), nunca por runs o
+  // saveState.
+  const handlePanelClose = useCallback(() => setSelectedNodeId(null), [])
+  const handlePanelSave = useCallback((label: string, config: AdNodeConfig) => {
+    if (!selectedNodeId) return
+    updateNodeData(selectedNodeId, label, config)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedNodeId, nodes, edges])
+
   // Suma de lo ya gastado (estimado) en este workflow — solo nodos que de
   // verdad corrieron (done/running/error todos dejan su estimate, ya que
   // se calcula ANTES de enviar a APIMart, no después).
@@ -407,8 +424,8 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
           workflowId={workflow.id}
           data={selectedNode.data as unknown as { label: string; type: AdNodeType; config: AdNodeConfig }}
           run={runs[selectedNode.id]}
-          onClose={() => setSelectedNodeId(null)}
-          onSave={(label, config) => updateNodeData(selectedNode.id, label, config)}
+          onClose={handlePanelClose}
+          onSave={handlePanelSave}
         />
       )}
     </div>

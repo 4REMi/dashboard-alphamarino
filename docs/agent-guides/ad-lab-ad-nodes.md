@@ -149,6 +149,16 @@ canvas — fuerza el guardado inmediato en vez de esperar el autoguardado
 
 - **El grafo se autoguarda** (debounced ~800ms) en cada cambio de nodos/aristas —
   no hay botón "Guardar" separado para el layout.
+- **`NodeConfigPanel` está memoizado (`React.memo`)** — sin esto, CUALQUIER
+  re-render del canvas (el polling de un nodo corriendo en otra parte del
+  workflow cada 4s, el ciclo "Guardando…"/"Guardado" del autoguardado)
+  re-renderizaba también el panel abierto, aunque nada del nodo seleccionado
+  hubiera cambiado. Ese re-render de más, si caía justo en medio de un clic
+  sobre un `<select>` nativo, a veces hacía que Chrome descartara la
+  selección (bug real reportado: "necesito doble clic en los dropdowns, y a
+  veces sí funciona"). Para que la memoización sirva de algo, `node-canvas.tsx`
+  le pasa `onClose`/`onSave` envueltos en `useCallback` — una función nueva en
+  cada render volvería a romper la comparación de props del memo.
 - **APIMart ya está integrado** (`lib/actions/ad-nodes/providers/apimart.ts`) —
   confirmado contra logs reales de la cuenta del usuario, no adivinado. `POST
   /v1/videos/generations` y `POST /v1/images/generations` regresan `task_id`;
