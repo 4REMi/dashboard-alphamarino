@@ -104,6 +104,15 @@ punto izquierdo de otro.
 pega una URL directamente si ya la tienes alojada en otro lado. Sube al bucket
 `ad-lab` de Storage, bajo `ad-node-workflows/{workflowId}/...`.
 
+**Deshacer/rehacer**: botones ↶/↷ junto a "Guardar", o `Ctrl+Z`/`Ctrl+Shift+Z`
+(`Cmd` en Mac) — cubre agregar/borrar/duplicar nodos, conectar/borrar aristas,
+mover un nodo (una entrada por arrastre completo, no por cada pixel), y guardar
+cambios de configuración desde el panel. Pila en memoria (hasta 50 pasos, se
+pierde al recargar la página, no vive en la base de datos) — cada paso
+deshecho/rehecho también dispara el autoguardado normal. Los atajos de teclado
+se ignoran mientras el foco está en un campo de texto/textarea/select, para no
+pelearse con el undo nativo del navegador dentro de esos campos.
+
 **Duplicar/eliminar un nodo**: dos íconos siempre visibles junto al pill de
 estado, en la esquina superior derecha de la tarjeta del nodo (copiar/basura) —
 eliminar también quita las aristas que tocaban ese nodo. (Están adentro de la

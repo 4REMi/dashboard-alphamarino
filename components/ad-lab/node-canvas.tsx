@@ -6,7 +6,7 @@ import {
   type Node, type Edge, type Connection, type NodeChange, type EdgeChange,
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
-import { Plus, Save, Check, Loader2, PlayCircle, Copy, Trash2 } from "lucide-react"
+import { Plus, Save, Check, Loader2, PlayCircle, Copy, Trash2, Undo2, Redo2 } from "lucide-react"
 import { AdNodeComponent, TYPE_STYLES, type AdNodeRenderData } from "@/components/ad-lab/nodes/ad-node"
 import { SplitOrderEdge } from "@/components/ad-lab/edges/split-order-edge"
 import { DeletableEdge } from "@/components/ad-lab/edges/deletable-edge"
@@ -49,6 +49,19 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null)
   const pendingGraph = useRef<{ nodes: Node[]; edges: Edge[] } | null>(null)
 
+  // Undo/redo — pilas de snapshots {nodes, edges} guardadas en refs (no
+  // useState) para no disparar un re-render extra en cada acción; un
+  // contador (historyTick) fuerza el re-render solo para habilitar/
+  // deshabilitar los botones. recordHistory() se llama ANTES de aplicar
+  // cada cambio estructural (agregar/borrar/duplicar nodo, conectar/borrar
+  // arista, guardar config desde el panel) — guarda el estado tal como
+  // estaba justo antes de esa acción. Tope de 50 pasos para no crecer sin
+  // límite en una sesión larga.
+  const pastRef = useRef<{ nodes: Node[]; edges: Edge[] }[]>([])
+  const futureRef = useRef<{ nodes: Node[]; edges: Edge[] }[]>([])
+  const [historyTick, setHistoryTick] = useState(0)
+  const isDraggingRef = useRef(false)
+
   useEffect(() => {
     getNodeRuns(workflow.id).then((list) => {
       setRuns(Object.fromEntries(list.map((r) => [r.node_id, r])))
@@ -88,6 +101,53 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
     if (saveTimer.current) clearTimeout(saveTimer.current)
     persist(nodes, edges)
   }
+
+  // Captura el estado ANTES de aplicar un cambio — llamar siempre justo
+  // antes de mutar nodes/edges, nunca después.
+  function recordHistory() {
+    pastRef.current = [...pastRef.current, { nodes, edges }].slice(-50)
+    futureRef.current = []
+    setHistoryTick((t) => t + 1)
+  }
+
+  function undo() {
+    const previous = pastRef.current[pastRef.current.length - 1]
+    if (!previous) return
+    pastRef.current = pastRef.current.slice(0, -1)
+    futureRef.current = [...futureRef.current, { nodes, edges }]
+    setNodes(previous.nodes)
+    setEdges(previous.edges)
+    scheduleSave(previous.nodes, previous.edges)
+    setHistoryTick((t) => t + 1)
+  }
+
+  function redo() {
+    const next = futureRef.current[futureRef.current.length - 1]
+    if (!next) return
+    futureRef.current = futureRef.current.slice(0, -1)
+    pastRef.current = [...pastRef.current, { nodes, edges }]
+    setNodes(next.nodes)
+    setEdges(next.edges)
+    scheduleSave(next.nodes, next.edges)
+    setHistoryTick((t) => t + 1)
+  }
+
+  // Ctrl/Cmd+Z y Ctrl/Cmd+Shift+Z — ignorados mientras el foco está en un
+  // campo de texto (input/textarea/select), para no pelearse con el undo
+  // nativo del navegador dentro del panel de configuración.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null
+      if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "z") return
+      e.preventDefault()
+      if (e.shiftKey) redo()
+      else undo()
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes, edges])
 
   // "Correr todo" — re-corre el workflow completo en orden topológico.
   // Precauciones: (1) fuerza el guardado del layout actual primero, para
@@ -130,22 +190,35 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
   }
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
+    // Backspace nativo de React Flow sobre nodos seleccionados dispara un
+    // change tipo "remove" aquí, sin pasar por deleteNode/deleteSelection —
+    // hay que capturar el historial también para ese camino.
+    if (changes.some((c) => c.type === "remove")) recordHistory()
+    // Arrastrar un nodo dispara un change de "position" por cada frame del
+    // mouse — grabar solo UNA vez por gesto de arrastre (al empezar), no en
+    // cada pixel.
+    const dragStart = changes.find((c) => c.type === "position" && c.dragging)
+    if (dragStart && !isDraggingRef.current) { isDraggingRef.current = true; recordHistory() }
+    if (changes.some((c) => c.type === "position" && c.dragging === false)) isDraggingRef.current = false
     setNodes((prev) => {
       const next = applyNodeChanges(changes, prev)
       scheduleSave(next, edges)
       return next
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [edges])
+  }, [edges, nodes])
 
   const onEdgesChange = useCallback((changes: EdgeChange[]) => {
+    // Backspace nativo sobre una arista seleccionada — mismo caso que en
+    // onNodesChange, no pasa por removeEdge().
+    if (changes.some((c) => c.type === "remove")) recordHistory()
     setEdges((prev) => {
       const next = applyEdgeChanges(changes, prev)
       scheduleSave(nodes, next)
       return next
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes])
+  }, [nodes, edges])
 
   // Una conexión que sale de un handle de parte de un nodo Split Text
   // ("part-0", "part-1", ...) se numera en el orden en que se hizo esa
@@ -155,6 +228,7 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
   // desde cualquier otro tipo de nodo quedan como el edge default de
   // siempre, sin número ni color especial.
   const onConnect = useCallback((connection: Connection) => {
+    recordHistory()
     setEdges((prev) => {
       const sourceNode = nodes.find((n) => n.id === connection.source)
       const isSplitPart = (sourceNode?.data as { type?: AdNodeType } | undefined)?.type === "split_text" && connection.sourceHandle?.startsWith("part-")
@@ -172,6 +246,7 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
   }, [nodes])
 
   function addNode(type: AdNodeType) {
+    recordHistory()
     const id = crypto.randomUUID()
     const label = PALETTE.find((p) => p.type === type)?.label ?? type
     const node: Node = {
@@ -185,6 +260,7 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
   }
 
   function updateNodeData(nodeId: string, label: string, config: AdNodeConfig) {
+    recordHistory()
     const next = nodes.map((n) => n.id === nodeId ? { ...n, data: { ...n.data, label, config } } : n)
     setNodes(next)
     scheduleSave(next, edges)
@@ -193,6 +269,7 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
   function duplicateNode(nodeId: string) {
     const source = nodes.find((n) => n.id === nodeId)
     if (!source) return
+    recordHistory()
     const copy: Node = {
       ...source,
       id: crypto.randomUUID(),
@@ -205,6 +282,7 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
   }
 
   function deleteNode(nodeId: string) {
+    recordHistory()
     const next = nodes.filter((n) => n.id !== nodeId)
     const nextEdges = edges.filter((e) => e.source !== nodeId && e.target !== nodeId)
     setNodes(next)
@@ -222,6 +300,7 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
   function duplicateSelection() {
     const sources = nodes.filter((n) => selectedNodeIds.includes(n.id))
     if (sources.length === 0) return
+    recordHistory()
     const copies: Node[] = sources.map((source) => ({
       ...source,
       id: crypto.randomUUID(),
@@ -237,6 +316,7 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
   function deleteSelection() {
     const idsToDelete = new Set(selectedNodeIds)
     if (idsToDelete.size === 0) return
+    recordHistory()
     const next = nodes.filter((n) => !idsToDelete.has(n.id))
     const nextEdges = edges.filter((e) => !idsToDelete.has(e.source) && !idsToDelete.has(e.target))
     setNodes(next)
@@ -255,6 +335,7 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
   // presionando Backspace (nada descubrible); ahora también el botón × que
   // aparece directo sobre la línea (deletable-edge.tsx / split-order-edge.tsx).
   function removeEdge(edgeId: string) {
+    recordHistory()
     const next = edges.filter((e) => e.id !== edgeId)
     setEdges(next)
     scheduleSave(nodes, next)
@@ -358,6 +439,24 @@ export function NodeCanvas({ workflow }: { workflow: AdNodeWorkflow }) {
             {saveState === "saved" && <><Check className="w-3 h-3 text-emerald-600" /> Guardado</>}
             {saveState === "pending" && "Sin guardar"}
           </span>
+          <div className="flex items-center gap-0.5" data-history-tick={historyTick}>
+            <button
+              onClick={undo}
+              disabled={pastRef.current.length === 0}
+              title="Deshacer (Ctrl+Z)"
+              className="p-1.5 rounded-md border border-input bg-background hover:bg-muted disabled:opacity-40 disabled:hover:bg-background shadow-sm"
+            >
+              <Undo2 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={redo}
+              disabled={futureRef.current.length === 0}
+              title="Rehacer (Ctrl+Shift+Z)"
+              className="p-1.5 rounded-md border border-input bg-background hover:bg-muted disabled:opacity-40 disabled:hover:bg-background shadow-sm"
+            >
+              <Redo2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
           <button
             onClick={handleSaveNow}
             className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
