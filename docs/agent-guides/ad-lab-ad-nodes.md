@@ -55,9 +55,9 @@ fijos, no un catálogo abierto.
   Anthropic, sin margen de APIMart) o GPT-5 (APIMart); **Generate Image** —
   Nano Banana Pro, Nano Banana 2, GPT Image 2, Flux 2 Pro (los 4 vía APIMart);
   **Generate Video** — Veo 3.1 / 3.1 Fast / 3.1 Lite, Seedance 2.5 / 2.0 / 2.0
-  Fast / 1.5 Pro, Kling Video O3 Pro (todos vía APIMart). Agregar un modelo nuevo
-  es solo una entrada más en ese archivo — nada más necesita cambiar
-  estructuralmente.
+  Fast / 1.5 Pro, Kling Video O3 Pro, OmniFlash 1.1 (todos vía APIMart). Agregar
+  un modelo nuevo es solo una entrada más en ese archivo — nada más necesita
+  cambiar estructuralmente.
 - **Ojo con el endpoint de precios de APIMart al agregar un modelo**: NO valida
   que el modelo exista — un nombre inventado también regresa `success: true` con
   una plantilla genérica vacía (sin `resolution_prices`/`billing_type`). La única
