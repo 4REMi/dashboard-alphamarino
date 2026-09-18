@@ -861,6 +861,10 @@ export interface CreativeAsset {
   client_visible: boolean
   client_status: ClientReviewStatus | null
   client_feedback: string | null
+  // Si no es null, este asset es una revisión de otro (reemplaza a esa
+  // versión anterior en vez de ser un asset nuevo sin relación) — ver
+  // createAsset en lib/actions/creatives.ts.
+  revises_asset_id: string | null
   // admin/subadmin only
   ctr: number | null
   cpc: number | null

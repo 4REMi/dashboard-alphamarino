@@ -91,6 +91,25 @@ export const NOTIFICATION_EVENTS = {
         ? `📋 ${data.authorName} tagged you on a log note in *${data.projectName}*:\n${data.body}`
         : `📋 ${data.authorName} te avisó de una nota en la bitácora de *${data.projectName}*:\n${data.body}`,
   },
+  // Creative Tracker — el cliente aprueba o pide cambios en un asset/script
+  // desde la página pública de revisión (app/share/concepts/[projectId]),
+  // sin sesión de por medio. No hay un "asignado" por asset (no existe ese
+  // campo), así que siempre se avisa a todo el equipo del proyecto — mismo
+  // criterio que un nuevo miembro agregado, no el targeting de Ping.
+  creative_client_approved: {
+    label: "Cliente aprobó un creativo",
+    build: (data: { projectName: string; label: string }, lang: NotificationLang) =>
+      lang === "en"
+        ? `✅ Client approved *${data.label}* · ${data.projectName}`
+        : `✅ El cliente aprobó *${data.label}* · ${data.projectName}`,
+  },
+  creative_client_changes_requested: {
+    label: "Cliente pidió cambios en un creativo",
+    build: (data: { projectName: string; label: string; feedback?: string }, lang: NotificationLang) =>
+      lang === "en"
+        ? `✏️ Client requested changes on *${data.label}* · ${data.projectName}${data.feedback ? `:\n${data.feedback}` : ""}`
+        : `✏️ El cliente pidió cambios en *${data.label}* · ${data.projectName}${data.feedback ? `:\n${data.feedback}` : ""}`,
+  },
   // The daily cycle check (app/api/cron/check-cycles, lib/actions/projects.ts
   // runDailyCycleCheck) fires each of these at most once per cycle — a
   // preventive heads-up ~4 days before end_date, and (only if the project

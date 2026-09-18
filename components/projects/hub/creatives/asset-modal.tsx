@@ -49,6 +49,11 @@ interface AssetModalProps {
   isAdminOrSubadmin: boolean
   canManageAssets?: boolean
   brandBrains?: BrandBrain[]
+  // Other assets already in this same concept — used to populate "esta es
+  // una revisión de…". Only offered when creating (not editing): a
+  // revision is expressed by uploading a NEW asset that points back at
+  // the one it replaces, not by rewriting an existing row's identity.
+  siblingAssets?: CreativeAsset[]
   open: boolean
   onRefresh?: () => void
   onClose: () => void
@@ -58,7 +63,7 @@ type Source = "upload" | "bank"
 
 export function AssetModal({
   projectId, cycleId, conceptId, briefId, asset,
-  isAdminOrSubadmin, canManageAssets, brandBrains = [], open, onRefresh, onClose,
+  isAdminOrSubadmin, canManageAssets, brandBrains = [], siblingAssets = [], open, onRefresh, onClose,
 }: AssetModalProps) {
   const canUpload = canManageAssets ?? isAdminOrSubadmin
   const isEdit = !!asset
@@ -69,6 +74,7 @@ export function AssetModal({
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<string | null>(asset?.thumbnail_path || asset?.file_path || asset?.asset_url || null)
   const [platform, setPlatform] = useState(asset?.platform ?? "")
+  const [revisesAssetId, setRevisesAssetId] = useState("")
   const [dragOver, setDragOver] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [uploadProgress, setUploadProgress] = useState<string | null>(null)
@@ -139,6 +145,7 @@ export function AssetModal({
       fd.set("concept_id", conceptId)
       if (briefId) fd.set("brief_id", briefId)
       fd.set("platform", platform)
+      if (!isEdit && revisesAssetId) fd.set("revises_asset_id", revisesAssetId)
 
       if (source === "bank" && selectedCloneUrl) {
         // asset_url only — thumbnail_path/file_path are always resolved as
@@ -398,6 +405,32 @@ export function AssetModal({
               {PLATFORMS.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
           </div>
+
+          {/* "Esta es una revisión de…" — solo al crear, cuando ya hay otro(s)
+              asset(s) en este mismo concepto para elegir. Al guardar, la
+              versión elegida se oculta del cliente automáticamente (ver
+              createAsset) — reemplaza el flujo manual de subir + ocultar por
+              separado. */}
+          {!isEdit && siblingAssets.length > 0 && (
+            <div className={cn("space-y-1.5", source === "bank" && "flex-shrink-0")}>
+              <Label>¿Es una revisión de otro asset?</Label>
+              <select
+                value={revisesAssetId}
+                onChange={(e) => setRevisesAssetId(e.target.value)}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="">No, es un asset nuevo</option>
+                {siblingAssets.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {[a.format, a.platform, a.iteration].filter(Boolean).join(" ") || "Asset sin nombre"}
+                  </option>
+                ))}
+              </select>
+              {revisesAssetId && (
+                <p className="text-xs text-muted-foreground">La versión anterior se ocultará del cliente automáticamente al guardar.</p>
+              )}
+            </div>
+          )}
 
           {/* Client visibility toggle (edit mode, admin only) */}
           {isEdit && isAdminOrSubadmin && asset && (

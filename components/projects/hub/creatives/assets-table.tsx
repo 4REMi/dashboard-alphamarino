@@ -10,8 +10,32 @@ import {
   FUNNEL_COLORS, ANGLE_GUIDE,
 } from "@/lib/constants/creatives"
 import type { CreativeAsset, CreativeConcept } from "@/lib/types"
-import { Plus, ExternalLink, Eye, Film, ImageIcon } from "lucide-react"
+import { Plus, ExternalLink, Eye, Film, ImageIcon, History, ChevronDown, ChevronRight } from "lucide-react"
 import { cn } from "@/lib/utils"
+
+// Un asset "actual" (head) es cualquiera que NADIE más apunta como su
+// revisión — el resto son historial, encadenados vía revises_asset_id
+// (ver createAsset, lib/actions/creatives.ts). Se muestra solo el head por
+// default, con las versiones anteriores colapsadas debajo — evita que la
+// tabla se llene de filas viejas ya superadas mientras conserva el
+// historial completo a un clic, en vez de perderlo (como pasaba con el
+// flujo manual de antes).
+function buildAssetChains(groupAssets: CreativeAsset[]): { head: CreativeAsset; history: CreativeAsset[] }[] {
+  const byId = new Map(groupAssets.map((a) => [a.id, a]))
+  const supersededIds = new Set(groupAssets.map((a) => a.revises_asset_id).filter((id): id is string => !!id))
+  const heads = groupAssets.filter((a) => !supersededIds.has(a.id))
+  return heads.map((head) => {
+    const history: CreativeAsset[] = []
+    let current = head
+    while (current.revises_asset_id) {
+      const prev = byId.get(current.revises_asset_id)
+      if (!prev) break
+      history.push(prev)
+      current = prev
+    }
+    return { head, history }
+  })
+}
 
 interface AssetsTableProps {
   assets: CreativeAsset[]
@@ -133,13 +157,16 @@ export function AssetsTable({ assets, concepts, projectId, cycleId, isAdminOrSub
                     </td>
                   </tr>
 
-                  {/* Assets in this group */}
-                  {groupAssets.map((asset) => (
+                  {/* Assets in this group — solo la versión actual de cada
+                      cadena de revisiones, con el historial colapsado. */}
+                  {buildAssetChains(groupAssets).map(({ head, history }) => (
                     <AssetRow
-                      key={asset.id}
-                      asset={asset}
+                      key={head.id}
+                      asset={head}
+                      history={history}
                       isAdminOrSubadmin={isAdminOrSubadmin}
-                      onClick={() => setSelectedAsset(asset)}
+                      onClick={() => setSelectedAsset(head)}
+                      onClickHistory={setSelectedAsset}
                     />
                   ))}
                 </>
@@ -157,12 +184,14 @@ export function AssetsTable({ assets, concepts, projectId, cycleId, isAdminOrSub
                     </div>
                   </td>
                 </tr>
-                {unlinked.map((asset) => (
+                {buildAssetChains(unlinked).map(({ head, history }) => (
                   <AssetRow
-                    key={asset.id}
-                    asset={asset}
+                    key={head.id}
+                    asset={head}
+                    history={history}
                     isAdminOrSubadmin={isAdminOrSubadmin}
-                    onClick={() => setSelectedAsset(asset)}
+                    onClick={() => setSelectedAsset(head)}
+                    onClickHistory={setSelectedAsset}
                   />
                 ))}
               </>
@@ -178,6 +207,7 @@ export function AssetsTable({ assets, concepts, projectId, cycleId, isAdminOrSub
           cycleId={cycleId}
           conceptId={defaultConceptId}
           isAdminOrSubadmin={isAdminOrSubadmin}
+          siblingAssets={byConceptId.get(defaultConceptId) ?? []}
           open={showCreate}
           onRefresh={onRefresh}
           onClose={() => { setShowCreate(false); setDefaultConceptId(null) }}
@@ -209,16 +239,22 @@ function getAssetThumbUrl(asset: CreativeAsset): string | null {
 
 function AssetRow({
   asset,
+  history = [],
   isAdminOrSubadmin,
   onClick,
+  onClickHistory,
 }: {
   asset: CreativeAsset
+  history?: CreativeAsset[]
   isAdminOrSubadmin: boolean
   onClick: () => void
+  onClickHistory?: (asset: CreativeAsset) => void
 }) {
   const thumbUrl = getAssetThumbUrl(asset)
+  const [showHistory, setShowHistory] = useState(false)
 
   return (
+    <>
     <tr className="border-t hover:bg-muted/30 transition-colors cursor-pointer" onClick={onClick}>
 
       {/* Thumbnail + format */}
@@ -248,10 +284,21 @@ function AssetRow({
                 </span>
               )}
             </div>
-            {(asset.variant || asset.iteration) && (
-              <div className="flex gap-1 mt-1 flex-wrap">
+            {(asset.variant || asset.iteration || history.length > 0) && (
+              <div className="flex gap-1 mt-1 flex-wrap items-center">
                 {asset.variant && <span className="text-[10px] font-mono bg-muted px-1.5 py-0.5 rounded text-muted-foreground">{asset.variant}</span>}
                 {asset.iteration && <span className="text-[10px] font-mono bg-muted px-1.5 py-0.5 rounded text-muted-foreground">{asset.iteration}</span>}
+                {history.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setShowHistory((v) => !v) }}
+                    className="inline-flex items-center gap-0.5 text-[10px] font-medium text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded bg-muted/70 hover:bg-muted"
+                  >
+                    {showHistory ? <ChevronDown className="w-2.5 h-2.5" /> : <ChevronRight className="w-2.5 h-2.5" />}
+                    <History className="w-2.5 h-2.5" />
+                    {history.length} revisión{history.length !== 1 ? "es" : ""} anterior{history.length !== 1 ? "es" : ""}
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -291,5 +338,28 @@ function AssetRow({
         </div>
       </td>
     </tr>
+    {showHistory && history.map((old) => (
+      <tr
+        key={old.id}
+        className="border-t bg-muted/10 hover:bg-muted/30 transition-colors cursor-pointer text-muted-foreground"
+        onClick={() => onClickHistory?.(old)}
+      >
+        <td className="px-4 py-2 pl-10">
+          <div className="flex items-center gap-2">
+            <History className="w-3 h-3 flex-shrink-0" />
+            <span className="text-xs">
+              {[old.format, old.platform, old.iteration].filter(Boolean).join(" ") || "Versión anterior"}
+            </span>
+          </div>
+        </td>
+        <td className="px-4 py-2">
+          <Badge variant="outline" className="text-[10px] font-normal text-muted-foreground border-muted-foreground/30">
+            Reemplazada
+          </Badge>
+        </td>
+        <td className="px-4 py-2" />
+      </tr>
+    ))}
+    </>
   )
 }

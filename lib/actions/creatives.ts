@@ -285,6 +285,8 @@ export async function createAsset(projectId: string, formData: FormData): Promis
   const { role, userId } = await getRole()
   await assertCanManageAssets(projectId, role, userId)
 
+  const revisesAssetId = (formData.get("revises_asset_id") as string) || null
+
   const { error } = await supabase.from("creative_assets").insert({
     project_id:     projectId,
     cycle_id:       (formData.get("cycle_id") as string) || null,
@@ -296,6 +298,7 @@ export async function createAsset(projectId: string, formData: FormData): Promis
     file_type:      (formData.get("file_type") as string) || null,
     format:         (formData.get("format") as string) || null,
     platform:       (formData.get("platform") as string) || null,
+    revises_asset_id: revisesAssetId,
     // Every new asset starts hidden from the client, regardless of whatever
     // the column's default happens to be — a project manager has to
     // deliberately publish it (toggleClientVisible) before the client sees
@@ -303,6 +306,21 @@ export async function createAsset(projectId: string, formData: FormData): Promis
     client_visible: false,
   })
   if (error) throw error
+
+  // Marking an upload as "a revision of X" replaces the old manual
+  // two-step (upload new + hide old by hand) with one action — the
+  // previous version gets pulled from client view automatically, same
+  // fields toggleClientVisible(false) would set, using the same
+  // already-verified write access as the insert above (not the
+  // admin-only toggleClientVisible action itself, which has its own
+  // stricter role check unrelated to this flow).
+  if (revisesAssetId) {
+    await supabase.from("creative_assets").update({
+      client_visible: false,
+      client_status: null,
+      client_feedback: null,
+    }).eq("id", revisesAssetId)
+  }
 
   revalidateProject(projectId)
 }
