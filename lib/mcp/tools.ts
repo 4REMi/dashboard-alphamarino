@@ -47,6 +47,15 @@ function textResult(text: string) {
   return { content: [{ type: "text" as const, text }] }
 }
 
+function formatDate(iso: string | null | undefined): string {
+  if (!iso) return "sin fecha"
+  return new Date(iso).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" })
+}
+
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
 // Registrado en app/api/mcp/route.ts. Deliberadamente arranca con solo 3
 // tools — las mismas acciones que ya existen en Captura rápida
 // (crear_tarea, agregar_nota_proyecto) más completar_tarea (útil y de
@@ -133,6 +142,244 @@ export function registerMcpTools(server: McpServer) {
 
       await addLogEntry(projectId, nota, actingProfileId)
       return textResult(`Nota agregada a la bitácora del proyecto.`)
+    },
+  )
+
+  // --- Tools de lectura — misma filosofía de fallbacks que las de
+  // escritura (ambigüedad nunca se adivina, vacío siempre explicado,
+  // listas largas siempre con tope), documentada con el detalle completo
+  // en docs/agent-guides/mcp-server.md. Ninguna de estas tenía ya un
+  // chequeo de permiso por rol antes de esto (igual que addLogEntry) —
+  // heredan ese mismo criterio abierto-a-cualquier-logueado, no uno nuevo
+  // y más estricto.
+
+  server.registerTool(
+    "listar_proyectos",
+    {
+      title: "Listar proyectos",
+      description: "Lista proyectos. Sin query, regresa solo los activos (no completados). Con query, busca por nombre entre todos.",
+      inputSchema: z.object({
+        query: z.string().optional().describe("Nombre o parte del nombre a buscar — si se omite, lista los proyectos activos."),
+      }),
+    },
+    async ({ query }) => {
+      const admin = createAdminClient()
+      let q = admin.from("projects").select("name, status, customer:customers(name)")
+      q = query?.trim() ? q.ilike("name", `%${query.trim()}%`) : q.neq("status", "Completed")
+      const { data } = await q.order("name").limit(20)
+      if (!data || data.length === 0) return textResult(query ? `Ningún proyecto coincide con "${query}".` : "No hay proyectos activos.")
+      const lines = data.map((p) => `- ${p.name} (${p.status}${p.customer && "name" in p.customer ? `, cliente: ${(p.customer as { name: string }).name}` : ""})`)
+      const suffix = data.length === 20 ? "\n(mostrando los primeros 20 — sé más específico si buscabas otro)" : ""
+      return textResult(`${query ? "Proyectos que coinciden" : "Proyectos activos"}:\n${lines.join("\n")}${suffix}`)
+    },
+  )
+
+  server.registerTool(
+    "estado_proyecto",
+    {
+      title: "Estado de un proyecto",
+      description: "Status, fechas, cliente, conteo de tareas por estado y ciclo activo (si es paid media) de un proyecto.",
+      inputSchema: z.object({ proyecto: z.string().min(1) }),
+    },
+    async ({ proyecto }) => {
+      const admin = createAdminClient()
+      const projectId = await resolveProjectId(proyecto)
+      if (!projectId) throw new Error(`No encontré el proyecto "${proyecto}".`)
+
+      const { data: project } = await admin
+        .from("projects")
+        .select("name, status, progress, start_date, end_date, project_type, auto_close_cycles, customer:customers(name)")
+        .eq("id", projectId)
+        .single()
+      if (!project) throw new Error(`No encontré el proyecto "${proyecto}".`)
+
+      const { data: tasks } = await admin.from("tasks").select("status").eq("project_id", projectId)
+      const counts = { Todo: 0, "In Progress": 0, Done: 0 } as Record<string, number>
+      for (const t of tasks ?? []) counts[t.status] = (counts[t.status] ?? 0) + 1
+
+      const lines = [
+        `${project.name} — status: ${project.status} (${project.progress ?? 0}% de avance)`,
+        project.customer && "name" in project.customer ? `Cliente: ${(project.customer as { name: string }).name}` : null,
+        project.start_date || project.end_date ? `Fechas: ${formatDate(project.start_date)} → ${formatDate(project.end_date)}` : null,
+        `Tareas: ${counts.Todo} por hacer, ${counts["In Progress"]} en progreso, ${counts.Done} completadas`,
+      ].filter(Boolean)
+
+      if (project.project_type === "paid_media") {
+        const { data: cycle } = await admin
+          .from("paid_media_cycles")
+          .select("start_date, end_date, status")
+          .eq("project_id", projectId)
+          .eq("status", "active")
+          .order("start_date", { ascending: false })
+          .maybeSingle()
+        if (cycle) {
+          const overdue = cycle.end_date < todayIso()
+          lines.push(`Ciclo activo: ${formatDate(cycle.start_date)} → ${formatDate(cycle.end_date)}${overdue ? " — ⚠️ VENCIDO, no se ha cerrado" : ""}`)
+        } else {
+          lines.push("Ciclo de paid media: no tiene un ciclo activo en este momento.")
+        }
+      }
+
+      return textResult(lines.join("\n"))
+    },
+  )
+
+  server.registerTool(
+    "miembros_proyecto",
+    {
+      title: "Miembros de un proyecto",
+      description: "Quién está asignado a un proyecto y con qué puesto.",
+      inputSchema: z.object({ proyecto: z.string().min(1) }),
+    },
+    async ({ proyecto }) => {
+      const admin = createAdminClient()
+      const projectId = await resolveProjectId(proyecto)
+      if (!projectId) throw new Error(`No encontré el proyecto "${proyecto}".`)
+
+      const { data } = await admin
+        .from("project_members")
+        .select("profile:profiles(full_name, role, position:positions(name))")
+        .eq("project_id", projectId)
+      if (!data || data.length === 0) return textResult("Este proyecto no tiene miembros asignados todavía.")
+
+      const lines = data.map((m) => {
+        const p = m.profile as unknown as { full_name: string; role: string; position: { name: string } | null } | null
+        if (!p) return null
+        return `- ${p.full_name}${p.position?.name ? ` (${p.position.name})` : ""}`
+      }).filter(Boolean)
+      return textResult(`Miembros del proyecto:\n${lines.join("\n")}`)
+    },
+  )
+
+  server.registerTool(
+    "resumen_tareas",
+    {
+      title: "Resumen de tareas",
+      description: "Overview de tareas abiertas/vencidas — se necesita al menos un proyecto o una persona, para no traer todo el sistema de golpe.",
+      inputSchema: z.object({
+        proyecto: z.string().optional(),
+        asignado_a: z.string().optional(),
+      }),
+    },
+    async ({ proyecto, asignado_a }, ctx: ToolCtx) => {
+      if (!proyecto?.trim() && !asignado_a?.trim()) throw new Error("Dame al menos un proyecto o una persona — traer TODAS las tareas del sistema de un jalón no es útil.")
+      const actingProfileId = requireProfileId(ctx)
+      const admin = createAdminClient()
+      const projectId = await resolveProjectId(proyecto)
+      const assigneeId = await resolveAssigneeId(asignado_a)
+
+      let q = admin.from("tasks").select("title, status, due_date, is_personal, assignee_id, project:projects(name)").neq("status", "Done")
+      if (projectId) q = q.eq("project_id", projectId)
+      if (assigneeId) q = q.eq("assignee_id", assigneeId)
+      const { data } = await q.order("due_date", { ascending: true, nullsFirst: false }).limit(20)
+      if (!data || data.length === 0) return textResult("No hay tareas abiertas que coincidan con eso.")
+
+      // Una tarea personal de OTRA persona nunca debe filtrarse por aquí —
+      // solo se muestra si es del que está preguntando.
+      const visible = data.filter((t) => !t.is_personal || t.assignee_id === actingProfileId)
+      if (visible.length === 0) return textResult("No hay tareas abiertas visibles que coincidan con eso.")
+
+      const today = todayIso()
+      const lines = visible.map((t) => {
+        const overdue = t.due_date && t.due_date < today
+        const proj = t.project && "name" in t.project ? (t.project as { name: string }).name : "personal"
+        return `- ${t.title} [${t.status}] · ${proj} · vence ${formatDate(t.due_date)}${overdue ? " ⚠️ VENCIDA" : ""}`
+      })
+      const suffix = data.length === 20 ? "\n(mostrando las 20 más próximas — hay más)" : ""
+      return textResult(`Tareas abiertas:\n${lines.join("\n")}${suffix}`)
+    },
+  )
+
+  server.registerTool(
+    "bitacora_proyecto",
+    {
+      title: "Bitácora de un proyecto",
+      description: "Las notas más recientes de la bitácora (log) de un proyecto.",
+      inputSchema: z.object({
+        proyecto: z.string().min(1),
+        limite: z.number().int().min(1).max(30).optional().describe("Default 10, tope 30."),
+      }),
+    },
+    async ({ proyecto, limite }) => {
+      const admin = createAdminClient()
+      const projectId = await resolveProjectId(proyecto)
+      if (!projectId) throw new Error(`No encontré el proyecto "${proyecto}".`)
+
+      const { data } = await admin
+        .from("project_log_entries")
+        .select("body, created_at, pinned, author:profiles(full_name)")
+        .eq("project_id", projectId)
+        .order("created_at", { ascending: false })
+        .limit(limite ?? 10)
+      if (!data || data.length === 0) return textResult("Este proyecto no tiene notas en su bitácora todavía.")
+
+      const lines = data.map((e) => {
+        const author = e.author && "full_name" in e.author ? (e.author as { full_name: string }).full_name : "alguien"
+        return `- [${formatDate(e.created_at)}]${e.pinned ? " 📌" : ""} ${author}: ${e.body}`
+      })
+      return textResult(`Bitácora (más reciente primero):\n${lines.join("\n")}`)
+    },
+  )
+
+  server.registerTool(
+    "mis_tareas_pendientes",
+    {
+      title: "Mis tareas pendientes",
+      description: "Tus propias tareas abiertas (asignadas a ti), ordenadas por fecha límite.",
+      inputSchema: z.object({}),
+    },
+    async (_args, ctx: ToolCtx) => {
+      const actingProfileId = requireProfileId(ctx)
+      const admin = createAdminClient()
+      const { data } = await admin
+        .from("tasks")
+        .select("title, status, due_date, project:projects(name)")
+        .eq("assignee_id", actingProfileId)
+        .neq("status", "Done")
+        .order("due_date", { ascending: true, nullsFirst: false })
+        .limit(20)
+      if (!data || data.length === 0) return textResult("No tienes tareas abiertas — todo al día.")
+
+      const today = todayIso()
+      const lines = data.map((t) => {
+        const overdue = t.due_date && t.due_date < today
+        const proj = t.project && "name" in t.project ? (t.project as { name: string }).name : "personal"
+        return `- ${t.title} [${t.status}] · ${proj} · vence ${formatDate(t.due_date)}${overdue ? " ⚠️ VENCIDA" : ""}`
+      })
+      const suffix = data.length === 20 ? "\n(mostrando las 20 más próximas — hay más)" : ""
+      return textResult(`Tus tareas abiertas:\n${lines.join("\n")}${suffix}`)
+    },
+  )
+
+  server.registerTool(
+    "buscar_empleado",
+    {
+      title: "Buscar empleado",
+      description: "Datos de una persona del equipo — puesto, contacto, cuántas tareas abiertas tiene.",
+      inputSchema: z.object({ nombre: z.string().min(1) }),
+    },
+    async ({ nombre }) => {
+      const admin = createAdminClient()
+      const { data: candidates } = await admin
+        .from("profiles")
+        .select("id, full_name, role, phone, email, telegram_chat_id, position:positions(name)")
+        .ilike("full_name", `%${nombre.trim()}%`)
+        .limit(6)
+      if (!candidates || candidates.length === 0) throw new Error(`No encontré a nadie en el equipo que coincida con "${nombre}".`)
+      if (candidates.length > 1) throw new Error(`"${nombre}" coincide con varias personas: ${candidates.map((p) => p.full_name).join(", ")}. Sé más específico.`)
+
+      const person = candidates[0]
+      const position = person.position && "name" in person.position ? (person.position as { name: string }).name : null
+      const { count } = await admin.from("tasks").select("*", { count: "exact", head: true }).eq("assignee_id", person.id).neq("status", "Done")
+
+      const lines = [
+        `${person.full_name} — ${person.role}${position ? `, ${position}` : ""}`,
+        person.email ? `Email: ${person.email}` : null,
+        person.phone ? `Teléfono: ${person.phone}` : null,
+        `Telegram: ${person.telegram_chat_id ? "vinculado" : "no vinculado"}`,
+        `Tareas abiertas: ${count ?? 0}`,
+      ].filter(Boolean)
+      return textResult(lines.join("\n"))
     },
   )
 }

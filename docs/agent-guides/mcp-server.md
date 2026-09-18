@@ -88,10 +88,33 @@ inmediato, cualquier cliente que la esté usando deja de poder llamar tools.
 - **Ambigüedad en la resolución por nombre nunca se adivina** — 0 o 2+ matches
   de proyecto/persona/tarea siempre regresan un error de texto listando las
   opciones, para que el chat le pida a la persona ser más específica.
-- **Empieza chico a propósito**: hoy solo 3 tools (`crear_tarea`,
-  `completar_tarea`, `agregar_nota_proyecto`) — el mismo par de acciones que ya
-  tiene Captura rápida, más completar tarea. Servicios/Finanzas/Ad Nodes/etc. se
-  agregan cuando se pidan, no de antemano.
+- **Empieza chico a propósito**: hoy 3 tools de escritura (`crear_tarea`,
+  `completar_tarea`, `agregar_nota_proyecto` — el mismo par de acciones que ya
+  tiene Captura rápida, más completar tarea) y 6 de lectura (`listar_proyectos`,
+  `estado_proyecto`, `miembros_proyecto`, `resumen_tareas`,
+  `bitacora_proyecto`, `mis_tareas_pendientes`, `buscar_empleado`). Ninguna de
+  estas de lectura tenía ya un chequeo de permiso por rol en su código original
+  (mismo criterio relajado que `addLogEntry` — "logueado" basta) — heredan eso
+  tal cual, no se les inventó una restricción nueva. Servicios/Finanzas/Ad
+  Nodes/etc. se agregan cuando se pidan, no de antemano.
+- **Reglas de fallback de las tools de lectura** (aplican a todas, ver el
+  código en `lib/mcp/tools.ts` para el detalle exacto de cada una):
+  1. Un resultado vacío siempre explica POR QUÉ está vacío (nunca solo "[]" o
+     una lista sin texto).
+  2. Ambigüedad (2+ coincidencias por nombre) nunca se resuelve escogiendo la
+     primera — error de texto listando las opciones.
+  3. Toda lista potencialmente larga tiene un tope (20 para tareas/proyectos,
+     10-30 configurable para la bitácora) y avisa cuando lo alcanzó.
+  4. `resumen_tareas` exige proyecto O persona — nunca trae TODAS las tareas
+     del sistema de un jalón.
+  5. Una tarea personal (`is_personal`) de otra persona nunca se filtra en
+     `resumen_tareas`, aunque el filtro de proyecto/asignado la hubiera
+     alcanzado — solo visible si es la del que está preguntando.
+  6. `estado_proyecto` distingue explícitamente proyectos sin ciclo de paid
+     media configurado ("no aplica") de un ciclo vencido sin cerrar
+     ("⚠️ VENCIDO").
+  7. Fechas siempre se muestran junto al dato al que corresponden (ninguna
+     lista mezcla información de distintos momentos sin fecha visible).
 
 ## Quién puede ver/hacer qué
 
