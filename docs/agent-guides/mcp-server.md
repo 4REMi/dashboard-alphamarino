@@ -37,6 +37,21 @@ más estricto desde el inicio, no una copia de cómo funciona Telegram.
   vía el cliente admin. Cuando se omite (la UI normal, Captura rápida), la
   función se comporta exactamente igual que antes — es un parámetro aditivo, no
   un cambio de comportamiento para nadie más.
+- **Avisar por Telegram de una nota de bitácora — opt-in, nunca automático**:
+  `agregar_nota_proyecto` tiene un parámetro opcional `avisar_a` ("todos"/
+  "equipo" para avisarle a todo el proyecto, o un nombre para avisarle a esa
+  persona). Sin ese parámetro, la nota queda completamente silenciosa —
+  mismo criterio que ya se usa para Ping en tareas (la mayoría de las notas
+  son solo constancia interna, no le importan a todo el equipo). Mismo
+  patrón de datos que Ping (`project_log_entries.notify_team`/
+  `notify_recipient_ids`, espejo de `tasks.is_pinged`/`ping_recipient_ids`),
+  implementado en `notifyProjectNote` (`lib/actions/projects.ts`) y también
+  disponible desde la UI normal (`components/projects/hub/project-log.tsx`,
+  botón de campana + `PingRecipientsPicker` reusado). **Deliberadamente NO
+  disponible desde Telegram** — el bot (`handleNotaProyecto`) siempre crea
+  notas silenciosas, sin excepción; se decidió no extender la clasificación
+  de IA del bot para esto (más superficie de error por poca ganancia), y el
+  bot es un camino que se dejó intacto a propósito.
 - **Resolución de proyecto/persona por nombre**: un chat no tiene el `<select>`
   de proyecto que sí tiene Captura rápida — las tools de MCP reciben el NOMBRE
   (`proyecto`, `asignado_a`) y lo resuelven con un `ilike` parcial

@@ -73,6 +73,24 @@ export const NOTIFICATION_EVENTS = {
         ? `✅ You completed a pinged task: *${data.taskTitle}* · ${data.projectName}`
         : `✅ Completaste una tarea pingueada: *${data.taskTitle}* · ${data.projectName}`,
   },
+  // Bitácora — igual que Ping en tareas, opt-in por nota (nunca automático:
+  // la mayoría de las notas son solo constancia interna). Sin variante
+  // "self" — a diferencia de completar una tarea pingueada, quien escribe
+  // la nota no necesita una confirmación de que la escribió.
+  project_note_notify: {
+    label: "Nota de bitácora (equipo)",
+    build: (data: { projectName: string; authorName: string; body: string }, lang: NotificationLang) =>
+      lang === "en"
+        ? `📋 New log note in *${data.projectName}* by ${data.authorName}:\n${data.body}`
+        : `📋 Nueva nota en la bitácora de *${data.projectName}*, de ${data.authorName}:\n${data.body}`,
+  },
+  project_note_notify_targeted: {
+    label: "Nota de bitácora (dirigida)",
+    build: (data: { projectName: string; authorName: string; body: string }, lang: NotificationLang) =>
+      lang === "en"
+        ? `📋 ${data.authorName} tagged you on a log note in *${data.projectName}*:\n${data.body}`
+        : `📋 ${data.authorName} te avisó de una nota en la bitácora de *${data.projectName}*:\n${data.body}`,
+  },
   // The daily cycle check (app/api/cron/check-cycles, lib/actions/projects.ts
   // runDailyCycleCheck) fires each of these at most once per cycle — a
   // preventive heads-up ~4 days before end_date, and (only if the project

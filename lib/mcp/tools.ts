@@ -139,19 +139,23 @@ export function registerMcpTools(server: McpServer) {
     "agregar_nota_proyecto",
     {
       title: "Agregar nota a la bitácora de un proyecto",
-      description: "Agrega una entrada a la bitácora (log) de un proyecto — para dejar constancia de algo, no es una tarea.",
+      description: "Agrega una entrada a la bitácora (log) de un proyecto — para dejar constancia de algo, no es una tarea. Silenciosa por default; opcionalmente puede avisar por Telegram.",
       inputSchema: z.object({
         proyecto: z.string().min(1),
         nota: z.string().min(1),
+        avisar_a: z.string().optional().describe('"todos"/"equipo" para avisarle a todo el equipo del proyecto, o el nombre de una persona (match parcial) para avisarle solo a ella. Si se omite, la nota queda silenciosa (default).'),
       }),
     },
-    async ({ proyecto, nota }, ctx: ToolCtx) => {
+    async ({ proyecto, nota, avisar_a }, ctx: ToolCtx) => {
       const actingProfileId = requireProfileId(ctx)
       const projectId = await resolveProjectId(proyecto)
       if (!projectId) throw new Error(`No encontré el proyecto "${proyecto}".`)
 
-      await addLogEntry(projectId, nota, actingProfileId)
-      return textResult(`Nota agregada a la bitácora del proyecto.`)
+      const wantsTeam = !!avisar_a && ["todos", "equipo", "todo el equipo"].includes(avisar_a.trim().toLowerCase())
+      const recipientId = !wantsTeam && avisar_a ? await resolveAssigneeId(avisar_a) : null
+
+      await addLogEntry(projectId, nota, actingProfileId, { team: wantsTeam, recipientIds: recipientId ? [recipientId] : undefined })
+      return textResult(`Nota agregada a la bitácora del proyecto${wantsTeam ? " — se avisó a todo el equipo." : recipientId ? " — se avisó a la persona indicada." : "."}`)
     },
   )
 

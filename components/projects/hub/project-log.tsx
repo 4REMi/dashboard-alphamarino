@@ -1,9 +1,12 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import { Bell } from "lucide-react"
+import { cn } from "@/lib/utils"
 import type { ProjectLogEntry } from "@/lib/types"
 import { addLogEntry, deleteLogEntry } from "@/lib/actions/projects"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
+import { PingRecipientsPicker } from "@/components/tasks/ping-recipients-picker"
 
 interface Props {
   projectId: string
@@ -28,6 +31,11 @@ function timeAgo(iso: string): string {
 export function ProjectLog({ projectId, initialEntries, currentUserId, isAdmin, compact }: Props) {
   const [entries, setEntries] = useState<ProjectLogEntry[]>(initialEntries)
   const [body, setBody] = useState("")
+  // Avisar por Telegram es opt-in, apagado por default — la mayoría de
+  // las notas son solo constancia interna, no le importan a todo el
+  // equipo. Mismo componente/mecánica que Ping en tareas.
+  const [notify, setNotify] = useState(false)
+  const [notifyRecipientIds, setNotifyRecipientIds] = useState<string[]>([])
   const [isPending, startTransition] = useTransition()
 
   function handleAdd(e: React.FormEvent) {
@@ -43,8 +51,12 @@ export function ProjectLog({ projectId, initialEntries, currentUserId, isAdmin, 
     }
     setEntries((prev) => [optimistic, ...prev])
     setBody("")
+    const shouldNotify = notify
+    const recipients = [...notifyRecipientIds]
+    setNotify(false)
+    setNotifyRecipientIds([])
     startTransition(async () => {
-      await addLogEntry(projectId, captured)
+      await addLogEntry(projectId, captured, undefined, shouldNotify ? { team: recipients.length === 0, recipientIds: recipients.length > 0 ? recipients : undefined } : undefined)
     })
   }
 
@@ -55,24 +67,44 @@ export function ProjectLog({ projectId, initialEntries, currentUserId, isAdmin, 
       </div>
 
       {/* Input */}
-      <form onSubmit={handleAdd} className="px-4 py-3 border-b border-border flex gap-2 flex-shrink-0">
-        <AutoTextarea
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleAdd(e)
-          }}
-          placeholder={compact ? "Nueva nota… (Ctrl+Enter)" : "Escribe una actualización… (Ctrl+Enter)"}
-          rows={compact ? 2 : 2}
-          className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
-        />
-        <button
-          type="submit"
-          disabled={isPending || !body.trim()}
-          className="self-end px-3 py-2 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors flex-shrink-0"
-        >
-          +
-        </button>
+      <form onSubmit={handleAdd} className="px-4 py-3 border-b border-border flex-shrink-0 space-y-2">
+        <div className="flex gap-2">
+          <AutoTextarea
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleAdd(e)
+            }}
+            placeholder={compact ? "Nueva nota… (Ctrl+Enter)" : "Escribe una actualización… (Ctrl+Enter)"}
+            rows={compact ? 2 : 2}
+            className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+          />
+          <button
+            type="button"
+            onClick={() => setNotify((v) => !v)}
+            title={notify ? "Avisar por Telegram" : "Nota silenciosa (no avisa a nadie)"}
+            className={cn(
+              "self-end p-2 rounded-md border transition-colors flex-shrink-0",
+              notify ? "border-sky-400 bg-sky-50 text-sky-600" : "border-input bg-background text-muted-foreground hover:bg-muted/60"
+            )}
+          >
+            <Bell className={cn("w-4 h-4", notify && "fill-current")} />
+          </button>
+          <button
+            type="submit"
+            disabled={isPending || !body.trim()}
+            className="self-end px-3 py-2 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors flex-shrink-0"
+          >
+            +
+          </button>
+        </div>
+        {notify && (
+          <PingRecipientsPicker
+            projectId={projectId}
+            selectedIds={notifyRecipientIds}
+            onChange={setNotifyRecipientIds}
+          />
+        )}
       </form>
 
       {/* Entries */}

@@ -64,6 +64,12 @@ navegar a cada proyecto uno por uno.
   enterarse. No crea ninguna dependencia entre tareas, solo afina a quién le llega el
   aviso. Quien completa la tarea siempre recibe su propia confirmación
   (`task_pinged_completed_self`) sin importar si estaba en la lista.
+- **El mismo patrón, reusado en la bitácora de proyecto**: avisar por Telegram de
+  una nota de bitácora (`project_log_entries.notify_team`/`notify_recipient_ids`)
+  es opt-in con la misma mecánica — "Todo el equipo" o gente específica, con el
+  mismo `PingRecipientsPicker`. Sin la variante "self" (quien escribe la nota no
+  necesita confirmación de su propia acción). Ver `docs/agent-guides/mcp-server.md`
+  para el detalle completo (incluye por qué Telegram NO lo tiene).
 - **Tres caminos a "Hecho", un solo disparador de Ping**: una tarea puede llegar a
   Done por cambio de estado explícito, por completar su checklist (auto-completado),
   o por voz ("tarea completada" en Telegram). Los tres pasan por `finalizeTaskDone`

@@ -1172,20 +1172,65 @@ export async function getProjectLog(projectId: string) {
   }
 }
 
+// Avisar por Telegram de una nota es opt-in, nunca automático — la
+// mayoría de las notas son solo constancia interna y no le importan a
+// todo el equipo. Mismo patrón que notifyPingedTaskCompleted (tasks.ts):
+// recipientIds explícitos ganan sobre notifyTeam; sin ninguno de los dos,
+// no se llama esta función en absoluto. Sin variante "self" a propósito
+// — quien escribe la nota no necesita confirmación de su propia acción.
+async function notifyProjectNote(
+  admin: ReturnType<typeof createAdminClient>,
+  projectId: string,
+  authorId: string,
+  body: string,
+  notifyTeam: boolean,
+  recipientIds: string[] | null,
+) {
+  const targeted = !!recipientIds && recipientIds.length > 0
+  const [{ data: project }, { data: author }, { data: members }] = await Promise.all([
+    admin.from("projects").select("name").eq("id", projectId).single(),
+    admin.from("profiles").select("full_name").eq("id", authorId).single(),
+    targeted
+      ? Promise.resolve({ data: recipientIds!.map((id) => ({ profile_id: id })) })
+      : admin.from("project_members").select("profile_id").eq("project_id", projectId),
+  ])
+  if (!project || !members || members.length === 0) return
+
+  const projectName = project.name
+  const authorName = author?.full_name ?? "Alguien"
+  const recipients = new Set(members.map((m) => m.profile_id))
+  recipients.delete(authorId) // el autor no necesita que le avisen de su propia nota
+
+  await Promise.all(
+    Array.from(recipients).map((profileId) =>
+      notify(profileId, targeted ? "project_note_notify_targeted" : "project_note_notify", { projectName, authorName, body })
+    )
+  )
+}
+
 // actingProfileId is set only by the MCP server (no cookies/session
 // there) — same pattern as tasks.ts's requireTaskPermission. This action
 // never had a role-based permission check beyond "logged in", so the MCP
 // path only needs to confirm the profile actually exists.
-export async function addLogEntry(projectId: string, body: string, actingProfileId?: string) {
+export async function addLogEntry(
+  projectId: string,
+  body: string,
+  actingProfileId?: string,
+  notifyOptions?: { team?: boolean; recipientIds?: string[] },
+) {
+  const notifyTeam = notifyOptions?.team ?? false
+  const recipientIds = notifyOptions?.recipientIds?.length ? notifyOptions.recipientIds : null
+
   if (actingProfileId) {
     const admin = createAdminClient()
     const { data: profile } = await admin.from("profiles").select("id").eq("id", actingProfileId).single()
     if (!profile) throw new Error("Not authenticated")
     const { error } = await admin
       .from("project_log_entries")
-      .insert({ project_id: projectId, author_id: profile.id, body })
+      .insert({ project_id: projectId, author_id: profile.id, body, notify_team: notifyTeam, notify_recipient_ids: recipientIds })
     if (error) throw error
     revalidatePath(`/projects/${projectId}`)
+    if (notifyTeam || recipientIds) await notifyProjectNote(admin, projectId, profile.id, body, notifyTeam, recipientIds)
     return
   }
 
@@ -1195,10 +1240,11 @@ export async function addLogEntry(projectId: string, body: string, actingProfile
 
   const { error } = await supabase
     .from("project_log_entries")
-    .insert({ project_id: projectId, author_id: user.id, body })
+    .insert({ project_id: projectId, author_id: user.id, body, notify_team: notifyTeam, notify_recipient_ids: recipientIds })
 
   if (error) throw error
   revalidatePath(`/projects/${projectId}`)
+  if (notifyTeam || recipientIds) await notifyProjectNote(createAdminClient(), projectId, user.id, body, notifyTeam, recipientIds)
 }
 
 export async function deleteLogEntry(entryId: string, projectId: string) {
