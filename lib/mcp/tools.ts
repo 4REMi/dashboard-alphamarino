@@ -3,6 +3,8 @@ import type { McpServer, AuthInfo } from "@modelcontextprotocol/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createTask, updateTaskStatus } from "@/lib/actions/tasks"
 import { addLogEntry } from "@/lib/actions/projects"
+import { createServiceOffer, archiveServiceOffer } from "@/lib/actions/services"
+import { attachServiceOfferToProject } from "@/lib/actions/service-deliverables"
 
 // Minimal shape of what registerTool's handler actually receives —
 // typed loosely on purpose (see docs/agent-guides/mcp-server.md) instead
@@ -41,6 +43,14 @@ async function resolveAssigneeId(assigneeName: string | undefined): Promise<stri
   if (!data || data.length === 0) throw new Error(`No encontré a nadie en el equipo que coincida con "${assigneeName}".`)
   if (data.length > 1) throw new Error(`"${assigneeName}" coincide con varias personas: ${data.map((p) => p.full_name).join(", ")}. Sé más específico.`)
   return data[0].id
+}
+
+async function resolveOfferId(offerName: string): Promise<{ id: string; status: string }> {
+  const admin = createAdminClient()
+  const { data } = await admin.from("service_offers").select("id, name, status").ilike("name", `%${offerName.trim()}%`).limit(6)
+  if (!data || data.length === 0) throw new Error(`No encontré ninguna oferta que coincida con "${offerName}".`)
+  if (data.length > 1) throw new Error(`"${offerName}" coincide con varias ofertas: ${data.map((o) => o.name).join(", ")}. Sé más específico.`)
+  return data[0]
 }
 
 function textResult(text: string) {
@@ -380,6 +390,147 @@ export function registerMcpTools(server: McpServer) {
         `Tareas abiertas: ${count ?? 0}`,
       ].filter(Boolean)
       return textResult(lines.join("\n"))
+    },
+  )
+
+  // --- Ofertas (Servicios) — a diferencia de tareas/proyectos, crear/
+  // editar/archivar ofertas es admin/subadmin-only. Antes eso SOLO se
+  // enforced vía RLS (nunca en código de la app) — createServiceOffer/
+  // archiveServiceOffer/attachServiceOfferToProject ahora chequean el rol
+  // explícito (ver requireOffersPermission en services.ts) antes de
+  // escribir, para no heredar por accidente un bypass de permisos al
+  // reusar el cliente admin desde aquí.
+
+  server.registerTool(
+    "listar_ofertas",
+    {
+      title: "Listar ofertas de servicio",
+      description: "Lista ofertas del catálogo de Servicios. Sin query, solo las activas (no archivadas).",
+      inputSchema: z.object({ query: z.string().optional() }),
+    },
+    async ({ query }) => {
+      const admin = createAdminClient()
+      let q = admin.from("service_offers").select("name, category, price, currency, status")
+      q = query?.trim() ? q.ilike("name", `%${query.trim()}%`) : q.eq("status", "active")
+      const { data } = await q.order("category").order("name").limit(30)
+      if (!data || data.length === 0) return textResult(query ? `Ninguna oferta coincide con "${query}".` : "No hay ofertas activas.")
+      const lines = data.map((o) => `- [${o.category}] ${o.name}${o.price != null ? ` — $${o.price} ${o.currency}` : " — sin precio fijo"}${o.status === "archived" ? " (archivada)" : ""}`)
+      const suffix = data.length === 30 ? "\n(mostrando las primeras 30 — sé más específico si buscabas otra)" : ""
+      return textResult(`${query ? "Ofertas que coinciden" : "Ofertas activas"}:\n${lines.join("\n")}${suffix}`)
+    },
+  )
+
+  server.registerTool(
+    "detalle_oferta",
+    {
+      title: "Detalle de una oferta",
+      description: "Descripción completa, deliverables y precio de una oferta del catálogo.",
+      inputSchema: z.object({ nombre: z.string().min(1) }),
+    },
+    async ({ nombre }) => {
+      const admin = createAdminClient()
+      const { id } = await resolveOfferId(nombre)
+      const { data: offer } = await admin.from("service_offers").select("name, category, description, price, currency, price_note, status, deliverables").eq("id", id).single()
+      if (!offer) throw new Error(`No encontré la oferta "${nombre}".`)
+
+      const deliverables = (offer.deliverables ?? []) as { text: string; cadence: string; quantity: number | null }[]
+      const lines = [
+        `${offer.name} [${offer.category}]${offer.status === "archived" ? " (archivada)" : ""}`,
+        offer.description ? offer.description : null,
+        offer.price != null ? `Precio: $${offer.price} ${offer.currency}${offer.price_note ? ` (${offer.price_note})` : ""}` : "Sin precio fijo.",
+        deliverables.length > 0
+          ? `Deliverables:\n${deliverables.map((d) => `  - ${d.text} (${d.cadence}${d.quantity ? `, x${d.quantity}` : ""})`).join("\n")}`
+          : "Sin deliverables estructurados.",
+      ].filter(Boolean)
+      return textResult(lines.join("\n"))
+    },
+  )
+
+  server.registerTool(
+    "ofertas_de_proyecto",
+    {
+      title: "Ofertas asignadas a un proyecto",
+      description: "Qué ofertas de Servicios tiene contratadas un proyecto.",
+      inputSchema: z.object({ proyecto: z.string().min(1) }),
+    },
+    async ({ proyecto }) => {
+      const admin = createAdminClient()
+      const projectId = await resolveProjectId(proyecto)
+      if (!projectId) throw new Error(`No encontré el proyecto "${proyecto}".`)
+
+      const { data } = await admin.from("project_service_offers").select("offer:service_offers(name, category)").eq("project_id", projectId)
+      if (!data || data.length === 0) return textResult("Este proyecto no tiene ofertas de Servicios asignadas.")
+      const lines = data.map((r) => {
+        const o = r.offer as unknown as { name: string; category: string } | null
+        return o ? `- [${o.category}] ${o.name}` : null
+      }).filter(Boolean)
+      return textResult(`Ofertas asignadas:\n${lines.join("\n")}`)
+    },
+  )
+
+  server.registerTool(
+    "crear_oferta",
+    {
+      title: "Crear oferta de servicio",
+      description: "Crea una oferta nueva en el catálogo de Servicios. Solo admin/subadmin.",
+      inputSchema: z.object({
+        nombre: z.string().min(1),
+        categoria: z.string().min(1),
+        descripcion: z.string().optional(),
+        precio: z.number().optional(),
+        moneda: z.enum(["MXN", "USD"]).optional(),
+      }),
+    },
+    async ({ nombre, categoria, descripcion, precio, moneda }, ctx: ToolCtx) => {
+      const actingProfileId = requireProfileId(ctx)
+      const fd = new FormData()
+      fd.set("name", nombre)
+      fd.set("category", categoria)
+      if (descripcion) fd.set("description", descripcion)
+      if (precio != null) fd.set("price", String(precio))
+      fd.set("currency", moneda ?? "MXN")
+      await createServiceOffer(fd, actingProfileId)
+      return textResult(`Oferta "${nombre}" creada en la categoría "${categoria}".`)
+    },
+  )
+
+  server.registerTool(
+    "archivar_oferta",
+    {
+      title: "Archivar/reactivar una oferta",
+      description: "Archiva (o reactiva) una oferta existente del catálogo. Solo admin/subadmin.",
+      inputSchema: z.object({
+        nombre: z.string().min(1),
+        archivar: z.boolean().default(true).describe("true para archivar, false para reactivar."),
+      }),
+    },
+    async ({ nombre, archivar }, ctx: ToolCtx) => {
+      const actingProfileId = requireProfileId(ctx)
+      const { id, status } = await resolveOfferId(nombre)
+      if (archivar && status === "archived") return textResult(`"${nombre}" ya estaba archivada.`)
+      if (!archivar && status === "active") return textResult(`"${nombre}" ya estaba activa.`)
+      await archiveServiceOffer(id, archivar, actingProfileId)
+      return textResult(`Oferta "${nombre}" ${archivar ? "archivada" : "reactivada"}.`)
+    },
+  )
+
+  server.registerTool(
+    "asignar_oferta_a_proyecto",
+    {
+      title: "Asignar una oferta a un proyecto",
+      description: "Contrata/asigna una oferta del catálogo de Servicios a un proyecto. Solo admin/subadmin.",
+      inputSchema: z.object({
+        proyecto: z.string().min(1),
+        oferta: z.string().min(1),
+      }),
+    },
+    async ({ proyecto, oferta }, ctx: ToolCtx) => {
+      const actingProfileId = requireProfileId(ctx)
+      const projectId = await resolveProjectId(proyecto)
+      if (!projectId) throw new Error(`No encontré el proyecto "${proyecto}".`)
+      const { id: offerId } = await resolveOfferId(oferta)
+      await attachServiceOfferToProject(projectId, offerId, actingProfileId)
+      return textResult(`Oferta "${oferta}" asignada al proyecto.`)
     },
   )
 }

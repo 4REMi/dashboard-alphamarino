@@ -23,7 +23,15 @@ import type { ServiceOffer, ProjectServiceOffer, ProjectDeliverablePeriod, Proje
 //    (defaults to true for everyone, but is a real per-person override an
 //    admin can turn off — see lib/permissions.ts).
 
-async function requireProfile() {
+// actingProfileId is set only by the MCP server (no cookies/session there)
+// — same pattern as tasks.ts/projects.ts/services.ts.
+async function requireProfile(actingProfileId?: string) {
+  if (actingProfileId) {
+    const admin = createAdminClient()
+    const { data: profile } = await admin.from("profiles").select("id, role, permissions").eq("id", actingProfileId).single()
+    if (!profile) throw new Error("Profile not found")
+    return profile
+  }
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error("Not authenticated")
@@ -71,8 +79,8 @@ export async function getProjectServiceOffers(projectId: string): Promise<Projec
   return (data ?? []) as ProjectServiceOffer[]
 }
 
-export async function attachServiceOfferToProject(projectId: string, offerId: string): Promise<void> {
-  const profile = await requireProfile()
+export async function attachServiceOfferToProject(projectId: string, offerId: string, actingProfileId?: string): Promise<void> {
+  const profile = await requireProfile(actingProfileId)
   if (!isAdminOrSubadmin(profile.role)) throw new Error("Permission denied")
 
   const admin = createAdminClient()

@@ -3,9 +3,39 @@
 import { revalidatePath } from "next/cache"
 import Anthropic from "@anthropic-ai/sdk"
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import type { ServiceOffer, ServiceAddon, Currency, ServiceDeliverable, DeliverableCadence } from "@/lib/types"
 
 const CADENCES: DeliverableCadence[] = ["once", "monthly", "quarterly", "biannual"]
+
+// Crear/editar/archivar una oferta es admin/subadmin-only — hasta ahora eso
+// SOLO se enforced vía RLS (`is_admin_or_subadmin()`, migración 057), nunca
+// en código de la app. Eso es la causa más probable de un bug real
+// reportado ("guardar una oferta existente truena con PGRST116, 0 filas"):
+// si el chequeo de rol de RLS falla por cualquier razón momentánea (sesión/
+// perfil cacheado raro), el UPDATE ... RETURNING no toca ninguna fila y
+// `.single()` convierte ese "0 filas" en ese error, en vez de un mensaje
+// claro de "no tienes permiso". Ahora el permiso se checa explícito aquí
+// (igual patrón que requireProfile/isAdminOrSubadmin en
+// service-deliverables.ts) y la escritura real siempre pasa por el admin
+// client — RLS deja de ser la única línea de defensa.
+//
+// actingProfileId es el mismo parámetro opcional que ya usan tasks.ts/
+// projects.ts para el servidor MCP (una llamada de ahí no tiene sesión).
+async function requireOffersPermission(actingProfileId?: string) {
+  const admin = createAdminClient()
+  let profileId = actingProfileId
+  if (!profileId) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error("Not authenticated")
+    profileId = user.id
+  }
+  const { data: profile } = await admin.from("profiles").select("id, role").eq("id", profileId).single()
+  if (!profile) throw new Error("Not authenticated")
+  if (profile.role !== "admin" && profile.role !== "subadmin") throw new Error("Permission denied")
+  return profile
+}
 
 function revalidateServices() {
   revalidatePath("/services")
@@ -207,14 +237,14 @@ export async function importServiceOffers(json: string): Promise<{ offers: Servi
   return { offers: created, errors }
 }
 
-export async function createServiceOffer(formData: FormData): Promise<ServiceOffer> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+export async function createServiceOffer(formData: FormData, actingProfileId?: string): Promise<ServiceOffer> {
+  const profile = await requireOffersPermission(actingProfileId)
+  const admin = createAdminClient()
 
   const basedOnId = (formData.get("based_on_offer_id") as string) || null
   const projectTypeId = (formData.get("default_project_type_id") as string) || null
 
-  const { data, error } = await supabase
+  const { data, error } = await admin
     .from("service_offers")
     .insert({
       category:                formData.get("category") as string,
@@ -227,7 +257,7 @@ export async function createServiceOffer(formData: FormData): Promise<ServiceOff
       price:                   parsePrice(formData),
       currency:                parseCurrency(formData),
       price_note:              (formData.get("price_note") as string) || null,
-      created_by:              user?.id ?? null,
+      created_by:              profile.id,
     })
     .select("*, based_on_offer:service_offers!based_on_offer_id(id, name), default_project_type:project_types(id, name, color, icon)")
     .single()
@@ -236,12 +266,14 @@ export async function createServiceOffer(formData: FormData): Promise<ServiceOff
   return { ...data, addons: [] } as ServiceOffer
 }
 
-export async function updateServiceOffer(id: string, formData: FormData): Promise<ServiceOffer> {
-  const supabase = await createClient()
+export async function updateServiceOffer(id: string, formData: FormData, actingProfileId?: string): Promise<ServiceOffer> {
+  await requireOffersPermission(actingProfileId)
+  const admin = createAdminClient()
+
   const basedOnId = (formData.get("based_on_offer_id") as string) || null
   const projectTypeId = (formData.get("default_project_type_id") as string) || null
 
-  const { data, error } = await supabase
+  const { data, error } = await admin
     .from("service_offers")
     .update({
       category:                formData.get("category") as string,
@@ -263,9 +295,10 @@ export async function updateServiceOffer(id: string, formData: FormData): Promis
   return data as ServiceOffer
 }
 
-export async function archiveServiceOffer(id: string, archived: boolean): Promise<void> {
-  const supabase = await createClient()
-  const { error } = await supabase
+export async function archiveServiceOffer(id: string, archived: boolean, actingProfileId?: string): Promise<void> {
+  await requireOffersPermission(actingProfileId)
+  const admin = createAdminClient()
+  const { error } = await admin
     .from("service_offers")
     .update({ status: archived ? "archived" : "active" })
     .eq("id", id)

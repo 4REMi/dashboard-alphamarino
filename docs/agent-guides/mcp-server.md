@@ -88,15 +88,31 @@ inmediato, cualquier cliente que la esté usando deja de poder llamar tools.
 - **Ambigüedad en la resolución por nombre nunca se adivina** — 0 o 2+ matches
   de proyecto/persona/tarea siempre regresan un error de texto listando las
   opciones, para que el chat le pida a la persona ser más específica.
-- **Empieza chico a propósito**: hoy 3 tools de escritura (`crear_tarea`,
-  `completar_tarea`, `agregar_nota_proyecto` — el mismo par de acciones que ya
-  tiene Captura rápida, más completar tarea) y 6 de lectura (`listar_proyectos`,
-  `estado_proyecto`, `miembros_proyecto`, `resumen_tareas`,
-  `bitacora_proyecto`, `mis_tareas_pendientes`, `buscar_empleado`). Ninguna de
-  estas de lectura tenía ya un chequeo de permiso por rol en su código original
-  (mismo criterio relajado que `addLogEntry` — "logueado" basta) — heredan eso
-  tal cual, no se les inventó una restricción nueva. Servicios/Finanzas/Ad
-  Nodes/etc. se agregan cuando se pidan, no de antemano.
+- **Empieza chico a propósito**: hoy 6 tools de escritura y 9 de lectura.
+  Tareas/proyectos (`crear_tarea`, `completar_tarea`, `agregar_nota_proyecto`,
+  `listar_proyectos`, `estado_proyecto`, `miembros_proyecto`, `resumen_tareas`,
+  `bitacora_proyecto`, `mis_tareas_pendientes`, `buscar_empleado`) heredan el
+  mismo criterio de permiso que ya tenía cada acción original — ninguna de las
+  de lectura tenía un chequeo de rol antes de esto (mismo criterio relajado que
+  `addLogEntry` — "logueado" basta). **Ofertas de Servicios es distinto**:
+  `crear_oferta`/`archivar_oferta`/`asignar_oferta_a_proyecto` son
+  admin/subadmin-only — ese permiso vivía SOLO en RLS antes de esto (nunca en
+  código de la app), así que se le agregó un chequeo explícito
+  (`requireOffersPermission`, `lib/actions/services.ts`) para no heredar por
+  accidente un bypass al usar el cliente admin desde MCP. `listar_ofertas`/
+  `detalle_oferta`/`ofertas_de_proyecto` son de lectura, sin restricción
+  (mismo catálogo que ya es visible para cualquiera en `/services`).
+  Finanzas/Ad Nodes/etc. se agregan cuando se pidan, no de antemano.
+- **De regalo, arregló un bug real ya reportado**: guardar una oferta
+  EXISTENTE (`updateServiceOffer`) a veces tronaba con un error crudo de
+  Postgres (`PGRST116`, "0 filas"). Causa real: esa función dependía
+  ÚNICAMENTE de RLS (`is_admin_or_subadmin()`) para el permiso, y corría el
+  `UPDATE` con el cliente de sesión normal — si esa evaluación de RLS fallaba
+  por cualquier razón momentánea, el `UPDATE ... RETURNING` no tocaba ninguna
+  fila y `.single()` convertía ese "0 filas" en ese error ilegible en vez de
+  un "no tienes permiso" claro. Ahora el permiso se checa explícito en código
+  (`requireOffersPermission`) y la escritura real siempre pasa por el admin
+  client — RLS deja de ser la única línea de defensa para esta tabla.
 - **Reglas de fallback de las tools de lectura** (aplican a todas, ver el
   código en `lib/mcp/tools.ts` para el detalle exacto de cada una):
   1. Un resultado vacío siempre explica POR QUÉ está vacío (nunca solo "[]" o
@@ -129,9 +145,14 @@ no tiene `manage_tasks`, `crear_tarea`/`completar_tarea` le van a fallar con
 - `lib/actions/mcp-keys.ts` — CRUD de keys (generar/listar/revocar), sesión normal.
 - `lib/mcp/auth.ts` — `verifyMcpToken`, el verificador de `withMcpAuth`.
 - `lib/mcp/tools.ts` — `registerMcpTools`, las tools + resolución de
-  proyecto/persona por nombre.
+  proyecto/persona/oferta por nombre.
 - `app/api/mcp/route.ts` — el endpoint (`createMcpHandler` + `withMcpAuth` de
   `mcp-handler`, sobre `@modelcontextprotocol/server`).
+- `lib/actions/services.ts` (`requireOffersPermission`, `createServiceOffer`,
+  `updateServiceOffer`, `archiveServiceOffer`) y
+  `lib/actions/service-deliverables.ts` (`requireProfile`,
+  `attachServiceOfferToProject`) — el permiso admin/subadmin explícito +
+  `actingProfileId` opcional que ganaron estas funciones reales.
 - `components/employees/mcp-api-keys.tsx` — UI para generar/revocar, montada en
   `app/(dashboard)/employees/[id]/page.tsx` (sección self-only, junto a Telegram).
 - `lib/actions/tasks.ts` (`requireTaskPermission`, `createTask`,
