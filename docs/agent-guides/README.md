@@ -84,5 +84,6 @@ grep-ear todo el repo desde cero.
 | [ciclos-paid-media.md](./ciclos-paid-media.md) | Proyectos — Ciclo Activo (Paid Media) | 2026-09-15 |
 | [ad-lab-crear-desde-cero.md](./ad-lab-crear-desde-cero.md) | Ad Lab — Crear desde cero (`/ad-lab/scratch`) | 2026-09-15 |
 | [ad-lab-ad-nodes.md](./ad-lab-ad-nodes.md) | Ad Lab — Ad Nodes (`/ad-lab/nodes`) | 2026-09-15 |
+| [mcp-server.md](./mcp-server.md) | Servidor MCP (`/api/mcp`) — acciones de IA con permisos reales | 2026-09-18 |
 
 Actualiza esta tabla cada vez que agregues un archivo nuevo.

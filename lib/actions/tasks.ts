@@ -9,7 +9,33 @@ import type { TaskStatus, TaskChecklistItem, PhaseStatus } from "@/lib/types"
 
 // projectId is null for standalone tasks (not tied to any project) — the
 // project-existence check only applies when a project is actually claimed.
-async function requireTaskPermission(projectId: string | null) {
+//
+// actingProfileId is set only by the MCP server (app/api/mcp/route.ts) —
+// an MCP request carries no browser session/cookies, so there's no
+// supabase.auth.getUser() to call. The MCP layer resolves which profile
+// the caller's personal API key belongs to and passes that id straight
+// through, and this function checks the SAME `manage_tasks` permission
+// against that profile (via the admin client, since there's no session to
+// run it through) instead of skipping the check entirely — unlike the
+// Telegram bot's own path, which bypasses permissions because it wasn't
+// built with an per-person identity like this one.
+async function requireTaskPermission(projectId: string | null, actingProfileId?: string) {
+  if (actingProfileId) {
+    const admin = createAdminClient()
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("id, role, permissions")
+      .eq("id", actingProfileId)
+      .single()
+    if (!profile) throw new Error("Not authenticated")
+    if (!can(profile, "manage_tasks")) throw new Error("Permission denied")
+    if (projectId) {
+      const { data: project } = await admin.from("projects").select("id").eq("id", projectId).single()
+      if (!project) throw new Error("Project not found or access denied")
+    }
+    return { id: profile.id }
+  }
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error("Not authenticated")
@@ -90,9 +116,9 @@ function parsePingRecipientIds(formData: FormData): string[] | null {
   }
 }
 
-export async function createTask(formData: FormData) {
+export async function createTask(formData: FormData, actingProfileId?: string) {
   const projectId = (formData.get("project_id") as string) || null
-  await requireTaskPermission(projectId)
+  await requireTaskPermission(projectId, actingProfileId)
 
   const title = formData.get("title") as string
   const assigneeId = (formData.get("assignee_id") as string) || null
@@ -286,8 +312,8 @@ async function finalizeTaskDone(
   }
 }
 
-export async function updateTaskStatus(id: string, status: TaskStatus, projectId: string | null) {
-  const user = await requireTaskPermission(projectId)
+export async function updateTaskStatus(id: string, status: TaskStatus, projectId: string | null, actingProfileId?: string) {
+  const user = await requireTaskPermission(projectId, actingProfileId)
 
   const admin = createAdminClient()
 

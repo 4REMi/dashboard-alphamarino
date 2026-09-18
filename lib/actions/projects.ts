@@ -1172,7 +1172,23 @@ export async function getProjectLog(projectId: string) {
   }
 }
 
-export async function addLogEntry(projectId: string, body: string) {
+// actingProfileId is set only by the MCP server (no cookies/session
+// there) — same pattern as tasks.ts's requireTaskPermission. This action
+// never had a role-based permission check beyond "logged in", so the MCP
+// path only needs to confirm the profile actually exists.
+export async function addLogEntry(projectId: string, body: string, actingProfileId?: string) {
+  if (actingProfileId) {
+    const admin = createAdminClient()
+    const { data: profile } = await admin.from("profiles").select("id").eq("id", actingProfileId).single()
+    if (!profile) throw new Error("Not authenticated")
+    const { error } = await admin
+      .from("project_log_entries")
+      .insert({ project_id: projectId, author_id: profile.id, body })
+    if (error) throw error
+    revalidatePath(`/projects/${projectId}`)
+    return
+  }
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error("Not authenticated")

@@ -11,6 +11,7 @@ import { ArrowLeft, Mail, Phone, Briefcase } from "lucide-react"
 import { EmployeeEditActions } from "@/components/employees/employee-edit-actions"
 import { EmployeePermissions } from "@/components/employees/employee-permissions"
 import { TelegramLink } from "@/components/employees/telegram-link"
+import { McpApiKeys } from "@/components/employees/mcp-api-keys"
 import type { Profile, Position } from "@/lib/types"
 
 export default async function EmployeeDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -106,6 +107,19 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
               linkedAt={profile.telegram_linked_at}
               notificationPreferences={profile.notification_preferences}
             />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* MCP — self only, same reason as Telegram: es una key personal,
+          nadie más la puede generar por ti. */}
+      {user!.id === profile.id && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">API keys de IA (MCP)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <McpApiKeys profileId={profile.id} />
           </CardContent>
         </Card>
       )}
