@@ -5,7 +5,7 @@ import { Loader2, Play, Pencil, Copy, Trash2, Download } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { AdNodeData, AdNodeConfig, AdNodeRunStatus, AdNodeType, AdNodeRunOutput } from "@/lib/types"
 import { splitPartColor } from "@/components/ad-lab/split-colors"
-import { LLM_MODELS, IMAGE_MODELS, VIDEO_MODELS } from "@/lib/actions/ad-nodes/providers/models"
+import { LLM_MODELS, IMAGE_MODELS, VIDEO_MODELS, VIDEO_ASPECT_RATIOS } from "@/lib/actions/ad-nodes/providers/models"
 import { FALLBACK_ASPECT_RATIOS } from "@/components/ad-lab/node-config-panel"
 
 // Muestra qué modelo está eligiendo un nodo sin tener que abrirlo — busca
@@ -181,11 +181,12 @@ export function AdNodeComponent({ data, selected }: NodeProps & { data: AdNodeRe
 
       {/* Controles rápidos directo en la tarjeta — modelo y aspect ratio
           para Generate Image/Video, sin tener que abrir el panel. Aspect
-          ratio usa el mismo fallback estático que el panel (ver
-          node-config-panel.tsx — ningún modelo de nuestro catálogo publica
-          su lista real de ratios vía APIMart todavía). "nodrag" en los
-          selects, igual que los botones — si no, el primer clic solo
-          selecciona el nodo en vez de abrir el dropdown. */}
+          ratio para video usa la lista real confirmada por modelo
+          (VIDEO_ASPECT_RATIOS, sacada de docs.apimart.ai/api-reference —
+          ver providers/models.ts); para imagen sigue el fallback estático
+          del panel (ningún modelo de imagen publica esto todavía).
+          "nodrag" en los selects, igual que los botones — si no, el primer
+          clic solo selecciona el nodo en vez de abrir el dropdown. */}
       {isGeneration && (
         <div className="nodrag px-3.5 pt-3 space-y-1.5" onClick={(e) => e.stopPropagation()}>
           <select
@@ -201,7 +202,9 @@ export function AdNodeComponent({ data, selected }: NodeProps & { data: AdNodeRe
             onChange={(e) => data.onUpdateConfig({ aspectRatio: e.target.value })}
             className="w-full rounded-lg border border-input bg-white px-2.5 py-1.5 text-xs font-medium"
           >
-            {FALLBACK_ASPECT_RATIOS.map((r) => <option key={r} value={r}>{r}</option>)}
+            {(data.type === "generate_video" ? VIDEO_ASPECT_RATIOS[(data.config.model ?? "").replace(/^apimart:/, "")] : undefined)
+              ?.map((r) => <option key={r} value={r}>{r}</option>)
+              ?? FALLBACK_ASPECT_RATIOS.map((r) => <option key={r} value={r}>{r}</option>)}
           </select>
         </div>
       )}

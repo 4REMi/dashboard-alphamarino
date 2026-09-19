@@ -3,7 +3,7 @@
 import { memo, useEffect, useRef, useState } from "react"
 import { X, Upload, Loader2, DollarSign } from "lucide-react"
 import type { AdNodeData, AdNodeConfig, AdNodeRun } from "@/lib/types"
-import { LLM_MODELS, IMAGE_MODELS, VIDEO_MODELS } from "@/lib/actions/ad-nodes/providers/models"
+import { LLM_MODELS, IMAGE_MODELS, VIDEO_MODELS, VIDEO_ASPECT_RATIOS } from "@/lib/actions/ad-nodes/providers/models"
 import { uploadNodeImage } from "@/lib/actions/ad-nodes/workflows"
 import { estimateImageCostUsd, estimateVideoCostUsd, getVideoModelResolutionOptions, getModelAspectRatioOptions } from "@/lib/actions/ad-nodes/providers/pricing"
 import { SPLIT_PART_COLORS } from "@/components/ad-lab/split-colors"
@@ -81,17 +81,28 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({ workflowId, data,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.type, config.model])
 
-  // Aspect ratios reales del modelo elegido, cuando APIMart los publica —
-  // misma idea que la resolución, pero (a diferencia de la resolución)
-  // ningún modelo de nuestro catálogo los expone hoy vía el endpoint de
-  // precios, así que esto normalmente cae al fallback estático de arriba.
-  // Se deja el mecanismo completo (incluyendo el auto-corrección del valor
-  // elegido) para cuando algún modelo sí los publique.
+  // Aspect ratios reales del modelo elegido. Para video, se sacaron a mano
+  // de docs.apimart.ai/api-reference/videos/{model}/generation (documentación
+  // por endpoint, confirmada — VIDEO_ASPECT_RATIOS en providers/models.ts) y
+  // NO necesitan red, están hardcodeadas. Ningún modelo de imagen expone
+  // esto todavía (ni por ahí ni por el endpoint de precios,
+  // getModelAspectRatioOptions), así que imagen sigue cayendo al fallback
+  // genérico — el mismo mecanismo con auto-corrección se deja listo para
+  // cuando algún modelo de imagen sí lo publique.
   useEffect(() => {
     const isGen = data.type === "generate_image" || data.type === "generate_video"
     if (!isGen || !config.model?.startsWith("apimart:")) { setAspectRatioOptions(FALLBACK_ASPECT_RATIOS); return }
+    const bareModel = config.model.replace("apimart:", "")
+
+    if (data.type === "generate_video" && VIDEO_ASPECT_RATIOS[bareModel]) {
+      const finalOptions = VIDEO_ASPECT_RATIOS[bareModel]
+      setAspectRatioOptions(finalOptions)
+      if (!finalOptions.includes(config.aspectRatio ?? "1:1")) set("aspectRatio", finalOptions[0])
+      return
+    }
+
     let cancelled = false
-    getModelAspectRatioOptions(config.model.replace("apimart:", "")).then((options) => {
+    getModelAspectRatioOptions(bareModel).then((options) => {
       if (cancelled) return
       const finalOptions = options.length > 0 ? options : FALLBACK_ASPECT_RATIOS
       setAspectRatioOptions(finalOptions)

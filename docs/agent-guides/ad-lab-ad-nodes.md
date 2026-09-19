@@ -54,19 +54,26 @@ fijos, no un catálogo abierto.
   catálogo infinito y cambiante. Hoy: **LLM** — Claude Sonnet (directo vía
   Anthropic, sin margen de APIMart) o GPT-5 (APIMart); **Generate Image** —
   Nano Banana Pro, Nano Banana 2, GPT Image 2, Flux 2 Pro (los 4 vía APIMart);
-  **Generate Video** — Veo 3.1 Fast / 3.1 Quality, Seedance 2.5 / 2.0 / 2.0 Fast
-  / 1.5 Pro, Kling Video O1, Gemini Omni 1.1 Flash (todos vía APIMart). Agregar
-  un modelo nuevo es solo una entrada más en ese archivo — nada más necesita
-  cambiar estructuralmente.
-- **Ojo con el endpoint de precios de APIMart al agregar un modelo**: NO valida
-  que el modelo exista — un nombre inventado también regresa `success: true` con
-  una plantilla genérica vacía (sin `resolution_prices`/`billing_type`). La única
-  forma real de confirmar un modelo nuevo es correrlo de verdad y ver si la
-  generación (no el precio) tira error. Así se detectaron y corrigieron slugs
-  adivinados que NO existían: "veo-3.1-fast"/"veo-3.1"/"veo-3.1-lite" →
-  reales `veo3.1-fast`/`veo3.1-quality` (sin variante Lite);
-  "seedance-1.5-pro" → real `doubao-seedance-1-5-pro`; "kling-video-o3-pro"
-  (no existe) → real `kling-video-o1`.
+  **Generate Video** — Veo 3.1 Fast / 3.1 Quality / 3.1 Lite, Seedance 2.5 / 2.0
+  / 2.0 Fast / 1.5 Pro, Kling Video O1, Gemini Omni 1.1 Flash (todos vía
+  APIMart). Agregar un modelo nuevo es solo una entrada más en ese archivo —
+  nada más necesita cambiar estructuralmente.
+- **Dos fuentes para confirmar un modelo/parámetro real de APIMart, en orden de
+  confiabilidad**: (1) `docs.apimart.ai/api-reference/{videos|images}/{model}/generation`
+  — documentación real por endpoint con los valores exactos que acepta cada
+  parámetro (`size`/`aspect_ratio`, `resolution`, etc.), cuando existe esa
+  página para el modelo; (2) el endpoint de precios
+  (`api.apimart.ai/api/pricing/model?model=...`) — SOLO confirma que el slug
+  existe (regresa datos reales en vez de la plantilla genérica vacía), NO
+  valida ni expone parámetros de generación. Ninguno de los dos reemplaza
+  correrlo de verdad — si un modelo rechaza algo que ninguna fuente
+  documentaba, ese error real es la fuente definitiva. Así se detectaron y
+  corrigieron slugs adivinados que NO existían: "veo-3.1-fast"/"veo-3.1"/
+  "veo-3.1-lite" (CON guion entre "veo" y "3.1") → reales `veo3.1-fast`/
+  `veo3.1-quality`/`veo3.1-lite` (SIN guion — "Lite" sí existe, se había
+  descartado por el guion de más); "seedance-1.5-pro" → real
+  `doubao-seedance-1-5-pro`; "kling-video-o3-pro" (no existe) → real
+  `kling-video-o1`.
 - **Resolución de video — dinámica por modelo, no una lista fija**: cada modelo
   acepta un set de resoluciones distinto (confirmado: Gemini Omni 1.1 Flash solo
   acepta 360P/720P/1080P/4K; mandarle "480P", que sí acepta Seedance, lo rechaza
@@ -80,18 +87,27 @@ fijos, no un catálogo abierto.
   Video O1, que cobra por tiers de calidad — `billing_tiers` — no por
   resolución), el campo se oculta por completo y no se manda `resolution` en el
   request.
-- **Aspect ratio — mismo intento, pero SIN fuente en vivo confirmada**: se buscó
-  el mismo mecanismo que la resolución (`getModelAspectRatioOptions`,
-  `providers/pricing.ts`, lee `supported_sizes` o keys con forma de ratio en
-  `resolution_prices`) pero, a diferencia de la resolución, **ningún modelo del
-  catálogo actual publica sus aspect ratios reales** vía ese endpoint —
-  confirmado consultando cada uno. Por eso hoy siempre cae al fallback estático
-  `FALLBACK_ASPECT_RATIOS` (`node-config-panel.tsx`) — una superset amplia de
-  ratios comunes, NO una lista confirmada por modelo. El mecanismo dinámico
-  queda implementado y listo para cuando algún modelo sí publique su lista (o
-  si a futuro APIMart agrega ese dato); mientras tanto, si un modelo rechaza un
-  ratio específico, el error real de APIMart se muestra tal cual al correr el
-  nodo — no hay forma honesta de prevenirlo de antemano sin esa fuente.
+- **Aspect ratio de video — confirmado por modelo, vía la documentación por
+  endpoint (no el endpoint de precios)**: bug real que ya pasó — se mandó
+  "4:5" (parte del fallback genérico) a un modelo que solo acepta
+  `16:9/4:3/1:1/3:4/9:16/21:9/adaptive`, y APIMart lo rechazó. El endpoint de
+  precios nunca expuso esto para ningún modelo (ver arriba), pero
+  `docs.apimart.ai/api-reference/videos/{model}/generation` sí documenta el
+  parámetro `size`/`aspect_ratio` con sus valores exactos — de ahí sale
+  `VIDEO_ASPECT_RATIOS` (`providers/models.ts`), un mapa hardcodeado (no una
+  consulta en vivo, no hace falta red) por modelo:
+  - Veo 3.1 (Fast/Quality/Lite) y Gemini Omni 1.1 Flash: solo `16:9`/`9:16`.
+  - Seedance 2.5/2.0/2.0 Fast: `16:9`/`4:3`/`1:1`/`3:4`/`9:16`/`21:9`/`adaptive`.
+  - Kling Video O1: `16:9`/`9:16`/`1:1`.
+  - Seedance 1.5 Pro: sin página propia en la documentación (404) — se asume
+    el mismo set que sus hermanos Seedance 2.x, **sin confirmar
+    independientemente**; corregir si un error real dice lo contrario.
+  El panel de config y los selects de la tarjeta usan este mapa cuando el tipo
+  es `generate_video` y el modelo está en él; si no, caen al mismo fallback
+  genérico de siempre. **Generate Image sigue sin fuente confirmada** —
+  ningún modelo de imagen tiene página en `docs.apimart.ai/api-reference/images/`
+  con el slug que probamos; si se encuentra la ruta correcta, se resuelve
+  igual que video.
 - **Código de color por tipo** (`TYPE_STYLES` en `components/ad-lab/nodes/ad-node.tsx`):
   cada tipo tiene un color fijo — verde=Image, rosa=Generate Image, etc. — y es la
   MISMA fuente de verdad tanto para el borde/fondo del nodo en el canvas como para
