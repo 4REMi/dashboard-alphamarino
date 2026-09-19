@@ -8,8 +8,10 @@ import {
   exportServiceOffers, importServiceOffers,
 } from "@/lib/actions/services"
 import { getProjectTypeIcon } from "@/lib/project-type-icons"
-import { Plus, Pencil, Trash2, Archive, ArchiveRestore, X, Tag, Layers, ChevronRight, Sparkles, Upload, Download, Check, Loader2 } from "lucide-react"
+import { Plus, Pencil, Trash2, Archive, ArchiveRestore, X, Tag, Layers, ChevronRight, ChevronLeft, LayoutGrid, Sparkles, Upload, Download, Check, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
+
+const ALL_CATEGORIES_KEY = "__todas__"
 
 interface ProjectTypeBadge {
   id: string
@@ -623,6 +625,70 @@ function OfferCard({
   )
 }
 
+// ── Categories screen — mismo patrón que SOPs (components/sops/sops-client.tsx):
+// primero una pantalla de categorías (tiles), luego se entra a una para ver
+// sus ofertas. Category es texto libre en service_offers, sin tabla ni
+// enum propio, así que aquí no hay color/ícono por categoría como en SOPs
+// (esas sí están ligadas a project_types) — un ícono genérico basta.
+function CategoriesScreen({
+  categoryNames,
+  categoryCounts,
+  totalCount,
+  onSelect,
+}: {
+  categoryNames: string[]
+  categoryCounts: Map<string, number>
+  totalCount: number
+  onSelect: (category: string) => void
+}) {
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+      <CategoryTile
+        label="Todas"
+        count={totalCount}
+        icon={<LayoutGrid className="w-5 h-5" />}
+        onClick={() => onSelect(ALL_CATEGORIES_KEY)}
+      />
+      {categoryNames.map((name) => (
+        <CategoryTile
+          key={name}
+          label={name}
+          count={categoryCounts.get(name) ?? 0}
+          icon={<Layers className="w-5 h-5" />}
+          onClick={() => onSelect(name)}
+        />
+      ))}
+    </div>
+  )
+}
+
+function CategoryTile({
+  label,
+  count,
+  icon,
+  onClick,
+}: {
+  label: string
+  count: number
+  icon: React.ReactNode
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex flex-col items-start gap-3 p-5 rounded-xl border border-border bg-card hover:border-primary/40 hover:shadow-sm transition-all text-left"
+    >
+      <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-muted text-muted-foreground">
+        {icon}
+      </div>
+      <div>
+        <p className="font-medium text-sm">{label}</p>
+        <p className="text-xs text-muted-foreground mt-0.5">{count} oferta{count !== 1 ? "s" : ""}</p>
+      </div>
+    </button>
+  )
+}
+
 // ── Main component ──────────────────────────────────────────────────────
 
 export function ServiceCatalogManager({ initialOffers, initialAddons, projectTypes }: Props) {
@@ -642,7 +708,14 @@ export function ServiceCatalogManager({ initialOffers, initialAddons, projectTyp
   const [showExport, setShowExport] = useState(false)
   const [showImport, setShowImport] = useState(false)
 
+  // null = pantalla de categorías; ALL_CATEGORIES_KEY = todas juntas; o el
+  // nombre exacto de una categoría. Estado local puro, sin URL param —
+  // mismo criterio que sops-client.tsx (la página es dinámica, un param
+  // forzaría un refetch en vez de solo cambiar la vista).
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
+
   const categories = Array.from(new Set(offers.map((o) => o.category))).sort()
+  const categoryCounts = new Map(categories.map((c) => [c, offers.filter((o) => o.category === c).length]))
 
   function run(fn: () => Promise<void>) {
     startTransition(async () => { try { await fn() } catch { /* ignore */ } })
@@ -739,6 +812,14 @@ export function ServiceCatalogManager({ initialOffers, initialAddons, projectTyp
         >
           Addons ({addons.length})
         </button>
+        {tab === "offers" && selectedCategory !== null && (
+          <button
+            onClick={() => setSelectedCategory(null)}
+            className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground"
+          >
+            <ChevronLeft className="w-4 h-4" /> Categorías
+          </button>
+        )}
         {tab === "offers" && (
           <div className="ml-auto flex items-center gap-2">
             <button
@@ -764,15 +845,27 @@ export function ServiceCatalogManager({ initialOffers, initialAddons, projectTyp
         </button>
       </div>
 
-      {tab === "offers" && (
+      {tab === "offers" && selectedCategory === null && (
+        offers.length === 0 ? (
+          <div className="border rounded-xl py-16 text-center bg-card">
+            <Layers className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
+            <p className="text-sm text-muted-foreground">Sin ofertas todavía. Crea la primera.</p>
+          </div>
+        ) : (
+          <CategoriesScreen
+            categoryNames={categories}
+            categoryCounts={categoryCounts}
+            totalCount={offers.length}
+            onSelect={setSelectedCategory}
+          />
+        )
+      )}
+
+      {tab === "offers" && selectedCategory !== null && (
         <div className="space-y-6">
-          {byCategory.length === 0 && (
-            <div className="border rounded-xl py-16 text-center bg-card">
-              <Layers className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
-              <p className="text-sm text-muted-foreground">Sin ofertas todavía. Crea la primera.</p>
-            </div>
-          )}
-          {byCategory.map(({ category, bases, flat }) => (
+          {byCategory
+            .filter(({ category }) => selectedCategory === ALL_CATEGORIES_KEY || category === selectedCategory)
+            .map(({ category, bases, flat }) => (
             <div key={category} className="space-y-2.5">
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{category}</p>
               {bases.map((base) => (
