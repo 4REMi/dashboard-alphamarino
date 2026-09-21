@@ -609,16 +609,32 @@ function OfferCard({
       </div>
 
       {totalDeliverables > 0 && (
-        <div className="space-y-1.5">
+        // Contenedor propio, separado visualmente de la descripción de
+        // arriba (fondo tintado con el color de categoría + borde) — antes
+        // description y deliverables eran texto plano seguido, sin
+        // distinción, difícil de separar de un vistazo.
+        <div
+          className="rounded-lg border p-3 space-y-2"
+          style={{ backgroundColor: `${color}08`, borderColor: `${color}30` }}
+        >
           <ul className={cn(
-            "text-xs text-muted-foreground gap-x-4 gap-y-0.5 pl-1",
+            "text-xs text-muted-foreground gap-x-4 gap-y-1.5",
             showAllDeliverables && totalDeliverables > TWO_COLUMN_THRESHOLD
               ? "grid grid-cols-1 sm:grid-cols-2"
-              : "space-y-0.5"
+              : "space-y-1.5"
           )}>
             {visibleDeliverables.map((d, i) => (
-              <li key={d.id ?? i} className="flex items-start gap-1.5">
-                <span className="mt-0.5" style={{ color: `${color}99` }}>•</span>
+              <li key={d.id ?? i} className="flex items-start gap-2">
+                {/* Badge numerado en vez de un bullet plano — mismo criterio
+                    que las partes de Split Text en Ad Nodes: un número por
+                    item en vez de un "•" genérico, se lee más como una
+                    lista de pasos/piezas que como texto corrido. */}
+                <span
+                  className="flex-shrink-0 w-4 h-4 rounded-full text-[9px] font-semibold flex items-center justify-center text-white mt-0.5"
+                  style={{ backgroundColor: color }}
+                >
+                  {i + 1}
+                </span>
                 <span className="flex-1">{d.text}{d.quantity != null && ` — ${d.quantity}`}</span>
                 {d.cadence !== "once" && (
                   <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-sky-50 text-sky-700 flex-shrink-0">
