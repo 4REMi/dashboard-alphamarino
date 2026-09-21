@@ -8,7 +8,8 @@ import {
   exportServiceOffers, importServiceOffers,
 } from "@/lib/actions/services"
 import { getProjectTypeIcon } from "@/lib/project-type-icons"
-import { Plus, Pencil, Trash2, Archive, ArchiveRestore, X, Tag, Layers, ChevronRight, ChevronLeft, LayoutGrid, Sparkles, Upload, Download, Check, Loader2 } from "lucide-react"
+import { categoryColor } from "@/components/services/category-colors"
+import { Plus, Pencil, Trash2, Archive, ArchiveRestore, X, Tag, Layers, ChevronRight, ChevronDown, ChevronLeft, LayoutGrid, Sparkles, Upload, Download, Check, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const ALL_CATEGORIES_KEY = "__todas__"
@@ -521,6 +522,16 @@ function ImportOffersModal({ onClose, onImported }: { onClose: () => void; onImp
 
 // ── Offer card ───────────────────────────────────────────────────────────
 
+// Cuántos deliverables se muestran antes de colapsar — el problema real
+// que esto resuelve: paquetes con 15-20 entregables hacían el card
+// crecer sin límite, volviendo la lista de ofertas un scroll interminable
+// para comparar unas con otras. Colapsado, siempre se ve un resumen
+// (total + cuántos son recurrentes) para no perder la idea general.
+const COLLAPSED_DELIVERABLES_COUNT = 4
+// A partir de este tamaño, la lista expandida se acomoda en 2 columnas en
+// vez de una sola — reduce la altura a la mitad sin ocultar nada.
+const TWO_COLUMN_THRESHOLD = 8
+
 function OfferCard({
   offer, addons, projectTypes, nested, onEdit, onPickAddons,
 }: {
@@ -533,9 +544,16 @@ function OfferCard({
 }) {
   const [isPending, startTransition] = useTransition()
   const [archived, setArchived] = useState(offer.status === "archived")
+  const [showAllDeliverables, setShowAllDeliverables] = useState(false)
   const projectType = projectTypes.find((pt) => pt.id === offer.default_project_type_id)
   const ProjectIcon = projectType ? getProjectTypeIcon(projectType.icon) : null
   const attachedAddons = (offer.addons ?? []).map((a) => addons.find((x) => x.id === a.id) ?? a)
+  const color = categoryColor(offer.category)
+
+  const totalDeliverables = offer.deliverables.length
+  const recurringCount = offer.deliverables.filter((d) => d.cadence !== "once").length
+  const isLong = totalDeliverables > COLLAPSED_DELIVERABLES_COUNT
+  const visibleDeliverables = showAllDeliverables ? offer.deliverables : offer.deliverables.slice(0, COLLAPSED_DELIVERABLES_COUNT)
 
   function toggleArchive() {
     const next = !archived
@@ -549,11 +567,14 @@ function OfferCard({
   }
 
   return (
-    <div className={cn(
-      "rounded-xl border bg-card p-4 space-y-3",
-      nested ? "border-border/60 ml-6" : "border-border",
-      archived && "opacity-50"
-    )}>
+    <div
+      className={cn(
+        "rounded-xl border bg-card p-4 space-y-3 border-l-4",
+        nested ? "border-border/60 ml-6" : "border-border",
+        archived && "opacity-50"
+      )}
+      style={{ borderLeftColor: color }}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-2 min-w-0">
           {nested && <ChevronRight className="w-3.5 h-3.5 text-muted-foreground mt-1 flex-shrink-0" />}
@@ -587,20 +608,39 @@ function OfferCard({
         </div>
       </div>
 
-      {offer.deliverables.length > 0 && (
-        <ul className="text-xs text-muted-foreground space-y-0.5 pl-1">
-          {offer.deliverables.map((d, i) => (
-            <li key={d.id ?? i} className="flex items-start gap-1.5">
-              <span className="text-primary/60 mt-0.5">•</span>
-              <span className="flex-1">{d.text}{d.quantity != null && ` — ${d.quantity}`}</span>
-              {d.cadence !== "once" && (
-                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-sky-50 text-sky-700 flex-shrink-0">
-                  {CADENCE_LABEL[d.cadence]}
-                </span>
-              )}
-            </li>
-          ))}
-        </ul>
+      {totalDeliverables > 0 && (
+        <div className="space-y-1.5">
+          <ul className={cn(
+            "text-xs text-muted-foreground gap-x-4 gap-y-0.5 pl-1",
+            showAllDeliverables && totalDeliverables > TWO_COLUMN_THRESHOLD
+              ? "grid grid-cols-1 sm:grid-cols-2"
+              : "space-y-0.5"
+          )}>
+            {visibleDeliverables.map((d, i) => (
+              <li key={d.id ?? i} className="flex items-start gap-1.5">
+                <span className="mt-0.5" style={{ color: `${color}99` }}>•</span>
+                <span className="flex-1">{d.text}{d.quantity != null && ` — ${d.quantity}`}</span>
+                {d.cadence !== "once" && (
+                  <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-sky-50 text-sky-700 flex-shrink-0">
+                    {CADENCE_LABEL[d.cadence]}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+          {isLong && (
+            <button
+              onClick={() => setShowAllDeliverables((v) => !v)}
+              className="flex items-center gap-1 text-[11px] font-medium hover:underline"
+              style={{ color }}
+            >
+              {showAllDeliverables ? <ChevronDown className="w-3 h-3 rotate-180" /> : <ChevronDown className="w-3 h-3" />}
+              {showAllDeliverables
+                ? "Ver menos"
+                : `Ver los ${totalDeliverables} entregables completos${recurringCount > 0 ? ` · ${recurringCount} recurrentes` : ""}`}
+            </button>
+          )}
+        </div>
       )}
 
       <div className="flex items-center gap-2 flex-wrap">
@@ -609,6 +649,12 @@ function OfferCard({
             {money(offer.price, offer.currency) ?? offer.price_note}
           </span>
         )}
+        <span
+          className="text-[11px] font-medium px-2 py-0.5 rounded-full"
+          style={{ backgroundColor: `${color}1a`, color }}
+        >
+          {offer.category}
+        </span>
         {projectType && ProjectIcon && (
           <span className="flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground" title="Tipo de proyecto en Ops Lab">
             <ProjectIcon className="w-3 h-3" /> {projectType.name}
@@ -628,8 +674,10 @@ function OfferCard({
 // ── Categories screen — mismo patrón que SOPs (components/sops/sops-client.tsx):
 // primero una pantalla de categorías (tiles), luego se entra a una para ver
 // sus ofertas. Category es texto libre en service_offers, sin tabla ni
-// enum propio, así que aquí no hay color/ícono por categoría como en SOPs
-// (esas sí están ligadas a project_types) — un ícono genérico basta.
+// enum propio como en SOPs (esas sí están ligadas a project_types) — el
+// color por categoría sale de categoryColor (hash determinístico), no de
+// datos guardados, pero es el mismo color en todo el catálogo (tiles,
+// acento de cada tarjeta) para que se lea consistente.
 function CategoriesScreen({
   categoryNames,
   categoryCounts,
@@ -647,6 +695,7 @@ function CategoriesScreen({
         label="Todas"
         count={totalCount}
         icon={<LayoutGrid className="w-5 h-5" />}
+        color={null}
         onClick={() => onSelect(ALL_CATEGORIES_KEY)}
       />
       {categoryNames.map((name) => (
@@ -655,6 +704,7 @@ function CategoriesScreen({
           label={name}
           count={categoryCounts.get(name) ?? 0}
           icon={<Layers className="w-5 h-5" />}
+          color={categoryColor(name)}
           onClick={() => onSelect(name)}
         />
       ))}
@@ -666,19 +716,25 @@ function CategoryTile({
   label,
   count,
   icon,
+  color,
   onClick,
 }: {
   label: string
   count: number
   icon: React.ReactNode
+  color: string | null
   onClick: () => void
 }) {
   return (
     <button
       onClick={onClick}
-      className="flex flex-col items-start gap-3 p-5 rounded-xl border border-border bg-card hover:border-primary/40 hover:shadow-sm transition-all text-left"
+      className="flex flex-col items-start gap-3 p-5 rounded-xl border border-border bg-card hover:shadow-sm transition-all text-left"
+      style={{ borderColor: color ? `${color}40` : undefined }}
     >
-      <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-muted text-muted-foreground">
+      <div
+        className="w-10 h-10 rounded-lg flex items-center justify-center"
+        style={{ backgroundColor: color ? `${color}1a` : "hsl(var(--muted))", color: color ?? "hsl(var(--muted-foreground))" }}
+      >
         {icon}
       </div>
       <div>
