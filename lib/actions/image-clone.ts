@@ -134,6 +134,91 @@ async function replicatePoll(predictionId: string): Promise<{ status: string; ur
   }
 }
 
+// ── APIMart helpers (gpt-image-2.5-sunburst) ──────────────────
+//
+// Deliberadamente duplicado en vez de importar el adaptador de Ad Nodes
+// (lib/actions/ad-nodes/providers/apimart.ts) — mismo criterio que ya usa
+// este archivo (y ad-scratch.ts) en todo el proyecto: no compartir código
+// de generación entre features distintas, aunque el proveedor sea el
+// mismo. Contrato confirmado contra docs.apimart.ai/api-reference/images/gpt-image-2.5/generation
+// (no adivinado): async, POST /v1/images/generations → task_id, GET
+// /v1/tasks/{task_id} para el resultado. Acepta hasta 16 imágenes de
+// referencia vía image_urls (más que el tope de 8 que impone Replicate) y
+// puede generar 1-4 imágenes en una sola llamada (`n`), a diferencia de
+// Replicate, que solo genera 1 por predicción — por eso APIMart se somete
+// una sola vez por clon en vez de N veces secuenciales.
+const APIMART_BASE = "https://api.apimart.ai/v1"
+const APIMART_MODEL = "gpt-image-2.5-sunburst" // precisión de edición — vs. "-flare" (rápido, uso diario)
+
+function apimartHeaders() {
+  const token = process.env.APIMART_API_KEY
+  if (!token) throw new Error("APIMART_API_KEY no configurado")
+  return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }
+}
+
+function apimartErrorMessage(value: unknown): string | null {
+  if (!value) return null
+  if (typeof value === "string") return value
+  if (typeof value === "object" && "message" in value && typeof (value as { message?: unknown }).message === "string") {
+    return (value as { message: string }).message
+  }
+  try { return JSON.stringify(value) } catch { return String(value) }
+}
+
+interface ApimartTaskResponse {
+  task_id?: string
+  id?: string
+  status?: string
+  result?: { images?: { url: string | string[] }[] }
+  error?: string | { message?: string }
+  error_message?: string
+  message?: string
+  data?: ApimartTaskResponse | ApimartTaskResponse[]
+}
+
+// data puede llegar como objeto plano o como arreglo de un elemento —
+// confirmado contra logs reales al construir el adaptador de Ad Nodes; se
+// trata igual aquí por si aplica al mismo endpoint de imágenes.
+function apimartUnwrap(data: ApimartTaskResponse): ApimartTaskResponse {
+  if (!data.data) return data
+  return Array.isArray(data.data) ? (data.data[0] ?? data) : data.data
+}
+
+async function apimartSubmit(input: Record<string, unknown>): Promise<string> {
+  const res = await fetch(`${APIMART_BASE}/images/generations`, {
+    method: "POST",
+    headers: apimartHeaders(),
+    body: JSON.stringify({ model: APIMART_MODEL, ...input }),
+    cache: "no-store",
+  })
+  if (!res.ok) {
+    const err = apimartUnwrap(await res.json().catch(() => ({})) as ApimartTaskResponse)
+    throw new Error(apimartErrorMessage(err.error) ?? apimartErrorMessage(err.message) ?? `APIMart error ${res.status}`)
+  }
+  const parsed = await res.json() as ApimartTaskResponse
+  const raw = apimartUnwrap(parsed)
+  const jobId = raw.task_id ?? raw.id
+  if (!jobId) throw new Error(`APIMart no regresó un task_id — respuesta: ${JSON.stringify(parsed).slice(0, 500)}`)
+  return jobId
+}
+
+async function apimartPoll(taskId: string): Promise<{ status: string; urls?: string[]; error?: string }> {
+  const res = await fetch(`${APIMART_BASE}/tasks/${taskId}?language=es`, {
+    headers: apimartHeaders(),
+    cache: "no-store",
+  })
+  if (!res.ok) return { status: "poll_error" }
+  const data = apimartUnwrap(await res.json() as ApimartTaskResponse)
+
+  if (data.status === "failed" || data.status === "cancelled") {
+    return { status: "failed", error: apimartErrorMessage(data.error) ?? data.error_message ?? `APIMart: ${data.status}` }
+  }
+
+  const urls = (data.result?.images ?? []).flatMap((img) => Array.isArray(img.url) ? img.url : [img.url])
+  if (urls.length > 0) return { status: "succeeded", urls }
+  return { status: "processing" }
+}
+
 // ── Image URL validation ──────────────────────────────────────
 
 /**
@@ -613,9 +698,12 @@ export async function updateImageAdaptedLines(
 }
 
 /**
- * Submits N generation jobs to Replicate (google/nano-banana-pro).
- * This model generates 1 image per prediction, so numImages = N submissions.
- * Stores all prediction IDs as a JSON array in fal_request_id.
+ * Submits generation job(s) — Replicate (google/nano-banana-pro, default)
+ * or APIMart (gpt-image-2.5-sunburst, toggle en el modal). Replicate genera
+ * 1 imagen por predicción, así que numImages = N submissions secuenciales;
+ * APIMart genera 1-4 en una sola llamada (`n`), así que ahí es una sola
+ * submission. Stores the provider used so pollImageGeneration() knows
+ * which API to poll for this specific clone.
  */
 export async function generateImages(
   cloneId: string,
@@ -626,9 +714,11 @@ export async function generateImages(
     numImages:         number
     additionalContext: string
     sourceImageUrl?:   string   // NEW: overrides saved_ad image for reclones
+    provider?:         "replicate" | "apimart"   // default "replicate"
   },
 ): Promise<{ prompt: string }> {
   const { supabase } = await assertAuth()
+  const provider = config.provider ?? "replicate"
 
   const { data: clone, error } = await supabase
     .from("image_clones")
@@ -660,9 +750,11 @@ export async function generateImages(
   }))
   const validatedAux = auxValidations.filter(Boolean) as string[]
 
-  // Order: original ad → valid logo (if any) → valid user uploads (max 8 total)
-  const inputImages = [adImageUrl, ...validatedAux].slice(0, 8)
-  console.log(`[image-clone] images sent to Replicate (${inputImages.length}): ${JSON.stringify(inputImages)}`)
+  // Order: original ad → valid logo (if any) → valid user uploads.
+  // Replicate's cap is 8; APIMart's gpt-image-2.5 accepts up to 16.
+  const imageCap = provider === "apimart" ? 16 : 8
+  const inputImages = [adImageUrl, ...validatedAux].slice(0, imageCap)
+  console.log(`[image-clone] images sent to ${provider} (${inputImages.length}): ${JSON.stringify(inputImages)}`)
 
   const prompt = buildGenerationPrompt(
     config.adaptedLines,
@@ -674,37 +766,59 @@ export async function generateImages(
   await supabase
     .from("image_clones")
     .update({
-      adapted_lines: config.adaptedLines,
-      brand_color:   config.brandColor,
-      aspect_ratio:  config.aspectRatio,
-      num_images:    config.numImages,
-      status:        "generating",
+      adapted_lines:       config.adaptedLines,
+      brand_color:         config.brandColor,
+      aspect_ratio:        config.aspectRatio,
+      num_images:          config.numImages,
+      generation_provider: provider,
+      status:              "generating",
     })
     .eq("id", cloneId)
 
   try {
-    // Submit N predictions in parallel (one per desired image)
-    const submissionInput = {
-      prompt,
-      image_input:         inputImages,
-      aspect_ratio:        config.aspectRatio,
-      resolution:          "2K",
-      output_format:       "jpg",
-      safety_filter_level: "block_only_high",
+    if (provider === "apimart") {
+      // Una sola llamada — gpt-image-2.5 genera 1-4 imágenes (`n`) en un
+      // mismo task, a diferencia de Replicate (1 predicción = 1 imagen).
+      const submissionInput = {
+        prompt,
+        image_urls:     inputImages,
+        size:           config.aspectRatio,
+        resolution:     "2k",
+        quality:        "high",
+        output_format:  "jpeg",
+        moderation:     "low",
+        n:              config.numImages,
+      }
+      const taskId = await apimartSubmit(submissionInput)
+      await supabase
+        .from("image_clones")
+        .update({ fal_request_id: JSON.stringify([taskId]), generation_input: submissionInput, retry_count: 0 })
+        .eq("id", cloneId)
+    } else {
+      // Submit N predictions — nano-banana-pro genera 1 imagen por
+      // predicción, y el burst=1 de Replicate obliga a mandarlas
+      // secuenciales, no en paralelo.
+      const submissionInput = {
+        prompt,
+        image_input:         inputImages,
+        aspect_ratio:        config.aspectRatio,
+        resolution:          "2K",
+        output_format:       "jpg",
+        safety_filter_level: "block_only_high",
+      }
+      const ids: string[] = []
+      for (let i = 0; i < config.numImages; i++) {
+        if (i > 0) await sleep(300) // small gap between sequential calls
+        ids.push(await replicateSubmitWithRetry(submissionInput))
+      }
+      await supabase
+        .from("image_clones")
+        // generation_input is kept so pollImageGeneration() can resubmit any
+        // prediction that comes back failed/canceled with the exact same
+        // payload, instead of quietly returning fewer variants than asked.
+        .update({ fal_request_id: JSON.stringify(ids), generation_input: submissionInput, retry_count: 0 })
+        .eq("id", cloneId)
     }
-    // Submit sequentially — Replicate's burst=1 limit blocks parallel submissions
-    const ids: string[] = []
-    for (let i = 0; i < config.numImages; i++) {
-      if (i > 0) await sleep(300) // small gap between sequential calls
-      ids.push(await replicateSubmitWithRetry(submissionInput))
-    }
-    await supabase
-      .from("image_clones")
-      // generation_input is kept so pollImageGeneration() can resubmit any
-      // prediction that comes back failed/canceled with the exact same
-      // payload, instead of quietly returning fewer variants than asked.
-      .update({ fal_request_id: JSON.stringify(ids), generation_input: submissionInput, retry_count: 0 })
-      .eq("id", cloneId)
   } catch (err) {
     await supabase
       .from("image_clones")
@@ -717,7 +831,8 @@ export async function generateImages(
 }
 
 /**
- * Polls all Replicate predictions. Marks done when every prediction settles.
+ * Polls the generation provider recorded for this clone (Replicate or
+ * APIMart — see generation_provider). Marks done when everything settles.
  * Returns the current clone record.
  */
 export async function pollImageGeneration(cloneId: string): Promise<ImageClone> {
@@ -743,7 +858,9 @@ export async function pollImageGeneration(cloneId: string): Promise<ImageClone> 
     ids = [clone.fal_request_id]
   }
 
-  const results = await Promise.all(ids.map((id) => replicatePoll(id)))
+  const isApimart = clone.generation_provider === "apimart"
+  const poll = isApimart ? apimartPoll : replicatePoll
+  const results = await Promise.all(ids.map((id) => poll(id)))
 
   const allSettled = results.every((r) => r.status === "succeeded" || r.status === "failed" || r.status === "canceled")
   if (!allSettled) {
@@ -774,8 +891,12 @@ export async function pollImageGeneration(cloneId: string): Promise<ImageClone> 
   // likely the underlying model rejecting/erroring under concurrent load
   // when several variants are submitted close together. Give the missing
   // ones exactly one retry, resubmitted with the same payload, before
-  // accepting fewer images than the user asked for.
-  if (shortfall > 0 && clone.retry_count < 1 && clone.generation_input) {
+  // accepting fewer images than the user asked for. Replicate-only — for
+  // APIMart, `ids` siempre tiene un solo task que ya genera varias
+  // imágenes juntas (`n`), así que un "shortfall" ahí significa que ESE
+  // task falló por completo, no que falten predicciones individuales por
+  // reintentar; se deja caer directo a "todo falló" más abajo.
+  if (!isApimart && shortfall > 0 && clone.retry_count < 1 && clone.generation_input) {
     const reasons = results.filter((r) => r.status !== "succeeded").map((r) => r.error ?? r.status).join("; ")
     console.warn(`[image-clone] ${shortfall}/${ids.length} prediction(s) failed for clone ${cloneId} — retrying once. Reasons: ${reasons}`)
     try {

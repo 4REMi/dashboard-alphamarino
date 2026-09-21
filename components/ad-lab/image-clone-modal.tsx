@@ -99,6 +99,10 @@ export function ImageCloneModal({ ad, recloneSource, savedAdSource, onClose }: P
   const [brandColor, setBrandColor]             = useState("#000000")
   const [aspectRatio, setAspectRatio]           = useState<string>("1:1")
   const [numImages, setNumImages]               = useState(2)
+  // Toggle de proveedor — Replicate (nano-banana-pro, default) o APIMart
+  // (gpt-image-2.5-sunburst). Se guarda por clon (generation_provider) para
+  // que el poll sepa contra cuál API consultar ese registro específico.
+  const [provider, setProvider]                 = useState<"replicate" | "apimart">("replicate")
 
   // Generation result — generatedUrls holds every variant Replicate produced;
   // not every one is necessarily a keeper, so they sit in "reviewing" until
@@ -298,6 +302,7 @@ export function ImageCloneModal({ ad, recloneSource, savedAdSource, onClose }: P
         numImages,
         additionalContext: additionalContext.trim(),
         sourceImageUrl:    recloneSource?.imageUrl,
+        provider,
       })
 
       pollingRef.current = setInterval(async () => {
@@ -920,6 +925,34 @@ export function ImageCloneModal({ ad, recloneSource, savedAdSource, onClose }: P
                     )}
                   </div>
                 )}
+              </div>
+
+              {/* Proveedor de generación — Replicate (default, el de
+                  siempre) o APIMart (gpt-image-2.5-sunburst, acepta hasta
+                  16 imágenes de referencia en vez de 8 y puede generar
+                  varias variantes en una sola llamada). */}
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                  Modelo de generación
+                </p>
+                <div className="flex gap-2">
+                  {([
+                    { key: "replicate" as const, label: "Nano Banana Pro" },
+                    { key: "apimart" as const, label: "GPT Image 2.5" },
+                  ]).map((p) => (
+                    <button
+                      key={p.key}
+                      onClick={() => setProvider(p.key)}
+                      className={`flex-1 h-9 rounded-lg border text-sm font-medium transition-colors ${
+                        provider === p.key
+                          ? "bg-violet-600 border-violet-600 text-white"
+                          : "border-border hover:border-violet-400"
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* Aspect ratio + num images */}

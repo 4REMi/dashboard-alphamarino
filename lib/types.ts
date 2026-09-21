@@ -1182,6 +1182,10 @@ export interface ImageClone {
   brand_color: string | null
   aspect_ratio: "1:1" | "9:16" | "16:9" | "4:5"
   num_images: number
+  // Qué API generó (o va a generar) las imágenes de este clon — Replicate
+  // (google/nano-banana-pro, el original) o APIMart (gpt-image-2.5-sunburst).
+  // pollImageGeneration lo necesita para saber contra cuál API consultar.
+  generation_provider: "replicate" | "apimart"
   fal_request_id: string | null
   generated_image_urls: string[]
   accepted_image_urls: string[]   // locked-in variants from earlier review rounds
