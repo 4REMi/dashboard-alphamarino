@@ -3,6 +3,7 @@ import { redirect } from "next/navigation"
 import { can } from "@/lib/permissions"
 import { getAllImageClones } from "@/lib/actions/image-clone"
 import { getAllAdClones } from "@/lib/actions/ad-clone"
+import { getBrandBrains } from "@/lib/actions/brand-brains"
 import { CreativesGrid, type CloneRich, type AdCloneRich } from "@/components/ad-lab/creatives-grid"
 import type { Profile } from "@/lib/types"
 import { ImagePlay } from "lucide-react"
@@ -21,9 +22,10 @@ export default async function CreativesPage() {
   const profile = profileData as Pick<Profile, "id" | "full_name" | "email" | "role" | "permissions"> | null
   if (!can(profile, "access_ad_lab")) redirect("/")
 
-  const [imageClones, scriptClones] = await Promise.all([
+  const [imageClones, scriptClones, allBrands] = await Promise.all([
     getAllImageClones(200) as Promise<CloneRich[]>,
     getAllAdClones(200)    as Promise<AdCloneRich[]>,
+    getBrandBrains(),
   ])
 
   const totalCount = imageClones.length + scriptClones.length
@@ -52,7 +54,7 @@ export default async function CreativesPage() {
 
       {/* Gallery */}
       <div className="flex-1 overflow-y-auto px-6 py-6">
-        <CreativesGrid clones={imageClones} scriptClones={scriptClones} />
+        <CreativesGrid clones={imageClones} scriptClones={scriptClones} allBrands={allBrands} />
       </div>
     </div>
   )

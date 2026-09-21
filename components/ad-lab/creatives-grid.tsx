@@ -2,10 +2,13 @@
 
 import { useState, useEffect, useCallback } from "react"
 import {
-  ChevronLeft, ChevronRight, Download, Link2, ArrowRight, X, Maximize2, Copy, Repeat2,
+  ChevronLeft, ChevronRight, Download, Link2, ArrowRight, X, Maximize2, Copy, Repeat2, Trash2, LayoutGrid, ImageIcon,
 } from "lucide-react"
-import type { ImageClone, AdClone, BrandBrainColor } from "@/lib/types"
+import type { ImageClone, AdClone, BrandBrainColor, BrandBrain } from "@/lib/types"
 import { ImageCloneModal, type RecloneSource } from "@/components/ad-lab/image-clone-modal"
+import { deleteImageClone } from "@/lib/actions/image-clone"
+import { deleteAdClone } from "@/lib/actions/ad-clone"
+import { cn } from "@/lib/utils"
 
 type BrainMeta = { id: string; name: string; logo_url?: string | null; brand_colors?: BrandBrainColor[] }
 type AdMeta    = { id: string; page_name: string; cached_image_url?: string | null; image_url?: string | null }
@@ -20,9 +23,16 @@ export type AdCloneRich = Omit<AdClone, "brand_brain" | "saved_ad"> & {
   saved_ad?:    AdMeta    | null
 }
 
+const ALL_BRANDS_KEY = "__todas__"
+const NO_BRAND_KEY = "__sin_marca__"
+
 interface Props {
   clones:       CloneRich[]
   scriptClones: AdCloneRich[]
+  // Todos los Brand Brains que existen, no solo los que ya tienen algún
+  // creativo — la pantalla de marcas necesita mostrar también las que
+  // todavía no tienen nada, no solo filtrar entre las que sí.
+  allBrands:    Pick<BrandBrain, "id" | "name" | "logo_url" | "logo_square_url" | "initials" | "brand_colors">[]
 }
 
 // ── Lightbox ──────────────────────────────────────────────────
@@ -137,8 +147,8 @@ function Lightbox({
 // ── Image clone card ──────────────────────────────────────────
 
 function CreativeCard({
-  clone, onOpen, onReclone,
-}: { clone: CloneRich; onOpen: (clone: CloneRich, idx: number) => void; onReclone: (imageUrl: string, clone: CloneRich) => void }) {
+  clone, onOpen, onReclone, onDelete,
+}: { clone: CloneRich; onOpen: (clone: CloneRich, idx: number) => void; onReclone: (imageUrl: string, clone: CloneRich) => void; onDelete: (clone: CloneRich) => void }) {
   const [idx, setIdx]       = useState(0)
   const [copied, setCopied] = useState(false)
   const images       = clone.generated_image_urls ?? []
@@ -195,6 +205,13 @@ function CreativeCard({
         >
           <Repeat2 className="w-3.5 h-3.5" />
         </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete(clone) }}
+          className="w-8 h-8 rounded-full bg-black/60 backdrop-blur-sm text-white flex items-center justify-center hover:bg-destructive transition-colors"
+          title="Eliminar"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
         <div className="w-8 h-8 rounded-full bg-black/60 backdrop-blur-sm text-white flex items-center justify-center" title="Ver ampliado">
           <Maximize2 className="w-3.5 h-3.5" />
         </div>
@@ -234,7 +251,7 @@ function CreativeCard({
 
 // ── Script clone card ─────────────────────────────────────────
 
-function ScriptCard({ clone }: { clone: AdCloneRich }) {
+function ScriptCard({ clone, onDelete }: { clone: AdCloneRich; onDelete: (clone: AdCloneRich) => void }) {
   const [copiedShare,  setCopiedShare]  = useState(false)
   const [copiedScript, setCopiedScript] = useState(false)
   const brain        = clone.brand_brain
@@ -310,18 +327,68 @@ function ScriptCard({ clone }: { clone: AdCloneRich }) {
           }
           {copiedShare ? "Copiado" : "Compartir"}
         </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete(clone) }}
+          className="inline-flex items-center justify-center h-6 w-6 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors flex-shrink-0"
+          title="Eliminar"
+        >
+          <Trash2 className="w-3 h-3" />
+        </button>
       </div>
     </div>
   )
 }
 
+// ── Brand Brains landing screen — mismo patrón que SOPs/Ofertas: primero
+// una pantalla de tiles por marca (con conteo), clic para entrar a ver
+// solo esa. A diferencia de esas dos secciones, aquí el ícono del tile es
+// el logo real del Brand Brain (cuadrado si existe, si no el genérico, si
+// no iniciales/color) — no un color derivado del nombre, porque cada
+// marca ya tiene su propia identidad visual guardada.
+function BrandTile({
+  label, count, logoUrl, initials, color, onClick,
+}: {
+  label: string
+  count: number
+  logoUrl: string | null
+  initials: string | null
+  color: string | null
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex flex-col items-start gap-3 p-5 rounded-xl border border-border bg-card hover:border-primary/40 hover:shadow-sm transition-all text-left"
+    >
+      <div className="w-10 h-10 rounded-lg overflow-hidden flex items-center justify-center bg-muted text-muted-foreground flex-shrink-0">
+        {logoUrl ? (
+          // eslint-disable-line @next/next/no-img-element
+          <img src={logoUrl} alt="" className="w-full h-full object-cover" />
+        ) : initials ? (
+          <span className="text-sm font-bold" style={{ color: color ?? undefined }}>{initials}</span>
+        ) : (
+          <ImageIcon className="w-5 h-5" />
+        )}
+      </div>
+      <div>
+        <p className="font-medium text-sm truncate max-w-[10rem]">{label}</p>
+        <p className="text-xs text-muted-foreground mt-0.5">{count} creativo{count !== 1 ? "s" : ""}</p>
+      </div>
+    </button>
+  )
+}
+
 // ── Main grid ─────────────────────────────────────────────────
 
-export function CreativesGrid({ clones, scriptClones }: Props) {
+export function CreativesGrid({ clones, scriptClones, allBrands }: Props) {
   const [tab, setTab]               = useState<"estaticos" | "guiones">("estaticos")
+  // null = pantalla de marcas. ALL_BRANDS_KEY = todas juntas (como antes).
+  // NO_BRAND_KEY = los que no tienen ningún Brand Brain asignado.
   const [selectedBrainId, setSelectedBrainId] = useState<string | null>(null)
   const [lightbox, setLightbox]     = useState<{ clone: CloneRich; imgIdx: number } | null>(null)
   const [recloneSource, setRecloneSource] = useState<RecloneSource | null>(null)
+  const [imageClones, setImageClones]   = useState<CloneRich[]>(clones)
+  const [scripts, setScripts]           = useState<AdCloneRich[]>(scriptClones)
 
   function handleReclone(imageUrl: string, clone: CloneRich) {
     if (!clone.saved_ad?.id) return
@@ -333,23 +400,44 @@ export function CreativesGrid({ clones, scriptClones }: Props) {
     })
   }
 
-  const validClones  = clones.filter((c) => (c.generated_image_urls?.length ?? 0) > 0)
-  const validScripts = scriptClones.filter((c) => (c.adapted_lines?.length ?? 0) > 0)
-
-  function dedupBrains(items: Array<{ brand_brain?: BrainMeta | null }>) {
-    return Array.from(
-      items.reduce((map, c) => {
-        const b = c.brand_brain
-        if (b && !map.has(b.id)) map.set(b.id, b)
-        return map
-      }, new Map<string, BrainMeta>()).values()
-    )
+  function handleDeleteImageClone(clone: CloneRich) {
+    if (!confirm("¿Eliminar este estático? No se puede deshacer.")) return
+    setImageClones((prev) => prev.filter((c) => c.id !== clone.id))
+    if (lightbox?.clone.id === clone.id) setLightbox(null)
+    deleteImageClone(clone.id).catch((err) => alert(`No se pudo eliminar: ${err instanceof Error ? err.message : String(err)}`))
   }
 
-  const brands = tab === "estaticos" ? dedupBrains(validClones) : dedupBrains(validScripts)
+  function handleDeleteScript(clone: AdCloneRich) {
+    if (!confirm("¿Eliminar este guión adaptado? No se puede deshacer.")) return
+    setScripts((prev) => prev.filter((c) => c.id !== clone.id))
+    deleteAdClone(clone.id).catch((err) => alert(`No se pudo eliminar: ${err instanceof Error ? err.message : String(err)}`))
+  }
 
-  const filteredClones  = selectedBrainId ? validClones.filter((c)  => c.brand_brain?.id === selectedBrainId) : validClones
-  const filteredScripts = selectedBrainId ? validScripts.filter((c) => c.brand_brain?.id === selectedBrainId) : validScripts
+  const validClones  = imageClones.filter((c) => (c.generated_image_urls?.length ?? 0) > 0)
+  const validScripts = scripts.filter((c) => (c.adapted_lines?.length ?? 0) > 0)
+
+  const activeItems: Array<{ brand_brain?: BrainMeta | null }> = tab === "estaticos" ? validClones : validScripts
+
+  // Conteo por marca para el tab activo — incluye marcas con 0 (vienen de
+  // allBrands, no solo de los items existentes) y un bucket "Sin marca"
+  // para lo que no tiene brand_brain asignado en absoluto.
+  const countByBrainId = new Map<string, number>()
+  let unbrandedCount = 0
+  for (const item of activeItems) {
+    if (item.brand_brain?.id) countByBrainId.set(item.brand_brain.id, (countByBrainId.get(item.brand_brain.id) ?? 0) + 1)
+    else unbrandedCount++
+  }
+
+  const filteredClones  = !selectedBrainId || selectedBrainId === ALL_BRANDS_KEY
+    ? validClones
+    : selectedBrainId === NO_BRAND_KEY
+      ? validClones.filter((c) => !c.brand_brain?.id)
+      : validClones.filter((c) => c.brand_brain?.id === selectedBrainId)
+  const filteredScripts = !selectedBrainId || selectedBrainId === ALL_BRANDS_KEY
+    ? validScripts
+    : selectedBrainId === NO_BRAND_KEY
+      ? validScripts.filter((c) => !c.brand_brain?.id)
+      : validScripts.filter((c) => c.brand_brain?.id === selectedBrainId)
 
   function switchTab(t: "estaticos" | "guiones") {
     setTab(t)
@@ -358,6 +446,9 @@ export function CreativesGrid({ clones, scriptClones }: Props) {
 
   const isEmpty    = tab === "estaticos" ? validClones.length === 0  : validScripts.length === 0
   const noResults  = tab === "estaticos" ? filteredClones.length === 0 : filteredScripts.length === 0
+  const selectedBrandName = selectedBrainId && selectedBrainId !== ALL_BRANDS_KEY && selectedBrainId !== NO_BRAND_KEY
+    ? allBrands.find((b) => b.id === selectedBrainId)?.name
+    : null
 
   return (
     <>
@@ -395,9 +486,17 @@ export function CreativesGrid({ clones, scriptClones }: Props) {
               </span>
             </button>
           ))}
+          {selectedBrainId !== null && (
+            <button
+              onClick={() => setSelectedBrainId(null)}
+              className="ml-auto flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground"
+            >
+              <ChevronLeft className="w-4 h-4" /> Marcas
+            </button>
+          )}
         </div>
 
-        {isEmpty ? (
+        {isEmpty && allBrands.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-32 gap-3 text-center">
             <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center text-2xl">
               {tab === "estaticos" ? "🎨" : "📝"}
@@ -414,57 +513,49 @@ export function CreativesGrid({ clones, scriptClones }: Props) {
               </p>
             </div>
           </div>
+        ) : selectedBrainId === null ? (
+          // ── Pantalla de marcas ──
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            <BrandTile
+              label="Todas"
+              count={activeItems.length}
+              logoUrl={null}
+              initials={null}
+              color={null}
+              onClick={() => setSelectedBrainId(ALL_BRANDS_KEY)}
+            />
+            {allBrands.map((brain) => (
+              <BrandTile
+                key={brain.id}
+                label={brain.name}
+                count={countByBrainId.get(brain.id) ?? 0}
+                logoUrl={brain.logo_square_url ?? brain.logo_url ?? null}
+                initials={brain.initials}
+                color={brain.brand_colors?.[0]?.hex ?? null}
+                onClick={() => setSelectedBrainId(brain.id)}
+              />
+            ))}
+            {unbrandedCount > 0 && (
+              <BrandTile
+                label="Sin marca"
+                count={unbrandedCount}
+                logoUrl={null}
+                initials={null}
+                color={null}
+                onClick={() => setSelectedBrainId(NO_BRAND_KEY)}
+              />
+            )}
+          </div>
         ) : (
           <>
-            {/* Brand filter */}
-            {brands.length > 1 && (
-              <div className="flex items-center gap-2 flex-wrap">
-                <button
-                  onClick={() => setSelectedBrainId(null)}
-                  className={`flex items-center gap-2 h-8 px-3 rounded-full text-xs font-medium border transition-colors ${
-                    !selectedBrainId
-                      ? "bg-foreground text-background border-foreground"
-                      : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"
-                  }`}
-                >
-                  Todas
-                </button>
-                {brands.map((brain) => {
-                  const isActive = selectedBrainId === brain.id
-                  const colors   = brain.brand_colors?.slice(0, 3) ?? []
-                  return (
-                    <button
-                      key={brain.id}
-                      onClick={() => setSelectedBrainId(isActive ? null : brain.id)}
-                      className={`flex items-center gap-2 h-8 px-3 rounded-full text-xs font-medium border transition-colors ${
-                        isActive
-                          ? "bg-foreground text-background border-foreground"
-                          : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"
-                      }`}
-                    >
-                      {colors.length > 0 ? (
-                        <span className="flex gap-0.5">
-                          {colors.map((c, i) => (
-                            <span key={i} className="w-3 h-3 rounded-full flex-shrink-0 ring-1 ring-black/10" style={{ background: c.hex }} />
-                          ))}
-                        </span>
-                      ) : brain.logo_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={brain.logo_url} alt="" className="w-4 h-4 rounded-full object-cover flex-shrink-0" />
-                      ) : (
-                        <span className="w-3 h-3 rounded-full bg-muted-foreground/30 flex-shrink-0" />
-                      )}
-                      {brain.name}
-                    </button>
-                  )
-                })}
-              </div>
+            {selectedBrandName && (
+              <p className="text-sm font-semibold">{selectedBrandName}</p>
             )}
 
             {noResults ? (
               <div className="flex flex-col items-center justify-center py-20 gap-2 text-center">
                 <p className="text-sm font-semibold">Sin resultados para esta marca</p>
-                <button onClick={() => setSelectedBrainId(null)} className="text-xs text-primary underline">Ver todas</button>
+                <button onClick={() => setSelectedBrainId(null)} className="text-xs text-primary underline">← Marcas</button>
               </div>
             ) : tab === "estaticos" ? (
               <div className="columns-2 sm:columns-3 lg:columns-4 xl:columns-5 gap-3">
@@ -474,13 +565,14 @@ export function CreativesGrid({ clones, scriptClones }: Props) {
                     clone={clone}
                     onOpen={(c, i) => setLightbox({ clone: c, imgIdx: i })}
                     onReclone={handleReclone}
+                    onDelete={handleDeleteImageClone}
                   />
                 ))}
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {filteredScripts.map((clone) => (
-                  <ScriptCard key={clone.id} clone={clone} />
+                  <ScriptCard key={clone.id} clone={clone} onDelete={handleDeleteScript} />
                 ))}
               </div>
             )}
