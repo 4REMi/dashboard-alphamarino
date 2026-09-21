@@ -1163,6 +1163,47 @@ export interface ImageCloneLine {
   adapted: string
 }
 
+// Plan de art direction que Claude genera ANTES de la generación de
+// imagen — ver generateVisualDirection() en lib/actions/image-clone.ts.
+// Esquema fijo (no free-form) para poder mostrarlo estructurado en la UI
+// y para poder referenciarlo de forma predecible dentro del prompt final
+// de generación.
+export interface VisualDirection {
+  direction_name: string
+  summary: string
+  design_diagnosis: {
+    core_mechanic: string
+    retain: string[]
+    translate: string[]
+    issues_to_correct: string[]
+  }
+  visual_anchor: { source: string; reason: string }
+  style: { keywords: string[]; intensity: "subtle" | "balanced" | "bold" }
+  palette: {
+    canvas: string
+    primary_text: string
+    neutral_surface: string
+    brand_surface: string
+    accent: string
+    supporting_accent: string
+  }
+  color_logic: {
+    dominant: string[]
+    supporting: string[]
+    accent_only: string[]
+    accent_budget: string
+  }
+  background_strategy: {
+    source_role: string
+    preserve_literal_environment: boolean
+    reason: string
+    destination_treatment: string
+  }
+  element_map: Record<string, string>
+  emphasis: { primary: string[]; secondary: string[]; tertiary: string[] }
+  avoid: string[]
+}
+
 export interface ImageClone {
   id: string
   // NULL for a "from scratch" clone (source: "scratch") — nothing to
@@ -1182,6 +1223,10 @@ export interface ImageClone {
   brand_color: string | null
   aspect_ratio: "1:1" | "9:16" | "16:9" | "4:5"
   num_images: number
+  // Plan de art direction aprobado (o el último generado) — null hasta que
+  // el usuario pasa por el paso de "Dirección Visual". Se inyecta en el
+  // prompt de generación final si está presente.
+  visual_direction: VisualDirection | null
   // Qué API generó (o va a generar) las imágenes de este clon — Replicate
   // (google/nano-banana-pro, el original) o APIMart (gpt-image-2.5-sunburst).
   // pollImageGeneration lo necesita para saber contra cuál API consultar.

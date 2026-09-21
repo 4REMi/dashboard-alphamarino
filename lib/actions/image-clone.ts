@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import Anthropic from "@anthropic-ai/sdk"
 import { saveAd } from "@/lib/actions/ad-lab"
-import type { ImageClone, ImageCloneLine, MetaAdResult, BrandBrain } from "@/lib/types"
+import type { ImageClone, ImageCloneLine, MetaAdResult, BrandBrain, VisualDirection } from "@/lib/types"
 
 const REPLICATE_BASE = "https://api.replicate.com/v1"
 const REPLICATE_MODEL = "google/nano-banana-pro"
@@ -265,6 +265,20 @@ async function validateLogoUrl(url: string): Promise<{ valid: boolean; reason: s
 
 type BrainContext = Pick<BrandBrain, "name" | "industry" | "language" | "tone_of_voice" | "usps" | "key_benefits" | "pain_points" | "target_audience" | "ctas" | "brand_colors" | "logo_url" | "logo_square_url" | "logo_horizontal_url">
 
+// Descarga una imagen y la convierte al bloque de visión que pide la API
+// de Anthropic (base64, no URL directa). Compartido por
+// extractAndAdaptWithClaude y generateVisualDirection — antes cada uno lo
+// hacía inline por separado.
+async function downloadImageAsClaudeBlock(url: string) {
+  const res = await fetch(url, { signal: AbortSignal.timeout(15_000) })
+  if (!res.ok) throw new Error(`No se pudo descargar la imagen (${url}): HTTP ${res.status}`)
+  const buffer = await res.arrayBuffer()
+  const base64 = Buffer.from(buffer).toString("base64")
+  const rawType = (res.headers.get("content-type") ?? "image/jpeg").split(";")[0].trim()
+  const mediaType = (["image/jpeg", "image/png", "image/webp", "image/gif"].includes(rawType) ? rawType : "image/jpeg") as "image/jpeg" | "image/png" | "image/webp" | "image/gif"
+  return { type: "image" as const, source: { type: "base64" as const, media_type: mediaType, data: base64 } }
+}
+
 function langInstruction(lang: string | null | undefined): string {
   if (!lang) return ""
   const l = lang.toLowerCase().trim()
@@ -344,17 +358,52 @@ Devuelve ÚNICAMENTE un array JSON válido (sin markdown, sin texto extra) donde
   return JSON.parse(raw) as ImageCloneLine[]
 }
 
+// Serializa el VisualDirection aprobado a las instrucciones que el
+// generador de imagen debe seguir AL PIE DE LA LETRA — reemplaza el
+// análisis estructural genérico de las fases 1/2 (ya no hace falta que el
+// modelo "adivine" la estructura, ya se decidió en el paso anterior).
+function buildDirectionBlock(direction: VisualDirection): string {
+  const d = direction.design_diagnosis
+  const elementMapLines = Object.entries(direction.element_map)
+    .filter(([, v]) => v?.trim())
+    .map(([k, v]) => `- ${k}: ${v}`)
+    .join("\n")
+
+  return [
+    `APPROVED VISUAL DIRECTION — FOLLOW EXACTLY. Do not reinterpret brand colors, background strategy, or layout independently; this direction already resolved those decisions.`,
+    `Direction: ${direction.direction_name}\n${direction.summary}`,
+    `Core mechanic to preserve: ${d.core_mechanic}`,
+    d.retain.length ? `Retain:\n${d.retain.map((r) => `- ${r}`).join("\n")}` : "",
+    d.translate.length ? `Translate:\n${d.translate.map((t) => `- ${t}`).join("\n")}` : "",
+    `Visual anchor: ${direction.visual_anchor.source} — ${direction.visual_anchor.reason}`,
+    `Style: ${direction.style.keywords.join(", ")} (intensity: ${direction.style.intensity})`,
+    `Color roles — canvas: ${direction.palette.canvas}; primary text: ${direction.palette.primary_text}; neutral surface: ${direction.palette.neutral_surface}; brand surface: ${direction.palette.brand_surface}; accent: ${direction.palette.accent}; supporting accent: ${direction.palette.supporting_accent}.`,
+    `Dominant colors: ${direction.color_logic.dominant.join(", ") || "—"}. Supporting: ${direction.color_logic.supporting.join(", ") || "—"}. Accent-only (budget: ${direction.color_logic.accent_budget}): ${direction.color_logic.accent_only.join(", ") || "—"}.`,
+    `Background: ${direction.background_strategy.preserve_literal_environment ? "preserve the literal source environment" : "translate the environment"} — ${direction.background_strategy.destination_treatment}`,
+    elementMapLines ? `Layout zones:\n${elementMapLines}` : "",
+    `Emphasis — primary: ${direction.emphasis.primary.join(", ") || "—"}; secondary: ${direction.emphasis.secondary.join(", ") || "—"}; tertiary: ${direction.emphasis.tertiary.join(", ") || "—"}.`,
+    (d.issues_to_correct.length || direction.avoid.length)
+      ? `Avoid:\n${[...d.issues_to_correct, ...direction.avoid].map((a) => `- ${a}`).join("\n")}`
+      : "",
+  ].filter(Boolean).join("\n\n")
+}
+
 function buildGenerationPrompt(
   adaptedLines: ImageCloneLine[],
   brain: BrainContext,
   primaryColor: string | null,
   additionalContext: string,
+  direction: VisualDirection | null,
 ): string {
   const allColors = (brain.brand_colors ?? []).map((c) => c.hex)
   const primary = primaryColor ?? allColors[0] ?? null
   const secondaryColors = allColors.filter((h) => h !== primary)
 
-  const colorBlock = primary
+  // Sin dirección visual aprobada (paso saltado, o clon viejo de antes de
+  // esta feature), se cae al bloque de color genérico de siempre — con
+  // dirección, el manejo de color YA viene resuelto en buildDirectionBlock,
+  // así que este bloque genérico no aplica.
+  const colorBlock = !direction && primary
     ? [
         `Primary: ${primary}`,
         secondaryColors.length > 0 ? `Secondary: ${secondaryColors.join(", ")}` : "",
@@ -372,8 +421,9 @@ function buildGenerationPrompt(
     ? `\n\n---\n\nADDITIONAL INSTRUCTIONS\n${additionalContext.trim()}`
     : ""
 
-  return [
-    `You are a visual design system that clones ad layouts for new brands.
+  const openingBlock = direction
+    ? `You are a visual design system that clones ad layouts for new brands. A senior art director already analyzed image 1 and produced the visual direction below — implement it, don't redesign it.`
+    : `You are a visual design system that clones ad layouts for new brands.
 
 PHASE 1 — STRUCTURAL ANALYSIS (before applying any brand elements):
 Study image 1 and extract the following:
@@ -383,13 +433,479 @@ Study image 1 and extract the following:
 - Spatial rhythm: note padding, proportions, and alignment patterns
 
 PHASE 2 — BRAND SUBSTITUTION:
-Rebuild the exact same layout using the brand system below. Preserve all structural decisions from Phase 1. Apply brand colors by mapping them to the contrast logic you identified — not by filling every element with the primary color.`,
+Rebuild the exact same layout using the brand system below. Preserve all structural decisions from Phase 1. Apply brand colors by mapping them to the contrast logic you identified — not by filling every element with the primary color.`
+
+  return [
+    openingBlock,
+    direction ? `---\n\n${buildDirectionBlock(direction)}` : "",
     `---`,
     `BRAND\nName: ${brain.name}${brain.industry ? `\nIndustry: ${brain.industry}` : ""}${brain.tone_of_voice ? `\nTone: ${brain.tone_of_voice}` : ""}`,
     colorBlock ? `---\n\nCOLORS\n${colorBlock}` : "",
     `---\n\nTEXT REPLACEMENTS\nReplace each string exactly as written, in its original position:\n${textBlock}`,
     extraLine,
   ].filter(Boolean).join("\n\n")
+}
+
+// ── Visual Direction (paso 3 del modal, entre "aprobar copy" y "generar") ──
+//
+// Un art director senior (Claude) analiza el anuncio fuente + referencias
+// de marca + copy aprobado + contexto creativo, y regresa un plan
+// estructurado de qué conservar/traducir/evitar, antes de que se genere
+// ninguna imagen. buildDirectionBlock() ya arriba serializa esto al
+// prompt final de generación.
+const VISUAL_DIRECTION_PROMPT = `You are the senior art director responsible for translating an existing advertisement into a destination brand.
+
+You are NOT designing a new layout.
+
+Your job is to preserve the winning visual mechanic, composition and communication logic of the source advertisement while determining how the destination brand should visually inhabit that structure.
+
+IMPORTANT CONTEXT:
+
+This system intentionally adapts winning advertising formats across different industries.
+
+The source advertisement may come from a completely different:
+- industry
+- product category
+- audience
+- lifestyle world
+- visual identity
+- use case
+
+This is expected.
+
+Do not assume the destination brand should inherit the literal world of the source advertisement.
+
+Preserve what makes the FORMAT work.
+Translate what belongs specifically to the SOURCE BRAND.
+
+---
+
+INPUTS
+
+IMAGE 1 — SOURCE ADVERTISEMENT
+The advertisement whose composition and creative mechanic are being adapted.
+
+ADDITIONAL IMAGES
+Optional destination-brand references such as:
+- logo
+- product photography
+- packaging
+- screenshots
+- website/app UI
+- photography
+- other visual assets
+
+BRAND BRAIN
+May contain:
+- brand name
+- industry
+- tone of voice
+- audience
+- USPs
+- benefits
+- pain points
+- CTAs
+- declared brand colors
+
+APPROVED COPY
+The final adapted text that must appear in the new creative.
+
+CREATIVE CONTEXT
+May contain:
+- selected product/service
+- creative concept
+- funnel stage
+- strategic angle
+
+---
+
+YOUR TASK
+
+Create a VISUAL DIRECTION PLAN before image generation.
+
+Think like a senior art director translating a successful creative format into another brand.
+
+Determine:
+
+1. What structural decisions make the source ad work.
+2. Which structural decisions should remain unchanged.
+3. Which visual characteristics belong specifically to the source brand or source industry and should NOT be copied literally.
+4. Any visual weaknesses in the original that should not be inherited.
+5. The strongest available visual anchor for the destination brand.
+6. How the destination brand colors should function inside this specific composition.
+7. How much saturation and visual intensity should be used.
+8. How every major layout zone should be treated.
+9. How the background, environment and lifestyle world should be handled.
+10. Which elements deserve the strongest visual emphasis based on the approved copy and strategic concept.
+11. What the image generator must explicitly avoid.
+
+---
+
+CORE PRINCIPLE
+
+PRESERVE THE CREATIVE MECHANIC, NOT THE SOURCE BRAND.
+
+Examples:
+
+A fashion advertisement showing a product physically emerging from a phone screen may become a web-development advertisement where a website or interface emerges from the device.
+
+A wellness beach collage may become a fast-food summer lifestyle scene while preserving the casual social-media collage mechanic.
+
+A comparison advertisement from supplements may become a refurbished-phone comparison while preserving the A-vs-B structure.
+
+Preserve:
+- composition
+- hierarchy
+- spatial rhythm
+- communication mechanic
+- emotional purpose
+- visual storytelling device
+
+Translate when necessary:
+- products
+- props
+- environments
+- lifestyle context
+- category-specific imagery
+- source-brand colors
+- source-brand identity cues
+
+---
+
+STRUCTURE RULE
+
+Preserve the source advertisement's:
+- overall layout
+- relative placement of major elements
+- visual hierarchy
+- spatial rhythm
+- core graphic mechanic
+
+Do not redesign the advertisement from scratch.
+
+Improve the visual system without destroying the recognizable structure that made the source creative useful.
+
+---
+
+CROSS-INDUSTRY TRANSLATION RULE
+
+Assume cross-industry adaptation is normal.
+
+When the source and destination industries differ:
+
+Preserve the FUNCTION of an element before preserving its literal subject.
+
+Ask:
+
+"What job is this element doing in the advertisement?"
+
+Then find the destination-brand equivalent.
+
+Examples:
+
+Source:
+Product floating around a lifestyle photograph.
+
+Destination:
+Destination products/assets floating in the same compositional role.
+
+Source:
+Physical product emerging from a device.
+
+Destination:
+Website, dashboard, interface, service result or destination product emerging from the device.
+
+Source:
+Wellness-oriented summer environment.
+
+Destination:
+A destination-brand-compatible summer/lifestyle environment delivering the same emotional function.
+
+Do not copy category-specific props or environments simply because they appear in the source.
+
+---
+
+BACKGROUND ADAPTATION RULE
+
+Preserve the functional role of the background before preserving its literal appearance.
+
+Determine whether the source background is:
+
+A. STRUCTURAL
+Example:
+simple studio backdrop, texture, gradient, neutral surface.
+
+B. EMOTIONAL / LIFESTYLE
+Example:
+beach, bedroom, gym, street, restaurant, office, party.
+
+C. CATEGORY-SPECIFIC
+Example:
+clinical supplement environment, fashion runway, restaurant table, construction site.
+
+If the literal environment works naturally for the destination brand, it may be preserved.
+
+If it does not, translate it into a destination-brand-coherent environment that delivers the same:
+
+- mood
+- energy
+- depth
+- framing
+- compositional role
+- emotional purpose
+
+Do not introduce a new branded environment without a reason.
+
+If no destination visual references exist, prefer a coherent, restrained translation of the source environment rather than inventing an entirely new aesthetic universe.
+
+---
+
+VISUAL ANCHOR RULE
+
+Identify the strongest destination-brand visual anchor.
+
+Possible anchors include:
+- product photography
+- packaging
+- website/app UI
+- logo
+- existing photography
+- brand palette
+- declared visual identity
+
+If product imagery, packaging or interface references provide a richer visual system than the declared brand colors, they may become the primary art-direction anchor.
+
+Do not assume the logo or primary brand color must dominate.
+
+---
+
+COLOR RULE
+
+Brand colors are ingredients, not mandatory surface fills.
+
+NEVER assume:
+
+Primary brand color = largest surface.
+
+Instead assign colors semantic roles such as:
+
+- canvas
+- primary text
+- neutral surface
+- branded surface
+- accent
+- supporting accent
+- highlight
+- badge
+- CTA
+
+Highly saturated colors should often be restricted to smaller areas when using them broadly would reduce visual quality.
+
+Do not force every declared brand color into the creative.
+
+Brand recognizability should come from:
+- hierarchy
+- controlled repetition
+- semantic color roles
+- product/brand references
+- intentional accents
+
+not maximum brand-color coverage.
+
+---
+
+SATURATION RULE
+
+Create a saturation strategy appropriate to the composition.
+
+If the brand contains multiple highly saturated colors, do not allow them all to compete equally.
+
+Define:
+- dominant visual colors
+- supporting colors
+- accent-only colors
+
+Use high saturation intentionally.
+
+---
+
+COPY HIERARCHY RULE
+
+The approved text is final.
+
+Use the functional role of each copy element to inform hierarchy.
+
+Examples:
+- headline = primary
+- supporting statement = secondary
+- option label = tertiary
+- discount = accent
+- certification = trust signal
+- CTA = action
+
+Do not change the meaning of the approved copy.
+
+---
+
+AVOID GENERIC "BRANDIFICATION"
+
+Do not simply:
+
+- recolor the entire ad with brand colors
+- replace every source color with the closest brand color
+- place the primary color on every major surface
+- turn the background into a brand-color gradient without justification
+- overuse the logo
+- force all available visual references into the composition
+
+The final direction should feel intentionally art-directed, not mechanically recolored.
+
+---
+
+OUTPUT
+
+Return JSON only, no markdown, no commentary. Use exactly this schema:
+
+{
+  "direction_name": "",
+  "summary": "",
+  "design_diagnosis": {
+    "core_mechanic": "",
+    "retain": [],
+    "translate": [],
+    "issues_to_correct": []
+  },
+  "visual_anchor": { "source": "", "reason": "" },
+  "style": { "keywords": [], "intensity": "subtle | balanced | bold" },
+  "palette": {
+    "canvas": "",
+    "primary_text": "",
+    "neutral_surface": "",
+    "brand_surface": "",
+    "accent": "",
+    "supporting_accent": ""
+  },
+  "color_logic": {
+    "dominant": [],
+    "supporting": [],
+    "accent_only": [],
+    "accent_budget": ""
+  },
+  "background_strategy": {
+    "source_role": "",
+    "preserve_literal_environment": true,
+    "reason": "",
+    "destination_treatment": ""
+  },
+  "element_map": {
+    "background": "",
+    "headline": "",
+    "secondary_text": "",
+    "primary_visual": "",
+    "secondary_visuals": "",
+    "comparison_A": "",
+    "comparison_B": "",
+    "badges": "",
+    "product": "",
+    "icons": "",
+    "cta": ""
+  },
+  "emphasis": { "primary": [], "secondary": [], "tertiary": [] },
+  "avoid": []
+}`
+
+function parseVisualDirectionJson(raw: string): VisualDirection {
+  const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim()
+  return JSON.parse(cleaned) as VisualDirection
+}
+
+/**
+ * Runs the art-director pass — analyzes the source ad + destination brand
+ * references + approved copy + creative context, and returns a structured
+ * plan of what to retain/translate/avoid. Persists on the clone so
+ * generateImages() can inject it into the final generation prompt.
+ * extraInstructions lets the user nudge a regeneration ("más saturado",
+ * "no uses el fondo original", etc.) without starting over from scratch.
+ */
+export async function generateVisualDirection(
+  cloneId: string,
+  extraInstructions?: string,
+): Promise<VisualDirection> {
+  const { supabase } = await assertAuth()
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY no configurado")
+
+  const { data: clone, error } = await supabase
+    .from("image_clones")
+    .select(`
+      adapted_lines, reference_image_urls,
+      brand_brain:brand_brains(name, industry, tone_of_voice, usps, key_benefits, pain_points, target_audience, ctas, brand_colors, logo_url, logo_square_url, logo_horizontal_url),
+      saved_ad:saved_ads(cached_image_url, image_url),
+      concept:creative_concepts(name, angle_type, funnel_stage, target_persona)
+    `)
+    .eq("id", cloneId)
+    .single()
+  if (error) throw error
+
+  const savedAd = clone.saved_ad as unknown as { cached_image_url: string | null; image_url: string | null } | null
+  const adImageUrl = savedAd?.cached_image_url ?? savedAd?.image_url ?? null
+  if (!adImageUrl) throw new Error("No se encontró la imagen del anuncio original.")
+
+  const brain = clone.brand_brain as unknown as BrainContext | null
+  const concept = clone.concept as unknown as { name: string | null; angle_type: string | null; funnel_stage: string | null; target_persona: string | null } | null
+  const refUrls: string[] = clone.reference_image_urls ?? []
+  const logoUrl = brain?.logo_square_url ?? brain?.logo_url ?? brain?.logo_horizontal_url ?? null
+
+  // Image 1 = source ad siempre primero, mismo orden/convención que usa
+  // generateImages() — cap de 6 para no disparar latencia/costo de Claude
+  // Vision innecesariamente (el logo y 1-2 referencias ya dicen lo que
+  // hace falta para el art direction, no se necesitan las 16 posibles).
+  const imageUrls = [adImageUrl, ...(logoUrl ? [logoUrl] : []), ...refUrls].slice(0, 6)
+  const imageBlocks = await Promise.all(imageUrls.map(downloadImageAsClaudeBlock))
+
+  const contextText = [
+    `BRAND BRAIN`,
+    `Name: ${brain?.name ?? "—"}`,
+    `Industry: ${brain?.industry ?? "—"}`,
+    `Tone of voice: ${brain?.tone_of_voice ?? "—"}`,
+    `Audience: ${brain?.target_audience ?? "—"}`,
+    `USPs: ${(brain?.usps ?? []).join(", ") || "—"}`,
+    `Benefits: ${(brain?.key_benefits ?? []).join(", ") || "—"}`,
+    `Pain points: ${(brain?.pain_points ?? []).join(", ") || "—"}`,
+    `CTAs: ${(brain?.ctas ?? []).join(", ") || "—"}`,
+    `Declared brand colors: ${(brain?.brand_colors ?? []).map((c) => c.hex).join(", ") || "—"}`,
+    ``,
+    `APPROVED COPY`,
+    (clone.adapted_lines as ImageCloneLine[] ?? []).map((l) => `${l.element}: "${l.adapted}"`).join("\n") || "—",
+    ``,
+    `CREATIVE CONTEXT`,
+    `Concept: ${concept?.name ?? "—"}`,
+    `Strategic angle: ${concept?.angle_type ?? "—"}`,
+    `Funnel stage: ${concept?.funnel_stage ?? "—"}`,
+    `Target persona: ${concept?.target_persona ?? "—"}`,
+    ``,
+    `IMAGE ORDER`,
+    `Image 1 = source advertisement.`,
+    logoUrl ? `Image 2 = destination brand logo.` : "",
+    refUrls.length > 0 ? `Remaining images = destination brand references (product/packaging/UI/etc).` : "",
+    extraInstructions?.trim() ? `\nUSER ADJUSTMENT REQUEST\n${extraInstructions.trim()}` : "",
+  ].filter(Boolean).join("\n")
+
+  const Anthropic = (await import("@anthropic-ai/sdk")).default
+  const client = new Anthropic({ apiKey })
+  const message = await client.messages.create({
+    model: "claude-opus-4-7",
+    max_tokens: 4096,
+    messages: [{
+      role: "user",
+      content: [...imageBlocks, { type: "text", text: `${VISUAL_DIRECTION_PROMPT}\n\n---\n\n${contextText}` }],
+    }],
+  })
+  const raw = message.content[0].type === "text" ? message.content[0].text : ""
+  const direction = parseVisualDirectionJson(raw)
+
+  await supabase.from("image_clones").update({ visual_direction: direction }).eq("id", cloneId)
+  return direction
 }
 
 // ── Public actions ────────────────────────────────────────────
@@ -761,6 +1277,7 @@ export async function generateImages(
     brain ?? { name: "Marca", industry: null, language: null, tone_of_voice: null, usps: [], key_benefits: [], pain_points: [], target_audience: null, ctas: [], brand_colors: [], logo_url: null, logo_square_url: null, logo_horizontal_url: null },
     config.brandColor,
     config.additionalContext,
+    (clone.visual_direction as VisualDirection | null) ?? null,
   )
 
   await supabase
