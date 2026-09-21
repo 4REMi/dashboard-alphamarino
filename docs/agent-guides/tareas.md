@@ -70,6 +70,14 @@ navegar a cada proyecto uno por uno.
   mismo `PingRecipientsPicker`. Sin la variante "self" (quien escribe la nota no
   necesita confirmación de su propia acción). Ver `docs/agent-guides/mcp-server.md`
   para el detalle completo (incluye por qué Telegram NO lo tiene).
+- **Bitácora: fecha de evento, categoría y edición.** Cada nota (`project_log_entries`)
+  tiene, además de `created_at` (cuándo se escribió), un `event_date` opcional
+  (DATE — cuándo pasó lo que describe, para registrar algo que ya sucedió, ej. "el
+  cliente pasó el dominio hace dos semanas") y una `category` opcional de un set
+  fijo (`Decisión`/`Bloqueo`/`Cliente`/`Interno`, con su propio color, no derivado
+  del texto). El autor de una nota (o un admin) puede editar body/fecha/categoría
+  después de crearla vía `updateLogEntry` — editar NUNCA re-dispara notificación,
+  eso solo pasa al crearla.
 - **Tres caminos a "Hecho", un solo disparador de Ping**: una tarea puede llegar a
   Done por cambio de estado explícito, por completar su checklist (auto-completado),
   o por voz ("tarea completada" en Telegram). Los tres pasan por `finalizeTaskDone`

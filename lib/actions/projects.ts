@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { notify } from "@/lib/notifications/notify"
 import { can } from "@/lib/permissions"
-import type { ProjectStatus, PhaseStatus, CycleDeliverableStatus, CampaignStatus, Profile } from "@/lib/types"
+import type { ProjectStatus, PhaseStatus, CycleDeliverableStatus, CampaignStatus, Profile, ProjectLogCategory } from "@/lib/types"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
 // Builds position_id → [profile_ids] from a project's current members, so
@@ -1231,9 +1231,12 @@ export async function addLogEntry(
   body: string,
   actingProfileId?: string,
   notifyOptions?: { team?: boolean; recipientIds?: string[] },
+  details?: { eventDate?: string | null; category?: ProjectLogCategory | null },
 ) {
   const notifyTeam = notifyOptions?.team ?? false
   const recipientIds = notifyOptions?.recipientIds?.length ? notifyOptions.recipientIds : null
+  const eventDate = details?.eventDate ?? null
+  const category = details?.category ?? null
 
   if (actingProfileId) {
     const admin = createAdminClient()
@@ -1241,7 +1244,7 @@ export async function addLogEntry(
     if (!profile) throw new Error("Not authenticated")
     const { error } = await admin
       .from("project_log_entries")
-      .insert({ project_id: projectId, author_id: profile.id, body, notify_team: notifyTeam, notify_recipient_ids: recipientIds })
+      .insert({ project_id: projectId, author_id: profile.id, body, notify_team: notifyTeam, notify_recipient_ids: recipientIds, event_date: eventDate, category })
     if (error) throw error
     revalidatePath(`/projects/${projectId}`)
     if (notifyTeam || recipientIds) await notifyProjectNote(admin, projectId, profile.id, body, notifyTeam, recipientIds)
@@ -1254,11 +1257,33 @@ export async function addLogEntry(
 
   const { error } = await supabase
     .from("project_log_entries")
-    .insert({ project_id: projectId, author_id: user.id, body, notify_team: notifyTeam, notify_recipient_ids: recipientIds })
+    .insert({ project_id: projectId, author_id: user.id, body, notify_team: notifyTeam, notify_recipient_ids: recipientIds, event_date: eventDate, category })
 
   if (error) throw error
   revalidatePath(`/projects/${projectId}`)
   if (notifyTeam || recipientIds) await notifyProjectNote(createAdminClient(), projectId, user.id, body, notifyTeam, recipientIds)
+}
+
+// Editar una nota propia — solo body/fecha/categoría; el autor y
+// created_at nunca cambian, y no se re-notifica (eso solo pasa al
+// crearla, no al corregirla después).
+export async function updateLogEntry(
+  entryId: string,
+  projectId: string,
+  patch: { body?: string; eventDate?: string | null; category?: ProjectLogCategory | null },
+) {
+  const supabase = await createClient()
+  const update: Record<string, unknown> = {}
+  if (patch.body !== undefined) update.body = patch.body
+  if (patch.eventDate !== undefined) update.event_date = patch.eventDate
+  if (patch.category !== undefined) update.category = patch.category
+
+  const { error } = await supabase
+    .from("project_log_entries")
+    .update(update)
+    .eq("id", entryId)
+  if (error) throw error
+  revalidatePath(`/projects/${projectId}`)
 }
 
 export async function deleteLogEntry(entryId: string, projectId: string) {

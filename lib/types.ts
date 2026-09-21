@@ -688,12 +688,18 @@ export interface WebProjectContext {
 // PROJECT LOG
 // ============================================================
 
+export type ProjectLogCategory = "Decisión" | "Bloqueo" | "Cliente" | "Interno"
+
 export interface ProjectLogEntry {
   id: string
   project_id: string
   author_id: string
   body: string
   created_at: string
+  // Fecha del evento que describe la nota — distinta de created_at
+  // cuando se registra algo que ya pasó. null = se asume created_at.
+  event_date: string | null
+  category: ProjectLogCategory | null
   author?: Profile | null
 }
 

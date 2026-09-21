@@ -94,7 +94,7 @@ export function ProjectContextBar({
               )}
             </button>
           </DialogTrigger>
-          <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogContent className="max-w-xl max-h-[80vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Bitácora del proyecto</DialogTitle>
             </DialogHeader>
