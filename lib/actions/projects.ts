@@ -201,6 +201,20 @@ async function copyTaskSetsToProject(
 // READ
 // ============================================================
 
+// Versión liviana para pickers (ej. "Enviar a proyecto" desde Ad Lab) —
+// getProjects() trae joins pesados (tasks, phases, income) que un
+// selector de "elige un proyecto" no necesita.
+export async function getProjectOptions(): Promise<{ id: string; name: string }[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from("projects")
+    .select("id, name")
+    .neq("status", "Archived")
+    .order("name", { ascending: true })
+  if (error) return []
+  return data ?? []
+}
+
 export async function getProjects(includeArchived = false) {
   const supabase = await createClient()
   const now = new Date().toISOString().split("T")[0]

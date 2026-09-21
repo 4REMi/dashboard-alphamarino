@@ -2,12 +2,16 @@
 
 import { useState, useEffect, useCallback } from "react"
 import {
-  ChevronLeft, ChevronRight, Download, Link2, ArrowRight, X, Maximize2, Copy, Repeat2, Trash2, LayoutGrid, ImageIcon,
+  ChevronLeft, ChevronRight, Download, Link2, ArrowRight, X, Maximize2, Copy, Repeat2, Trash2, LayoutGrid, ImageIcon, MoreVertical, Send,
 } from "lucide-react"
 import type { ImageClone, AdClone, BrandBrainColor, BrandBrain } from "@/lib/types"
 import { ImageCloneModal, type RecloneSource } from "@/components/ad-lab/image-clone-modal"
+import { SendToProjectModal } from "@/components/ad-lab/send-to-project-modal"
 import { deleteImageClone } from "@/lib/actions/image-clone"
 import { deleteAdClone } from "@/lib/actions/ad-clone"
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+} from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 
 type BrainMeta = { id: string; name: string; logo_url?: string | null; brand_colors?: BrandBrainColor[] }
@@ -147,8 +151,14 @@ function Lightbox({
 // ── Image clone card ──────────────────────────────────────────
 
 function CreativeCard({
-  clone, onOpen, onReclone, onDelete,
-}: { clone: CloneRich; onOpen: (clone: CloneRich, idx: number) => void; onReclone: (imageUrl: string, clone: CloneRich) => void; onDelete: (clone: CloneRich) => void }) {
+  clone, onOpen, onReclone, onDelete, onSendToProject,
+}: {
+  clone: CloneRich
+  onOpen: (clone: CloneRich, idx: number) => void
+  onReclone: (imageUrl: string, clone: CloneRich) => void
+  onDelete: (clone: CloneRich) => void
+  onSendToProject: (imageUrl: string) => void
+}) {
   const [idx, setIdx]       = useState(0)
   const [copied, setCopied] = useState(false)
   const images       = clone.generated_image_urls ?? []
@@ -203,13 +213,25 @@ function CreativeCard({
         >
           <Repeat2 className="w-3.5 h-3.5" />
         </button>
-        <button
-          onClick={(e) => { e.stopPropagation(); onDelete(clone) }}
-          className="w-8 h-8 rounded-full bg-black/60 backdrop-blur-sm text-white flex items-center justify-center hover:bg-destructive transition-colors"
-          title="Eliminar"
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-        </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              onClick={(e) => e.stopPropagation()}
+              className="w-8 h-8 rounded-full bg-black/60 backdrop-blur-sm text-white flex items-center justify-center hover:bg-black/80 transition-colors"
+              title="Más opciones"
+            >
+              <MoreVertical className="w-3.5 h-3.5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+            <DropdownMenuItem onClick={() => onSendToProject(current)}>
+              <Send className="w-3.5 h-3.5" /> Enviar a proyecto
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onDelete(clone)} className="text-destructive focus:text-destructive">
+              <Trash2 className="w-3.5 h-3.5" /> Eliminar
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <div className="w-8 h-8 rounded-full bg-black/60 backdrop-blur-sm text-white flex items-center justify-center" title="Ver ampliado">
           <Maximize2 className="w-3.5 h-3.5" />
         </div>
@@ -394,6 +416,7 @@ export function CreativesGrid({ clones, scriptClones, allBrands }: Props) {
   const [selectedBrainId, setSelectedBrainId] = useState<string | null>(null)
   const [lightbox, setLightbox]     = useState<{ clone: CloneRich; imgIdx: number } | null>(null)
   const [recloneSource, setRecloneSource] = useState<RecloneSource | null>(null)
+  const [sendToProjectUrl, setSendToProjectUrl] = useState<string | null>(null)
   const [imageClones, setImageClones]   = useState<CloneRich[]>(clones)
   const [scripts, setScripts]           = useState<AdCloneRich[]>(scriptClones)
 
@@ -466,6 +489,12 @@ export function CreativesGrid({ clones, scriptClones, allBrands }: Props) {
         <ImageCloneModal
           recloneSource={recloneSource}
           onClose={() => setRecloneSource(null)}
+        />
+      )}
+      {sendToProjectUrl && (
+        <SendToProjectModal
+          imageUrl={sendToProjectUrl}
+          onClose={() => setSendToProjectUrl(null)}
         />
       )}
 
@@ -572,6 +601,7 @@ export function CreativesGrid({ clones, scriptClones, allBrands }: Props) {
                     clone={clone}
                     onOpen={(c, i) => setLightbox({ clone: c, imgIdx: i })}
                     onReclone={handleReclone}
+                    onSendToProject={setSendToProjectUrl}
                     onDelete={handleDeleteImageClone}
                   />
                 ))}

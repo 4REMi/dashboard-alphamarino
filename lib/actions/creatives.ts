@@ -325,6 +325,26 @@ export async function createAsset(projectId: string, formData: FormData): Promis
   revalidateProject(projectId)
 }
 
+// Enviar una imagen ya generada en otro lugar (ej. un Image Clone de Ad
+// Lab) directamente a un concept de un proyecto, sin pasar por AssetModal
+// — mismo camino que la rama "banco de creativos" de ese modal
+// (asset_url únicamente, sin tocar Storage, ya que la imagen ya vive en
+// el bucket de Ad Lab).
+export async function sendGeneratedImageToProject(
+  projectId: string,
+  conceptId: string,
+  imageUrl: string,
+  platform: string,
+): Promise<void> {
+  const fd = new FormData()
+  fd.set("concept_id", conceptId)
+  fd.set("asset_url", imageUrl)
+  fd.set("file_type", "image")
+  fd.set("format", "Imagen")
+  if (platform) fd.set("platform", platform)
+  await createAsset(projectId, fd)
+}
+
 export async function updateAsset(
   id: string,
   projectId: string,
