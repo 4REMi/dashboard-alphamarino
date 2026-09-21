@@ -159,9 +159,6 @@ function CreativeCard({
   const adThumb      = ad?.cached_image_url ?? ad?.image_url
   const primaryColor = brain?.brand_colors?.[0]?.hex
 
-  function prev(e: React.MouseEvent) { e.stopPropagation(); setIdx((i) => (i - 1 + total) % total) }
-  function next(e: React.MouseEvent) { e.stopPropagation(); setIdx((i) => (i + 1) % total) }
-
   async function copyShare(e: React.MouseEvent) {
     e.stopPropagation()
     const url = `${window.location.origin}/share/image-clone/${clone.share_token}`
@@ -173,8 +170,9 @@ function CreativeCard({
   if (!current) return null
 
   return (
+    <div className="break-inside-avoid mb-3">
     <div
-      className="break-inside-avoid mb-3 group relative overflow-hidden rounded-lg cursor-pointer"
+      className="group relative overflow-hidden rounded-lg cursor-pointer"
       onClick={() => onOpen(clone, idx)}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -233,17 +231,26 @@ function CreativeCard({
         </span>
         {total > 1 && <span className="text-[10px] text-white/70 flex-shrink-0 tabular-nums">{idx + 1}/{total}</span>}
       </div>
+    </div>
 
-      {/* Carousel arrows */}
+      {/* Miniaturas de las demás iteraciones de esta generación — hover cambia la imagen grande */}
       {total > 1 && (
-        <>
-          <button onClick={prev} className="absolute left-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-black/60 backdrop-blur-sm text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80">
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <button onClick={next} className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-black/60 backdrop-blur-sm text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80">
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </>
+        <div className="flex gap-1.5 mt-1.5 overflow-x-auto">
+          {images.map((img, i) => (
+            <button
+              key={i}
+              onClick={(e) => { e.stopPropagation(); setIdx(i) }}
+              onMouseEnter={() => setIdx(i)}
+              className={`flex-shrink-0 w-10 h-10 rounded-md overflow-hidden ring-2 transition-all ${
+                i === idx ? "ring-primary" : "ring-transparent hover:ring-border"
+              }`}
+              title={`Iteración ${i + 1}`}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={img} alt="" className="w-full h-full object-cover" loading="lazy" />
+            </button>
+          ))}
+        </div>
       )}
     </div>
   )
