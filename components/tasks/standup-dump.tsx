@@ -45,6 +45,12 @@ interface EditableItem {
   // equipo del proyecto (default), no vacío = solo esas personas.
   isPinged: boolean
   pingRecipientIds: string[]
+  // Avisar de la nota — solo nota_proyecto. Mismo patrón que ping: sin
+  // marcar es silenciosa (default, igual que el resto del dashboard);
+  // marcada sin destinatarios específicos avisa a todo el equipo del
+  // proyecto; con destinatarios, solo a ellos.
+  notifyTeam: boolean
+  notifyRecipientIds: string[]
 }
 
 interface Flight {
@@ -140,6 +146,8 @@ export function StandupDump({ projects, employees, sops, currentUserId, onClose,
           checklistItems: [],
           isPinged: false,
           pingRecipientIds: [],
+          notifyTeam: false,
+          notifyRecipientIds: [],
         })))
       })
       .catch((e) => setError(e instanceof Error ? e.message : "No se pudo interpretar el texto"))
@@ -165,6 +173,8 @@ export function StandupDump({ projects, employees, sops, currentUserId, onClose,
           checklistItems: [],
           isPinged: false,
           pingRecipientIds: [],
+          notifyTeam: false,
+          notifyRecipientIds: [],
         }))
         setItems((prev) => [...(prev ?? []), ...newItems])
         setMoreText("")
@@ -199,7 +209,10 @@ export function StandupDump({ projects, employees, sops, currentUserId, onClose,
     setError(null)
     const results = await Promise.allSettled(items.map(async (it) => {
       if (it.tipo === "nota_proyecto") {
-        await addLogEntry(it.projectId, it.title)
+        await addLogEntry(it.projectId, it.title, undefined, {
+          team: it.notifyTeam,
+          recipientIds: it.notifyRecipientIds,
+        })
       } else {
         const fd = new FormData()
         if (it.projectId) fd.set("project_id", it.projectId)
@@ -436,6 +449,37 @@ export function StandupDump({ projects, employees, sops, currentUserId, onClose,
                         <div />
                       )}
                     </div>
+
+                    {/* Avisar de la nota — mismo patrón de ping que las
+                        tareas: sin marcar es silenciosa (default); marcada
+                        sin destinatarios específicos avisa a todo el
+                        equipo del proyecto; con destinatarios, solo a
+                        ellos. Solo tiene sentido con proyecto ya elegido,
+                        que para una nota es siempre obligatorio. */}
+                    {it.tipo === "nota_proyecto" && it.projectId && (
+                      <div className="space-y-1.5">
+                        <button
+                          type="button"
+                          onClick={() => updateItem(it.key, { notifyTeam: !it.notifyTeam })}
+                          className={cn(
+                            "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md border text-xs transition-colors",
+                            it.notifyTeam
+                              ? "border-sky-300 bg-sky-50 text-sky-700"
+                              : "border-input bg-background text-muted-foreground hover:bg-muted/60"
+                          )}
+                        >
+                          <Bell className={cn("w-3.5 h-3.5", it.notifyTeam && "fill-current")} />
+                          {it.notifyTeam ? "Avisar — notifica al equipo" : "Sin avisar"}
+                        </button>
+                        {it.notifyTeam && (
+                          <PingRecipientsPicker
+                            projectId={it.projectId}
+                            selectedIds={it.notifyRecipientIds}
+                            onChange={(notifyRecipientIds) => updateItem(it.key, { notifyRecipientIds })}
+                          />
+                        )}
+                      </div>
+                    )}
 
                     {it.tipo === "tarea" && (
                       <div className="flex items-center justify-between gap-2 flex-wrap">
