@@ -18,6 +18,7 @@ import {
 } from "@/lib/actions/image-clone"
 import { getBrandBrains, getBrandLines } from "@/lib/actions/brand-brains"
 import { getConceptsByBrandBrain } from "@/lib/actions/creatives"
+import { cn } from "@/lib/utils"
 import type { BrandLine } from "@/lib/types"
 import { useRecentAngulos } from "@/lib/hooks/use-recent-angulos"
 import {
@@ -312,6 +313,16 @@ export function ImageCloneModal({ ad, recloneSource, savedAdSource, onClose }: P
 
   const removeFile = useCallback((idx: number) => {
     setRefFiles((prev) => prev.filter((_, i) => i !== idx))
+  }, [])
+
+  const [dragOverRefs, setDragOverRefs] = useState(false)
+
+  const handleFilesDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOverRefs(false)
+    const dropped = Array.from(e.dataTransfer.files ?? []).filter((f) => f.type.startsWith("image/"))
+    if (dropped.length === 0) return
+    setRefFiles((prev) => [...prev, ...dropped].slice(0, 10))
   }, [])
 
   async function handleGenerate() {
@@ -955,11 +966,17 @@ export function ImageCloneModal({ ad, recloneSource, savedAdSource, onClose }: P
                   Agrega fotos del producto o elementos que quieras incluir.
                 </p>
                 <div
-                  className="border border-dashed border-border rounded-xl p-4 text-center cursor-pointer hover:border-violet-400 hover:bg-violet-50/30 transition-colors"
+                  className={cn(
+                    "border border-dashed rounded-xl p-4 text-center cursor-pointer transition-colors",
+                    dragOverRefs ? "border-violet-500 bg-violet-50/50" : "border-border hover:border-violet-400 hover:bg-violet-50/30"
+                  )}
                   onClick={() => fileInputRef.current?.click()}
+                  onDragOver={(e) => { e.preventDefault(); setDragOverRefs(true) }}
+                  onDragLeave={() => setDragOverRefs(false)}
+                  onDrop={handleFilesDrop}
                 >
                   <Upload className="w-5 h-5 mx-auto text-muted-foreground mb-1.5" />
-                  <p className="text-xs text-muted-foreground">Haz clic para añadir imágenes</p>
+                  <p className="text-xs text-muted-foreground">Arrastra imágenes aquí o haz clic para añadirlas</p>
                 </div>
                 <input
                   ref={fileInputRef}
