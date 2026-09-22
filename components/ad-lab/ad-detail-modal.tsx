@@ -7,11 +7,12 @@ import { getAdClones, deleteAdClone } from "@/lib/actions/ad-clone"
 import { getImageClones, deleteImageClone } from "@/lib/actions/image-clone"
 import {
   X, ExternalLink, Bookmark, Check, Loader2,
-  Calendar, Wand2, ImageIcon, ChevronLeft, ChevronRight, Link as LinkIcon, Plus, Trash2, FolderPlus,
+  Calendar, Wand2, ImageIcon, ChevronLeft, ChevronRight, Link as LinkIcon, Plus, Trash2, FolderPlus, FileText,
 } from "lucide-react"
 import { SiFacebook, SiInstagram, SiMessenger, SiMeta, SiThreads } from "@icons-pack/react-simple-icons"
 import { CloneModal } from "@/components/ad-lab/clone-modal"
 import { ImageCloneModal } from "@/components/ad-lab/image-clone-modal"
+import { ExtractScriptModal } from "@/components/ad-lab/extract-script-modal"
 
 interface Props {
   ad: MetaAdResult | null
@@ -73,6 +74,7 @@ export function AdDetailModal({ ad, boards: boardsProp, onClose, savedAdId }: Pr
   const [newBoardName, setNewBoardName] = useState("")
   const [creatingBoard, setCreatingBoard] = useState(false)
   const [showClone, setShowClone] = useState(false)
+  const [showExtractScript, setShowExtractScript] = useState(false)
   const [clones, setClones] = useState<AdClone[] | null>(null)
   const [loadingClones, setLoadingClones] = useState(false)
   const [deletingCloneId, setDeletingCloneId] = useState<string | null>(null)
@@ -206,6 +208,16 @@ export function AdDetailModal({ ad, boards: boardsProp, onClose, savedAdId }: Pr
             getAdClones(effectiveSavedAdId).then((c) => { setClones(c); setLoadingClones(false) })
           }
         }}
+      />
+    )
+  }
+
+  if (showExtractScript && videoUrl) {
+    return (
+      <ExtractScriptModal
+        videoUrl={videoUrl}
+        titulo={ad.page_name}
+        onClose={() => setShowExtractScript(false)}
       />
     )
   }
@@ -642,6 +654,18 @@ export function AdDetailModal({ ad, boards: boardsProp, onClose, savedAdId }: Pr
               >
                 <Wand2 className="w-4 h-4" />
                 Clonar
+              </button>
+            )}
+
+            {/* Extract script only — no adaptation, no brand/board needed */}
+            {videoUrl && (
+              <button
+                title="Extraer el guión original, sin adaptarlo"
+                onClick={() => setShowExtractScript(true)}
+                className="h-9 px-4 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted flex items-center gap-2 transition-colors"
+              >
+                <FileText className="w-4 h-4" />
+                Extraer script
               </button>
             )}
 

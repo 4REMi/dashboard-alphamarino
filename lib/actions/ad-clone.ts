@@ -212,6 +212,34 @@ Devuelve ÚNICAMENTE un array JSON válido (sin markdown, sin texto extra) donde
  * Creates an ad_clone entry and submits the video to AssemblyAI for transcription.
  * Returns the clone id and share token so the client can start polling.
  */
+// ── Extraer script (solo transcripción, sin adaptación) ──────
+// "Clonar" siempre reescribe el guión con Claude para una marca — a
+// veces solo se quiere el guión original tal cual, sin adaptar a nada.
+// Deliberadamente no persiste en ad_clones (esa tabla es para el flujo
+// de clonación completo) ni requiere Brand Brain — solo transcribe y
+// devuelve el texto, efímero, vivo mientras el modal esté abierto.
+export async function startExtractScript(videoUrl: string): Promise<{ transcriptId: string }> {
+  await assertAuth()
+  const transcript = await aaiPost("/transcript", {
+    audio_url:      videoUrl,
+    speaker_labels: true,
+    speech_models:  ["universal-3-pro", "universal-2"],
+    language_code:  "es",
+  })
+  return { transcriptId: transcript.id }
+}
+
+export async function pollExtractScript(
+  transcriptId: string,
+): Promise<{ status: "processing" | "completed" | "error"; text?: string; utterances?: { speaker: string; text: string }[]; error?: string }> {
+  await assertAuth()
+  const transcript: { status: string; text?: string; utterances?: { speaker: string; text: string }[]; error?: string } =
+    await aaiGet(`/transcript/${transcriptId}`)
+  if (transcript.status === "error") return { status: "error", error: transcript.error ?? "Error de transcripción" }
+  if (transcript.status !== "completed") return { status: "processing" }
+  return { status: "completed", text: transcript.text ?? "", utterances: transcript.utterances }
+}
+
 export async function startClone(
   ad: MetaAdResult,
   brandBrainId: string,
