@@ -336,8 +336,20 @@ export async function sendGeneratedImageToProject(
   imageUrl: string,
   platform: string,
 ): Promise<void> {
+  const supabase = await createClient()
+  // getCreativeAssets filtra por cycle_id cuando la vista del proyecto
+  // está mirando un ciclo específico — sin heredar el cycle_id del propio
+  // concept, el asset quedaría con cycle_id null y sería invisible ahí
+  // aunque concept_id coincida.
+  const { data: concept } = await supabase
+    .from("creative_concepts")
+    .select("cycle_id")
+    .eq("id", conceptId)
+    .maybeSingle()
+
   const fd = new FormData()
   fd.set("concept_id", conceptId)
+  if (concept?.cycle_id) fd.set("cycle_id", concept.cycle_id)
   fd.set("asset_url", imageUrl)
   fd.set("file_type", "image")
   fd.set("format", "Imagen")
