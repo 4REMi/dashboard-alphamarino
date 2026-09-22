@@ -84,11 +84,11 @@ function BriefScriptStatus({ brief }: { brief: CreativeBrief }) {
 // so it never occupies space when everything is caught up. Two blocks:
 // scripts awaiting client review, and assets uploaded but not yet published
 // to the client (the review gate for point 9 of the operational audit).
-function AttentionBanner({ scriptRows, assetRows, projectId, onRefresh, canManageAssets }: {
+function AttentionBanner({ scriptRows, assetRows, projectId, onUpdateAsset, canManageAssets }: {
   scriptRows: { key: string; conceptName: string; scriptLabel: string; lineName: string | null; shareToken: string; status: "pending_review" | "changes_requested"; feedback: string | null }[]
   assetRows: { id: string; conceptName: string; lineName: string | null; thumb: string | null; fileType: string | null; format: string | null }[]
   projectId: string
-  onRefresh: () => void
+  onUpdateAsset: (assetId: string, patch: Partial<CreativeAsset>) => void
   canManageAssets: boolean
 }) {
   const [openKey, setOpenKey] = useState<string | null>(null)
@@ -97,9 +97,12 @@ function AttentionBanner({ scriptRows, assetRows, projectId, onRefresh, canManag
   const pendingCount = scriptRows.filter((r) => r.status === "pending_review").length
 
   function handlePublish(assetId: string) {
+    // Optimista: se quita del banner y se marca visible al instante — la
+    // escritura real corre en background, sin bloquear la UI ni pedir de
+    // vuelta concepts+assets+briefs completos.
+    onUpdateAsset(assetId, { client_visible: true, client_status: "pending_review" })
     startTransition(async () => {
       await toggleClientVisible(assetId, projectId, true)
-      onRefresh()
     })
   }
 
@@ -228,6 +231,12 @@ interface ConceptsTableProps {
   isAdminOrSubadmin: boolean
   canManageAssets?: boolean
   onRefresh: () => void
+  // Actualiza un asset en el state local del padre sin volver a pedir
+  // concepts+assets+briefs completos — publicar/ocultar un asset para el
+  // cliente es la acción más frecuente de esta pantalla y no cambia la
+  // lista de conceptos ni de briefs, así que no necesita ese refetch de 3
+  // queries (antes se sentía como recargar la página entera).
+  onUpdateAsset: (assetId: string, patch: Partial<CreativeAsset>) => void
   brandBrains?: any[]
   brandLines?: BrandLine[]
   projectBrandBrainId?: string
@@ -250,6 +259,7 @@ function ConceptDetailModal({
   onQuickScript,
   onAddScriptToBrief,
   onRefresh,
+  onUpdateAsset,
 }: {
   concept: CreativeConcept
   conceptAssets: CreativeAsset[]
@@ -265,6 +275,7 @@ function ConceptDetailModal({
   onQuickScript: () => void
   onAddScriptToBrief: (brief: CreativeBrief) => void
   onRefresh: () => void
+  onUpdateAsset: (assetId: string, patch: Partial<CreativeAsset>) => void
 }) {
   const [isPending, startTransition] = useTransition()
   const [activeTab, setActiveTab] = useState<"id" | "angle" | "mech">("id")
@@ -737,10 +748,15 @@ function ConceptDetailModal({
                           size="sm"
                           disabled={isPending}
                           onClick={() => {
+                            const nextVisible = !a.client_visible
+                            const patch = { client_visible: nextVisible, client_status: nextVisible ? "pending_review" as const : null, client_feedback: null }
+                            // Optimista y sin cerrar el lightbox — se ve el
+                            // cambio al instante en el mismo modal, sin
+                            // esperar ningún refetch para reflejarlo.
+                            setLightboxAsset((prev) => prev ? { ...prev, ...patch } : prev)
+                            onUpdateAsset(a.id, patch)
                             startTransition(async () => {
-                              await toggleClientVisible(a.id, projectId, !a.client_visible)
-                              onRefresh()
-                              setLightboxAsset(null)
+                              await toggleClientVisible(a.id, projectId, nextVisible)
                             })
                           }}
                         >
@@ -1037,7 +1053,7 @@ function MecanismoCell({
 
 // ── Main table ───────────────────────────────────────────────────────────────
 
-export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleId, isAdminOrSubadmin, canManageAssets = isAdminOrSubadmin, onRefresh, brandBrains = [], brandLines = [], projectBrandBrainId }: ConceptsTableProps) {
+export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleId, isAdminOrSubadmin, canManageAssets = isAdminOrSubadmin, onRefresh, onUpdateAsset, brandBrains = [], brandLines = [], projectBrandBrainId }: ConceptsTableProps) {
   const [detailConcept, setDetailConcept]   = useState<CreativeConcept | null>(null)
   const [editConcept,   setEditConcept]     = useState<CreativeConcept | null>(null)
   const [createForLineId, setCreateForLineId] = useState<string | null | undefined>(undefined)
@@ -1328,7 +1344,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
           scriptRows={pendingScriptRows}
           assetRows={unpublishedAssetRows}
           projectId={projectId}
-          onRefresh={onRefresh}
+          onUpdateAsset={onUpdateAsset}
           canManageAssets={canManageAssets}
         />
       )}
@@ -1564,6 +1580,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
           onQuickScript={() => { const c = detailConcept; setDetailConcept(null); setQuickScriptForConcept(c) }}
           onAddScriptToBrief={(b) => { setDetailConcept(null); setAddScriptToBrief(b) }}
           onRefresh={onRefresh}
+          onUpdateAsset={onUpdateAsset}
         />
       )}
 

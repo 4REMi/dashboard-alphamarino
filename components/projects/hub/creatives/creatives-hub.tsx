@@ -56,6 +56,14 @@ export function CreativesHub({
     })
   }
 
+  // Actualizar un asset puntual (ej. publicar/ocultar al cliente) sin
+  // pedir de vuelta concepts+assets+briefs completos — antes cualquier
+  // toggle de visibilidad disparaba ese refetch de 3 queries y se sentía
+  // como recargar la página entera.
+  function updateAssetLocal(assetId: string, patch: Partial<CreativeAsset>) {
+    setAssets((prev) => prev.map((a) => a.id === assetId ? { ...a, ...patch } : a))
+  }
+
   useEffect(() => {
     reload()
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -113,6 +121,7 @@ export function CreativesHub({
         isAdminOrSubadmin={canEdit}
         canManageAssets={canManageAssets}
         onRefresh={reload}
+        onUpdateAsset={updateAssetLocal}
         brandBrains={brandBrains}
         brandLines={brandLines}
         projectBrandBrainId={projectBrandBrainId}
