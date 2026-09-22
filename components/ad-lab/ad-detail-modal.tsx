@@ -547,15 +547,15 @@ export function AdDetailModal({ ad, boards: boardsProp, onClose, savedAdId }: Pr
               <button
                 onClick={() => { setShowBoardPicker((v) => !v); if (showBoardPicker) setPendingCloneType(null) }}
                 disabled={saving}
-                className={`w-full h-9 rounded-xl text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
+                className={`w-full h-9 rounded-xl text-sm font-medium flex items-center justify-center gap-2 whitespace-nowrap transition-colors ${
                   savedBoards.size > 0
                     ? "bg-primary/10 text-primary border border-primary/30"
                     : "bg-primary text-primary-foreground hover:bg-primary/90"
                 }`}
               >
                 {saving
-                  ? <Loader2 className="w-4 h-4 animate-spin" />
-                  : <Bookmark className={`w-4 h-4 ${savedBoards.size > 0 ? "fill-primary" : ""}`} />
+                  ? <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />
+                  : <Bookmark className={`w-4 h-4 flex-shrink-0 ${savedBoards.size > 0 ? "fill-primary" : ""}`} />
                 }
                 {savedBoards.size > 0 ? "Guardado" : "Guardar en board"}
               </button>
@@ -650,7 +650,7 @@ export function AdDetailModal({ ad, boards: boardsProp, onClose, savedAdId }: Pr
                     setShowBoardPicker(true)
                   }
                 }}
-                className="h-9 px-4 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted flex items-center gap-2 transition-colors"
+                className="h-9 px-4 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted flex items-center gap-2 whitespace-nowrap flex-shrink-0 transition-colors"
               >
                 <Wand2 className="w-4 h-4" />
                 Clonar
@@ -662,7 +662,7 @@ export function AdDetailModal({ ad, boards: boardsProp, onClose, savedAdId }: Pr
               <button
                 title="Extraer el guión original, sin adaptarlo"
                 onClick={() => setShowExtractScript(true)}
-                className="h-9 px-4 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted flex items-center gap-2 transition-colors"
+                className="h-9 px-4 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted flex items-center gap-2 whitespace-nowrap flex-shrink-0 transition-colors"
               >
                 <FileText className="w-4 h-4" />
                 Extraer script
@@ -681,7 +681,7 @@ export function AdDetailModal({ ad, boards: boardsProp, onClose, savedAdId }: Pr
                     setShowBoardPicker(true)
                   }
                 }}
-                className="h-9 px-4 rounded-xl border border-violet-200 text-sm font-medium text-violet-600 hover:bg-violet-50 flex items-center gap-2 transition-colors"
+                className="h-9 px-4 rounded-xl border border-violet-200 text-sm font-medium text-violet-600 hover:bg-violet-50 flex items-center gap-2 whitespace-nowrap flex-shrink-0 transition-colors"
               >
                 <ImageIcon className="w-4 h-4" />
                 Clonar imagen
