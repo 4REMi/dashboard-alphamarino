@@ -67,7 +67,16 @@ export function PiezaCard({
       {pieza.tipo === "video" && (
         pieza.mediaUrl ? (
           <div className="relative bg-black flex justify-center">
-            <video src={pieza.mediaUrl} controls preload="metadata" className="max-w-full max-h-[220px]" />
+            {/* poster = miniatura de video ya generada al subirlo (frame
+                capturado, JPEG liviano) — evita abrir cualquier conexión
+                al archivo de video real hasta que el usuario le dé play. */}
+            <video
+              src={pieza.mediaUrl}
+              controls
+              preload="none"
+              poster={pieza.thumbUrl ?? undefined}
+              className="max-w-full max-h-[220px]"
+            />
             <button
               onClick={() => setLightboxOpen(true)}
               className="absolute top-2 right-2 w-7 h-7 rounded-lg bg-black/60 hover:bg-black/80 flex items-center justify-center text-white text-xs"
@@ -88,7 +97,13 @@ export function PiezaCard({
         pieza.mediaUrl ? (
           <button onClick={() => setLightboxOpen(true)} className="block w-full cursor-zoom-in">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={pieza.mediaUrl} alt={pieza.titulo} className="w-full max-h-[220px] object-contain bg-[#e8edf4]" />
+            <img
+              src={pieza.mediaUrl}
+              alt={pieza.titulo}
+              loading="lazy"
+              decoding="async"
+              className="w-full max-h-[220px] object-contain bg-[#e8edf4]"
+            />
           </button>
         ) : (
           <div className="bg-[#e8edf4] h-[110px] flex flex-col items-center justify-center gap-1 text-slate-400">

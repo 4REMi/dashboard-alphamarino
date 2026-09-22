@@ -17,6 +17,9 @@ export interface Pieza {
   sub:             string
   guion?:          { n: number; t: string }[]
   mediaUrl?:       string | null
+  // Preview liviano (thumbnail_path) para el grid — el archivo original
+  // completo (mediaUrl) solo se carga al abrir el lightbox o al hacer play.
+  thumbUrl?:       string | null
   assetId?:        string
   briefId?:        string
   scriptKey?:      string
@@ -535,7 +538,7 @@ function QuickMedia({ pieza, maxH }: { pieza: Pieza; maxH: number }) {
   if (pieza.tipo === "video") {
     return pieza.mediaUrl ? (
       <div className="relative">
-        <video src={pieza.mediaUrl} controls className="rounded-2xl w-full bg-black" style={{ maxHeight: maxH }} />
+        <video src={pieza.mediaUrl} controls preload="none" poster={pieza.thumbUrl ?? undefined} className="rounded-2xl w-full bg-black" style={{ maxHeight: maxH }} />
         <button onClick={() => setOpen(true)} className="absolute top-2.5 right-2.5 w-7 h-7 rounded-lg bg-black/60 hover:bg-black/80 flex items-center justify-center text-white text-xs" title="Ver en grande" aria-label="Ver en grande">⤢</button>
         {open && <MediaLightbox tipo="video" src={pieza.mediaUrl} titulo={pieza.titulo} onClose={() => setOpen(false)} />}
       </div>
@@ -549,7 +552,7 @@ function QuickMedia({ pieza, maxH }: { pieza: Pieza; maxH: number }) {
     <>
       <button onClick={() => setOpen(true)} className="block w-full cursor-zoom-in">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={pieza.mediaUrl} alt="" className="rounded-2xl w-full object-contain bg-[#e8edf4]" style={{ maxHeight: maxH }} />
+        <img src={pieza.mediaUrl} alt="" loading="lazy" decoding="async" className="rounded-2xl w-full object-contain bg-[#e8edf4]" style={{ maxHeight: maxH }} />
       </button>
       {open && <MediaLightbox tipo="imagen" src={pieza.mediaUrl} titulo={pieza.titulo} onClose={() => setOpen(false)} />}
     </>

@@ -22,7 +22,8 @@ export default async function ShareConceptsPage({ params }: Props) {
   const [projectRes, conceptsRes, assetsRes, settingsRes, scriptsRes, cyclesRes] = await Promise.all([
     supabase
       .from("projects")
-      .select("name, brand_brain_id, customer:customers(name, company)")
+      .select(`name, brand_brain_id, customer:customers(name, company),
+                brand_brain:brand_brains(brand_lines(id, name, color, position))`)
       .eq("id", projectId)
       .single(),
     supabase
@@ -73,11 +74,10 @@ export default async function ShareConceptsPage({ params }: Props) {
   const assets     = assetsRes.data ?? []
   const briefsData = scriptsRes.data ?? []
 
-  // Fetch brand lines ("servicios")
-  const brandLines: { id: string; name: string; color: string | null; position: number }[] =
-    (project as any).brand_brain_id
-      ? ((await supabase.from("brand_lines").select("id, name, color, position").eq("brand_brain_id", (project as any).brand_brain_id).order("position")).data ?? [])
-      : []
+  // Brand lines ("servicios") — vienen embebidas en el fetch de projects
+  // de arriba (nested select vía brand_brain), sin round-trip extra.
+  const brandBrain = (project as any).brand_brain as { brand_lines?: { id: string; name: string; color: string | null; position: number }[] } | null
+  const brandLines = [...(brandBrain?.brand_lines ?? [])].sort((a, b) => a.position - b.position)
 
   // ── Normalize scripts (guiones) — one per script, keyed independently ──
   type ScriptEntry = { conceptId: string; briefId: string; scriptKey: string; lines: AdCloneLine[]; client_status: string | null; client_feedback: string | null; createdAt: string }
@@ -146,6 +146,14 @@ export default async function ShareConceptsPage({ params }: Props) {
         const mediaUrl = a.file_path
           ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/creative-assets/${a.file_path}`
           : a.asset_url
+        // El thumbnail es un JPG liviano (generado al subir el asset) —
+        // el grid/carrusel lo usa como preview en vez del archivo
+        // original completo, que solo se carga al abrir el lightbox o
+        // darle play. Sin thumbnail (asset viejo, o "banco de creativos"
+        // que no genera uno), cae de vuelta al original.
+        const thumbUrl = a.thumbnail_path
+          ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/creative-assets/${a.thumbnail_path}`
+          : mediaUrl
         return {
           id: a.id,
           assetId: a.id,
@@ -153,6 +161,7 @@ export default async function ShareConceptsPage({ params }: Props) {
           titulo: a.format || (isVideo ? "Video" : "Imagen"),
           sub: meta || (isVideo ? "Video" : "Imagen estática"),
           mediaUrl: mediaUrl ?? null,
+          thumbUrl: thumbUrl ?? null,
           client_status: a.client_status,
           client_feedback: a.client_feedback,
           createdAt: a.created_at,
