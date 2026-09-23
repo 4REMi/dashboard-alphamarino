@@ -356,11 +356,59 @@ export async function syncMetaAds(projectId: string, cycleId: string): Promise<{
     console.error("[syncMetaAds] ads creative fetch threw:", err instanceof Error ? err.message : err)
   }
 
+  // A diferencia de getMetaAds/getMetaAdById (un ad puntual, on-demand),
+  // aquí puede haber muchos ads a la vez — resolver el video de cada uno
+  // con su propia llamada en paralelo (como hace mapAdNodeToCreative)
+  // dispara N requests simultáneas a Meta y algunas se comen un
+  // rate-limit silencioso (el error ya se atrapaba, pero el resultado es
+  // el mismo: video_url queda null). Se resuelve TODO el creativo sin
+  // video primero, y los videos de una sola vez con el mismo patrón
+  // multi-id que ya arregló el thumbnail/imagen.
   const adNodes: any[] = Object.values(adsJson).filter((v): v is Record<string, unknown> => !!v && typeof v === "object" && "id" in v)
+
+  const creativeByAdId = new Map<string, { videoId: string | null } & Omit<MetaAdCreative, "id" | "videoUrl">>()
+  for (const a of adNodes) {
+    const creative = (a.creative as any) ?? {}
+    const story = creative.object_story_spec ?? {}
+    const linkData = story.link_data ?? {}
+    const videoData = story.video_data ?? {}
+    const feedSpec = creative.asset_feed_spec ?? {}
+    creativeByAdId.set(a.id as string, {
+      name: (a.name as string) ?? (a.id as string),
+      status: (a.effective_status as string) ?? null,
+      thumbnailUrl: creative.thumbnail_url ?? videoData.image_url ?? null,
+      imageUrl: creative.image_url ?? linkData.picture ?? feedSpec.images?.[0]?.url ?? null,
+      body: creative.body ?? linkData.message ?? videoData.message ?? null,
+      title: creative.title ?? linkData.name ?? videoData.title ?? null,
+      cta: creative.call_to_action_type ?? linkData.call_to_action?.type ?? videoData.call_to_action?.type ?? null,
+      videoId: creative.video_id || videoData.video_id || feedSpec.videos?.[0]?.video_id || null,
+    })
+  }
+
+  const videoIds = Array.from(new Set(Array.from(creativeByAdId.values()).map((c) => c.videoId).filter((v): v is string => !!v)))
+  const videoSourceById = new Map<string, string>()
+  if (videoIds.length > 0) {
+    const videosUrl = new URL(`${META_BASE}/`)
+    videosUrl.searchParams.set("ids", videoIds.join(","))
+    videosUrl.searchParams.set("fields", "source")
+    videosUrl.searchParams.set("access_token", accessToken)
+    try {
+      const videosRes = await fetch(videosUrl.toString(), { cache: "no-store" })
+      const videosJson = await videosRes.json()
+      if (videosJson.error) console.error("[syncMetaAds] video sources fetch failed:", videosJson.error.message)
+      for (const [id, v] of Object.entries(videosJson)) {
+        if (v && typeof v === "object" && "source" in v) videoSourceById.set(id, (v as { source: string }).source)
+      }
+    } catch (err) {
+      console.error("[syncMetaAds] video sources fetch threw:", err instanceof Error ? err.message : err)
+    }
+  }
+
   const creativeById = new Map<string, MetaAdCreative>(
-    await Promise.all(
-      adNodes.map(async (a) => [a.id as string, await mapAdNodeToCreative(a, accessToken)] as const)
-    )
+    Array.from(creativeByAdId.entries()).map(([adId, c]) => [
+      adId,
+      { id: adId, ...c, videoUrl: c.videoId ? videoSourceById.get(c.videoId) ?? null : null },
+    ])
   )
 
   const dimRows = adIds.map((adId) => {
