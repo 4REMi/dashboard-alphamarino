@@ -688,41 +688,31 @@ export async function uploadAdAsset(formData: FormData, boardId?: string): Promi
 
 export async function getBoards(): Promise<AdBoard[]> {
   const { supabase } = await assertAuth()
+  // ad_count es una columna desnormalizada (mantenida por trigger en
+  // board_ads, migración 087) — antes se calculaba trayendo TODAS las
+  // filas de board_ads de todos los boards y sumando en JS. cover_ad
+  // tampoco se selecciona: no se usa en ningún lado de la UI de boards.
   const { data } = await supabase
     .from("ad_boards")
-    .select("*, cover_ad:saved_ads!cover_ad_id(id, image_url, cached_image_url, page_name)")
+    .select("id, name, description, cover_ad_id, share_token, created_by, created_at, ad_count")
     .order("created_at", { ascending: false })
-  // Attach ad count
   const boardIds = (data ?? []).map((b) => b.id)
   if (boardIds.length === 0) return []
-  const [{ data: counts }, { data: previewRows }] = await Promise.all([
-    supabase
-      .from("board_ads")
-      .select("board_id")
-      .in("board_id", boardIds),
-    // Fetch up to 4 preview thumbnails per board for the collage
-    supabase
-      .from("board_ads")
-      .select("board_id, saved_ad:saved_ads(id, cached_image_url, image_url)")
-      .in("board_id", boardIds)
-      .order("added_at", { ascending: false }),
-  ])
-  const countMap: Record<string, number> = {}
-  for (const row of counts ?? []) {
-    countMap[row.board_id] = (countMap[row.board_id] ?? 0) + 1
-  }
+
+  // board_preview_ads (RPC, migración 087) usa ROW_NUMBER() para traer
+  // solo hasta 4 miniaturas por board directamente en SQL — antes se
+  // traía el join completo board_ads->saved_ads de todos los boards y se
+  // cortaba a 4 en JS.
+  const { data: previewRows } = await supabase.rpc("board_preview_ads", { p_board_ids: boardIds })
 
   const previewMap: Record<string, Pick<SavedAd, "id" | "cached_image_url" | "image_url">[]> = {}
   for (const row of previewRows ?? []) {
-    const ad = row.saved_ad as unknown as Pick<SavedAd, "id" | "cached_image_url" | "image_url"> | null
-    if (!ad) continue
     if (!previewMap[row.board_id]) previewMap[row.board_id] = []
-    if (previewMap[row.board_id].length < 4) previewMap[row.board_id].push(ad)
+    previewMap[row.board_id].push({ id: row.ad_id, cached_image_url: row.cached_image_url, image_url: row.image_url })
   }
 
   return (data ?? []).map((b) => ({
     ...b,
-    ad_count:    countMap[b.id] ?? 0,
     preview_ads: previewMap[b.id] ?? [],
   })) as AdBoard[]
 }

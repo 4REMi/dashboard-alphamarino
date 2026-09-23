@@ -206,7 +206,7 @@ export function BoardsGrid({ boards: initialBoards }: Props) {
                         if (thumbs.length === 1) {
                           return (
                             // eslint-disable-next-line @next/next/no-img-element
-                            <img src={thumbs[0]} alt={board.name} className="w-full h-full object-cover" />
+                            <img src={thumbs[0]} alt={board.name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                           )
                         }
                         // 2×2 collage for 2–4 images
@@ -218,7 +218,7 @@ export function BoardsGrid({ boards: initialBoards }: Props) {
                               <div key={i} className="bg-muted overflow-hidden">
                                 {url && (
                                   // eslint-disable-next-line @next/next/no-img-element
-                                  <img src={url} alt="" className="w-full h-full object-cover" />
+                                  <img src={url} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
                                 )}
                               </div>
                             ))}
