@@ -3,7 +3,7 @@
 **Ruta:** dentro de un proyecto (`/projects/[id]`), pestaña de Creativos — más la
 página pública de revisión de cliente, `/share/concepts/[projectId]`
 **Para quién:** ambos (ver "Quién puede ver/hacer qué")
-**Actualizado:** 2026-09-18
+**Actualizado:** 2026-09-23
 
 ## Qué es y para qué sirve
 
@@ -49,6 +49,30 @@ entre sí:
   ningún chequeo más allá de `client_visible = true`. Es una limitación
   preexistente, no algo que se haya tocado al agregar las notificaciones —
   vale la pena resolverla en algún momento, pero es un cambio aparte.
+
+- **Vista inversa del link a Meta ("corriendo en vivo")**: desde que existe
+  `creative_asset_meta_ads` (Hub Paid Media, migración `088`), un asset puede
+  estar vinculado a un ad real de Meta que está gastando dinero HOY. La
+  mayoría de los assets NUNCA se lanzan — son candidatos para revisión del
+  cliente que se quedan en eso — así que esto no es "mostrar spend en todos",
+  es un badge puntual (🟢 con el monto) solo en los que sí tienen link activo.
+  Se calcula con `getAssetMetaLinkStatus` (`lib/actions/paid-media-performance.ts`)
+  y se ve en tres lugares: la fila compacta de la tabla de conceptos (ícono
+  junto al status), el grid de assets dentro del detalle de un concepto
+  (badge verde en la esquina de la miniatura), y un rollup en el header
+  "Assets (N)" de ese mismo detalle.
+- **Alerta "archivado pero sigue corriendo"**: si un concepto está
+  `Archived` y alguno de sus assets sigue con un ad ACTIVO de Meta, es una
+  inconsistencia real (el cliente probablemente cree que ese material ya no
+  aplica, mientras su dinero sigue gastándose) — se marca con un ícono rojo
+  de alerta en la fila y un banner en el modal de detalle. No bloquea nada,
+  solo avisa.
+- **Las revisiones (`revises_asset_id`) NO tocan el link a Meta**: si el
+  asset viejo (el que se está revisando) ya estaba corriendo como ad, ese
+  vínculo se queda pegado a él — la versión nueva nace sin ningún link. El
+  Hub Paid Media seguirá mostrando esa tarjeta apuntando al concepto/asset
+  viejo hasta que alguien la vincule manualmente a la revisión (o la
+  desvincule). Nada lo hace automático hoy.
 
 ## Cómo hacer las acciones comunes
 
@@ -96,6 +120,13 @@ vinculada).
   `client_status`/`client_feedback`.
 - `supabase/migrations/083_creative_asset_revisions.sql` —
   `creative_assets.revises_asset_id`.
+- `supabase/migrations/088_creative_performance_hub.sql` —
+  `creative_asset_meta_ads` (el puente hacia el Hub Paid Media).
+- `lib/actions/paid-media-performance.ts` — `getAssetMetaLinkStatus`
+  (vista inversa "corriendo en vivo").
+- `components/projects/hub/creatives/concepts-table.tsx` —
+  `conceptLiveRollup`, el badge en el grid de assets, y el ícono/banner de
+  "archivado pero sigue corriendo".
 - `lib/actions/creatives.ts` — `createAsset`, `updateAsset`, `toggleClientVisible`,
   `assertCanManageAssets`.
 - `lib/actions/client-review.ts` — `submitClientReview`,

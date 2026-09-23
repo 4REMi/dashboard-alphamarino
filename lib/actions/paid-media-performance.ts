@@ -42,6 +42,58 @@ export async function getProjectAssetsForLinking(projectId: string): Promise<{
   })
 }
 
+export interface AssetMetaLinkStatus {
+  anyActive: boolean
+  totalSpend: number
+  totalResults: number
+  ads: { adId: string; status: string | null; campaignName: string | null }[]
+}
+
+// Vista inversa del link — desde el Creative Tracker, "¿este asset (o
+// alguna de sus revisiones) está corriendo de verdad en Meta, y cuánto
+// lleva gastado este ciclo?" No todo asset tiene por qué estar corriendo
+// — la mayoría son candidatos para revisión del cliente que nunca se
+// lanzan, así que esto solo marca los que SÍ tienen un link real.
+export async function getAssetMetaLinkStatus(projectId: string, cycleId: string | null): Promise<Record<string, AssetMetaLinkStatus>> {
+  const supabase = await createClient()
+
+  const { data: links } = await supabase
+    .from("creative_asset_meta_ads")
+    .select("id, creative_asset_id, meta_ad_id")
+    .eq("project_id", projectId)
+  if (!links?.length) return {}
+
+  const adIds = Array.from(new Set(links.map((l) => l.meta_ad_id)))
+  const [adsRes, statsRes] = await Promise.all([
+    supabase.from("meta_ads").select("ad_id, status, campaign_name").eq("project_id", projectId).in("ad_id", adIds),
+    cycleId
+      ? supabase.from("meta_ad_daily_stats").select("ad_id, spend, results").eq("project_id", projectId).eq("cycle_id", cycleId).in("ad_id", adIds)
+      : Promise.resolve({ data: [] as { ad_id: string; spend: number | null; results: number | null }[] }),
+  ])
+
+  const adInfoById = new Map((adsRes.data ?? []).map((a) => [a.ad_id, a]))
+  const totalsByAdId = new Map<string, { spend: number; results: number }>()
+  for (const s of statsRes.data ?? []) {
+    const cur = totalsByAdId.get(s.ad_id) ?? { spend: 0, results: 0 }
+    cur.spend += s.spend ?? 0
+    cur.results += s.results ?? 0
+    totalsByAdId.set(s.ad_id, cur)
+  }
+
+  const result: Record<string, AssetMetaLinkStatus> = {}
+  for (const l of links) {
+    const adInfo = adInfoById.get(l.meta_ad_id)
+    const totals = totalsByAdId.get(l.meta_ad_id) ?? { spend: 0, results: 0 }
+    const entry = result[l.creative_asset_id] ?? { anyActive: false, totalSpend: 0, totalResults: 0, ads: [] }
+    entry.anyActive = entry.anyActive || adInfo?.status === "ACTIVE"
+    entry.totalSpend += totals.spend
+    entry.totalResults += totals.results
+    entry.ads.push({ adId: l.meta_ad_id, status: adInfo?.status ?? null, campaignName: adInfo?.campaign_name ?? null })
+    result[l.creative_asset_id] = entry
+  }
+  return result
+}
+
 // ── Vincular un creative_asset (con su concept_id, y por lo tanto su
 // persona/ángulo) a un ad real de Meta — nunca bloqueante, se hace desde
 // la propia tarjeta del creativo cuando alguien lo decida. ────────────

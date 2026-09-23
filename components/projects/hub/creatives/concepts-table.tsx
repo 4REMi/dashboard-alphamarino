@@ -10,11 +10,31 @@ import { generateCreativeConcepts, confirmAIDrafts, promoteConcept, demoteConcep
 import { CONCEPT_STATUS_COLORS, AWARENESS_LABELS, ANGLE_GUIDE, PRODUCTION_STATUS_COLORS, VERDICT_COLORS } from "@/lib/constants/creatives"
 import type { CreativeConcept, CreativeAsset, CreativeBrief, BrandLine, AdCloneLine } from "@/lib/types"
 import type { AIDraftConcept } from "@/lib/actions/creatives"
+import type { AssetMetaLinkStatus } from "@/lib/actions/paid-media-performance"
 import { BriefCreator } from "./brief-creator"
 import { AssetCopyBank } from "./asset-copy-bank"
 import { QuickScriptModal } from "./quick-script-modal"
-import { Plus, Sparkles, Check, X, Loader2, Star, ArrowUpRight, Pencil, Trash2, Link2, FileText, Upload, ChevronDown, Film, ImageIcon, Eye, EyeOff, ZoomIn } from "lucide-react"
+import { Plus, Sparkles, Check, X, Loader2, Star, ArrowUpRight, Pencil, Trash2, Link2, FileText, Upload, ChevronDown, Film, ImageIcon, Eye, EyeOff, ZoomIn, Radio, AlertTriangle } from "lucide-react"
 import { cn } from "@/lib/utils"
+
+function fmt$(v: number) {
+  return `$${v.toLocaleString("en-US", { maximumFractionDigits: 0 })}`
+}
+
+// Rollup a nivel concepto — no todo asset tiene por qué estar corriendo
+// (la mayoría son candidatos para revisión del cliente), así que esto
+// solo suma los que SÍ tienen link real a un ad de Meta.
+function conceptLiveRollup(conceptAssetIds: string[], assetLinkStatus: Record<string, AssetMetaLinkStatus>) {
+  let anyActive = false
+  let totalSpend = 0
+  for (const id of conceptAssetIds) {
+    const s = assetLinkStatus[id]
+    if (!s) continue
+    anyActive = anyActive || s.anyActive
+    totalSpend += s.totalSpend
+  }
+  return { anyActive, totalSpend }
+}
 
 // One entry per script inside a brief's adapted_script — mirrors the
 // normalization used on the client portal, so admin and client agree on
@@ -237,6 +257,10 @@ interface ConceptsTableProps {
   // lista de conceptos ni de briefs, así que no necesita ese refetch de 3
   // queries (antes se sentía como recargar la página entera).
   onUpdateAsset: (assetId: string, patch: Partial<CreativeAsset>) => void
+  // Vista inversa del link a Meta — qué assets están corriendo de verdad
+  // como ad activo, y cuánto llevan gastado este ciclo. Ver
+  // lib/actions/paid-media-performance.ts:getAssetMetaLinkStatus.
+  assetLinkStatus: Record<string, AssetMetaLinkStatus>
   brandBrains?: any[]
   brandLines?: BrandLine[]
   projectBrandBrainId?: string
@@ -260,6 +284,7 @@ function ConceptDetailModal({
   onAddScriptToBrief,
   onRefresh,
   onUpdateAsset,
+  assetLinkStatus,
 }: {
   concept: CreativeConcept
   conceptAssets: CreativeAsset[]
@@ -276,6 +301,7 @@ function ConceptDetailModal({
   onAddScriptToBrief: (brief: CreativeBrief) => void
   onRefresh: () => void
   onUpdateAsset: (assetId: string, patch: Partial<CreativeAsset>) => void
+  assetLinkStatus: Record<string, AssetMetaLinkStatus>
 }) {
   const [isPending, startTransition] = useTransition()
   const [activeTab, setActiveTab] = useState<"id" | "angle" | "mech">("id")
@@ -285,6 +311,8 @@ function ConceptDetailModal({
   const [briefTitleDraft, setBriefTitleDraft] = useState("")
   const angleEntry  = ANGLE_GUIDE.find((a) => a.name === concept.angle_type)
   const isEvergreen = concept.status === "Evergreen"
+  const liveRollup  = conceptLiveRollup(conceptAssets.map((a) => a.id), assetLinkStatus)
+  const archivedButLive = concept.status === "Archived" && liveRollup.anyActive
 
   function handlePromote() {
     startTransition(async () => {
@@ -360,6 +388,13 @@ function ConceptDetailModal({
             </div>
           </div>
         </DialogHeader>
+
+        {archivedButLive && (
+          <div className="text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2 flex items-center gap-2 font-medium">
+            <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+            Este concepto está archivado, pero sigue corriendo en Meta — {fmt$(liveRollup.totalSpend)} gastados este ciclo.
+          </div>
+        )}
 
         {concept.parent && (
           <div className="text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-2 flex items-center gap-2">
@@ -592,7 +627,14 @@ function ConceptDetailModal({
         {(conceptAssets.length > 0 || canManageAssets) && (
           <div className="border rounded-xl px-5 py-4">
             <div className="flex items-center justify-between mb-3">
-              <p className={grpLabel + " mb-0"}>Assets {conceptAssets.length > 0 && `(${conceptAssets.length})`}</p>
+              <p className={grpLabel + " mb-0"}>
+                Assets {conceptAssets.length > 0 && `(${conceptAssets.length})`}
+                {liveRollup.anyActive && (
+                  <span className="ml-2 inline-flex items-center gap-1 text-emerald-600 normal-case font-medium tracking-normal">
+                    <Radio className="w-3 h-3" /> {fmt$(liveRollup.totalSpend)} en vivo este ciclo
+                  </span>
+                )}
+              </p>
               {canManageAssets && (
                 <button type="button" onClick={onNewAsset} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
                   <Plus className="w-3 h-3" />
@@ -608,6 +650,7 @@ function ConceptDetailModal({
                     : a.file_path
                       ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/creative-assets/${a.file_path}`
                       : a.asset_url
+                  const liveStatus = assetLinkStatus[a.id]
                   return (
                     <div
                       key={a.id}
@@ -635,6 +678,14 @@ function ConceptDetailModal({
                       {a.platform && (
                         <span className="absolute bottom-1 left-1 text-[9px] font-semibold bg-black/60 text-white px-1.5 py-0.5 rounded">
                           {a.platform.replace(" Ads", "")}
+                        </span>
+                      )}
+                      {/* Vive de verdad en Meta — no todo asset corre, solo
+                          se marca cuando SÍ hay un link real y activo. */}
+                      {liveStatus?.anyActive && (
+                        <span className="absolute top-1 left-1 inline-flex items-center gap-0.5 text-[9px] font-semibold bg-emerald-600 text-white px-1.5 py-0.5 rounded-full" title={`Corriendo en Meta — ${fmt$(liveStatus.totalSpend)} este ciclo`}>
+                          <Radio className="w-2.5 h-2.5" />
+                          {fmt$(liveStatus.totalSpend)}
                         </span>
                       )}
                       {/* Client visibility indicator */}
@@ -1053,7 +1104,7 @@ function MecanismoCell({
 
 // ── Main table ───────────────────────────────────────────────────────────────
 
-export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleId, isAdminOrSubadmin, canManageAssets = isAdminOrSubadmin, onRefresh, onUpdateAsset, brandBrains = [], brandLines = [], projectBrandBrainId }: ConceptsTableProps) {
+export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleId, isAdminOrSubadmin, canManageAssets = isAdminOrSubadmin, onRefresh, onUpdateAsset, assetLinkStatus, brandBrains = [], brandLines = [], projectBrandBrainId }: ConceptsTableProps) {
   const [detailConcept, setDetailConcept]   = useState<CreativeConcept | null>(null)
   const [editConcept,   setEditConcept]     = useState<CreativeConcept | null>(null)
   const [createForLineId, setCreateForLineId] = useState<string | null | undefined>(undefined)
@@ -1252,6 +1303,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
             concept={c}
             conceptAssets={assets.filter((a) => a.concept_id === c.id)}
             conceptBriefs={briefs.filter((b) => b.concept_id === c.id)}
+            assetLinkStatus={assetLinkStatus}
             isAdminOrSubadmin={isAdminOrSubadmin}
             canManageAssets={canManageAssets}
             selected={selectedIds.has(c.id)}
@@ -1267,6 +1319,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
             concept={c}
             conceptAssets={assets.filter((a) => a.concept_id === c.id)}
             conceptBriefs={briefs.filter((b) => b.concept_id === c.id)}
+            assetLinkStatus={assetLinkStatus}
             isAdminOrSubadmin={isAdminOrSubadmin}
             canManageAssets={canManageAssets}
             selected={selectedIds.has(c.id)}
@@ -1581,6 +1634,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
           onAddScriptToBrief={(b) => { setDetailConcept(null); setAddScriptToBrief(b) }}
           onRefresh={onRefresh}
           onUpdateAsset={onUpdateAsset}
+          assetLinkStatus={assetLinkStatus}
         />
       )}
 
@@ -1712,6 +1766,7 @@ function ConceptRow({
   onClick,
   onNewBrief,
   onNewAsset,
+  assetLinkStatus,
 }: {
   concept: CreativeConcept
   conceptAssets: CreativeAsset[]
@@ -1723,8 +1778,11 @@ function ConceptRow({
   onClick: () => void
   onNewBrief: () => void
   onNewAsset: () => void
+  assetLinkStatus: Record<string, AssetMetaLinkStatus>
 }) {
   const angleEntry = ANGLE_GUIDE.find((a) => a.name === concept.angle_type)
+  const liveRollup  = conceptLiveRollup(conceptAssets.map((a) => a.id), assetLinkStatus)
+  const archivedButLive = concept.status === "Archived" && liveRollup.anyActive
 
   return (
     <tr className={cn("border-t hover:bg-muted/30 transition-colors cursor-pointer", selected && "bg-purple-50/50")} onClick={onClick}>
@@ -1748,6 +1806,15 @@ function ConceptRow({
               <ArrowUpRight className="w-3 h-3 text-muted-foreground" />
             </span>
           )}
+          {archivedButLive ? (
+            <span title={`Archivado pero sigue corriendo en Meta — ${fmt$(liveRollup.totalSpend)} este ciclo`}>
+              <AlertTriangle className="w-3 h-3 text-destructive" />
+            </span>
+          ) : liveRollup.anyActive ? (
+            <span title={`Corriendo en Meta — ${fmt$(liveRollup.totalSpend)} este ciclo`}>
+              <Radio className="w-3 h-3 text-emerald-600" />
+            </span>
+          ) : null}
         </div>
       </td>
       <td className="px-3 py-3">

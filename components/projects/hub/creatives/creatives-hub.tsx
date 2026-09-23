@@ -3,6 +3,7 @@
 import { useState, useEffect, useTransition } from "react"
 import { ConceptsTable } from "./concepts-table"
 import { getCreativeConcepts, getCreativeAssets, getBriefsForProject } from "@/lib/actions/creatives"
+import { getAssetMetaLinkStatus, type AssetMetaLinkStatus } from "@/lib/actions/paid-media-performance"
 import type { CreativeConcept, CreativeAsset, CreativeBrief, PaidMediaCycle } from "@/lib/types"
 import { formatCycleRange } from "@/lib/utils"
 import { Loader2, ChevronDown } from "lucide-react"
@@ -35,6 +36,7 @@ export function CreativesHub({
   const [concepts, setConcepts] = useState<CreativeConcept[]>(initialConcepts)
   const [assets, setAssets]     = useState<CreativeAsset[]>(initialAssets)
   const [briefs, setBriefs]     = useState<CreativeBrief[]>([])
+  const [assetLinkStatus, setAssetLinkStatus] = useState<Record<string, AssetMetaLinkStatus>>({})
   const [isLoading, startLoad]  = useTransition()
 
   const selectedCycle = cycles.find((c) => c.id === selectedCycleId) ?? null
@@ -45,14 +47,16 @@ export function CreativesHub({
   function reload() {
     if (!selectedCycleId) return
     startLoad(async () => {
-      const [c, a, b] = await Promise.all([
+      const [c, a, b, links] = await Promise.all([
         getCreativeConcepts(projectId, selectedCycleId),
         getCreativeAssets(projectId, selectedCycleId),
         getBriefsForProject(projectId),
+        getAssetMetaLinkStatus(projectId, selectedCycleId),
       ])
       setConcepts(c)
       setAssets(a)
       setBriefs(b)
+      setAssetLinkStatus(links)
     })
   }
 
@@ -122,6 +126,7 @@ export function CreativesHub({
         canManageAssets={canManageAssets}
         onRefresh={reload}
         onUpdateAsset={updateAssetLocal}
+        assetLinkStatus={assetLinkStatus}
         brandBrains={brandBrains}
         brandLines={brandLines}
         projectBrandBrainId={projectBrandBrainId}
