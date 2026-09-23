@@ -246,6 +246,166 @@ export async function getMetaCampaigns(projectId: string, cycleId: string): Prom
   return data ?? []
 }
 
+// ── Ad-level sync — habilita el hub creative-first ──────────────────────
+// A diferencia de syncMetaCampaigns (un rollup por campaña), esto trae una
+// fila POR AD POR DÍA (time_increment=1) — la granularidad diaria es lo
+// que permite calcular tendencia (día anterior / promedio del ciclo /
+// baseline) sin depender de qué tan seguido alguien sincroniza.
+interface MetaAdInsightRow {
+  ad_id: string
+  ad_name: string
+  adset_id: string
+  adset_name: string
+  campaign_id: string
+  campaign_name: string
+  spend: string
+  impressions: string
+  clicks: string
+  actions?: Array<{ action_type: string; value: string }>
+  action_values?: Array<{ action_type: string; value: string }>
+  date_start: string
+  date_stop: string
+}
+
+export async function syncMetaAds(projectId: string, cycleId: string): Promise<{ synced: number; error?: string }> {
+  const accessToken = process.env.META_SYSTEM_USER_TOKEN
+  if (!accessToken) return { synced: 0, error: "META_SYSTEM_USER_TOKEN no está configurado en el servidor" }
+
+  const supabase = await createClient()
+
+  const [integrationResult, cycleResult] = await Promise.all([
+    supabase.from("project_integrations").select("account_id").eq("project_id", projectId).eq("platform", "meta").maybeSingle(),
+    supabase.from("paid_media_cycles").select("start_date, end_date").eq("id", cycleId).single(),
+  ])
+
+  if (cycleResult.error || !cycleResult.data) return { synced: 0, error: "No se encontró el ciclo" }
+
+  const today = new Date().toISOString().split("T")[0]
+  if (cycleResult.data.start_date > today) {
+    return { synced: 0, error: `Este ciclo empieza el ${cycleResult.data.start_date} — aún no hay datos que sincronizar.` }
+  }
+
+  const meta_ad_account_id = integrationResult.data?.account_id
+  if (!meta_ad_account_id) {
+    return { synced: 0, error: "Configura el Ad Account ID de Meta en Conexiones" }
+  }
+
+  const { since, until } = cycleRange(cycleResult.data)
+  const fields = "ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,spend,impressions,clicks,actions,action_values"
+
+  const url = new URL(`${META_BASE}/act_${meta_ad_account_id}/insights`)
+  url.searchParams.set("level", "ad")
+  url.searchParams.set("time_increment", "1")
+  url.searchParams.set("fields", fields)
+  url.searchParams.set("time_range", JSON.stringify({ since, until }))
+  url.searchParams.set("access_token", accessToken)
+  url.searchParams.set("limit", "500")
+
+  // Mismo motivo que en syncMetaCampaigns: el objetivo no es un campo de
+  // insights válido, y es lo que decide qué action_type cuenta como
+  // "Resultados" — se resuelve por campaign_id, no por ad.
+  const campaignsUrl = new URL(`${META_BASE}/act_${meta_ad_account_id}/campaigns`)
+  campaignsUrl.searchParams.set("fields", "id,objective")
+  campaignsUrl.searchParams.set("access_token", accessToken)
+  campaignsUrl.searchParams.set("limit", "300")
+
+  let res: Response, campaignsRes: Response
+  try {
+    ;[res, campaignsRes] = await Promise.all([
+      fetch(url.toString(), { cache: "no-store" }),
+      fetch(campaignsUrl.toString(), { cache: "no-store" }),
+    ])
+  } catch {
+    return { synced: 0, error: "Error de red al conectar con Meta" }
+  }
+
+  const json = await res.json()
+  if (json.error) return { synced: 0, error: `Meta API: ${json.error.message}` }
+
+  const campaignsJson = await campaignsRes.json()
+  const objectiveById = new Map<string, string>(
+    (campaignsJson.data ?? []).map((c: { id: string; objective?: string }) => [c.id, c.objective ?? ""])
+  )
+
+  const rows: MetaAdInsightRow[] = json.data ?? []
+  if (!rows.length) return { synced: 0 }
+
+  // Dimensión (un ad, sus datos no cambian por día) — se resuelve el
+  // creativo (thumbnail/imagen/video) solo una vez por ad_id único, no por
+  // cada fila diaria.
+  const uniqueAds = new Map<string, MetaAdInsightRow>()
+  for (const row of rows) if (!uniqueAds.has(row.ad_id)) uniqueAds.set(row.ad_id, row)
+
+  const adIds = Array.from(uniqueAds.keys())
+  const adsUrl = new URL(`${META_BASE}/act_${meta_ad_account_id}/ads`)
+  adsUrl.searchParams.set("fields", `effective_status,${AD_CREATIVE_FIELDS}`)
+  adsUrl.searchParams.set("filtering", JSON.stringify([{ field: "id", operator: "IN", value: adIds }]))
+  adsUrl.searchParams.set("limit", "500")
+  adsUrl.searchParams.set("access_token", accessToken)
+
+  let adsJson: any = { data: [] }
+  try {
+    const adsRes = await fetch(adsUrl.toString(), { cache: "no-store" })
+    adsJson = await adsRes.json()
+    if (adsJson.error) console.error("[syncMetaAds] ads creative fetch failed:", adsJson.error.message)
+  } catch (err) {
+    console.error("[syncMetaAds] ads creative fetch threw:", err instanceof Error ? err.message : err)
+  }
+
+  const creativeById = new Map<string, MetaAdCreative>(
+    await Promise.all(
+      (adsJson.data ?? []).map(async (a: any) => [a.id, await mapAdNodeToCreative(a, accessToken)] as const)
+    )
+  )
+
+  const dimRows = adIds.map((adId) => {
+    const row = uniqueAds.get(adId)!
+    const creative = creativeById.get(adId)
+    return {
+      project_id:    projectId,
+      ad_id:         adId,
+      ad_name:       row.ad_name || null,
+      ad_set_id:     row.adset_id || null,
+      ad_set_name:   row.adset_name || null,
+      campaign_id:   row.campaign_id || null,
+      campaign_name: row.campaign_name || null,
+      status:        creative?.status ?? null,
+      thumbnail_url: creative?.thumbnailUrl ?? null,
+      image_url:     creative?.imageUrl ?? null,
+      video_url:     creative?.videoUrl ?? null,
+      updated_at:    new Date().toISOString(),
+    }
+  })
+
+  const factRows = rows.map((row) => {
+    const objective = objectiveById.get(row.campaign_id) ?? null
+    const { results, results_type } = pickResults(row.actions, objective)
+    return {
+      project_id:     projectId,
+      cycle_id:       cycleId,
+      ad_id:          row.ad_id,
+      date:           row.date_start,
+      spend:          row.spend ? Number(row.spend) : null,
+      impressions:    row.impressions ? Number(row.impressions) : null,
+      clicks:         row.clicks ? Number(row.clicks) : null,
+      results,
+      results_type,
+      purchase_value: pickPurchaseValue(row.action_values, objective),
+      synced_at:      new Date().toISOString(),
+    }
+  })
+
+  const [{ error: dimError }, { error: factError }] = await Promise.all([
+    supabase.from("meta_ads").upsert(dimRows, { onConflict: "project_id,ad_id" }),
+    supabase.from("meta_ad_daily_stats").upsert(factRows, { onConflict: "project_id,ad_id,date" }),
+  ])
+
+  if (dimError) return { synced: 0, error: dimError.message }
+  if (factError) return { synced: 0, error: factError.message }
+
+  return { synced: factRows.length }
+}
+
 // ── Ads Manager-style drill-down (Campaign → Ad Set → Ad/creative) ─────────
 // Fetched live from Meta on demand when the user expands a row — nothing
 // here is persisted, this is just a lightweight browsing view.

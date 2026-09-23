@@ -17,7 +17,8 @@ import { getProjectDeliverables } from "@/lib/actions/deliverables"
 import { getSops } from "@/lib/actions/sops"
 import { getCreativeConcepts, getCreativeAssets } from "@/lib/actions/creatives"
 import { getBrandBrains, getBrandLines } from "@/lib/actions/brand-brains"
-import { getMetaCampaigns, getMetaImportedCreatives } from "@/lib/actions/meta"
+import { getMetaImportedCreatives } from "@/lib/actions/meta"
+import { getCreativePerformance } from "@/lib/actions/paid-media-performance"
 import { getProjectIntegrations } from "@/lib/actions/integrations"
 import { IntegrationsCard } from "@/components/projects/hub/integrations-card"
 import { CreativesHub } from "@/components/projects/hub/creatives/creatives-hub"
@@ -40,7 +41,7 @@ import { createClient } from "@/lib/supabase/server"
 import { ProjectContextBar } from "@/components/projects/project-context-bar"
 import { ArrowLeft, CalendarDays, Plus } from "lucide-react"
 import { formatDate, formatCurrency } from "@/lib/utils"
-import type { Customer, Profile, Project, Task, ProjectType, PaidMediaContext, PaidMediaCycle, WebProjectContext, ProjectLogEntry, ProjectPhase, Deliverable, Sop, CreativeConcept, CreativeAsset, MetaCampaign, ProjectIntegration } from "@/lib/types"
+import type { Customer, Profile, Project, Task, ProjectType, PaidMediaContext, PaidMediaCycle, WebProjectContext, ProjectLogEntry, ProjectPhase, Deliverable, Sop, CreativeConcept, CreativeAsset, ProjectIntegration } from "@/lib/types"
 import { can } from "@/lib/permissions"
 import { getProjectTypeIcon } from "@/lib/project-type-icons"
 
@@ -112,15 +113,15 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const historyCycles = (cycles as PaidMediaCycle[]).filter((c) => !c.is_active)
 
   // Fetch initial creatives + meta campaigns + integrations for active cycle
-  const [initialConcepts, initialAssets, initialMetaCampaigns, integrations, brandBrains, brandLines, importedMetaCreatives] = isPaidMedia
+  const [initialConcepts, initialAssets, integrations, brandBrains, brandLines, importedMetaCreatives, initialCreativeCards] = isPaidMedia
     ? await Promise.all([
         getCreativeConcepts(id, activeCycle?.id ?? null).catch(() => []),
         getCreativeAssets(id, activeCycle?.id ?? null).catch(() => []),
-        activeCycle ? getMetaCampaigns(id, activeCycle.id).catch(() => []) : Promise.resolve([]),
         getProjectIntegrations(id).catch(() => []),
         getBrandBrains().catch(() => []),
         project.brand_brain_id ? getBrandLines(project.brand_brain_id).catch(() => []) : Promise.resolve([]),
         getMetaImportedCreatives(id).catch(() => []),
+        activeCycle ? getCreativePerformance(id, activeCycle.id).catch(() => []) : Promise.resolve([]),
       ])
     : [[], [], [], [], [], [], []]
 
@@ -353,7 +354,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             )}
             <PaidMediaContextCard projectId={project.id} context={paidMediaContext} canEdit={isAdminOrSubadmin} />
             <IntegrationsCard     projectId={project.id} integrations={integrations as ProjectIntegration[]} canEdit={isAdminOrSubadmin} />
-            <PaidMediaCycleCard   projectId={project.id} activeCycle={activeCycle} context={paidMediaContext} canEdit={isAdminOrSubadmin} canEditDates={canEditCycleDates} isAdminOrSubadmin={isAdminOrSubadmin} autoCloseCycles={!!project.auto_close_cycles} initialCampaigns={initialMetaCampaigns as MetaCampaign[]} hasMetaConnected={!!(integrations as ProjectIntegration[]).find((i) => i.platform === "meta")} cycleStartDay={project.paid_media_cycle_start_day} />
+            <PaidMediaCycleCard   projectId={project.id} activeCycle={activeCycle} context={paidMediaContext} canEdit={isAdminOrSubadmin} canEditDates={canEditCycleDates} isAdminOrSubadmin={isAdminOrSubadmin} autoCloseCycles={!!project.auto_close_cycles} initialCards={initialCreativeCards} hasMetaConnected={!!(integrations as ProjectIntegration[]).find((i) => i.platform === "meta")} cycleStartDay={project.paid_media_cycle_start_day} />
             {historyCycles.length > 0 && <PaidMediaCycleHistory cycles={historyCycles} />}
           </section>
         )}

@@ -81,7 +81,7 @@ grep-ear todo el repo desde cero.
 | [tareas.md](./tareas.md) | Tareas (`/tasks`) | 2026-09-15 |
 | [guiones-por-voz.md](./guiones-por-voz.md) | Bot Telegram/Vowen — guiones (🚧 borrador, sin construir) | 2026-09-11 |
 | [entregables-de-servicio.md](./entregables-de-servicio.md) | Servicios / Proyectos — alcance del servicio | 2026-09-11 |
-| [ciclos-paid-media.md](./ciclos-paid-media.md) | Proyectos — Ciclo Activo (Paid Media) | 2026-09-15 |
+| [ciclos-paid-media.md](./ciclos-paid-media.md) | Proyectos — Ciclo Activo (Paid Media) | 2026-09-23 |
 | [ad-lab-crear-desde-cero.md](./ad-lab-crear-desde-cero.md) | Ad Lab — Crear desde cero (`/ad-lab/scratch`) | 2026-09-15 |
 | [ad-lab-ad-nodes.md](./ad-lab-ad-nodes.md) | Ad Lab — Ad Nodes (`/ad-lab/nodes`) | 2026-09-15 |
 | [mcp-server.md](./mcp-server.md) | Servidor MCP (`/api/mcp`) — acciones de IA con permisos reales | 2026-09-18 |

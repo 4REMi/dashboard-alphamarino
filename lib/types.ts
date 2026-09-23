@@ -542,6 +542,8 @@ export interface PendingChange {
 // PAID MEDIA HUB
 // ============================================================
 
+export type TrendWindow = "previous_day" | "cycle_avg" | "baseline"
+
 export interface PaidMediaContext {
   id: string
   project_id: string
@@ -553,6 +555,12 @@ export interface PaidMediaContext {
   target_cpl: number | null
   target_leads_per_month: number | null
   account_notes: string | null
+  // Preferencias del grid creative-first (ver components/projects/hub/
+  // creative-performance-grid.tsx) — qué métricas mostrar por default y
+  // con qué ventana de tendencia, con override puntual por campaña.
+  display_metrics: string[]
+  trend_window: TrendWindow
+  campaign_trend_overrides: Record<string, TrendWindow>
   updated_at: string
 }
 
@@ -617,6 +625,52 @@ export interface MetaCampaignCreative {
   date_stop: string | null
   imported_by: string | null
   imported_at: string
+}
+
+// Dimensión — un ad real de Meta, sincronizado con su creativo (ver
+// components/projects/hub/creative-performance-grid.tsx). Las métricas
+// viven aparte, en MetaAdDailyStat (una fila por día habilita tendencia
+// sin depender de cada cuándo se sincroniza).
+export interface MetaAd {
+  id: string
+  project_id: string
+  ad_id: string
+  ad_name: string | null
+  ad_set_id: string | null
+  ad_set_name: string | null
+  campaign_id: string | null
+  campaign_name: string | null
+  status: string | null
+  thumbnail_url: string | null
+  image_url: string | null
+  video_url: string | null
+  updated_at: string
+}
+
+export interface MetaAdDailyStat {
+  id: string
+  project_id: string
+  cycle_id: string | null
+  ad_id: string
+  date: string
+  spend: number | null
+  impressions: number | null
+  clicks: number | null
+  results: number | null
+  results_type: string | null
+  purchase_value: number | null
+  synced_at: string
+}
+
+// Puente many-to-many: qué creative_assets (con su concept_id, y por lo
+// tanto su persona/ángulo) se volvió cuál ad real de Meta.
+export interface CreativeAssetMetaAdLink {
+  id: string
+  creative_asset_id: string
+  project_id: string
+  meta_ad_id: string
+  linked_by: string | null
+  linked_at: string
 }
 
 export interface PaidMediaCycle {

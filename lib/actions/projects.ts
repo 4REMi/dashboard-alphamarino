@@ -807,25 +807,57 @@ export async function updateProjectPhaseNotes(phaseId: string, notes: string, pr
 // PAID MEDIA CONTEXT
 // ============================================================
 
+// Reconstruido — ya no captura target_roas/cpa/cpl/leads_per_month ni
+// monthly_ad_budget: eran comparados contra un "real" que había que
+// teclear a mano (real_spend/roas_real/cpa_real/cpl_real en
+// paid_media_cycles), nadie lo llenaba porque duplicaba lo que Meta ya
+// sincroniza, y por eso esos tiles siempre se veían vacíos. El objetivo
+// ahora es puramente informativo (qué persigue esta cuenta), y la
+// vigilancia de threshold real es el terreno del agente (reglas en
+// lenguaje natural), no un formulario aparte. Las columnas viejas se
+// dejan intactas en la base — no se tocan ni se limpian aquí.
 export async function upsertPaidMediaContext(projectId: string, formData: FormData) {
   const supabase = await createClient()
   const platforms = formData.getAll("platforms") as string[]
   const mainObjective = formData.get("main_objective") as string
+  const displayMetrics = formData.getAll("display_metrics") as string[]
+  const trendWindow = (formData.get("trend_window") as string) || "previous_day"
 
   const { error } = await supabase.from("paid_media_context").upsert(
     {
       project_id: projectId,
       platforms,
-      monthly_ad_budget: formData.get("monthly_ad_budget") ? Number(formData.get("monthly_ad_budget")) : null,
       main_objective: mainObjective && mainObjective !== "none" ? mainObjective : null,
-      target_roas: formData.get("target_roas") ? Number(formData.get("target_roas")) : null,
-      target_cpa: formData.get("target_cpa") ? Number(formData.get("target_cpa")) : null,
-      target_cpl: formData.get("target_cpl") ? Number(formData.get("target_cpl")) : null,
-      target_leads_per_month: formData.get("target_leads_per_month") ? Number(formData.get("target_leads_per_month")) : null,
       account_notes: (formData.get("account_notes") as string) || null,
+      display_metrics: displayMetrics.length > 0 ? displayMetrics : ["spend", "cost_per_result"],
+      trend_window: trendWindow,
     },
     { onConflict: "project_id" }
   )
+  if (error) throw error
+  revalidatePath(`/projects/${projectId}`)
+}
+
+// Override de ventana de tendencia por campaña — vive en el mismo
+// paid_media_context como JSONB en vez de una tabla nueva, dado que es
+// solo "campaign_id -> ventana" y nunca crece más que el número de
+// campañas activas de la cuenta.
+export async function setCampaignTrendOverride(projectId: string, campaignId: string, window: string | null) {
+  const supabase = await createClient()
+  const { data: current } = await supabase
+    .from("paid_media_context")
+    .select("campaign_trend_overrides")
+    .eq("project_id", projectId)
+    .maybeSingle()
+
+  const overrides = { ...(current?.campaign_trend_overrides ?? {}) } as Record<string, string>
+  if (window) overrides[campaignId] = window
+  else delete overrides[campaignId]
+
+  const { error } = await supabase
+    .from("paid_media_context")
+    .update({ campaign_trend_overrides: overrides })
+    .eq("project_id", projectId)
   if (error) throw error
   revalidatePath(`/projects/${projectId}`)
 }
@@ -948,6 +980,11 @@ export async function openNewCycle(projectId: string, startDate: string, endDate
   revalidatePath(`/projects/${projectId}`)
 }
 
+// roas_real/cpa_real/cpl_real/real_spend/real_results ya no se capturan
+// aquí — duplicaban lo que el sync de Meta ya trae (ver
+// creative-performance-grid.tsx), nadie los llenaba, y por eso esos
+// tiles siempre se veían vacíos. Las columnas se dejan intactas en la
+// base, simplemente ya no se escriben desde este formulario.
 export async function updateCycle(cycleId: string, projectId: string, formData: FormData) {
   const supabase = await createClient()
   const campaignStatus = formData.get("campaign_status") as string
@@ -960,11 +997,6 @@ export async function updateCycle(cycleId: string, projectId: string, formData: 
       report_delivery_date: (formData.get("report_delivery_date") as string) || null,
       report_status: (formData.get("report_status") as CycleDeliverableStatus) ?? "pending",
       creative_status: (formData.get("creative_status") as CycleDeliverableStatus) ?? "pending",
-      roas_real: formData.get("roas_real") ? Number(formData.get("roas_real")) : null,
-      cpa_real: formData.get("cpa_real") ? Number(formData.get("cpa_real")) : null,
-      cpl_real: formData.get("cpl_real") ? Number(formData.get("cpl_real")) : null,
-      real_spend: formData.get("real_spend") ? Number(formData.get("real_spend")) : null,
-      real_results: formData.get("real_results") ? Number(formData.get("real_results")) : null,
     })
     .eq("id", cycleId)
 

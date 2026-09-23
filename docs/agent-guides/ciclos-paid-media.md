@@ -2,16 +2,41 @@
 
 **Ruta:** dentro de `/projects/[id]` — tarjeta "Ciclo Activo" (solo proyectos de tipo Paid Media)
 **Para quién:** ambos, con partes admin-only (ver "Quién puede ver/hacer qué")
-**Actualizado:** 2026-09-15
+**Actualizado:** 2026-09-23
 
 ## Qué es y para qué sirve
 
 Un ciclo (`paid_media_cycles`) es el periodo mensual (u otro rango) de gestión de ads de
-un proyecto — inversión, ROAS/CPA/CPL reales, estado de campañas, entrega de reporte.
-Solo hay un ciclo activo (`is_active = true`) por proyecto a la vez; abrir uno nuevo
-cierra automáticamente el anterior. Conceptos y assets del Creative Tracker
+un proyecto — estado de campañas, entrega de reporte, producción creativa. Solo hay un
+ciclo activo (`is_active = true`) por proyecto a la vez; abrir uno nuevo cierra
+automáticamente el anterior. Conceptos y assets del Creative Tracker
 (`creative_concepts`/`creative_assets`) se ligan a un ciclo por `cycle_id` — un simple
 FK fijado al crearse, nunca recalculado a partir de las fechas.
+
+**Las métricas reales (inversión, CTR, costo/resultado, ROAS) ya NO se capturan a
+mano en esta tarjeta.** Las columnas `real_spend`/`roas_real`/`cpa_real`/`cpl_real`/
+`real_results` de `paid_media_cycles` siguen existiendo en la base pero quedaron
+deprecadas — el formulario que las llenaba se quitó porque duplicaba trabajo: el
+"real" ahora se deriva automáticamente del sync de Meta a nivel de AD individual
+(`meta_ads`/`meta_ad_daily_stats`, ver el panel "Creativos" — `components/projects/
+hub/creative-performance-grid.tsx` y `lib/actions/paid-media-performance.ts`). Lo
+mismo con `paid_media_context.target_roas/target_cpa/target_cpl/target_leads_per_month/
+monthly_ad_budget` — quedaron deprecados sin UI; el objetivo de la cuenta ahora es
+solo informativo (`main_objective`), y la vigilancia de threshold real es terreno de
+reglas de agente (todavía no construidas), no de un target estático comparado a mano.
+
+**Grid creative-first ("Creativos")**: reemplazó la tabla de campañas de Meta
+(`MetaCampaignsPanel`, eliminado). La unidad primaria es el AD individual, no la
+campaña — cada tarjeta trae su propia miniatura + las métricas que el proyecto
+configuró mostrar (`paid_media_context.display_metrics`, picker de métricas en
+"Contexto de Cuenta") + un delta de tendencia (`trend_window`: día anterior/promedio
+del ciclo/baseline, con override opcional por campaña en `campaign_trend_overrides`).
+El sync (`syncMetaAds`) trae insights con `time_increment=1` — una fila por ad por
+día en `meta_ad_daily_stats` — para poder calcular esa tendencia sin depender de cada
+cuándo alguien sincroniza. `creative_asset_meta_ads` es el puente many-to-many entre
+un `creative_assets` (con su `concept_id`, persona, ángulo) y el `ad_id` real de Meta
+en el que se volvió — se vincula desde la propia tarjeta ("Vincular a concepto"),
+nunca bloqueante, nunca un paso obligatorio upstream.
 
 ## Conceptos y vocabulario clave
 
@@ -77,7 +102,18 @@ ciclo, solo visible para admin/subadmin.
 - `supabase/migrations/077_cycle_dates_and_autoclose.sql` — `projects.auto_close_cycles`
   + `paid_media_cycles.end_warning_sent_at`/`overdue_notice_sent_at`.
 - `lib/actions/projects.ts` — `updateCycleDates`, `updateProjectAutoCloseCycles`,
-  `runDailyCycleCheck` (llamada por el endpoint de cron).
+  `runDailyCycleCheck` (llamada por el endpoint de cron), `upsertPaidMediaContext`
+  (ya sin target_*), `setCampaignTrendOverride`.
+- `supabase/migrations/088_creative_performance_hub.sql` — `meta_ads`,
+  `meta_ad_daily_stats`, `creative_asset_meta_ads`, y las columnas nuevas de
+  `paid_media_context` (`display_metrics`/`trend_window`/`campaign_trend_overrides`).
+- `lib/actions/meta.ts` — `syncMetaAds` (sync a nivel ad, `time_increment=1`).
+- `lib/actions/paid-media-performance.ts` — `getCreativePerformance` (agregación +
+  cálculo de tendencia), `linkAssetToMetaAd`/`unlinkAssetFromMetaAd`.
+- `lib/constants/paid-media-metrics.ts` — `METRIC_DEFS` (separado de las server
+  actions porque un archivo `"use server"` solo puede exportar funciones async).
+- `components/projects/hub/creative-performance-grid.tsx`,
+  `paid-media-context-card.tsx` (reconstruido), `paid-media-cycle-card.tsx`.
 - `app/api/cron/check-cycles/route.ts` — endpoint diario, autenticado por
   `CRON_SECRET`.
 - `vercel.json` — declaración del cron (`"0 14 * * *"`).

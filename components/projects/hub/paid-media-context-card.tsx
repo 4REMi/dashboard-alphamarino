@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import type { PaidMediaContext, MainObjective } from "@/lib/types"
+import type { PaidMediaContext, MainObjective, TrendWindow } from "@/lib/types"
 import { PAID_MEDIA_PLATFORMS, MAIN_OBJECTIVES } from "@/lib/types"
+import { METRIC_DEFS, type MetricKey } from "@/lib/constants/paid-media-metrics"
 import { upsertPaidMediaContext } from "@/lib/actions/projects"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
 
@@ -12,21 +13,39 @@ interface Props {
   canEdit: boolean
 }
 
+const TREND_WINDOW_LABELS: Record<TrendWindow, string> = {
+  previous_day: "vs. día anterior",
+  cycle_avg: "vs. promedio del ciclo",
+  baseline: "vs. primer día del ciclo",
+}
+
+// Reconstruido desde cero — la versión anterior comparaba un "real"
+// tecleado a mano (real_spend/roas_real/cpa_real/cpl_real) contra un
+// target que tampoco se llenaba. Esta versión es puramente informativa
+// (objetivo + plataformas + notas) más las preferencias de qué métricas
+// y qué ventana de tendencia mostrar en el grid creative-first de abajo
+// — la vigilancia real de threshold es terreno del agente, no de un
+// formulario aparte.
 export function PaidMediaContextCard({ projectId, context, canEdit }: Props) {
   const [editing, setEditing] = useState(!context)
   const [isPending, startTransition] = useTransition()
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(context?.platforms ?? [])
+  const [selectedMetrics, setSelectedMetrics] = useState<string[]>(context?.display_metrics ?? ["spend", "cost_per_result"])
 
   function togglePlatform(p: string) {
-    setSelectedPlatforms((prev) =>
-      prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]
-    )
+    setSelectedPlatforms((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p])
+  }
+
+  function toggleMetric(key: string) {
+    setSelectedMetrics((prev) => prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key])
   }
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const fd = new FormData(e.currentTarget)
     selectedPlatforms.forEach((p) => fd.append("platforms", p))
+    fd.delete("display_metrics")
+    selectedMetrics.forEach((m) => fd.append("display_metrics", m))
     startTransition(async () => {
       await upsertPaidMediaContext(projectId, fd)
       setEditing(false)
@@ -45,7 +64,6 @@ export function PaidMediaContextCard({ projectId, context, canEdit }: Props) {
           )}
         </div>
 
-        {/* Platforms */}
         <div className="flex flex-wrap gap-2">
           {context?.platforms.map((p) => (
             <span key={p} className="px-2 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium">{p}</span>
@@ -53,21 +71,25 @@ export function PaidMediaContextCard({ projectId, context, canEdit }: Props) {
           {!context?.platforms.length && <span className="text-xs text-muted-foreground">Sin plataformas</span>}
         </div>
 
-        {/* Objective + KPIs */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {context?.main_objective && (
-            <Kpi label="Objetivo" value={MAIN_OBJECTIVES[context.main_objective as MainObjective]} />
-          )}
-          {context?.monthly_ad_budget && (
-            <Kpi label="Budget pauta (MXN)" value={`$${context.monthly_ad_budget.toLocaleString()}`} />
-          )}
-          {context?.target_roas && <Kpi label="ROAS objetivo" value={`${context.target_roas}x`} />}
-          {context?.target_cpa && <Kpi label="CPA objetivo" value={`$${context.target_cpa}`} />}
-          {context?.target_cpl && <Kpi label="CPL objetivo" value={`$${context.target_cpl}`} />}
-          {context?.target_leads_per_month && <Kpi label="Leads/mes" value={context.target_leads_per_month.toString()} />}
+        {context?.main_objective && (
+          <div>
+            <p className="text-xs text-muted-foreground">Objetivo</p>
+            <p className="text-sm font-medium text-foreground">{MAIN_OBJECTIVES[context.main_objective as MainObjective]}</p>
+          </div>
+        )}
+
+        <div className="border-t border-border pt-3 flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-muted-foreground mr-1">Métricas del grid:</span>
+          {(context?.display_metrics ?? []).map((m) => (
+            <span key={m} className="text-xs font-medium px-2 py-0.5 rounded-full bg-muted text-foreground">
+              {METRIC_DEFS[m as MetricKey]?.label ?? m}
+            </span>
+          ))}
+          <span className="text-xs text-muted-foreground ml-2">
+            {TREND_WINDOW_LABELS[context?.trend_window ?? "previous_day"]}
+          </span>
         </div>
 
-        {/* Account notes */}
         {context?.account_notes && (
           <div className="border-t border-border pt-3">
             <p className="text-xs font-medium text-muted-foreground mb-1">Notas de cuenta</p>
@@ -102,50 +124,54 @@ export function PaidMediaContextCard({ projectId, context, canEdit }: Props) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div>
+        <label className="text-xs font-medium text-muted-foreground mb-1 block">Objetivo principal</label>
+        <select
+          name="main_objective"
+          defaultValue={context?.main_objective ?? "none"}
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+        >
+          <option value="none">Sin objetivo</option>
+          {Object.entries(MAIN_OBJECTIVES).map(([val, label]) => (
+            <option key={val} value={val}>{label}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="border-t border-border pt-3 space-y-2">
+        <label className="text-xs font-medium text-muted-foreground block">
+          Métricas a mostrar en el grid de creativos
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {(Object.keys(METRIC_DEFS) as MetricKey[]).map((key) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => toggleMetric(key)}
+              className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                selectedMetrics.includes(key)
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-transparent text-muted-foreground border-border hover:border-primary/50"
+              }`}
+            >
+              {METRIC_DEFS[key].label}
+            </button>
+          ))}
+        </div>
         <div>
-          <label className="text-xs font-medium text-muted-foreground mb-1 block">Objetivo principal</label>
+          <label className="text-xs font-medium text-muted-foreground mb-1 block">
+            Ventana de tendencia (default — se puede ajustar por campaña desde el grid)
+          </label>
           <select
-            name="main_objective"
-            defaultValue={context?.main_objective ?? "none"}
+            name="trend_window"
+            defaultValue={context?.trend_window ?? "previous_day"}
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           >
-            <option value="none">Sin objetivo</option>
-            {Object.entries(MAIN_OBJECTIVES).map(([val, label]) => (
+            {Object.entries(TREND_WINDOW_LABELS).map(([val, label]) => (
               <option key={val} value={val}>{label}</option>
             ))}
           </select>
         </div>
-        <div>
-          <label className="text-xs font-medium text-muted-foreground mb-1 block">Budget de pauta mensual (MXN)</label>
-          <input
-            name="monthly_ad_budget"
-            type="number"
-            step="0.01"
-            defaultValue={context?.monthly_ad_budget ?? ""}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {[
-          { name: "target_roas", label: "ROAS objetivo (x)", val: context?.target_roas },
-          { name: "target_cpa", label: "CPA objetivo ($)", val: context?.target_cpa },
-          { name: "target_cpl", label: "CPL objetivo ($)", val: context?.target_cpl },
-          { name: "target_leads_per_month", label: "Leads/mes", val: context?.target_leads_per_month },
-        ].map(({ name, label, val }) => (
-          <div key={name}>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">{label}</label>
-            <input
-              name={name}
-              type="number"
-              step="any"
-              defaultValue={val ?? ""}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            />
-          </div>
-        ))}
       </div>
 
       <div>
@@ -172,14 +198,5 @@ export function PaidMediaContextCard({ projectId, context, canEdit }: Props) {
         </button>
       </div>
     </form>
-  )
-}
-
-function Kpi({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="bg-muted/40 rounded-lg p-2.5">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="text-sm font-semibold text-foreground mt-0.5">{value}</p>
-    </div>
   )
 }
