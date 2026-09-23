@@ -28,6 +28,8 @@ import {
   Radio,
   Tag,
   Sparkles,
+  Moon,
+  Sun,
   Puzzle,
 } from "lucide-react"
 import { useState } from "react"
@@ -36,6 +38,7 @@ import { signOut } from "@/lib/auth-actions"
 import { Button } from "@/components/ui/button"
 import { can } from "@/lib/permissions"
 import { ProfileEditModal } from "@/components/profile-edit-modal"
+import { useTheme } from "@/components/theme-provider"
 import { useTranslations } from "next-intl"
 import type { Profile } from "@/lib/types"
 
@@ -70,6 +73,7 @@ export function Sidebar({ profile, logoUrl, myPendingTaskCount = 0, mobileOpen =
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
   const t = useTranslations("nav")
+  const { theme, toggleTheme } = useTheme()
   const tRoles = useTranslations("roles")
 
   const navItems: NavItem[] = [
@@ -272,6 +276,18 @@ export function Sidebar({ profile, logoUrl, myPendingTaskCount = 0, mobileOpen =
             )}
           </div>
         )}
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={toggleTheme}
+          className={cn(
+            "w-full text-muted-foreground hover:text-foreground",
+            collapsed ? "justify-center px-0" : "justify-start"
+          )}
+        >
+          {theme === "dark" ? <Sun className="w-5 h-5 flex-shrink-0" /> : <Moon className="w-5 h-5 flex-shrink-0" />}
+          {!collapsed && <span>{theme === "dark" ? "Modo claro" : "Modo oscuro"}</span>}
+        </Button>
         <form action={signOut}>
           <Button
             type="submit"
