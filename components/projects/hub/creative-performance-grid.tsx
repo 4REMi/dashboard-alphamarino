@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { Loader2, RefreshCw, Film, ImageIcon, Link2, X } from "lucide-react"
+import { Loader2, RefreshCw, ImageIcon, Link2, X } from "lucide-react"
 import { syncMetaAds } from "@/lib/actions/meta"
 import {
   getCreativePerformance, getProjectAssetsForLinking, linkAssetToMetaAd, unlinkAssetFromMetaAd,
@@ -92,23 +92,30 @@ function CreativeCard({ card, metrics, projectId, canEdit, onRefresh }: {
   card: AdPerformanceCard; metrics: MetricKey[]; projectId: string; canEdit: boolean; onRefresh: () => void
 }) {
   const [showLinkPicker, setShowLinkPicker] = useState(false)
+  // El video real (no solo su thumbnail chico/borroso) — Meta ya nos da
+  // la URL del archivo productivo, no hay razón para mostrar solo una
+  // miniatura estática cuando el creativo es un video.
+  const poster = card.image_url ?? card.thumbnail_url ?? undefined
   const media = card.image_url ?? card.thumbnail_url
   const isVideo = !!card.video_url
 
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden flex flex-col">
       <div className="relative aspect-square bg-muted">
-        {media ? (
+        {isVideo ? (
+          <video
+            src={card.video_url ?? undefined}
+            poster={poster}
+            controls
+            preload="none"
+            className="w-full h-full object-cover"
+          />
+        ) : media ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={media} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-muted-foreground/40">
             <ImageIcon className="w-8 h-8" />
-          </div>
-        )}
-        {isVideo && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/15">
-            <Film className="w-6 h-6 text-white drop-shadow" />
           </div>
         )}
         <span className={cn(
