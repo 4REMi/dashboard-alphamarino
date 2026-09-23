@@ -561,6 +561,9 @@ export interface PaidMediaContext {
   display_metrics: string[]
   trend_window: TrendWindow
   campaign_trend_overrides: Record<string, TrendWindow>
+  // null/vacío = sincronizar todas las campañas (default de siempre) —
+  // ver components/projects/hub/creative-performance-grid.tsx.
+  synced_campaign_ids: string[] | null
   updated_at: string
 }
 

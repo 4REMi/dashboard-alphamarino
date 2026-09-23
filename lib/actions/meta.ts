@@ -267,7 +267,36 @@ interface MetaAdInsightRow {
   date_stop: string
 }
 
-export async function syncMetaAds(projectId: string, cycleId: string): Promise<{ synced: number; error?: string }> {
+// Lista liviana de campañas de la cuenta — para el picker "elegir qué
+// campañas sincronizar" antes de traer datos a nivel ad (evita jalar N
+// ads de campañas que a nadie le importan, y evita el volumen de golpe
+// cuando una cuenta tiene 80+ creativos corriendo).
+export async function getMetaCampaignOptions(projectId: string): Promise<{ campaigns: { id: string; name: string; status: string | null }[]; error?: string }> {
+  const accessToken = process.env.META_SYSTEM_USER_TOKEN
+  if (!accessToken) return { campaigns: [], error: "META_SYSTEM_USER_TOKEN no está configurado en el servidor" }
+
+  const supabase = await createClient()
+  const { data: integration } = await supabase
+    .from("project_integrations").select("account_id").eq("project_id", projectId).eq("platform", "meta").maybeSingle()
+  const meta_ad_account_id = integration?.account_id
+  if (!meta_ad_account_id) return { campaigns: [], error: "Configura el Ad Account ID de Meta en Conexiones" }
+
+  const url = new URL(`${META_BASE}/act_${meta_ad_account_id}/campaigns`)
+  url.searchParams.set("fields", "id,name,effective_status")
+  url.searchParams.set("limit", "300")
+  url.searchParams.set("access_token", accessToken)
+
+  try {
+    const res = await fetch(url.toString(), { cache: "no-store" })
+    const json = await res.json()
+    if (json.error) return { campaigns: [], error: `Meta API: ${json.error.message}` }
+    return { campaigns: (json.data ?? []).map((c: { id: string; name: string; effective_status: string }) => ({ id: c.id, name: c.name, status: c.effective_status ?? null })) }
+  } catch {
+    return { campaigns: [], error: "Error de red al conectar con Meta" }
+  }
+}
+
+export async function syncMetaAds(projectId: string, cycleId: string, campaignIds?: string[]): Promise<{ synced: number; error?: string }> {
   const accessToken = process.env.META_SYSTEM_USER_TOKEN
   if (!accessToken) return { synced: 0, error: "META_SYSTEM_USER_TOKEN no está configurado en el servidor" }
 
@@ -300,6 +329,13 @@ export async function syncMetaAds(projectId: string, cycleId: string): Promise<{
   url.searchParams.set("time_range", JSON.stringify({ since, until }))
   url.searchParams.set("access_token", accessToken)
   url.searchParams.set("limit", "500")
+  // A diferencia del bug de /ads con "filtering" (ese edge lo ignora
+  // silenciosamente) — el edge de insights SÍ soporta filtrar por
+  // campaign.id, es su uso documentado. Sin campaignIds, sincroniza todas
+  // las campañas del ciclo, igual que antes.
+  if (campaignIds?.length) {
+    url.searchParams.set("filtering", JSON.stringify([{ field: "campaign.id", operator: "IN", value: campaignIds }]))
+  }
 
   // Mismo motivo que en syncMetaCampaigns: el objetivo no es un campo de
   // insights válido, y es lo que decide qué action_type cuenta como

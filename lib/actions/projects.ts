@@ -838,6 +838,18 @@ export async function upsertPaidMediaContext(projectId: string, formData: FormDa
   revalidatePath(`/projects/${projectId}`)
 }
 
+// Qué campañas sincronizar desde el picker previo al sync — se recuerda
+// por proyecto, no se pregunta cada vez. [] o null = todas (default).
+export async function setSyncedCampaignIds(projectId: string, campaignIds: string[]) {
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from("paid_media_context")
+    .update({ synced_campaign_ids: campaignIds.length > 0 ? campaignIds : null })
+    .eq("project_id", projectId)
+  if (error) throw error
+  revalidatePath(`/projects/${projectId}`)
+}
+
 // Override de ventana de tendencia por campaña — vive en el mismo
 // paid_media_context como JSONB en vez de una tabla nueva, dado que es
 // solo "campaign_id -> ventana" y nunca crece más que el número de

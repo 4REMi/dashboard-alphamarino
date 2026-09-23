@@ -391,6 +391,7 @@ export function PaidMediaCycleCard({ projectId, activeCycle, context, canEdit, c
             cycleId={activeCycle.id}
             initialCards={initialCards}
             displayMetrics={(context?.display_metrics ?? ["spend", "cost_per_result"]) as MetricKey[]}
+            savedCampaignIds={context?.synced_campaign_ids ?? null}
             hasCredentials={hasMetaConnected}
             canEdit={canEdit}
           />

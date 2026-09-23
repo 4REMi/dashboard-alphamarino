@@ -38,6 +38,22 @@ un `creative_assets` (con su `concept_id`, persona, ángulo) y el `ad_id` real d
 en el que se volvió — se vincula desde la propia tarjeta ("Vincular a concepto"),
 nunca bloqueante, nunca un paso obligatorio upstream.
 
+**Escala (cuentas con muchos creativos corriendo a la vez)**: dos cosas
+pensadas para cuando una cuenta tiene 80+ creativos, no solo 4-8.
+- **Picker "Elegir campañas"** antes de sincronizar — `getMetaCampaignOptions`
+  lista las campañas de la cuenta, se eligen cuáles importan, y `syncMetaAds`
+  filtra el insights fetch por `campaign.id` (el edge de insights SÍ soporta
+  `filtering` — a diferencia de `/ads`, que lo ignora en silencio, ver el fix
+  de `video_url` justo abajo). La selección se guarda en
+  `paid_media_context.synced_campaign_ids` — no se vuelve a preguntar en cada
+  sync, solo cuando se cambia desde ese mismo picker. Vacío/null = sincroniza
+  todas (comportamiento de siempre, sin filtro).
+- **Barra de orden + filtro** sobre el grid ya sincronizado — ordenar por
+  "peor tendencia primero" (default, calculado sobre las métricas que el
+  proyecto tenga configuradas, no una fija), por inversión, o por nombre;
+  filtrar por campaña, estado, o si ya tiene concepto vinculado. Todo
+  client-side sobre los datos ya traídos — no dispara ningún fetch nuevo.
+
 ## Conceptos y vocabulario clave
 
 - **Fechas erróneas al abrir un ciclo**: pasa (alguien teclea mal el mes). Es seguro
@@ -107,7 +123,9 @@ ciclo, solo visible para admin/subadmin.
 - `supabase/migrations/088_creative_performance_hub.sql` — `meta_ads`,
   `meta_ad_daily_stats`, `creative_asset_meta_ads`, y las columnas nuevas de
   `paid_media_context` (`display_metrics`/`trend_window`/`campaign_trend_overrides`).
-- `lib/actions/meta.ts` — `syncMetaAds` (sync a nivel ad, `time_increment=1`).
+- `supabase/migrations/089_synced_campaign_selection.sql` — `synced_campaign_ids`.
+- `lib/actions/meta.ts` — `syncMetaAds` (sync a nivel ad, `time_increment=1`,
+  filtro opcional por `campaign_id`), `getMetaCampaignOptions` (picker).
 - `lib/actions/paid-media-performance.ts` — `getCreativePerformance` (agregación +
   cálculo de tendencia), `linkAssetToMetaAd`/`unlinkAssetFromMetaAd`.
 - `lib/constants/paid-media-metrics.ts` — `METRIC_DEFS` (separado de las server
