@@ -337,13 +337,17 @@ export async function syncMetaAds(projectId: string, cycleId: string): Promise<{
   for (const row of rows) if (!uniqueAds.has(row.ad_id)) uniqueAds.set(row.ad_id, row)
 
   const adIds = Array.from(uniqueAds.keys())
-  const adsUrl = new URL(`${META_BASE}/act_${meta_ad_account_id}/ads`)
-  adsUrl.searchParams.set("fields", `effective_status,${AD_CREATIVE_FIELDS}`)
-  adsUrl.searchParams.set("filtering", JSON.stringify([{ field: "id", operator: "IN", value: adIds }]))
-  adsUrl.searchParams.set("limit", "500")
+
+  // Multi-id fetch de Graph API (GET /?ids=a,b,c) — NO el edge /act_X/ads
+  // con "filtering": ese filtro es para insights/edges, no para traer
+  // objetos puntuales por id; "filtering" ahí se ignora silenciosamente
+  // y por eso el creativo (thumbnail/imagen/video) siempre llegaba null.
+  const adsUrl = new URL(`${META_BASE}/`)
+  adsUrl.searchParams.set("ids", adIds.join(","))
+  adsUrl.searchParams.set("fields", AD_CREATIVE_FIELDS)
   adsUrl.searchParams.set("access_token", accessToken)
 
-  let adsJson: any = { data: [] }
+  let adsJson: any = {}
   try {
     const adsRes = await fetch(adsUrl.toString(), { cache: "no-store" })
     adsJson = await adsRes.json()
@@ -352,9 +356,10 @@ export async function syncMetaAds(projectId: string, cycleId: string): Promise<{
     console.error("[syncMetaAds] ads creative fetch threw:", err instanceof Error ? err.message : err)
   }
 
+  const adNodes: any[] = Object.values(adsJson).filter((v): v is Record<string, unknown> => !!v && typeof v === "object" && "id" in v)
   const creativeById = new Map<string, MetaAdCreative>(
     await Promise.all(
-      (adsJson.data ?? []).map(async (a: any) => [a.id, await mapAdNodeToCreative(a, accessToken)] as const)
+      adNodes.map(async (a) => [a.id as string, await mapAdNodeToCreative(a, accessToken)] as const)
     )
   )
 
