@@ -519,22 +519,37 @@ export async function syncMetaAds(projectId: string, cycleId: string, campaignId
       const videosRes = await fetch(videosUrl.toString(), { cache: "no-store" })
       const videosJson = await videosRes.json()
       if (videosJson.error) {
+        // (#10) "Application does not have permission for this action" es
+        // el caso real observado: el System User SÍ puede leer métricas
+        // de la cuenta publicitaria, pero Meta exige además acceso al
+        // recurso Video en sí (ligado a la Página que lo publicó, no a la
+        // cuenta de anuncios) para poder devolver su "source" — un
+        // permiso de Business Manager, no algo resoluble reintentando o
+        // cambiando este código. Se detecta ese código puntual para dar
+        // la instrucción exacta en vez de un mensaje genérico.
+        const isPermissionError = videosJson.error.code === 10 || /permission/i.test(videosJson.error.message ?? "")
         console.error("[syncMetaAds] video sources fetch failed:", videosJson.error.message)
-        videoWarnings.push(`No se pudieron consultar los videos de Meta: ${videosJson.error.message}`)
-      }
-      for (const [id, v] of Object.entries(videosJson)) {
-        if (v && typeof v === "object" && "source" in v) videoSourceById.set(id, (v as { source: string }).source)
-      }
-      // Un video_id sin "source" en la respuesta (id presente en videoIds
-      // pero ausente/sin campo source en videosJson) casi siempre es un
-      // problema de permisos del System User sobre ESE video puntual
-      // (video subido por alguien fuera de la cuenta del token, o
-      // todavía procesándose) — Meta no tira error, simplemente omite el
-      // campo, así que hay que detectarlo por ausencia.
-      for (const id of videoIds) {
-        if (!videoSourceById.has(id)) {
-          const adName = Array.from(creativeByAdId.entries()).find(([, c]) => c.videoId === id)?.[1].name ?? id
-          videoWarnings.push(`"${adName}": Meta no devolvió el archivo del video (video_id ${id}) — probablemente un permiso faltante del token sobre ese video, o sigue procesándose.`)
+        videoWarnings.push(
+          isPermissionError
+            ? `Meta rechazó el acceso a los videos por permisos: "${videosJson.error.message}". El System User tiene acceso a la cuenta de anuncios pero no a la Página que publicó estos videos — en Business Manager: Configuración del negocio → Usuarios del sistema → (este System User) → Asignar activos → pestaña Páginas → añade la Página de estos anuncios con acceso de Contenido/Anunciante. Sin eso, Meta nunca va a entregar el archivo del video, sin importar cuántas veces se sincronice.`
+            : `No se pudieron consultar los videos de Meta: ${videosJson.error.message}`
+        )
+        // Toda la llamada (multi-id) falló de un solo golpe — reportar
+        // además "video X sin source" por cada id sería ruido repitiendo
+        // la misma causa, no 5 problemas distintos.
+      } else {
+        for (const [id, v] of Object.entries(videosJson)) {
+          if (v && typeof v === "object" && "source" in v) videoSourceById.set(id, (v as { source: string }).source)
+        }
+        // Un video_id sin "source" en la respuesta (id presente en
+        // videoIds pero ausente/sin campo source), con la llamada en sí
+        // exitosa, es un caso distinto y más puntual — típicamente ESE
+        // video específico sigue procesándose en Meta.
+        for (const id of videoIds) {
+          if (!videoSourceById.has(id)) {
+            const adName = Array.from(creativeByAdId.entries()).find(([, c]) => c.videoId === id)?.[1].name ?? id
+            videoWarnings.push(`"${adName}": Meta no devolvió el archivo de este video puntual (video_id ${id}) — probablemente sigue procesándose.`)
+          }
         }
       }
     } catch (err) {
