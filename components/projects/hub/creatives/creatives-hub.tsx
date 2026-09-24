@@ -2,10 +2,12 @@
 
 import { useState, useEffect, useTransition } from "react"
 import { ConceptsTable } from "./concepts-table"
+import { RelationshipMap } from "./relationship-map"
+import { LayoutGrid, Share2 } from "lucide-react"
 import { getCreativeConcepts, getCreativeAssets, getBriefsForProject } from "@/lib/actions/creatives"
 import { getAssetMetaLinkStatus, type AssetMetaLinkStatus } from "@/lib/actions/paid-media-performance"
 import type { CreativeConcept, CreativeAsset, CreativeBrief, PaidMediaCycle } from "@/lib/types"
-import { formatCycleRange } from "@/lib/utils"
+import { formatCycleRange, cn } from "@/lib/utils"
 import { Loader2, ChevronDown } from "lucide-react"
 
 interface CreativesHubProps {
@@ -38,6 +40,7 @@ export function CreativesHub({
   const [briefs, setBriefs]     = useState<CreativeBrief[]>([])
   const [assetLinkStatus, setAssetLinkStatus] = useState<Record<string, AssetMetaLinkStatus>>({})
   const [isLoading, startLoad]  = useTransition()
+  const [view, setView] = useState<"table" | "map">("table")
 
   const selectedCycle = cycles.find((c) => c.id === selectedCycleId) ?? null
   const isActiveCycle = selectedCycle?.is_active ?? false
@@ -114,23 +117,45 @@ export function CreativesHub({
             Solo lectura — ciclo cerrado
           </span>
         )}
+
+        {/* Tabla / Mapa — el mapa es de solo lectura, generado a partir de
+            concepto→asset→ad, incluso para ciclos ya cerrados (para
+            revisitar cómo se veía la relación en un ciclo pasado). */}
+        <div className="ml-auto flex items-center gap-1 border rounded-lg p-0.5">
+          <button
+            onClick={() => setView("table")}
+            className={cn("flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-md transition-colors", view === "table" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground")}
+          >
+            <LayoutGrid className="w-3.5 h-3.5" /> Tabla
+          </button>
+          <button
+            onClick={() => setView("map")}
+            className={cn("flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-md transition-colors", view === "map" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground")}
+          >
+            <Share2 className="w-3.5 h-3.5" /> Mapa
+          </button>
+        </div>
       </div>
 
-      <ConceptsTable
-        concepts={concepts}
-        assets={assets}
-        briefs={briefs}
-        projectId={projectId}
-        cycleId={selectedCycleId}
-        isAdminOrSubadmin={canEdit}
-        canManageAssets={canManageAssets}
-        onRefresh={reload}
-        onUpdateAsset={updateAssetLocal}
-        assetLinkStatus={assetLinkStatus}
-        brandBrains={brandBrains}
-        brandLines={brandLines}
-        projectBrandBrainId={projectBrandBrainId}
-      />
+      {view === "map" ? (
+        <RelationshipMap projectId={projectId} cycleId={selectedCycleId} />
+      ) : (
+        <ConceptsTable
+          concepts={concepts}
+          assets={assets}
+          briefs={briefs}
+          projectId={projectId}
+          cycleId={selectedCycleId}
+          isAdminOrSubadmin={canEdit}
+          canManageAssets={canManageAssets}
+          onRefresh={reload}
+          onUpdateAsset={updateAssetLocal}
+          assetLinkStatus={assetLinkStatus}
+          brandBrains={brandBrains}
+          brandLines={brandLines}
+          projectBrandBrainId={projectBrandBrainId}
+        />
+      )}
     </div>
   )
 }
