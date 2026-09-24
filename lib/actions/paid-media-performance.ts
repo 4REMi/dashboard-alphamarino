@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import type { MetaAd, MetaAdDailyStat, TrendWindow } from "@/lib/types"
-import { METRIC_DEFS, type MetricKey } from "@/lib/constants/paid-media-metrics"
+import type { MetricKey } from "@/lib/constants/paid-media-metrics"
 
 async function assertAuth() {
   const supabase = await createClient()
@@ -117,47 +117,11 @@ export async function unlinkAssetFromMetaAd(projectId: string, linkId: string): 
 }
 
 // ── Agregación para el grid creative-first ──────────────────────────────
-
-interface DayTotals {
-  spend: number
-  impressions: number
-  clicks: number
-  results: number
-  purchase_value: number
-}
-
-function sumDays(stats: MetaAdDailyStat[]): DayTotals {
-  return stats.reduce((acc, s) => ({
-    spend:          acc.spend + (s.spend ?? 0),
-    impressions:    acc.impressions + (s.impressions ?? 0),
-    clicks:         acc.clicks + (s.clicks ?? 0),
-    results:        acc.results + (s.results ?? 0),
-    purchase_value: acc.purchase_value + (s.purchase_value ?? 0),
-  }), { spend: 0, impressions: 0, clicks: 0, results: 0, purchase_value: 0 })
-}
-
-function deriveMetric(key: MetricKey, t: DayTotals): number | null {
-  switch (key) {
-    case "spend":    return t.spend || null
-    case "results":  return t.results || null
-    case "ctr":      return t.impressions > 0 ? (t.clicks / t.impressions) * 100 : null
-    case "cpc":      return t.clicks > 0 ? t.spend / t.clicks : null
-    case "cpm":      return t.impressions > 0 ? (t.spend / t.impressions) * 1000 : null
-    case "cost_per_result": return t.results > 0 ? t.spend / t.results : null
-    case "roas":     return t.spend > 0 ? t.purchase_value / t.spend : null
-  }
-}
-
-function pctChange(latest: number | null, compare: number | null): number | null {
-  if (latest === null || compare === null || compare === 0) return null
-  return ((latest - compare) / Math.abs(compare)) * 100
-}
-
-export interface MetricPoint {
-  value: number | null
-  trendPct: number | null
-  higherIsBetter: boolean
-}
+// Los cálculos puros (sumDays/deriveMetric/computeMetricsForAd/
+// mergeDailyStatsByDate) viven en lib/utils/paid-media-calc.ts — un
+// archivo "use server" solo puede exportar funciones async, así que ni
+// esto ni relationship-map.ts los importan de aquí, sino directo de ahí.
+import { computeMetricsForAd, type MetricPoint } from "@/lib/utils/paid-media-calc"
 
 export interface AdPerformanceCard {
   ad_id: string
@@ -171,50 +135,13 @@ export interface AdPerformanceCard {
   video_url: string | null
   metrics: Record<MetricKey, MetricPoint>
   linkedConcepts: { linkId: string; assetId: string; conceptId: string | null; conceptName: string | null; targetPersona: string | null }[]
-}
-
-// Calcula la tendencia de un ad según la ventana elegida (por proyecto, o
-// el override puntual de esta campaña) — comparando valores DIARIOS
-// (nunca acumulados), para que el % refleje un movimiento real y no solo
-// "lleva más días corriendo".
-function computeMetricsForAd(dailyRows: MetaAdDailyStat[], window: TrendWindow): Record<MetricKey, MetricPoint> {
-  const sorted = [...dailyRows].sort((a, b) => a.date < b.date ? -1 : 1)
-  const cycleTotals = sumDays(sorted)
-  const lastDay = sorted[sorted.length - 1]
-  const lastDayTotals = lastDay ? sumDays([lastDay]) : null
-
-  let compareTotals: DayTotals | null = null
-  if (lastDayTotals) {
-    if (window === "previous_day") {
-      const prevDay = sorted[sorted.length - 2]
-      compareTotals = prevDay ? sumDays([prevDay]) : null
-    } else if (window === "baseline") {
-      const firstDay = sorted[0]
-      compareTotals = (firstDay && firstDay !== lastDay) ? sumDays([firstDay]) : null
-    } else {
-      // cycle_avg — promedio de los demás días (sin contar el último)
-      const otherDays = sorted.slice(0, -1)
-      if (otherDays.length > 0) {
-        const t = sumDays(otherDays)
-        compareTotals = {
-          spend: t.spend / otherDays.length,
-          impressions: t.impressions / otherDays.length,
-          clicks: t.clicks / otherDays.length,
-          results: t.results / otherDays.length,
-          purchase_value: t.purchase_value / otherDays.length,
-        }
-      }
-    }
-  }
-
-  const result = {} as Record<MetricKey, MetricPoint>
-  for (const key of Object.keys(METRIC_DEFS) as MetricKey[]) {
-    const value = deriveMetric(key, cycleTotals)
-    const latestDayValue = lastDayTotals ? deriveMetric(key, lastDayTotals) : null
-    const compareValue = compareTotals ? deriveMetric(key, compareTotals) : null
-    result[key] = { value, trendPct: pctChange(latestDayValue, compareValue), higherIsBetter: METRIC_DEFS[key].higherIsBetter }
-  }
-  return result
+  // Filas diarias crudas de este ad — expuestas para poder re-agregar
+  // correctamente a nivel campaña (ver mergeDailyStatsByDate más abajo).
+  // Promediar métricas YA derivadas de varios ads sería matemáticamente
+  // incorrecto (ej. un CTR combinado no es el promedio de dos CTR sin
+  // pesar por impresiones) — por eso se necesita el dato crudo, no solo
+  // el valor final que ve la tarjeta.
+  dailyRows: MetaAdDailyStat[]
 }
 
 // Resuelve todo internamente (ads + stats del ciclo + preferencias de la
@@ -278,6 +205,7 @@ export async function getCreativePerformance(projectId: string, cycleId: string)
         video_url: ad.video_url,
         metrics: computeMetricsForAd(statsByAd.get(ad.ad_id)!, window),
         linkedConcepts: linksByAdId.get(ad.ad_id) ?? [],
+        dailyRows: statsByAd.get(ad.ad_id)!,
       }
     })
     .sort((a, b) => (b.metrics.spend.value ?? 0) - (a.metrics.spend.value ?? 0))

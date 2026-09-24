@@ -6,7 +6,7 @@ import {
   type Node, type Edge, type NodeProps, type NodeChange,
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
-import { Film, ImageIcon, AlertTriangle } from "lucide-react"
+import { Film, ImageIcon, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react"
 import { getRelationshipMap, type RelationshipMapData } from "@/lib/actions/relationship-map"
 import { METRIC_DEFS, type MetricKey } from "@/lib/constants/paid-media-metrics"
 import { CONCEPT_STATUS_COLORS, ANGLE_GUIDE, FUNNEL_COLORS } from "@/lib/constants/creatives"
@@ -17,10 +17,36 @@ interface Props {
   cycleId: string | null
 }
 
-// Todas las métricas configuradas para el proyecto que tengan valor en
-// este ad — a propósito NO resumido: si ya es un canvas "infinito", no
-// hay razón para escatimar la información que trae cada nodo.
+// Todas las métricas configuradas para el proyecto que tengan valor —
+// a propósito NO resumido, ni colapsado ni expandido: si ya es un canvas
+// "infinito", no hay razón para escatimar la información de cada nodo.
 const ALL_METRIC_KEYS = Object.keys(METRIC_DEFS) as MetricKey[]
+
+function MetricGrid({ metrics }: { metrics: Record<MetricKey, { value: number | null; trendPct: number | null; higherIsBetter: boolean }> }) {
+  const withValue = ALL_METRIC_KEYS.filter((k) => metrics[k]?.value !== null)
+  return (
+    <div className="grid grid-cols-2 gap-1.5 p-2.5">
+      {withValue.map((key) => {
+        const m = metrics[key]!
+        const isUp = (m.trendPct ?? 0) > 0
+        const isGood = m.trendPct === null ? null : isUp === m.higherIsBetter
+        return (
+          <div key={key} className="bg-muted/40 rounded-md p-1.5">
+            <p className="text-[9px] text-muted-foreground">{METRIC_DEFS[key].label}</p>
+            <div className="flex items-center gap-1">
+              <p className="text-[11px] font-semibold">{METRIC_DEFS[key].format(m.value!)}</p>
+              {isGood !== null && Math.abs(m.trendPct!) >= 0.5 && (
+                <span className={cn("text-[9px] font-semibold", isGood ? "text-emerald-600" : "text-destructive")}>
+                  {isUp ? "+" : ""}{m.trendPct!.toFixed(0)}%
+                </span>
+              )}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
 function ConceptNode({ data }: NodeProps<Node<{ concept: RelationshipMapData["concepts"][number] }>>) {
   const { concept } = data
@@ -73,60 +99,68 @@ function AssetNode({ data }: NodeProps<Node<{ asset: RelationshipMapData["assets
   )
 }
 
-function AdNode({ data }: NodeProps<Node<{ ad: RelationshipMapData["ads"][number] }>>) {
-  const { ad } = data
-  const media = ad.image_url ?? ad.thumbnail_url
-  const metricsWithValue = ALL_METRIC_KEYS.filter((k) => ad.metrics[k]?.value !== null)
+// El bloque real que resuelve "¿qué assets están anidados en la misma
+// campaña?" — colapsado por default, mostrando TODAS las métricas
+// agregadas (nunca resumido); al expandir aparece cada ad individual
+// adentro, con su propio detalle completo — no se pierde nada, solo se
+// organiza.
+function CampaignNode({ data }: NodeProps<Node<{ campaign: RelationshipMapData["campaigns"][number] }>>) {
+  const { campaign } = data
+  const [expanded, setExpanded] = useState(false)
+  const activeCount = campaign.ads.filter((a) => a.status === "ACTIVE").length
 
   return (
-    <div className="w-72 rounded-xl border-2 border-emerald-300 bg-white shadow-sm overflow-hidden">
+    <div className="w-80 rounded-xl border-2 border-emerald-300 bg-white shadow-sm overflow-hidden">
       <Handle type="target" position={Position.Left} className="!opacity-0" />
-      <div className="flex items-center gap-2 p-2.5 border-b border-border">
-        <div className="w-10 h-10 rounded-md overflow-hidden bg-muted flex-shrink-0">
-          {media && <img src={media} alt="" className="w-full h-full object-cover" />}
-        </div>
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full flex items-center gap-2 p-2.5 border-b border-border hover:bg-muted/30 transition-colors text-left"
+      >
+        {expanded ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />}
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-semibold truncate">{ad.ad_name ?? "Sin nombre"}</p>
-          <p className="text-[10px] text-muted-foreground truncate">{ad.campaign_name ?? "Sin campaña"}</p>
+          <p className="text-xs font-semibold truncate">{campaign.campaignName ?? "Sin campaña"}</p>
+          <p className="text-[10px] text-muted-foreground">{campaign.ads.length} ad{campaign.ads.length !== 1 ? "s" : ""} · {activeCount} activo{activeCount !== 1 ? "s" : ""}</p>
         </div>
-        <span className={cn(
-          "text-[9px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0",
-          ad.status === "ACTIVE" ? "bg-emerald-500 text-white" : "bg-slate-800 text-white"
-        )}>
-          {ad.status === "ACTIVE" ? "Activo" : ad.status ?? "—"}
-        </span>
-      </div>
-      {/* Todas las métricas con dato — sin resumir */}
-      <div className="grid grid-cols-2 gap-1.5 p-2.5">
-        {metricsWithValue.map((key) => {
-          const m = ad.metrics[key]!
-          const isUp = (m.trendPct ?? 0) > 0
-          const isGood = m.trendPct === null ? null : isUp === m.higherIsBetter
-          return (
-            <div key={key} className="bg-muted/40 rounded-md p-1.5">
-              <p className="text-[9px] text-muted-foreground">{METRIC_DEFS[key].label}</p>
-              <div className="flex items-center gap-1">
-                <p className="text-[11px] font-semibold">{METRIC_DEFS[key].format(m.value!)}</p>
-                {isGood !== null && Math.abs(m.trendPct!) >= 0.5 && (
-                  <span className={cn("text-[9px] font-semibold", isGood ? "text-emerald-600" : "text-destructive")}>
-                    {isUp ? "+" : ""}{m.trendPct!.toFixed(0)}%
+      </button>
+
+      <MetricGrid metrics={campaign.aggregate} />
+
+      {expanded && (
+        <div className="border-t border-border divide-y divide-border">
+          {campaign.ads.map((ad) => {
+            const media = ad.image_url ?? ad.thumbnail_url
+            return (
+              <div key={ad.ad_id} className="bg-muted/20">
+                <div className="flex items-center gap-2 p-2.5">
+                  <div className="w-8 h-8 rounded-md overflow-hidden bg-muted flex-shrink-0">
+                    {media && <img src={media} alt="" className="w-full h-full object-cover" />}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-medium truncate">{ad.ad_name ?? "Sin nombre"}</p>
+                  </div>
+                  <span className={cn(
+                    "text-[9px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0",
+                    ad.status === "ACTIVE" ? "bg-emerald-500 text-white" : "bg-slate-800 text-white"
+                  )}>
+                    {ad.status === "ACTIVE" ? "Activo" : ad.status ?? "—"}
                   </span>
-                )}
+                </div>
+                <MetricGrid metrics={ad.metrics} />
               </div>
-            </div>
-          )
-        })}
-      </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
 
-const NODE_TYPES = { conceptNode: ConceptNode, assetNode: AssetNode, adNode: AdNode }
+const NODE_TYPES = { conceptNode: ConceptNode, assetNode: AssetNode, campaignNode: CampaignNode }
 
 const COL_CONCEPT = 0
 const COL_ASSET = 340
-const COL_AD = 700
-const AD_ROW_H = 210
+const COL_CAMPAIGN = 700
+const CAMPAIGN_ROW_H = 210 // altura estimada COLAPSADA — expandir puede solapar visualmente, por eso los nodos son arrastrables
 const ASSET_ROW_H = 90
 const CONCEPT_ROW_H = 100
 
@@ -134,6 +168,8 @@ function buildGraph(data: RelationshipMapData): { nodes: Node[]; edges: Edge[] }
   const nodes: Node[] = []
   const edges: Edge[] = []
   let cursorY = 0
+  const placedCampaignIds = new Set<string>()
+  const campaignById = new Map(data.campaigns.map((c) => [c.campaignId, c]))
 
   for (const concept of data.concepts) {
     const conceptAssets = data.assets.filter((a) => a.conceptId === concept.id)
@@ -143,20 +179,27 @@ function buildGraph(data: RelationshipMapData): { nodes: Node[]; edges: Edge[] }
       cursorY += ASSET_ROW_H
     } else {
       for (const asset of conceptAssets) {
-        const assetAds = data.ads.filter((ad) => data.assetAdEdges.some((e) => e.assetId === asset.id && e.adId === ad.ad_id))
-        const adsStartY = cursorY
+        const assetCampaignIds = data.assetCampaignEdges.filter((e) => e.assetId === asset.id).map((e) => e.campaignId)
+        const campaignsStartY = cursorY
 
-        if (assetAds.length === 0) {
-          cursorY += ASSET_ROW_H
-        } else {
-          for (const ad of assetAds) {
-            nodes.push({ id: `ad-${ad.ad_id}`, type: "adNode", position: { x: COL_AD, y: cursorY }, data: { ad }, draggable: true })
-            edges.push({ id: `e-${asset.id}-${ad.ad_id}`, source: `asset-${asset.id}`, target: `ad-${ad.ad_id}`, animated: ad.status === "ACTIVE", style: { stroke: "#10b981" } })
-            cursorY += AD_ROW_H
+        for (const campaignId of assetCampaignIds) {
+          if (!placedCampaignIds.has(campaignId)) {
+            const campaign = campaignById.get(campaignId)
+            if (campaign) {
+              nodes.push({ id: `campaign-${campaignId}`, type: "campaignNode", position: { x: COL_CAMPAIGN, y: cursorY }, data: { campaign }, draggable: true })
+              cursorY += CAMPAIGN_ROW_H
+            }
+            placedCampaignIds.add(campaignId)
           }
+          // La línea siempre se dibuja, aunque la campaña ya estuviera
+          // colocada por otro asset/concepto — es justo ahí donde se ve
+          // la convergencia que antes era invisible.
+          edges.push({ id: `e-${asset.id}-${campaignId}`, source: `asset-${asset.id}`, target: `campaign-${campaignId}`, style: { stroke: "#10b981" } })
         }
 
-        nodes.push({ id: `asset-${asset.id}`, type: "assetNode", position: { x: COL_ASSET, y: (adsStartY + cursorY) / 2 - ASSET_ROW_H / 2 }, data: { asset }, draggable: true })
+        if (assetCampaignIds.length === 0) cursorY += ASSET_ROW_H
+
+        nodes.push({ id: `asset-${asset.id}`, type: "assetNode", position: { x: COL_ASSET, y: Math.max(campaignsStartY, cursorY - ASSET_ROW_H) }, data: { asset }, draggable: true })
         edges.push({ id: `e-${concept.id}-${asset.id}`, source: `concept-${concept.id}`, target: `asset-${asset.id}`, style: { stroke: "#0ea5e9" } })
       }
     }
