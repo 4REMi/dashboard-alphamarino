@@ -30,6 +30,39 @@ interface Props {
 // "infinito", no hay razón para escatimar la información de cada nodo.
 const ALL_METRIC_KEYS = Object.keys(METRIC_DEFS) as MetricKey[]
 
+// Mismo criterio "¿es buena o mala esta tendencia?" que ya usa cada
+// tarjeta de MetricGrid, pero agregado — para poder mostrar un veredicto
+// de un vistazo (medalla) en el header colapsado de un nodo de campaña,
+// sin tener que expandirlo ni leer las 10 tarjetas una por una.
+function summarizeHealth(metrics: Record<MetricKey, { value: number | null; trendPct: number | null; higherIsBetter: boolean }>): { good: number; bad: number } {
+  let good = 0, bad = 0
+  for (const key of ALL_METRIC_KEYS) {
+    const m = metrics[key]
+    if (!m || m.value === null || m.trendPct === null || Math.abs(m.trendPct) < 0.5) continue
+    const isUp = m.trendPct > 0
+    if (isUp === m.higherIsBetter) good++
+    else bad++
+  }
+  return { good, bad }
+}
+
+// Medalla discreta con el veredicto agregado — verde/rojo/gris según si
+// gana lo bueno, lo malo, o está parejo, con el desglose en el tooltip.
+function HealthBadge({ metrics }: { metrics: Record<MetricKey, { value: number | null; trendPct: number | null; higherIsBetter: boolean }> }) {
+  const { good, bad } = summarizeHealth(metrics)
+  if (good === 0 && bad === 0) return null
+  const tone = good > bad ? "bg-emerald-100 text-emerald-700" : bad > good ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"
+  return (
+    <span
+      title={`${good} métrica${good !== 1 ? "s" : ""} mejorando · ${bad} empeorando este periodo`}
+      className={cn("flex-shrink-0 flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full", tone)}
+    >
+      <span className="text-emerald-600">▲{good}</span>
+      <span className="text-destructive">▼{bad}</span>
+    </span>
+  )
+}
+
 function MetricGrid({ metrics }: { metrics: Record<MetricKey, { value: number | null; trendPct: number | null; higherIsBetter: boolean }> }) {
   const withValue = ALL_METRIC_KEYS.filter((k) => metrics[k]?.value !== null)
   return (
@@ -306,6 +339,10 @@ function CampaignNode({ data }: NodeProps<Node<{ campaign: RelationshipMapData["
           <p className="text-xs font-semibold truncate">{campaign.campaignName ?? "Sin campaña"}</p>
           <p className="text-[10px] text-muted-foreground">{campaign.ads.length} ad{campaign.ads.length !== 1 ? "s" : ""} · {activeCount} activo{activeCount !== 1 ? "s" : ""}</p>
         </div>
+        {/* Medalla de salud — el veredicto agregado de todas las métricas
+            de un vistazo, sin tener que expandir ni leer tarjeta por
+            tarjeta. */}
+        <HealthBadge metrics={campaign.aggregate} />
       </button>
 
       <MetricGrid metrics={campaign.aggregate} />
