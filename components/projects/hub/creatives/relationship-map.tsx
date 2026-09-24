@@ -345,18 +345,22 @@ function CampaignNode({ data }: NodeProps<Node<{ campaign: RelationshipMapData["
 // config aparte: se edita inline, se guarda en blur (debounce simple).
 function StickyNode({ id, data }: NodeProps<Node<{ text: string; onTextChange: (id: string, text: string) => void; onDelete: (id: string) => void }>>) {
   const [value, setValue] = useState(data.text)
+  // `id` acá es el id del NODO de React Flow ("note-<uuid>"), no el id de
+  // la fila en relationship_map_notes (solo el uuid) — los handlers
+  // esperan este último, igual que onNodeDragStop más abajo.
+  const noteId = id.slice("note-".length)
   return (
     <div className="w-56 rounded-lg border-2 border-amber-300 bg-amber-50 shadow-sm">
       <div className="flex items-center justify-between px-2 py-1 border-b border-amber-200/70">
         <StickyNoteIcon className="w-3 h-3 text-amber-600" />
-        <button onClick={() => data.onDelete(id)} title="Eliminar nota" className="nodrag p-0.5 rounded text-amber-700/60 hover:text-destructive hover:bg-black/5">
+        <button onClick={() => data.onDelete(noteId)} title="Eliminar nota" className="nodrag p-0.5 rounded text-amber-700/60 hover:text-destructive hover:bg-black/5">
           <X className="w-3 h-3" />
         </button>
       </div>
       <textarea
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        onBlur={() => data.onTextChange(id, value)}
+        onBlur={() => data.onTextChange(noteId, value)}
         placeholder="Nota…"
         className="nodrag nowheel w-full h-24 resize-none bg-transparent px-2.5 py-2 text-xs text-foreground/80 focus:outline-none"
       />
