@@ -57,15 +57,49 @@ const OBJECTIVE_ACTION_TYPES: Record<string, string[]> = {
   STORE_VISITS:         ["store_visit"],
 }
 
-// Fallback used only when the objective isn't known/mapped — same generic
-// priority as before, better than grabbing an arbitrary first action.
+// Fallback used only when nada más aplicó — mismo heurístico genérico de
+// antes, mejor que agarrar la primera acción a ciegas.
 const FALLBACK_PRIORITY = ["lead", "purchase", "offsite_conversion.fb_pixel_purchase", "landing_page_view"]
+
+// El objective de la campaña (OUTCOME_ENGAGEMENT, OUTCOME_LEADS, ...) ya
+// NO alcanza para saber qué cuenta como "Resultados" — Meta migró las
+// campañas de mensajes (y varias otras) a vivir bajo objetivos genéricos,
+// distinguidos solo por el optimization_goal real del ad set (ej. una
+// OUTCOME_ENGAGEMENT puede ser "Conversaciones" o "Interacción con la
+// publicación" según el ad set, no según la campaña). optimization_goal
+// es la misma señal que usa el propio Ads Manager para su columna
+// "Resultados", así que se prioriza sobre el objective de la campaña.
+const OPTIMIZATION_GOAL_ACTION_TYPES: Record<string, string[]> = {
+  CONVERSATIONS:               ["onsite_conversion.messaging_conversation_started_7d"],
+  MESSAGING_PURCHASE_CONVERSION: ["onsite_conversion.messaging_purchase_conversion", "onsite_conversion.messaging_conversation_started_7d"],
+  MESSAGING_APPOINTMENT_CONVERSION: ["onsite_conversion.messaging_appointment_conversion", "onsite_conversion.messaging_conversation_started_7d"],
+  LEAD_GENERATION:             ["lead", "onsite_conversion.lead_grouped", "offsite_conversion.fb_pixel_lead"],
+  QUALITY_LEAD:                ["lead", "onsite_conversion.lead_grouped", "offsite_conversion.fb_pixel_lead"],
+  OFFSITE_CONVERSIONS:         ["omni_purchase", "purchase", "offsite_conversion.fb_pixel_purchase"],
+  VALUE:                       ["omni_purchase", "purchase", "offsite_conversion.fb_pixel_purchase"],
+  LINK_CLICKS:                 ["link_click", "landing_page_view"],
+  LANDING_PAGE_VIEWS:          ["landing_page_view", "link_click"],
+  POST_ENGAGEMENT:             ["post_engagement", "page_engagement"],
+  PAGE_LIKES:                  ["like", "page_like"],
+  APP_INSTALLS:                ["mobile_app_install", "app_install"],
+  APP_INSTALLS_AND_OFFSITE_CONVERSIONS: ["mobile_app_install", "app_install", "omni_purchase"],
+  THRUPLAY:                    ["video_view"],
+  QUALITY_CALL:                ["onsite_conversion.total_call", "onsite_conversion.total_quality_call"],
+  SUBSCRIBERS:                 ["subscribe"],
+}
 
 function pickResults(
   actions: MetaInsightRow["actions"],
   objective: string | null,
+  optimizationGoal: string | null = null,
 ): { results: number | null; results_type: string | null } {
   if (!actions?.length) return { results: null, results_type: null }
+
+  const goalCandidates = (optimizationGoal && OPTIMIZATION_GOAL_ACTION_TYPES[optimizationGoal]) || []
+  for (const t of goalCandidates) {
+    const hit = actions.find((a) => a.action_type === t)
+    if (hit) return { results: Number(hit.value), results_type: t }
+  }
 
   const candidates = (objective && OBJECTIVE_ACTION_TYPES[objective]) || []
   for (const t of candidates) {
@@ -73,8 +107,9 @@ function pickResults(
     if (hit) return { results: Number(hit.value), results_type: t }
   }
 
-  // Objective unmapped, or none of its expected action types are present
-  // (e.g. no pixel firing yet) — fall back to the generic heuristic.
+  // Ni optimization_goal ni objective están mapeados, o ninguna de sus
+  // action_types esperadas está presente (ej. pixel sin disparar todavía)
+  // — cae al heurístico genérico.
   for (const t of FALLBACK_PRIORITY) {
     const hit = actions.find((a) => a.action_type === t)
     if (hit) return { results: Number(hit.value), results_type: t }
@@ -174,11 +209,22 @@ export async function syncMetaCampaigns(projectId: string, cycleId: string): Pro
   statusUrl.searchParams.set("access_token", accessToken)
   statusUrl.searchParams.set("limit", "300")
 
-  let res: Response, statusRes: Response
+  // optimization_goal vive en el ad set, no en la campaña — una campaña
+  // ABO puede tener ad sets con distintos objetivos "reales" aunque
+  // comparta el mismo objective genérico. Se agrupa por campaign_id y se
+  // toma el primero visto (en la práctica casi siempre homogéneo dentro
+  // de la misma campaña).
+  const adsetsUrl = new URL(`${META_BASE}/act_${meta_ad_account_id}/adsets`)
+  adsetsUrl.searchParams.set("fields", "id,campaign_id,optimization_goal")
+  adsetsUrl.searchParams.set("access_token", accessToken)
+  adsetsUrl.searchParams.set("limit", "500")
+
+  let res: Response, statusRes: Response, adsetsRes: Response
   try {
-    ;[res, statusRes] = await Promise.all([
+    ;[res, statusRes, adsetsRes] = await Promise.all([
       fetch(url.toString(), { cache: "no-store" }),
       fetch(statusUrl.toString(), { cache: "no-store" }),
+      fetch(adsetsUrl.toString(), { cache: "no-store" }),
     ])
   } catch {
     return { synced: 0, error: "Error de red al conectar con Meta" }
@@ -195,12 +241,21 @@ export async function syncMetaCampaigns(projectId: string, cycleId: string): Pro
     (statusJson.data ?? []).map((c: { id: string; objective?: string }) => [c.id, c.objective ?? ""])
   )
 
+  const adsetsJson = await adsetsRes.json()
+  const optimizationGoalByCampaignId = new Map<string, string>()
+  for (const a of (adsetsJson.data ?? []) as { campaign_id: string; optimization_goal?: string }[]) {
+    if (a.optimization_goal && !optimizationGoalByCampaignId.has(a.campaign_id)) {
+      optimizationGoalByCampaignId.set(a.campaign_id, a.optimization_goal)
+    }
+  }
+
   const rows: MetaInsightRow[] = json.data ?? []
   if (!rows.length) return { synced: 0 }
 
   const upsertRows = rows.map((row) => {
     const objective = objectiveById.get(row.campaign_id) ?? null
-    const { results, results_type } = pickResults(row.actions, objective)
+    const optimizationGoal = optimizationGoalByCampaignId.get(row.campaign_id) ?? null
+    const { results, results_type } = pickResults(row.actions, objective, optimizationGoal)
     return {
       project_id: projectId,
       cycle_id: cycleId,
@@ -261,10 +316,21 @@ interface MetaAdInsightRow {
   spend: string
   impressions: string
   clicks: string
+  reach?: string
+  frequency?: string
   actions?: Array<{ action_type: string; value: string }>
   action_values?: Array<{ action_type: string; value: string }>
   date_start: string
   date_stop: string
+}
+
+// Cuenta de una action_type puntual dentro de actions[] — para métricas
+// que se muestran SIEMPRE igual sin importar el objetivo/optimization_goal
+// de la campaña (a diferencia de "Resultados", que sí depende de eso).
+function actionCount(actions: MetaAdInsightRow["actions"], types: string[]): number | null {
+  if (!actions?.length) return null
+  const hit = actions.find((a) => types.includes(a.action_type))
+  return hit ? Number(hit.value) : null
 }
 
 // Lista liviana de campañas de la cuenta — para el picker "elegir qué
@@ -320,7 +386,7 @@ export async function syncMetaAds(projectId: string, cycleId: string, campaignId
   }
 
   const { since, until } = cycleRange(cycleResult.data)
-  const fields = "ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,spend,impressions,clicks,actions,action_values"
+  const fields = "ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,spend,impressions,clicks,reach,frequency,actions,action_values"
 
   const url = new URL(`${META_BASE}/act_${meta_ad_account_id}/insights`)
   url.searchParams.set("level", "ad")
@@ -345,11 +411,20 @@ export async function syncMetaAds(projectId: string, cycleId: string, campaignId
   campaignsUrl.searchParams.set("access_token", accessToken)
   campaignsUrl.searchParams.set("limit", "300")
 
-  let res: Response, campaignsRes: Response
+  // A nivel ad SÍ tenemos el adset_id de cada fila (insights con
+  // level=ad ya lo trae), así que optimization_goal se resuelve por ad
+  // set real, no por aproximación a nivel campaña.
+  const adsetsUrl = new URL(`${META_BASE}/act_${meta_ad_account_id}/adsets`)
+  adsetsUrl.searchParams.set("fields", "id,optimization_goal")
+  adsetsUrl.searchParams.set("access_token", accessToken)
+  adsetsUrl.searchParams.set("limit", "500")
+
+  let res: Response, campaignsRes: Response, adsetsRes: Response
   try {
-    ;[res, campaignsRes] = await Promise.all([
+    ;[res, campaignsRes, adsetsRes] = await Promise.all([
       fetch(url.toString(), { cache: "no-store" }),
       fetch(campaignsUrl.toString(), { cache: "no-store" }),
+      fetch(adsetsUrl.toString(), { cache: "no-store" }),
     ])
   } catch {
     return { synced: 0, error: "Error de red al conectar con Meta" }
@@ -361,6 +436,13 @@ export async function syncMetaAds(projectId: string, cycleId: string, campaignId
   const campaignsJson = await campaignsRes.json()
   const objectiveById = new Map<string, string>(
     (campaignsJson.data ?? []).map((c: { id: string; objective?: string }) => [c.id, c.objective ?? ""])
+  )
+
+  const adsetsJson = await adsetsRes.json()
+  const optimizationGoalByAdsetId = new Map<string, string>(
+    ((adsetsJson.data ?? []) as { id: string; optimization_goal?: string }[])
+      .filter((a) => a.optimization_goal)
+      .map((a) => [a.id, a.optimization_goal!])
   )
 
   const rows: MetaAdInsightRow[] = json.data ?? []
@@ -468,7 +550,8 @@ export async function syncMetaAds(projectId: string, cycleId: string, campaignId
 
   const factRows = rows.map((row) => {
     const objective = objectiveById.get(row.campaign_id) ?? null
-    const { results, results_type } = pickResults(row.actions, objective)
+    const optimizationGoal = optimizationGoalByAdsetId.get(row.adset_id) ?? null
+    const { results, results_type } = pickResults(row.actions, objective, optimizationGoal)
     return {
       project_id:     projectId,
       cycle_id:       cycleId,
@@ -480,6 +563,10 @@ export async function syncMetaAds(projectId: string, cycleId: string, campaignId
       results,
       results_type,
       purchase_value: pickPurchaseValue(row.action_values, objective),
+      reach:          row.reach ? Number(row.reach) : null,
+      frequency:      row.frequency ? Number(row.frequency) : null,
+      link_clicks:    actionCount(row.actions, ["link_click"]),
+      video_views:    actionCount(row.actions, ["video_view"]),
       synced_at:      new Date().toISOString(),
     }
   })

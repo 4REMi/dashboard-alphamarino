@@ -662,6 +662,10 @@ export interface MetaAdDailyStat {
   results: number | null
   results_type: string | null
   purchase_value: number | null
+  reach: number | null
+  frequency: number | null
+  link_clicks: number | null
+  video_views: number | null
   synced_at: string
 }
 

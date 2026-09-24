@@ -12,6 +12,9 @@ interface DayTotals {
   clicks: number
   results: number
   purchase_value: number
+  reach: number
+  link_clicks: number
+  video_views: number
 }
 
 function sumDays(stats: MetaAdDailyStat[]): DayTotals {
@@ -21,18 +24,32 @@ function sumDays(stats: MetaAdDailyStat[]): DayTotals {
     clicks:         acc.clicks + (s.clicks ?? 0),
     results:        acc.results + (s.results ?? 0),
     purchase_value: acc.purchase_value + (s.purchase_value ?? 0),
-  }), { spend: 0, impressions: 0, clicks: 0, results: 0, purchase_value: 0 })
+    // reach NO se suma día a día (un mismo usuario alcanzado dos días
+    // distintos no son dos personas) — se toma el máximo diario como
+    // aproximación razonable sin pedirle a Meta un reach acumulado aparte.
+    reach:          Math.max(acc.reach, s.reach ?? 0),
+    link_clicks:    acc.link_clicks + (s.link_clicks ?? 0),
+    video_views:    acc.video_views + (s.video_views ?? 0),
+  }), { spend: 0, impressions: 0, clicks: 0, results: 0, purchase_value: 0, reach: 0, link_clicks: 0, video_views: 0 })
 }
 
 function deriveMetric(key: MetricKey, t: DayTotals): number | null {
   switch (key) {
-    case "spend":    return t.spend || null
-    case "results":  return t.results || null
-    case "ctr":      return t.impressions > 0 ? (t.clicks / t.impressions) * 100 : null
-    case "cpc":      return t.clicks > 0 ? t.spend / t.clicks : null
-    case "cpm":      return t.impressions > 0 ? (t.spend / t.impressions) * 1000 : null
+    case "spend":        return t.spend || null
+    case "results":      return t.results || null
+    case "ctr":          return t.impressions > 0 ? (t.clicks / t.impressions) * 100 : null
+    case "cpc":          return t.clicks > 0 ? t.spend / t.clicks : null
+    case "cpm":          return t.impressions > 0 ? (t.spend / t.impressions) * 1000 : null
     case "cost_per_result": return t.results > 0 ? t.spend / t.results : null
-    case "roas":     return t.spend > 0 ? t.purchase_value / t.spend : null
+    case "roas":         return t.spend > 0 ? t.purchase_value / t.spend : null
+    case "clicks":       return t.clicks || null
+    case "impressions":  return t.impressions || null
+    case "reach":         return t.reach || null
+    case "frequency":     return t.reach > 0 ? t.impressions / t.reach : null
+    case "link_clicks":   return t.link_clicks || null
+    case "cost_per_link_click": return t.link_clicks > 0 ? t.spend / t.link_clicks : null
+    case "video_views":   return t.video_views || null
+    case "purchase_value": return t.purchase_value || null
   }
 }
 
@@ -64,6 +81,12 @@ export function mergeDailyStatsByDate(rows: MetaAdDailyStat[]): MetaAdDailyStat[
       existing.clicks = (existing.clicks ?? 0) + (row.clicks ?? 0)
       existing.results = (existing.results ?? 0) + (row.results ?? 0)
       existing.purchase_value = (existing.purchase_value ?? 0) + (row.purchase_value ?? 0)
+      existing.link_clicks = (existing.link_clicks ?? 0) + (row.link_clicks ?? 0)
+      existing.video_views = (existing.video_views ?? 0) + (row.video_views ?? 0)
+      // reach no se suma entre ads del mismo día (personas alcanzadas se
+      // solapan entre creativos) — se toma el máximo, misma lógica que
+      // sumDays más abajo.
+      existing.reach = Math.max(existing.reach ?? 0, row.reach ?? 0)
     }
   }
   return Array.from(byDate.values())
@@ -99,6 +122,9 @@ export function computeMetricsForAd(dailyRows: MetaAdDailyStat[], window: TrendW
           clicks: t.clicks / otherDays.length,
           results: t.results / otherDays.length,
           purchase_value: t.purchase_value / otherDays.length,
+          reach: t.reach / otherDays.length,
+          link_clicks: t.link_clicks / otherDays.length,
+          video_views: t.video_views / otherDays.length,
         }
       }
     }
