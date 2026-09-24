@@ -6,7 +6,7 @@ import {
   type Node, type Edge, type NodeProps, type NodeChange,
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
-import { Film, ImageIcon, AlertTriangle, ChevronDown, ChevronRight, Infinity as InfinityIcon, StickyNote as StickyNoteIcon, X } from "lucide-react"
+import { Film, ImageIcon, AlertTriangle, ChevronDown, ChevronRight, Infinity as InfinityIcon, StickyNote as StickyNoteIcon, X, Search, Maximize2 } from "lucide-react"
 import {
   getRelationshipMap, getRelationshipMapPositions, saveRelationshipMapPosition,
   getRelationshipMapNotes, createRelationshipMapNote, updateRelationshipMapNoteText,
@@ -14,8 +14,11 @@ import {
   type RelationshipMapData,
 } from "@/lib/actions/relationship-map"
 import { METRIC_DEFS, type MetricKey } from "@/lib/constants/paid-media-metrics"
-import { CONCEPT_STATUS_COLORS, ANGLE_GUIDE, FUNNEL_COLORS } from "@/lib/constants/creatives"
+import { CONCEPT_STATUS_COLORS, ANGLE_GUIDE, FUNNEL_COLORS, AWARENESS_LABELS } from "@/lib/constants/creatives"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
+import type { CreativeConcept } from "@/lib/types"
 
 interface Props {
   projectId: string
@@ -53,8 +56,142 @@ function MetricGrid({ metrics }: { metrics: Record<MetricKey, { value: number | 
   )
 }
 
-function ConceptNode({ data }: NodeProps<Node<{ concept: RelationshipMapData["concepts"][number] }>>) {
-  const { concept } = data
+// Lectura de solo lectura del mismo detalle que ve ConceptDetailModal
+// (concepts-table.tsx) — se duplica en vez de reusarlo directamente
+// porque ese modal viene entrelazado con todas sus acciones de edición
+// (promover/degradar/borrar, nuevo asset, nuevo brief, ...), que no
+// aplican en un canvas de solo lectura.
+function ConceptMechanismModal({ concept, onClose }: { concept: CreativeConcept; onClose: () => void }) {
+  const [activeTab, setActiveTab] = useState<"id" | "angle" | "mech">("id")
+  const angleEntry = ANGLE_GUIDE.find((a) => a.name === concept.angle_type)
+  const fLabel = "text-[11px] font-medium text-muted-foreground/80 mb-0.5"
+  const fEmpty = "text-sm text-muted-foreground/30 italic"
+
+  function F({ label, value }: { label: string; value?: string | number | null }) {
+    return (
+      <div>
+        <p className={fLabel}>{label}</p>
+        {value ? <p className="text-sm leading-snug">{value}</p> : <p className={fEmpty}>—</p>}
+      </div>
+    )
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader className="pb-0">
+          <div className="space-y-1">
+            {concept.brand_line && (
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: concept.brand_line.color }}>
+                {concept.brand_line.name}
+              </p>
+            )}
+            <DialogTitle className="text-xl leading-tight">{concept.name || "Concepto"}</DialogTitle>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge className={cn("text-xs border-0", CONCEPT_STATUS_COLORS[concept.status])}>{concept.status}</Badge>
+              {angleEntry && (
+                <span className="text-sm text-muted-foreground flex items-center gap-1">
+                  <span className="text-base">{angleEntry.emoji}</span>
+                  {concept.angle_type}
+                </span>
+              )}
+              {concept.funnel_stage && (
+                <Badge className={cn("text-xs border-0", FUNNEL_COLORS[concept.funnel_stage] ?? "bg-gray-100 text-gray-600")}>
+                  {concept.funnel_stage}
+                </Badge>
+              )}
+              {concept.awareness_stage && (
+                <span className="text-xs text-muted-foreground">
+                  Stage {concept.awareness_stage} · {AWARENESS_LABELS[concept.awareness_stage]}
+                </span>
+              )}
+            </div>
+          </div>
+        </DialogHeader>
+
+        <div className="border rounded-xl overflow-hidden">
+          <div className="flex border-b bg-muted/30">
+            {([
+              { key: "id" as const, label: "Identificación" },
+              { key: "angle" as const, label: "Teoría del Ángulo" },
+              { key: "mech" as const, label: "Mecanismo" },
+            ]).map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveTab(tab.key)}
+                className={cn(
+                  "flex-1 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide transition-colors relative",
+                  activeTab === tab.key ? "text-foreground bg-background" : "text-muted-foreground hover:text-foreground/70"
+                )}
+              >
+                {tab.label}
+                {activeTab === tab.key && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />}
+              </button>
+            ))}
+          </div>
+
+          <div className="px-6 py-5 min-h-[180px]">
+            {activeTab === "id" && (
+              <div className="space-y-5">
+                <F label="Principio organizador" value={concept.organizing_principle} />
+                <div>
+                  <p className={fLabel}>Persona objetivo</p>
+                  {concept.target_persona ? <p className="text-sm leading-snug">{concept.target_persona}</p> : <p className={fEmpty}>—</p>}
+                </div>
+                <F label="Awareness Stage" value={concept.awareness_stage ? `${concept.awareness_stage} — ${AWARENESS_LABELS[concept.awareness_stage]}` : null} />
+                <div>
+                  <p className={fLabel}>Funnel Stage</p>
+                  {concept.funnel_stage
+                    ? <Badge className={cn("text-xs border-0 mt-0.5", FUNNEL_COLORS[concept.funnel_stage] ?? "bg-gray-100 text-gray-600")}>{concept.funnel_stage}</Badge>
+                    : <p className={fEmpty}>—</p>}
+                </div>
+              </div>
+            )}
+
+            {activeTab === "angle" && (
+              <div className="space-y-5">
+                {angleEntry ? (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <span className="text-4xl leading-none">{angleEntry.emoji}</span>
+                      <div>
+                        <p className="text-base font-semibold">{concept.angle_type}</p>
+                        <p className="text-sm text-muted-foreground italic leading-snug">{angleEntry.guiding_question}</p>
+                      </div>
+                    </div>
+                    {angleEntry.mechanism && <p className="text-sm text-muted-foreground leading-relaxed">{angleEntry.mechanism}</p>}
+                  </>
+                ) : (
+                  <p className={fEmpty}>Sin ángulo asignado</p>
+                )}
+              </div>
+            )}
+
+            {activeTab === "mech" && (
+              <div className="space-y-0 divide-y divide-border">
+                {[
+                  { label: "¿Por qué va a funcionar?", value: concept.why_it_works },
+                  { label: "Pain Point específico", value: concept.pain_point },
+                  { label: "Objeción que derrumba", value: concept.objection },
+                  { label: "Transformación prometida", value: concept.transformation },
+                ].map(({ label, value }) => (
+                  <div key={label} className="py-4 first:pt-0 last:pb-0">
+                    <p className={fLabel}>{label}</p>
+                    {value ? <p className="text-sm leading-relaxed">{value}</p> : <p className={fEmpty}>—</p>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function ConceptNode({ data }: NodeProps<Node<{ concept: RelationshipMapData["concepts"][number]; onViewConcept: (concept: CreativeConcept) => void }>>) {
+  const { concept, onViewConcept } = data
   const angleEntry = ANGLE_GUIDE.find((a) => a.name === concept.angleType)
   // Evergreen es la excepción entre los status: en vez del pill de texto
   // (compite mucho visualmente con Brand Line/ángulo/funnel, y ya es
@@ -68,6 +205,15 @@ function ConceptNode({ data }: NodeProps<Node<{ concept: RelationshipMapData["co
     >
       <Handle type="target" position={Position.Left} className="!opacity-0" />
       <Handle type="source" position={Position.Right} className="!opacity-0" />
+      {/* Brand Line — por encima de todo, incluso de las medallas de
+          status/ángulo/funnel: es la primera pregunta ("¿de qué línea de
+          producto es esto?"), así que se lee antes que cualquier otra
+          cosa. Negritas, color = el mismo del borde izquierdo. */}
+      {concept.brandLine && (
+        <p className="text-[10px] font-bold uppercase tracking-wide truncate mb-1" style={{ color: concept.brandLine.color }}>
+          {concept.brandLine.name}
+        </p>
+      )}
       <div className="flex items-center gap-1.5 mb-1">
         {angleEntry && <span className="text-sm">{angleEntry.emoji}</span>}
         {isEvergreen ? (
@@ -84,43 +230,55 @@ function ConceptNode({ data }: NodeProps<Node<{ concept: RelationshipMapData["co
             {concept.funnelStage}
           </span>
         )}
-        {concept.brandLine && (
-          <span
-            title={concept.brandLine.name}
-            className="flex-shrink-0 w-2.5 h-2.5 rounded-full border border-white/60 ml-auto"
-            style={{ backgroundColor: concept.brandLine.color }}
-          />
-        )}
       </div>
       <p className="text-sm font-semibold text-foreground truncate">{concept.name ?? concept.angleType ?? "Sin nombre"}</p>
       {concept.targetPersona && <p className="text-[11px] text-muted-foreground line-clamp-2 mt-0.5">{concept.targetPersona}</p>}
-      {concept.brandLine && <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{concept.brandLine.name}</p>}
+      <button
+        onClick={(e) => { e.stopPropagation(); onViewConcept(concept.full) }}
+        className="nodrag mt-2 flex items-center gap-1 text-[11px] font-medium text-violet-600 hover:text-violet-800 transition-colors"
+      >
+        <Search className="w-3 h-3" />
+        Ver concepto
+      </button>
     </div>
   )
 }
 
-function AssetNode({ data }: NodeProps<Node<{ asset: RelationshipMapData["assets"][number] }>>) {
-  const { asset } = data
+// Igual de espíritu que la miniatura en los nodos de Ad Lab
+// (components/ad-lab/nodes/ad-node.tsx): video reproducible con controles
+// directo en la tarjeta, imagen clickeable para agrandar (lightbox, ver
+// onEnlarge más abajo) en vez del recorte chico + ícono de antes.
+function AssetNode({ data }: NodeProps<Node<{ asset: RelationshipMapData["assets"][number]; onEnlarge: (asset: RelationshipMapData["assets"][number]) => void }>>) {
+  const { asset, onEnlarge } = data
+  const isVideo = asset.fileType === "video"
+  const media = asset.fileUrl ?? asset.thumbUrl
   return (
-    <div className="w-48 rounded-xl border-2 border-sky-300 bg-sky-50 p-2.5 shadow-sm flex items-center gap-2.5">
+    <div className="w-56 rounded-xl border-2 border-sky-300 bg-sky-50 shadow-sm overflow-hidden">
       <Handle type="target" position={Position.Left} className="!opacity-0" />
       <Handle type="source" position={Position.Right} className="!opacity-0" />
-      <div className="relative w-12 h-12 rounded-lg overflow-hidden bg-muted flex-shrink-0 flex items-center justify-center">
-        {asset.thumbUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={asset.thumbUrl} alt="" className="w-full h-full object-cover" />
+      <div className="relative bg-black/90">
+        {media ? (
+          isVideo ? (
+            <video src={media} controls className="nodrag nowheel w-full max-h-40 block" />
+          ) : (
+            <button onClick={(e) => { e.stopPropagation(); onEnlarge(asset) }} className="nodrag block w-full group relative">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={media} alt="" className="w-full max-h-40 object-contain" />
+              <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
+                <Maximize2 className="w-4 h-4 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
+            </button>
+          )
         ) : (
-          <ImageIcon className="w-4 h-4 text-muted-foreground/40" />
-        )}
-        {asset.fileType === "video" && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-            <Film className="w-3.5 h-3.5 text-white" />
+          <div className="w-full h-24 flex items-center justify-center">
+            <ImageIcon className="w-5 h-5 text-white/30" />
           </div>
         )}
       </div>
-      <div className="min-w-0">
+      <div className="px-2.5 py-2 flex items-center gap-1.5">
+        {isVideo && <Film className="w-3 h-3 text-sky-600 flex-shrink-0" />}
         <p className="text-xs font-medium truncate">{asset.format ?? "Asset"}</p>
-        {asset.platform && <p className="text-[10px] text-muted-foreground truncate">{asset.platform}</p>}
+        {asset.platform && <p className="text-[10px] text-muted-foreground truncate">· {asset.platform}</p>}
       </div>
     </div>
   )
@@ -210,12 +368,17 @@ const NODE_TYPES = { conceptNode: ConceptNode, assetNode: AssetNode, campaignNod
 
 const COL_CONCEPT = 0
 const COL_ASSET = 340
-const COL_CAMPAIGN = 700
+const COL_CAMPAIGN = 760
 const CAMPAIGN_ROW_H = 210 // altura estimada COLAPSADA — expandir puede solapar visualmente, por eso los nodos son arrastrables
-const ASSET_ROW_H = 90
+const ASSET_ROW_H = 230 // el asset ahora muestra el media (imagen agrandable / video reproducible), como en Ad Lab — ya no es una fila chica de ícono + texto
 const CONCEPT_ROW_H = 100
 
-function buildGraph(data: RelationshipMapData): { nodes: Node[]; edges: Edge[] } {
+interface GraphHandlers {
+  onViewConcept: (concept: CreativeConcept) => void
+  onEnlarge: (asset: RelationshipMapData["assets"][number]) => void
+}
+
+function buildGraph(data: RelationshipMapData, handlers: GraphHandlers): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = []
   const edges: Edge[] = []
   let cursorY = 0
@@ -256,12 +419,12 @@ function buildGraph(data: RelationshipMapData): { nodes: Node[]; edges: Edge[] }
         // asset donde en realidad había varios, solapados).
         cursorY = Math.max(cursorY, assetRowStartY + ASSET_ROW_H)
 
-        nodes.push({ id: `asset-${asset.id}`, type: "assetNode", position: { x: COL_ASSET, y: Math.max(campaignsStartY, cursorY - ASSET_ROW_H) }, data: { asset }, draggable: true })
+        nodes.push({ id: `asset-${asset.id}`, type: "assetNode", position: { x: COL_ASSET, y: Math.max(campaignsStartY, cursorY - ASSET_ROW_H) }, data: { asset, onEnlarge: handlers.onEnlarge }, draggable: true })
         edges.push({ id: `e-${concept.id}-${asset.id}`, source: `concept-${concept.id}`, target: `asset-${asset.id}`, style: { stroke: "#0ea5e9" } })
       }
     }
 
-    nodes.push({ id: `concept-${concept.id}`, type: "conceptNode", position: { x: COL_CONCEPT, y: (assetsStartY + cursorY) / 2 - CONCEPT_ROW_H / 2 }, data: { concept }, draggable: true })
+    nodes.push({ id: `concept-${concept.id}`, type: "conceptNode", position: { x: COL_CONCEPT, y: (assetsStartY + cursorY) / 2 - CONCEPT_ROW_H / 2 }, data: { concept, onViewConcept: handlers.onViewConcept }, draggable: true })
   }
 
   return { nodes, edges }
@@ -278,6 +441,11 @@ export function RelationshipMap({ projectId, cycleId }: Props) {
   // se pierde en cada recarga.
   const [nodes, setNodes] = useState<Node[]>([])
   const [edges, setEdges] = useState<Edge[]>([])
+  const [viewingConcept, setViewingConcept] = useState<CreativeConcept | null>(null)
+  const [lightboxAsset, setLightboxAsset] = useState<RelationshipMapData["assets"][number] | null>(null)
+
+  const handleViewConcept = useCallback((concept: CreativeConcept) => setViewingConcept(concept), [])
+  const handleEnlarge = useCallback((asset: RelationshipMapData["assets"][number]) => setLightboxAsset(asset), [])
 
   useEffect(() => {
     if (!cycleId) { setData(null); setLoading(false); return }
@@ -306,7 +474,7 @@ export function RelationshipMap({ projectId, cycleId }: Props) {
 
   useEffect(() => {
     if (!data) { setNodes([]); setEdges([]); return }
-    const graph = buildGraph(data)
+    const graph = buildGraph(data, { onViewConcept: handleViewConcept, onEnlarge: handleEnlarge })
     Promise.all([
       getRelationshipMapPositions(projectId, cycleId),
       getRelationshipMapNotes(projectId, cycleId),
@@ -319,7 +487,7 @@ export function RelationshipMap({ projectId, cycleId }: Props) {
       setNodes([...generatedNodes, ...notes.map(noteToNode)])
     })
     setEdges(graph.edges)
-  }, [data, projectId, cycleId])
+  }, [data, projectId, cycleId, handleViewConcept, handleEnlarge])
 
   const onNodesChange = useCallback((changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)), [])
 
@@ -379,6 +547,23 @@ export function RelationshipMap({ projectId, cycleId }: Props) {
         <StickyNoteIcon className="w-3 h-3" />
         Nota
       </button>
+
+      {viewingConcept && <ConceptMechanismModal concept={viewingConcept} onClose={() => setViewingConcept(null)} />}
+
+      {lightboxAsset && (
+        <Dialog open onOpenChange={() => setLightboxAsset(null)}>
+          <DialogContent className="max-w-3xl max-h-[90vh] p-0 overflow-hidden">
+            <div className="bg-black flex items-center justify-center min-h-[300px] max-h-[80vh]">
+              {lightboxAsset.fileUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={lightboxAsset.fileUrl} alt="" className="max-w-full max-h-[80vh] object-contain" />
+              ) : (
+                <div className="text-white/40 text-sm py-20">Sin archivo</div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }

@@ -5,7 +5,7 @@ import { getCreativeConcepts, getCreativeAssets } from "@/lib/actions/creatives"
 import { getCreativePerformance, type AdPerformanceCard } from "@/lib/actions/paid-media-performance"
 import { mergeDailyStatsByDate, computeMetricsForAd, type MetricPoint } from "@/lib/utils/paid-media-calc"
 import { METRIC_DEFS, type MetricKey } from "@/lib/constants/paid-media-metrics"
-import type { TrendWindow } from "@/lib/types"
+import type { TrendWindow, CreativeConcept } from "@/lib/types"
 
 // Mapa de nodos concepto → asset → campaña, generado 100% a partir de
 // datos que ya existen (sin tabla ni migración nueva) — de solo lectura,
@@ -24,12 +24,19 @@ export interface RelationshipConceptNode {
   funnelStage: string | null
   status: string
   brandLine: { id: string; name: string; color: string } | null
+  // Concepto completo — para el botón "Ver concepto" (mecanismo, ángulo,
+  // etc.) sin tener que ir enumerando campo por campo cada vez que se
+  // agregue uno nuevo al detalle.
+  full: CreativeConcept
 }
 
 export interface RelationshipAssetNode {
   id: string
   conceptId: string | null
   thumbUrl: string | null
+  // Archivo real (no la miniatura) — el que se reproduce/agranda, igual
+  // que en Ad Lab: video con controles, imagen a tamaño completo.
+  fileUrl: string | null
   fileType: string | null
   format: string | null
   platform: string | null
@@ -55,6 +62,11 @@ export interface RelationshipMapData {
 
 function assetThumbUrl(a: { thumbnail_path: string | null; file_path: string | null; asset_url: string | null }): string | null {
   if (a.thumbnail_path) return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/creative-assets/${a.thumbnail_path}`
+  if (a.file_path) return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/creative-assets/${a.file_path}`
+  return a.asset_url
+}
+
+function assetFileUrl(a: { file_path: string | null; asset_url: string | null }): string | null {
   if (a.file_path) return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/creative-assets/${a.file_path}`
   return a.asset_url
 }
@@ -191,11 +203,13 @@ export async function getRelationshipMap(projectId: string, cycleId: string | nu
       funnelStage: c.funnel_stage,
       status: c.status,
       brandLine: c.brand_line ? { id: c.brand_line.id, name: c.brand_line.name, color: c.brand_line.color } : null,
+      full: c,
     })),
     assets: assets.map((a) => ({
       id: a.id,
       conceptId: a.concept_id,
       thumbUrl: assetThumbUrl(a),
+      fileUrl: assetFileUrl(a),
       fileType: a.file_type,
       format: a.format,
       platform: a.platform,
