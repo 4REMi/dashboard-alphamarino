@@ -542,7 +542,8 @@ export interface PendingChange {
 // PAID MEDIA HUB
 // ============================================================
 
-export type TrendWindow = "previous_day" | "cycle_avg" | "baseline"
+// Mismos presets de comparación que ofrece Meta Ads Manager.
+export type TrendWindow = "previous_day" | "last_3d" | "last_7d" | "last_14d" | "baseline"
 
 export interface PaidMediaContext {
   id: string

@@ -14,9 +14,11 @@ interface Props {
 }
 
 const TREND_WINDOW_LABELS: Record<TrendWindow, string> = {
-  previous_day: "vs. día anterior",
-  cycle_avg: "vs. promedio del ciclo",
-  baseline: "vs. primer día del ciclo",
+  previous_day: "vs. ayer",
+  last_3d: "vs. últimos 3 días",
+  last_7d: "vs. últimos 7 días",
+  last_14d: "vs. últimos 14 días",
+  baseline: "vs. inicio del ciclo",
 }
 
 // Reconstruido desde cero — la versión anterior comparaba un "real"

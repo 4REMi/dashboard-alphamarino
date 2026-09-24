@@ -92,6 +92,27 @@ export function mergeDailyStatsByDate(rows: MetaAdDailyStat[]): MetaAdDailyStat[
   return Array.from(byDate.values())
 }
 
+function avgTotals(days: MetaAdDailyStat[]): DayTotals {
+  const t = sumDays(days)
+  const n = days.length
+  return {
+    spend: t.spend / n,
+    impressions: t.impressions / n,
+    clicks: t.clicks / n,
+    results: t.results / n,
+    purchase_value: t.purchase_value / n,
+    reach: t.reach / n,
+    link_clicks: t.link_clicks / n,
+    video_views: t.video_views / n,
+  }
+}
+
+// Mismos presets de comparación que ofrece Meta Ads Manager — "últimos N
+// días" se lee como el promedio de esos N días inmediatamente ANTERIORES
+// al último día con datos (nunca incluye ese último día, o estaría
+// comparándose contra sí mismo).
+const WINDOW_DAYS: Partial<Record<TrendWindow, number>> = { last_3d: 3, last_7d: 7, last_14d: 14 }
+
 // Calcula la tendencia según la ventana elegida (por proyecto, o el
 // override puntual de esta campaña) — comparando valores DIARIOS (nunca
 // acumulados), para que el % refleje un movimiento real y no solo "lleva
@@ -112,21 +133,9 @@ export function computeMetricsForAd(dailyRows: MetaAdDailyStat[], window: TrendW
       const firstDay = sorted[0]
       compareTotals = (firstDay && firstDay !== lastDay) ? sumDays([firstDay]) : null
     } else {
-      // cycle_avg — promedio de los demás días (sin contar el último)
-      const otherDays = sorted.slice(0, -1)
-      if (otherDays.length > 0) {
-        const t = sumDays(otherDays)
-        compareTotals = {
-          spend: t.spend / otherDays.length,
-          impressions: t.impressions / otherDays.length,
-          clicks: t.clicks / otherDays.length,
-          results: t.results / otherDays.length,
-          purchase_value: t.purchase_value / otherDays.length,
-          reach: t.reach / otherDays.length,
-          link_clicks: t.link_clicks / otherDays.length,
-          video_views: t.video_views / otherDays.length,
-        }
-      }
+      const windowSize = WINDOW_DAYS[window] ?? 7
+      const otherDays = sorted.slice(Math.max(0, sorted.length - 1 - windowSize), sorted.length - 1)
+      compareTotals = otherDays.length > 0 ? avgTotals(otherDays) : null
     }
   }
 

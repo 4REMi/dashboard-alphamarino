@@ -29,8 +29,9 @@ reglas de agente (todavía no construidas), no de un target estático comparado 
 (`MetaCampaignsPanel`, eliminado). La unidad primaria es el AD individual, no la
 campaña — cada tarjeta trae su propia miniatura + las métricas que el proyecto
 configuró mostrar (`paid_media_context.display_metrics`, picker de métricas en
-"Contexto de Cuenta") + un delta de tendencia (`trend_window`: día anterior/promedio
-del ciclo/baseline, con override opcional por campaña en `campaign_trend_overrides`).
+"Contexto de Cuenta") + un delta de tendencia (`trend_window`: los mismos presets de
+Meta Ads Manager — ayer/últimos 3-7-14 días/inicio del ciclo —, con override opcional
+por campaña en `campaign_trend_overrides`).
 El sync (`syncMetaAds`) trae insights con `time_increment=1` — una fila por ad por
 día en `meta_ad_daily_stats` — para poder calcular esa tendencia sin depender de cada
 cuándo alguien sincroniza. `creative_asset_meta_ads` es el puente many-to-many entre
