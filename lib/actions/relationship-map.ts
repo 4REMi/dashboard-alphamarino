@@ -58,6 +58,31 @@ function assetThumbUrl(a: { thumbnail_path: string | null; file_path: string | n
   return a.asset_url
 }
 
+export interface RelationshipMapPosition { nodeId: string; x: number; y: number }
+
+// Recuerda dónde arrastró el usuario cada nodo la última vez, por
+// proyecto + ciclo (los node_id no son comparables entre ciclos distintos
+// — cada ciclo tiene su propio set de campañas/assets). Solo se guardan
+// las posiciones que el usuario tocó; el resto sigue viniendo del layout
+// calculado en buildGraph.
+export async function getRelationshipMapPositions(projectId: string, cycleId: string | null): Promise<RelationshipMapPosition[]> {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from("relationship_map_positions")
+    .select("node_id, x, y")
+    .eq("project_id", projectId)
+    .eq("cycle_id", cycleId ?? "none")
+  return (data ?? []).map((p) => ({ nodeId: p.node_id, x: p.x, y: p.y }))
+}
+
+export async function saveRelationshipMapPosition(projectId: string, cycleId: string | null, nodeId: string, x: number, y: number): Promise<void> {
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from("relationship_map_positions")
+    .upsert({ project_id: projectId, cycle_id: cycleId ?? "none", node_id: nodeId, x, y, updated_at: new Date().toISOString() }, { onConflict: "project_id,cycle_id,node_id" })
+  if (error) throw error
+}
+
 export async function getRelationshipMap(projectId: string, cycleId: string | null): Promise<RelationshipMapData> {
   const supabase = await createClient()
 

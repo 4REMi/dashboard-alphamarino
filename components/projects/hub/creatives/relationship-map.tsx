@@ -7,7 +7,7 @@ import {
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
 import { Film, ImageIcon, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react"
-import { getRelationshipMap, type RelationshipMapData } from "@/lib/actions/relationship-map"
+import { getRelationshipMap, getRelationshipMapPositions, saveRelationshipMapPosition, type RelationshipMapData } from "@/lib/actions/relationship-map"
 import { METRIC_DEFS, type MetricKey } from "@/lib/constants/paid-media-metrics"
 import { CONCEPT_STATUS_COLORS, ANGLE_GUIDE, FUNNEL_COLORS } from "@/lib/constants/creatives"
 import { cn } from "@/lib/utils"
@@ -180,6 +180,7 @@ function buildGraph(data: RelationshipMapData): { nodes: Node[]; edges: Edge[] }
     } else {
       for (const asset of conceptAssets) {
         const assetCampaignIds = data.assetCampaignEdges.filter((e) => e.assetId === asset.id).map((e) => e.campaignId)
+        const assetRowStartY = cursorY
         const campaignsStartY = cursorY
 
         for (const campaignId of assetCampaignIds) {
@@ -197,7 +198,12 @@ function buildGraph(data: RelationshipMapData): { nodes: Node[]; edges: Edge[] }
           edges.push({ id: `e-${asset.id}-${campaignId}`, source: `asset-${asset.id}`, target: `campaign-${campaignId}`, style: { stroke: "#10b981" } })
         }
 
-        if (assetCampaignIds.length === 0) cursorY += ASSET_ROW_H
+        // cursorY debe avanzar SIEMPRE al menos ASSET_ROW_H por asset —
+        // si sus campañas ya estaban colocadas (0 filas nuevas) esto no
+        // pasaba antes, y varios assets terminaban apilados exactamente
+        // en el mismo punto (el bug que hacía parecer que había un solo
+        // asset donde en realidad había varios, solapados).
+        cursorY = Math.max(cursorY, assetRowStartY + ASSET_ROW_H)
 
         nodes.push({ id: `asset-${asset.id}`, type: "assetNode", position: { x: COL_ASSET, y: Math.max(campaignsStartY, cursorY - ASSET_ROW_H) }, data: { asset }, draggable: true })
         edges.push({ id: `e-${concept.id}-${asset.id}`, source: `concept-${concept.id}`, target: `asset-${asset.id}`, style: { stroke: "#0ea5e9" } })
@@ -213,9 +219,12 @@ function buildGraph(data: RelationshipMapData): { nodes: Node[]; edges: Edge[] }
 export function RelationshipMap({ projectId, cycleId }: Props) {
   const [data, setData] = useState<RelationshipMapData | null>(null)
   const [loading, setLoading] = useState(true)
-  // Reacomodar nodos es puramente visual (para que esto se pueda volver
-  // la vista canónica de referencia) — nunca se guarda, y se resetea al
-  // recargar los datos (nuevo ciclo, o el layout recalculado).
+  // El layout inicial (buildGraph) es solo el punto de partida — en
+  // cuanto el usuario arrastra un nodo, esa posición se guarda en
+  // relationship_map_positions (por proyecto+ciclo) y sobreescribe la
+  // calculada la próxima vez que se abra el mapa. Así lo que el usuario
+  // ya acomodó (típico: separar assets que el layout apiló encimados) no
+  // se pierde en cada recarga.
   const [nodes, setNodes] = useState<Node[]>([])
   const [edges, setEdges] = useState<Edge[]>([])
 
@@ -226,12 +235,27 @@ export function RelationshipMap({ projectId, cycleId }: Props) {
   }, [projectId, cycleId])
 
   useEffect(() => {
-    const graph = data ? buildGraph(data) : { nodes: [], edges: [] }
+    if (!data) { setNodes([]); setEdges([]); return }
+    const graph = buildGraph(data)
+    getRelationshipMapPositions(projectId, cycleId).then((saved) => {
+      if (saved.length === 0) return
+      const savedById = new Map(saved.map((p) => [p.nodeId, p]))
+      setNodes((current) =>
+        current.map((n) => {
+          const pos = savedById.get(n.id)
+          return pos ? { ...n, position: { x: pos.x, y: pos.y } } : n
+        })
+      )
+    })
     setNodes(graph.nodes)
     setEdges(graph.edges)
-  }, [data])
+  }, [data, projectId, cycleId])
 
   const onNodesChange = useCallback((changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)), [])
+
+  const onNodeDragStop = useCallback((_: unknown, node: Node) => {
+    saveRelationshipMapPosition(projectId, cycleId, node.id, node.position.x, node.position.y).catch(() => {})
+  }, [projectId, cycleId])
 
   if (!cycleId) {
     return <p className="text-sm text-muted-foreground px-5 py-10 text-center">Elige un ciclo para ver su mapa.</p>
@@ -253,6 +277,7 @@ export function RelationshipMap({ projectId, cycleId }: Props) {
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
+        onNodeDragStop={onNodeDragStop}
         nodeTypes={NODE_TYPES}
         fitView
         minZoom={0.1}
@@ -265,7 +290,7 @@ export function RelationshipMap({ projectId, cycleId }: Props) {
       </ReactFlow>
       <div className="absolute top-3 left-3 flex items-center gap-2 text-[11px] text-muted-foreground bg-background/90 backdrop-blur px-2.5 py-1.5 rounded-lg border border-border">
         <AlertTriangle className="w-3 h-3" />
-        Los datos son de solo lectura — puedes arrastrar los nodos para acomodar la vista, no se guarda ni afecta nada real.
+        Los datos son de solo lectura — puedes arrastrar los nodos para acomodar la vista, la posición se recuerda para la próxima vez.
       </div>
     </div>
   )
