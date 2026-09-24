@@ -3,7 +3,7 @@
 import { useState, useEffect, useTransition } from "react"
 import { ConceptsTable } from "./concepts-table"
 import { RelationshipMap } from "./relationship-map"
-import { LayoutGrid, Share2 } from "lucide-react"
+import { LayoutGrid, Share2, X } from "lucide-react"
 import { getCreativeConcepts, getCreativeAssets, getBriefsForProject } from "@/lib/actions/creatives"
 import { getAssetMetaLinkStatus, type AssetMetaLinkStatus } from "@/lib/actions/paid-media-performance"
 import type { CreativeConcept, CreativeAsset, CreativeBrief, PaidMediaCycle } from "@/lib/types"
@@ -85,25 +85,72 @@ export function CreativesHub({
     )
   }
 
+  const cycleSelector = (
+    <div className="relative">
+      <select
+        value={selectedCycleId ?? ""}
+        onChange={(e) => setSelectedCycleId(e.target.value || null)}
+        className="appearance-none text-sm border rounded-lg px-3 py-1.5 pr-8 bg-background focus:outline-none focus:ring-1 focus:ring-ring font-medium"
+      >
+        {cycles.map((cycle) => (
+          <option key={cycle.id} value={cycle.id}>
+            {formatCycleRange(cycle.start_date, cycle.end_date)}
+            {cycle.is_active ? " (activo)" : ""}
+          </option>
+        ))}
+      </select>
+      <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+    </div>
+  )
+
+  const viewToggle = (
+    <div className="flex items-center gap-1 border rounded-lg p-0.5">
+      <button
+        onClick={() => setView("table")}
+        className={cn("flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-md transition-colors", view === "table" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground")}
+      >
+        <LayoutGrid className="w-3.5 h-3.5" /> Tabla
+      </button>
+      <button
+        onClick={() => setView("map")}
+        className={cn("flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-md transition-colors", view === "map" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground")}
+      >
+        <Share2 className="w-3.5 h-3.5" /> Mapa
+      </button>
+    </div>
+  )
+
+  // El mapa toma toda la pantalla — con muchos conceptos/assets el
+  // layout crece bastante, y el espacio de una tarjeta normal del hub se
+  // queda corto para navegarlo cómodo.
+  if (view === "map") {
+    return (
+      <div className="fixed inset-0 z-50 bg-background flex flex-col">
+        <div className="flex items-center gap-3 flex-wrap px-4 py-3 border-b border-border flex-shrink-0">
+          <button onClick={() => setView("table")} className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+            <X className="w-4 h-4" /> Cerrar mapa
+          </button>
+          <div className="w-px h-5 bg-border" />
+          {cycleSelector}
+          {isLoading && (
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Cargando…
+            </span>
+          )}
+          <div className="ml-auto">{viewToggle}</div>
+        </div>
+        <div className="flex-1 min-h-0">
+          <RelationshipMap projectId={projectId} cycleId={selectedCycleId} />
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4">
       {/* Cycle selector */}
       <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative">
-          <select
-            value={selectedCycleId ?? ""}
-            onChange={(e) => setSelectedCycleId(e.target.value || null)}
-            className="appearance-none text-sm border rounded-lg px-3 py-1.5 pr-8 bg-background focus:outline-none focus:ring-1 focus:ring-ring font-medium"
-          >
-            {cycles.map((cycle) => (
-              <option key={cycle.id} value={cycle.id}>
-                {formatCycleRange(cycle.start_date, cycle.end_date)}
-                {cycle.is_active ? " (activo)" : ""}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-        </div>
+        {cycleSelector}
 
         {isLoading && (
           <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -118,44 +165,24 @@ export function CreativesHub({
           </span>
         )}
 
-        {/* Tabla / Mapa — el mapa es de solo lectura, generado a partir de
-            concepto→asset→ad, incluso para ciclos ya cerrados (para
-            revisitar cómo se veía la relación en un ciclo pasado). */}
-        <div className="ml-auto flex items-center gap-1 border rounded-lg p-0.5">
-          <button
-            onClick={() => setView("table")}
-            className={cn("flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-md transition-colors", view === "table" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground")}
-          >
-            <LayoutGrid className="w-3.5 h-3.5" /> Tabla
-          </button>
-          <button
-            onClick={() => setView("map")}
-            className={cn("flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-md transition-colors", view === "map" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground")}
-          >
-            <Share2 className="w-3.5 h-3.5" /> Mapa
-          </button>
-        </div>
+        <div className="ml-auto">{viewToggle}</div>
       </div>
 
-      {view === "map" ? (
-        <RelationshipMap projectId={projectId} cycleId={selectedCycleId} />
-      ) : (
-        <ConceptsTable
-          concepts={concepts}
-          assets={assets}
-          briefs={briefs}
-          projectId={projectId}
-          cycleId={selectedCycleId}
-          isAdminOrSubadmin={canEdit}
-          canManageAssets={canManageAssets}
-          onRefresh={reload}
-          onUpdateAsset={updateAssetLocal}
-          assetLinkStatus={assetLinkStatus}
-          brandBrains={brandBrains}
-          brandLines={brandLines}
-          projectBrandBrainId={projectBrandBrainId}
-        />
-      )}
+      <ConceptsTable
+        concepts={concepts}
+        assets={assets}
+        briefs={briefs}
+        projectId={projectId}
+        cycleId={selectedCycleId}
+        isAdminOrSubadmin={canEdit}
+        canManageAssets={canManageAssets}
+        onRefresh={reload}
+        onUpdateAsset={updateAssetLocal}
+        assetLinkStatus={assetLinkStatus}
+        brandBrains={brandBrains}
+        brandLines={brandLines}
+        projectBrandBrainId={projectBrandBrainId}
+      />
     </div>
   )
 }

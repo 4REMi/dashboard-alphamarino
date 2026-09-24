@@ -1,9 +1,9 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import {
-  ReactFlow, Background, Controls, MiniMap, Handle, Position,
-  type Node, type Edge, type NodeProps,
+  ReactFlow, Background, Controls, MiniMap, Handle, Position, applyNodeChanges,
+  type Node, type Edge, type NodeProps, type NodeChange,
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
 import { Film, ImageIcon, AlertTriangle } from "lucide-react"
@@ -150,18 +150,18 @@ function buildGraph(data: RelationshipMapData): { nodes: Node[]; edges: Edge[] }
           cursorY += ASSET_ROW_H
         } else {
           for (const ad of assetAds) {
-            nodes.push({ id: `ad-${ad.ad_id}`, type: "adNode", position: { x: COL_AD, y: cursorY }, data: { ad }, draggable: false })
+            nodes.push({ id: `ad-${ad.ad_id}`, type: "adNode", position: { x: COL_AD, y: cursorY }, data: { ad }, draggable: true })
             edges.push({ id: `e-${asset.id}-${ad.ad_id}`, source: `asset-${asset.id}`, target: `ad-${ad.ad_id}`, animated: ad.status === "ACTIVE", style: { stroke: "#10b981" } })
             cursorY += AD_ROW_H
           }
         }
 
-        nodes.push({ id: `asset-${asset.id}`, type: "assetNode", position: { x: COL_ASSET, y: (adsStartY + cursorY) / 2 - ASSET_ROW_H / 2 }, data: { asset }, draggable: false })
+        nodes.push({ id: `asset-${asset.id}`, type: "assetNode", position: { x: COL_ASSET, y: (adsStartY + cursorY) / 2 - ASSET_ROW_H / 2 }, data: { asset }, draggable: true })
         edges.push({ id: `e-${concept.id}-${asset.id}`, source: `concept-${concept.id}`, target: `asset-${asset.id}`, style: { stroke: "#0ea5e9" } })
       }
     }
 
-    nodes.push({ id: `concept-${concept.id}`, type: "conceptNode", position: { x: COL_CONCEPT, y: (assetsStartY + cursorY) / 2 - CONCEPT_ROW_H / 2 }, data: { concept }, draggable: false })
+    nodes.push({ id: `concept-${concept.id}`, type: "conceptNode", position: { x: COL_CONCEPT, y: (assetsStartY + cursorY) / 2 - CONCEPT_ROW_H / 2 }, data: { concept }, draggable: true })
   }
 
   return { nodes, edges }
@@ -170,6 +170,11 @@ function buildGraph(data: RelationshipMapData): { nodes: Node[]; edges: Edge[] }
 export function RelationshipMap({ projectId, cycleId }: Props) {
   const [data, setData] = useState<RelationshipMapData | null>(null)
   const [loading, setLoading] = useState(true)
+  // Reacomodar nodos es puramente visual (para que esto se pueda volver
+  // la vista canónica de referencia) — nunca se guarda, y se resetea al
+  // recargar los datos (nuevo ciclo, o el layout recalculado).
+  const [nodes, setNodes] = useState<Node[]>([])
+  const [edges, setEdges] = useState<Edge[]>([])
 
   useEffect(() => {
     if (!cycleId) { setData(null); setLoading(false); return }
@@ -177,7 +182,13 @@ export function RelationshipMap({ projectId, cycleId }: Props) {
     getRelationshipMap(projectId, cycleId).then(setData).finally(() => setLoading(false))
   }, [projectId, cycleId])
 
-  const { nodes, edges } = useMemo(() => data ? buildGraph(data) : { nodes: [], edges: [] }, [data])
+  useEffect(() => {
+    const graph = data ? buildGraph(data) : { nodes: [], edges: [] }
+    setNodes(graph.nodes)
+    setEdges(graph.edges)
+  }, [data])
+
+  const onNodesChange = useCallback((changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)), [])
 
   if (!cycleId) {
     return <p className="text-sm text-muted-foreground px-5 py-10 text-center">Elige un ciclo para ver su mapa.</p>
@@ -194,15 +205,24 @@ export function RelationshipMap({ projectId, cycleId }: Props) {
   }
 
   return (
-    <div style={{ height: "70vh" }} className="relative rounded-xl border border-border overflow-hidden">
-      <ReactFlow nodes={nodes} edges={edges} nodeTypes={NODE_TYPES} fitView minZoom={0.1} nodesConnectable={false} elementsSelectable={false}>
+    <div className="relative w-full h-full">
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        nodeTypes={NODE_TYPES}
+        fitView
+        minZoom={0.1}
+        nodesDraggable
+        nodesConnectable={false}
+      >
         <Background />
-        <Controls showInteractive={false} />
+        <Controls />
         <MiniMap pannable zoomable className="!bottom-3 !right-3" />
       </ReactFlow>
       <div className="absolute top-3 left-3 flex items-center gap-2 text-[11px] text-muted-foreground bg-background/90 backdrop-blur px-2.5 py-1.5 rounded-lg border border-border">
         <AlertTriangle className="w-3 h-3" />
-        Solo lectura — generado a partir de los links ya guardados, nada se puede arrastrar.
+        Los datos son de solo lectura — puedes arrastrar los nodos para acomodar la vista, no se guarda ni afecta nada real.
       </div>
     </div>
   )
