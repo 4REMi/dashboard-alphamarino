@@ -362,7 +362,7 @@ export async function getMetaCampaignOptions(projectId: string): Promise<{ campa
   }
 }
 
-export async function syncMetaAds(projectId: string, cycleId: string, campaignIds?: string[]): Promise<{ synced: number; error?: string }> {
+export async function syncMetaAds(projectId: string, cycleId: string, campaignIds?: string[]): Promise<{ synced: number; error?: string; warnings?: string[] }> {
   const accessToken = process.env.META_SYSTEM_USER_TOKEN
   if (!accessToken) return { synced: 0, error: "META_SYSTEM_USER_TOKEN no está configurado en el servidor" }
 
@@ -503,6 +503,11 @@ export async function syncMetaAds(projectId: string, cycleId: string, campaignId
     })
   }
 
+  // Se acumulan acá en vez de solo loggear a console.error — un video
+  // que no carga es indebuggable para quien sincroniza si la única pista
+  // vive en logs de Vercel a los que no tiene acceso.
+  const videoWarnings: string[] = []
+
   const videoIds = Array.from(new Set(Array.from(creativeByAdId.values()).map((c) => c.videoId).filter((v): v is string => !!v)))
   const videoSourceById = new Map<string, string>()
   if (videoIds.length > 0) {
@@ -513,12 +518,29 @@ export async function syncMetaAds(projectId: string, cycleId: string, campaignId
     try {
       const videosRes = await fetch(videosUrl.toString(), { cache: "no-store" })
       const videosJson = await videosRes.json()
-      if (videosJson.error) console.error("[syncMetaAds] video sources fetch failed:", videosJson.error.message)
+      if (videosJson.error) {
+        console.error("[syncMetaAds] video sources fetch failed:", videosJson.error.message)
+        videoWarnings.push(`No se pudieron consultar los videos de Meta: ${videosJson.error.message}`)
+      }
       for (const [id, v] of Object.entries(videosJson)) {
         if (v && typeof v === "object" && "source" in v) videoSourceById.set(id, (v as { source: string }).source)
       }
+      // Un video_id sin "source" en la respuesta (id presente en videoIds
+      // pero ausente/sin campo source en videosJson) casi siempre es un
+      // problema de permisos del System User sobre ESE video puntual
+      // (video subido por alguien fuera de la cuenta del token, o
+      // todavía procesándose) — Meta no tira error, simplemente omite el
+      // campo, así que hay que detectarlo por ausencia.
+      for (const id of videoIds) {
+        if (!videoSourceById.has(id)) {
+          const adName = Array.from(creativeByAdId.entries()).find(([, c]) => c.videoId === id)?.[1].name ?? id
+          videoWarnings.push(`"${adName}": Meta no devolvió el archivo del video (video_id ${id}) — probablemente un permiso faltante del token sobre ese video, o sigue procesándose.`)
+        }
+      }
     } catch (err) {
-      console.error("[syncMetaAds] video sources fetch threw:", err instanceof Error ? err.message : err)
+      const message = err instanceof Error ? err.message : String(err)
+      console.error("[syncMetaAds] video sources fetch threw:", message)
+      videoWarnings.push(`Error de red consultando los videos de Meta: ${message}`)
     }
   }
 
@@ -561,6 +583,7 @@ export async function syncMetaAds(projectId: string, cycleId: string, campaignId
       ])
       creative.videoUrl = video.url
       if (thumb.url) creative.thumbnailUrl = thumb.url
+      if (video.error) videoWarnings.push(`"${creative.name}": ${video.error}`)
     }
   }
 
@@ -614,7 +637,7 @@ export async function syncMetaAds(projectId: string, cycleId: string, campaignId
   if (dimError) return { synced: 0, error: dimError.message }
   if (factError) return { synced: 0, error: factError.message }
 
-  return { synced: factRows.length }
+  return { synced: factRows.length, warnings: videoWarnings.length > 0 ? videoWarnings : undefined }
 }
 
 // ── Ads Manager-style drill-down (Campaign → Ad Set → Ad/creative) ─────────
