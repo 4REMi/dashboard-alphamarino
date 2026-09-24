@@ -6,8 +6,13 @@ import {
   type Node, type Edge, type NodeProps, type NodeChange,
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
-import { Film, ImageIcon, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react"
-import { getRelationshipMap, getRelationshipMapPositions, saveRelationshipMapPosition, type RelationshipMapData } from "@/lib/actions/relationship-map"
+import { Film, ImageIcon, AlertTriangle, ChevronDown, ChevronRight, Infinity as InfinityIcon, StickyNote as StickyNoteIcon, X } from "lucide-react"
+import {
+  getRelationshipMap, getRelationshipMapPositions, saveRelationshipMapPosition,
+  getRelationshipMapNotes, createRelationshipMapNote, updateRelationshipMapNoteText,
+  updateRelationshipMapNotePosition, deleteRelationshipMapNote,
+  type RelationshipMapData,
+} from "@/lib/actions/relationship-map"
 import { METRIC_DEFS, type MetricKey } from "@/lib/constants/paid-media-metrics"
 import { CONCEPT_STATUS_COLORS, ANGLE_GUIDE, FUNNEL_COLORS } from "@/lib/constants/creatives"
 import { cn } from "@/lib/utils"
@@ -51,23 +56,45 @@ function MetricGrid({ metrics }: { metrics: Record<MetricKey, { value: number | 
 function ConceptNode({ data }: NodeProps<Node<{ concept: RelationshipMapData["concepts"][number] }>>) {
   const { concept } = data
   const angleEntry = ANGLE_GUIDE.find((a) => a.name === concept.angleType)
+  // Evergreen es la excepción entre los status: en vez del pill de texto
+  // (compite mucho visualmente con Brand Line/ángulo/funnel, y ya es
+  // obvio por el ícono qué significa) se muestra como una medalla
+  // discreta — un ícono de infinito, título al pasar el mouse.
+  const isEvergreen = concept.status === "Evergreen"
   return (
-    <div className="w-64 rounded-xl border-2 border-violet-300 bg-violet-50 p-3 shadow-sm">
+    <div
+      className="w-64 rounded-xl border-2 border-violet-300 bg-violet-50 p-3 shadow-sm"
+      style={concept.brandLine ? { borderLeftColor: concept.brandLine.color, borderLeftWidth: 5 } : undefined}
+    >
       <Handle type="target" position={Position.Left} className="!opacity-0" />
       <Handle type="source" position={Position.Right} className="!opacity-0" />
       <div className="flex items-center gap-1.5 mb-1">
         {angleEntry && <span className="text-sm">{angleEntry.emoji}</span>}
-        <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded-full", CONCEPT_STATUS_COLORS[concept.status as keyof typeof CONCEPT_STATUS_COLORS] ?? "bg-gray-100 text-gray-600")}>
-          {concept.status}
-        </span>
+        {isEvergreen ? (
+          <span title="Evergreen" className="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 text-emerald-600">
+            <InfinityIcon className="w-3 h-3" />
+          </span>
+        ) : (
+          <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded-full", CONCEPT_STATUS_COLORS[concept.status as keyof typeof CONCEPT_STATUS_COLORS] ?? "bg-gray-100 text-gray-600")}>
+            {concept.status}
+          </span>
+        )}
         {concept.funnelStage && (
           <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded", FUNNEL_COLORS[concept.funnelStage as keyof typeof FUNNEL_COLORS] ?? "bg-gray-100")}>
             {concept.funnelStage}
           </span>
         )}
+        {concept.brandLine && (
+          <span
+            title={concept.brandLine.name}
+            className="flex-shrink-0 w-2.5 h-2.5 rounded-full border border-white/60 ml-auto"
+            style={{ backgroundColor: concept.brandLine.color }}
+          />
+        )}
       </div>
       <p className="text-sm font-semibold text-foreground truncate">{concept.name ?? concept.angleType ?? "Sin nombre"}</p>
       {concept.targetPersona && <p className="text-[11px] text-muted-foreground line-clamp-2 mt-0.5">{concept.targetPersona}</p>}
+      {concept.brandLine && <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{concept.brandLine.name}</p>}
     </div>
   )
 }
@@ -155,7 +182,31 @@ function CampaignNode({ data }: NodeProps<Node<{ campaign: RelationshipMapData["
   )
 }
 
-const NODE_TYPES = { conceptNode: ConceptNode, assetNode: AssetNode, campaignNode: CampaignNode }
+// Nota libre — no viene de los datos, el usuario la crea/mueve/borra a
+// mano. Mismo espíritu que el Sticky Note de Ad Nodes, pero sin panel de
+// config aparte: se edita inline, se guarda en blur (debounce simple).
+function StickyNode({ id, data }: NodeProps<Node<{ text: string; onTextChange: (id: string, text: string) => void; onDelete: (id: string) => void }>>) {
+  const [value, setValue] = useState(data.text)
+  return (
+    <div className="w-56 rounded-lg border-2 border-amber-300 bg-amber-50 shadow-sm">
+      <div className="flex items-center justify-between px-2 py-1 border-b border-amber-200/70">
+        <StickyNoteIcon className="w-3 h-3 text-amber-600" />
+        <button onClick={() => data.onDelete(id)} title="Eliminar nota" className="nodrag p-0.5 rounded text-amber-700/60 hover:text-destructive hover:bg-black/5">
+          <X className="w-3 h-3" />
+        </button>
+      </div>
+      <textarea
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={() => data.onTextChange(id, value)}
+        placeholder="Nota…"
+        className="nodrag nowheel w-full h-24 resize-none bg-transparent px-2.5 py-2 text-xs text-foreground/80 focus:outline-none"
+      />
+    </div>
+  )
+}
+
+const NODE_TYPES = { conceptNode: ConceptNode, assetNode: AssetNode, campaignNode: CampaignNode, stickyNode: StickyNode }
 
 const COL_CONCEPT = 0
 const COL_ASSET = 340
@@ -234,28 +285,57 @@ export function RelationshipMap({ projectId, cycleId }: Props) {
     getRelationshipMap(projectId, cycleId).then(setData).finally(() => setLoading(false))
   }, [projectId, cycleId])
 
+  const handleNoteTextChange = useCallback((noteId: string, text: string) => {
+    updateRelationshipMapNoteText(noteId, text).catch(() => {})
+  }, [])
+
+  const handleNoteDelete = useCallback((noteId: string) => {
+    setNodes((nds) => nds.filter((n) => n.id !== `note-${noteId}`))
+    deleteRelationshipMapNote(noteId).catch(() => {})
+  }, [])
+
+  function noteToNode(note: { id: string; x: number; y: number; text: string }): Node {
+    return {
+      id: `note-${note.id}`,
+      type: "stickyNode",
+      position: { x: note.x, y: note.y },
+      data: { text: note.text, onTextChange: handleNoteTextChange, onDelete: handleNoteDelete },
+      draggable: true,
+    }
+  }
+
   useEffect(() => {
     if (!data) { setNodes([]); setEdges([]); return }
     const graph = buildGraph(data)
-    getRelationshipMapPositions(projectId, cycleId).then((saved) => {
-      if (saved.length === 0) return
+    Promise.all([
+      getRelationshipMapPositions(projectId, cycleId),
+      getRelationshipMapNotes(projectId, cycleId),
+    ]).then(([saved, notes]) => {
       const savedById = new Map(saved.map((p) => [p.nodeId, p]))
-      setNodes((current) =>
-        current.map((n) => {
-          const pos = savedById.get(n.id)
-          return pos ? { ...n, position: { x: pos.x, y: pos.y } } : n
-        })
-      )
+      const generatedNodes = graph.nodes.map((n) => {
+        const pos = savedById.get(n.id)
+        return pos ? { ...n, position: { x: pos.x, y: pos.y } } : n
+      })
+      setNodes([...generatedNodes, ...notes.map(noteToNode)])
     })
-    setNodes(graph.nodes)
     setEdges(graph.edges)
   }, [data, projectId, cycleId])
 
   const onNodesChange = useCallback((changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)), [])
 
   const onNodeDragStop = useCallback((_: unknown, node: Node) => {
-    saveRelationshipMapPosition(projectId, cycleId, node.id, node.position.x, node.position.y).catch(() => {})
+    if (node.id.startsWith("note-")) {
+      updateRelationshipMapNotePosition(node.id.slice("note-".length), node.position.x, node.position.y).catch(() => {})
+    } else {
+      saveRelationshipMapPosition(projectId, cycleId, node.id, node.position.x, node.position.y).catch(() => {})
+    }
   }, [projectId, cycleId])
+
+  const handleAddNote = useCallback(() => {
+    createRelationshipMapNote(projectId, cycleId, 40, 40).then((note) => {
+      setNodes((nds) => [...nds, noteToNode(note)])
+    })
+  }, [projectId, cycleId, handleNoteTextChange, handleNoteDelete])
 
   if (!cycleId) {
     return <p className="text-sm text-muted-foreground px-5 py-10 text-center">Elige un ciclo para ver su mapa.</p>
@@ -292,6 +372,13 @@ export function RelationshipMap({ projectId, cycleId }: Props) {
         <AlertTriangle className="w-3 h-3" />
         Los datos son de solo lectura — puedes arrastrar los nodos para acomodar la vista, la posición se recuerda para la próxima vez.
       </div>
+      <button
+        onClick={handleAddNote}
+        className="absolute top-3 right-3 flex items-center gap-1.5 text-[11px] font-semibold bg-amber-100 text-amber-700 border border-amber-300 px-2.5 py-1.5 rounded-lg shadow-sm hover:bg-amber-200 transition-colors"
+      >
+        <StickyNoteIcon className="w-3 h-3" />
+        Nota
+      </button>
     </div>
   )
 }

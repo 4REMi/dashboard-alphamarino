@@ -23,6 +23,7 @@ export interface RelationshipConceptNode {
   targetPersona: string | null
   funnelStage: string | null
   status: string
+  brandLine: { id: string; name: string; color: string } | null
 }
 
 export interface RelationshipAssetNode {
@@ -80,6 +81,53 @@ export async function saveRelationshipMapPosition(projectId: string, cycleId: st
   const { error } = await supabase
     .from("relationship_map_positions")
     .upsert({ project_id: projectId, cycle_id: cycleId ?? "none", node_id: nodeId, x, y, updated_at: new Date().toISOString() }, { onConflict: "project_id,cycle_id,node_id" })
+  if (error) throw error
+}
+
+export interface RelationshipMapNote { id: string; x: number; y: number; text: string }
+
+// Anotaciones sueltas del mapa — mismo espíritu que los Sticky Note de
+// Ad Nodes, pero acá no ejecutan nada, solo dejan una nota visual (ej.
+// "estas 3 campañas son remanentes del ciclo pasado"). CRUD completo,
+// a diferencia de las posiciones de nodos generados (que solo se mueven,
+// nunca se crean/borran desde aquí).
+export async function getRelationshipMapNotes(projectId: string, cycleId: string | null): Promise<RelationshipMapNote[]> {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from("relationship_map_notes")
+    .select("id, x, y, text")
+    .eq("project_id", projectId)
+    .eq("cycle_id", cycleId ?? "none")
+  return data ?? []
+}
+
+export async function createRelationshipMapNote(projectId: string, cycleId: string | null, x: number, y: number): Promise<RelationshipMapNote> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  const { data, error } = await supabase
+    .from("relationship_map_notes")
+    .insert({ project_id: projectId, cycle_id: cycleId ?? "none", x, y, text: "", created_by: user?.id ?? null })
+    .select("id, x, y, text")
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function updateRelationshipMapNoteText(noteId: string, text: string): Promise<void> {
+  const supabase = await createClient()
+  const { error } = await supabase.from("relationship_map_notes").update({ text, updated_at: new Date().toISOString() }).eq("id", noteId)
+  if (error) throw error
+}
+
+export async function updateRelationshipMapNotePosition(noteId: string, x: number, y: number): Promise<void> {
+  const supabase = await createClient()
+  const { error } = await supabase.from("relationship_map_notes").update({ x, y, updated_at: new Date().toISOString() }).eq("id", noteId)
+  if (error) throw error
+}
+
+export async function deleteRelationshipMapNote(noteId: string): Promise<void> {
+  const supabase = await createClient()
+  const { error } = await supabase.from("relationship_map_notes").delete().eq("id", noteId)
   if (error) throw error
 }
 
@@ -142,6 +190,7 @@ export async function getRelationshipMap(projectId: string, cycleId: string | nu
       targetPersona: c.target_persona,
       funnelStage: c.funnel_stage,
       status: c.status,
+      brandLine: c.brand_line ? { id: c.brand_line.id, name: c.brand_line.name, color: c.brand_line.color } : null,
     })),
     assets: assets.map((a) => ({
       id: a.id,
