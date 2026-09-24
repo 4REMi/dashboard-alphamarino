@@ -250,6 +250,13 @@ interface ConceptsTableProps {
   cycleId: string | null
   isAdminOrSubadmin: boolean
   canManageAssets?: boolean
+  // Promover/degradar a Evergreen NO es una edición de contenido del
+  // ciclo — es un estado del concepto en sí, y el backend
+  // (promoteConcept/demoteConcept) nunca lo restringió a ciclo activo.
+  // Separado de isAdminOrSubadmin (que aquí llega mezclado con "¿es el
+  // ciclo activo?" vía canEdit en creatives-hub.tsx) para poder marcar
+  // Evergreen un concepto de un ciclo ya cerrado.
+  canManageConceptStatus: boolean
   onRefresh: () => void
   // Actualiza un asset en el state local del padre sin volver a pedir
   // concepts+assets+briefs completos — publicar/ocultar un asset para el
@@ -276,6 +283,7 @@ function ConceptDetailModal({
   cycleId,
   isAdminOrSubadmin,
   canManageAssets,
+  canManageConceptStatus,
   onEdit,
   onClose,
   onNewAsset,
@@ -293,6 +301,7 @@ function ConceptDetailModal({
   cycleId: string | null
   isAdminOrSubadmin: boolean
   canManageAssets: boolean
+  canManageConceptStatus: boolean
   onEdit: () => void
   onClose: () => void
   onNewAsset: () => void
@@ -832,13 +841,13 @@ function ConceptDetailModal({
         {/* ── Footer ── */}
         <DialogFooter className="flex items-center justify-between pt-2 gap-2">
           <div className="flex gap-2">
-            {isAdminOrSubadmin && isEvergreen && (
+            {canManageConceptStatus && isEvergreen && (
               <Button type="button" variant="outline" size="sm" onClick={handleDemote} disabled={isPending} className="text-amber-600 border-amber-200 hover:bg-amber-50">
                 <Star className="w-3.5 h-3.5 mr-1" />
                 Degradar a Activo
               </Button>
             )}
-            {isAdminOrSubadmin && !isEvergreen && (
+            {canManageConceptStatus && !isEvergreen && (
               <Button type="button" variant="outline" size="sm" onClick={handlePromote} disabled={isPending}>
                 <Star className="w-3.5 h-3.5 mr-1 text-amber-500" />
                 Evergreen
@@ -1104,7 +1113,7 @@ function MecanismoCell({
 
 // ── Main table ───────────────────────────────────────────────────────────────
 
-export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleId, isAdminOrSubadmin, canManageAssets = isAdminOrSubadmin, onRefresh, onUpdateAsset, assetLinkStatus, brandBrains = [], brandLines = [], projectBrandBrainId }: ConceptsTableProps) {
+export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleId, isAdminOrSubadmin, canManageAssets = isAdminOrSubadmin, canManageConceptStatus = isAdminOrSubadmin, onRefresh, onUpdateAsset, assetLinkStatus, brandBrains = [], brandLines = [], projectBrandBrainId }: ConceptsTableProps) {
   const [detailConcept, setDetailConcept]   = useState<CreativeConcept | null>(null)
   const [editConcept,   setEditConcept]     = useState<CreativeConcept | null>(null)
   const [createForLineId, setCreateForLineId] = useState<string | null | undefined>(undefined)
@@ -1626,6 +1635,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
           cycleId={cycleId}
           isAdminOrSubadmin={isAdminOrSubadmin}
           canManageAssets={canManageAssets}
+          canManageConceptStatus={canManageConceptStatus}
           onEdit={openEditFromDetail}
           onClose={() => setDetailConcept(null)}
           onNewAsset={openDetailAsNewAsset}

@@ -175,6 +175,7 @@ export function CreativesHub({
         projectId={projectId}
         cycleId={selectedCycleId}
         isAdminOrSubadmin={canEdit}
+        canManageConceptStatus={isAdminOrSubadmin}
         canManageAssets={canManageAssets}
         onRefresh={reload}
         onUpdateAsset={updateAssetLocal}
