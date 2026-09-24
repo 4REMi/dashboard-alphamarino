@@ -529,6 +529,41 @@ export async function syncMetaAds(projectId: string, cycleId: string, campaignId
     ])
   )
 
+  // El video_url que da Meta es una URL firmada que expira en horas (ver
+  // mirrorMetaMedia) — guardarla cruda es justo el bug de "el video deja
+  // de reproducirse y se queda con la miniatura pixelada" unas horas
+  // después de cada sync. Se descarga a Storage UNA sola vez por ad (no
+  // en cada sync — el path de mirrorMetaMedia siempre es nuevo, así que
+  // resincronizar sin este check acumularía archivos huérfanos sin fin).
+  // Imagen/thumbnail de ads de IMAGEN no se tocan: esa URL sí es estable
+  // (mismo criterio ya documentado en mirrorMetaMedia).
+  const videoAdIds = adIds.filter((id) => creativeById.get(id)?.videoUrl)
+  if (videoAdIds.length > 0) {
+    const { data: existingRows } = await supabase
+      .from("meta_ads")
+      .select("ad_id, video_url, thumbnail_url")
+      .eq("project_id", projectId)
+      .in("ad_id", videoAdIds)
+    const existingByAdId = new Map((existingRows ?? []).map((r) => [r.ad_id, r]))
+    const isMirrored = (url: string | null) => !!url && url.includes("/storage/v1/object/public/ad-lab/")
+
+    for (const adId of videoAdIds) {
+      const creative = creativeById.get(adId)!
+      const existing = existingByAdId.get(adId)
+      if (isMirrored(existing?.video_url ?? null)) {
+        creative.videoUrl = existing!.video_url
+        if (isMirrored(existing?.thumbnail_url ?? null)) creative.thumbnailUrl = existing!.thumbnail_url
+        continue
+      }
+      const [video, thumb] = await Promise.all([
+        mirrorMetaMedia(projectId, adId, creative.videoUrl!, "video"),
+        creative.thumbnailUrl ? mirrorMetaMedia(projectId, adId, creative.thumbnailUrl, "thumb") : Promise.resolve({ url: null } as MirrorResult),
+      ])
+      creative.videoUrl = video.url
+      if (thumb.url) creative.thumbnailUrl = thumb.url
+    }
+  }
+
   const dimRows = adIds.map((adId) => {
     const row = uniqueAds.get(adId)!
     const creative = creativeById.get(adId)

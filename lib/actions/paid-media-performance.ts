@@ -12,32 +12,75 @@ async function assertAuth() {
   return { supabase, user }
 }
 
-// Lista liviana de assets del proyecto para el picker "Vincular a
-// concepto" de cada tarjeta — solo lo que se necesita mostrar en ese modal
-// chico, no el objeto CreativeAsset completo.
-export async function getProjectAssetsForLinking(projectId: string): Promise<{
-  id: string; concept_name: string | null; target_persona: string | null
-  thumb_url: string | null; file_type: string | null
-}[]> {
+export interface LinkableAsset {
+  id: string
+  conceptName: string | null
+  targetPersona: string | null
+  format: string | null
+  platform: string | null
+  fileType: string | null
+  // thumbUrl = lo que se ve en la lista (chico); fileUrl = el archivo real,
+  // para poder reproducir el video o agrandar la imagen antes de decidir
+  // — el problema concreto que hacía imposible distinguir variantes casi
+  // idénticas en el picker viejo.
+  thumbUrl: string | null
+  fileUrl: string | null
+  // Si ya está vinculado a otro ad, se marca en vez de escondérselo al
+  // usuario — un asset puede correr en más de un ad a propósito (misma
+  // pieza en distintas campañas), pero vincularlo dos veces por accidente
+  // sin darse cuenta de que ya estaba vinculado es justo lo que este
+  // aviso previene.
+  linkedToAdName: string | null
+}
+
+// Lista de assets para el picker de vinculación asset↔ad — acotada al
+// ciclo actual en vez de TODOS los assets del proyecto alguna vez
+// subidos, que es lo que hacía este picker inservible en cuentas con
+// historial largo.
+export async function getLinkableAssets(projectId: string, cycleId: string | null): Promise<LinkableAsset[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase
+
+  let query = supabase
     .from("creative_assets")
-    .select("id, asset_url, file_path, thumbnail_path, file_type, concept:creative_concepts(name, target_persona)")
+    .select(`
+      id, format, platform, file_type, asset_url, file_path, thumbnail_path,
+      concept:creative_concepts(name, target_persona)
+    `)
     .eq("project_id", projectId)
     .order("created_at", { ascending: false })
-    .limit(200)
+    .limit(300)
+
+  if (cycleId) query = query.eq("cycle_id", cycleId)
+
+  const { data, error } = await query
   if (error) return []
-  return (data ?? []).map((a) => {
+
+  const { data: existingLinks } = await supabase
+    .from("creative_asset_meta_ads")
+    .select("creative_asset_id, meta_ad:meta_ads(ad_name)")
+    .eq("project_id", projectId)
+  const linkedAdNameByAssetId = new Map<string, string | null>(
+    (existingLinks ?? []).map((l) => [l.creative_asset_id, (l.meta_ad as unknown as { ad_name: string | null } | null)?.ad_name ?? null])
+  )
+
+  return (data ?? []).map((a): LinkableAsset => {
     const concept = a.concept as unknown as { name: string | null; target_persona: string | null } | null
-    const thumb = a.thumbnail_path
-      ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/creative-assets/${a.thumbnail_path}`
+    const fileUrl = a.file_path
+      ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/creative-assets/${a.file_path}`
       : a.asset_url
+    const thumbUrl = a.thumbnail_path
+      ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/creative-assets/${a.thumbnail_path}`
+      : fileUrl
     return {
       id: a.id,
-      concept_name: concept?.name ?? null,
-      target_persona: concept?.target_persona ?? null,
-      thumb_url: thumb ?? null,
-      file_type: a.file_type,
+      conceptName: concept?.name ?? null,
+      targetPersona: concept?.target_persona ?? null,
+      format: a.format,
+      platform: a.platform,
+      fileType: a.file_type,
+      thumbUrl,
+      fileUrl,
+      linkedToAdName: linkedAdNameByAssetId.get(a.id) ?? null,
     }
   })
 }
@@ -133,6 +176,14 @@ export interface AdPerformanceCard {
   thumbnail_url: string | null
   image_url: string | null
   video_url: string | null
+  // Media a mostrar, YA con la preferencia resuelta: si el ad está
+  // vinculado a un asset del dashboard, ese archivo (no expira, no
+  // depende de que Meta lo siga sirviendo) gana sobre lo que trajo el
+  // sync. Sin vínculo, sigue siendo thumbnail_url/image_url/video_url de
+  // arriba tal cual.
+  displayThumbnailUrl: string | null
+  displayImageUrl: string | null
+  displayVideoUrl: string | null
   metrics: Record<MetricKey, MetricPoint>
   linkedConcepts: { linkId: string; assetId: string; conceptId: string | null; conceptName: string | null; targetPersona: string | null }[]
   // Filas diarias crudas de este ad — expuestas para poder re-agregar
@@ -172,13 +223,38 @@ export async function getCreativePerformance(projectId: string, cycleId: string)
 
   const { data: links } = await supabase
     .from("creative_asset_meta_ads")
-    .select("id, meta_ad_id, creative_asset:creative_assets(id, concept_id, concept:creative_concepts(id, name, target_persona))")
+    .select(`
+      id, meta_ad_id,
+      creative_asset:creative_assets(
+        id, concept_id, file_type, asset_url, file_path, thumbnail_path,
+        concept:creative_concepts(id, name, target_persona)
+      )
+    `)
     .eq("project_id", projectId)
     .in("meta_ad_id", adIdsWithData.map((a) => a.ad_id))
 
+  type LinkedAsset = {
+    id: string; concept_id: string | null
+    file_type: string | null; asset_url: string | null; file_path: string | null; thumbnail_path: string | null
+    concept: { id: string; name: string | null; target_persona: string | null } | null
+  }
+
+  function assetFileUrl(a: LinkedAsset): string | null {
+    if (a.file_path) return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/creative-assets/${a.file_path}`
+    return a.asset_url
+  }
+  function assetThumbUrl(a: LinkedAsset): string | null {
+    if (a.thumbnail_path) return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/creative-assets/${a.thumbnail_path}`
+    return assetFileUrl(a)
+  }
+
   const linksByAdId = new Map<string, AdPerformanceCard["linkedConcepts"]>()
+  // Solo el PRIMER asset vinculado decide qué media mostrar — un ad
+  // vinculado a más de un asset es un caso raro (edición retroactiva), y
+  // no hay una forma no ambigua de elegir entre varios de todos modos.
+  const linkedAssetByAdId = new Map<string, LinkedAsset>()
   for (const l of links ?? []) {
-    const asset = l.creative_asset as unknown as { id: string; concept_id: string | null; concept: { id: string; name: string | null; target_persona: string | null } | null } | null
+    const asset = l.creative_asset as unknown as LinkedAsset | null
     if (!asset) continue
     if (!linksByAdId.has(l.meta_ad_id)) linksByAdId.set(l.meta_ad_id, [])
     linksByAdId.get(l.meta_ad_id)!.push({
@@ -188,11 +264,14 @@ export async function getCreativePerformance(projectId: string, cycleId: string)
       conceptName: asset.concept?.name ?? null,
       targetPersona: asset.concept?.target_persona ?? null,
     })
+    if (!linkedAssetByAdId.has(l.meta_ad_id)) linkedAssetByAdId.set(l.meta_ad_id, asset)
   }
 
   return adIdsWithData
     .map((ad): AdPerformanceCard => {
       const window = (ad.campaign_id && campaignOverrides[ad.campaign_id]) || defaultWindow
+      const linkedAsset = linkedAssetByAdId.get(ad.ad_id)
+      const isLinkedVideo = linkedAsset?.file_type === "video"
       return {
         ad_id: ad.ad_id,
         ad_name: ad.ad_name,
@@ -203,6 +282,9 @@ export async function getCreativePerformance(projectId: string, cycleId: string)
         thumbnail_url: ad.thumbnail_url,
         image_url: ad.image_url,
         video_url: ad.video_url,
+        displayThumbnailUrl: linkedAsset ? assetThumbUrl(linkedAsset) : ad.thumbnail_url,
+        displayImageUrl: linkedAsset && !isLinkedVideo ? assetFileUrl(linkedAsset) : ad.image_url,
+        displayVideoUrl: linkedAsset && isLinkedVideo ? assetFileUrl(linkedAsset) : ad.video_url,
         metrics: computeMetricsForAd(statsByAd.get(ad.ad_id)!, window),
         linkedConcepts: linksByAdId.get(ad.ad_id) ?? [],
         dailyRows: statsByAd.get(ad.ad_id)!,

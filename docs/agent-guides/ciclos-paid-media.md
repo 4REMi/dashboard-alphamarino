@@ -126,9 +126,17 @@ ciclo, solo visible para admin/subadmin.
   `paid_media_context` (`display_metrics`/`trend_window`/`campaign_trend_overrides`).
 - `supabase/migrations/089_synced_campaign_selection.sql` — `synced_campaign_ids`.
 - `lib/actions/meta.ts` — `syncMetaAds` (sync a nivel ad, `time_increment=1`,
-  filtro opcional por `campaign_id`), `getMetaCampaignOptions` (picker).
+  filtro opcional por `campaign_id`; mirror-ea a Storage el video de cada ad de
+  video UNA sola vez, nunca en cada sync, porque el `video_url` que da Meta es
+  una URL firmada que expira en horas — sin esto el video dejaba de reproducirse
+  y quedaba solo la miniatura), `getMetaCampaignOptions` (picker).
 - `lib/actions/paid-media-performance.ts` — `getCreativePerformance` (agregación +
-  cálculo de tendencia), `linkAssetToMetaAd`/`unlinkAssetFromMetaAd`.
+  cálculo de tendencia; expone `display*Url` con la preferencia YA resuelta:
+  el archivo del propio asset del dashboard si el ad está vinculado, si no lo
+  que trajo el sync — nunca usar `image_url`/`thumbnail_url`/`video_url` crudos
+  para renderizar, siempre `display*Url`), `getLinkableAssets` (picker de
+  vinculación, acotado al ciclo actual, con preview real + aviso si el asset
+  ya está vinculado a otro ad), `linkAssetToMetaAd`/`unlinkAssetFromMetaAd`.
 - `lib/constants/paid-media-metrics.ts` — `METRIC_DEFS` (separado de las server
   actions porque un archivo `"use server"` solo puede exportar funciones async).
 - `components/projects/hub/creative-performance-grid.tsx`,

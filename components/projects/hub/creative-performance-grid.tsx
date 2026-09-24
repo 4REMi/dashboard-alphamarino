@@ -1,12 +1,12 @@
 "use client"
 
 import { useMemo, useState, useTransition } from "react"
-import { Loader2, RefreshCw, ImageIcon, Link2, X, ListFilter } from "lucide-react"
+import { Loader2, RefreshCw, ImageIcon, Link2, X, ListFilter, Film } from "lucide-react"
 import { syncMetaAds, getMetaCampaignOptions } from "@/lib/actions/meta"
 import { setSyncedCampaignIds } from "@/lib/actions/projects"
 import {
-  getCreativePerformance, getProjectAssetsForLinking, linkAssetToMetaAd, unlinkAssetFromMetaAd,
-  type AdPerformanceCard,
+  getCreativePerformance, getLinkableAssets, linkAssetToMetaAd, unlinkAssetFromMetaAd,
+  type AdPerformanceCard, type LinkableAsset,
 } from "@/lib/actions/paid-media-performance"
 import { METRIC_DEFS, type MetricKey } from "@/lib/constants/paid-media-metrics"
 import { cn } from "@/lib/utils"
@@ -51,53 +51,119 @@ function TrendBadge({ trendPct, higherIsBetter }: { trendPct: number | null; hig
   )
 }
 
-function LinkPickerModal({ projectId, adId, onClose, onLinked }: {
-  projectId: string; adId: string; onClose: () => void; onLinked: () => void
+// Rediseñado — el picker viejo agrupaba por concepto (varias filas
+// idénticas "Aguascalientes + Precios + Beneficios" sin forma de
+// distinguirlas) y no mostraba NI el creativo que se estaba vinculando
+// NI un preview real de cada asset (los "Sin concepto" salían en blanco).
+// Ahora es explícitamente 1-a-1 asset↔ad: arriba se ve el propio
+// creativo que se está vinculando (para comparar lado a lado), cada
+// asset trae su miniatura real + ícono de video si aplica, un buscador
+// para cuando hay muchas variantes similares, y un aviso si ese asset ya
+// está vinculado a otro ad (no lo bloquea — puede ser intencional — pero
+// evita vincularlo dos veces sin darse cuenta).
+function LinkPickerModal({ projectId, cycleId, card, onClose, onLinked }: {
+  projectId: string; cycleId: string; card: AdPerformanceCard; onClose: () => void; onLinked: () => void
 }) {
-  const [assets, setAssets] = useState<Awaited<ReturnType<typeof getProjectAssetsForLinking>> | null>(null)
+  const [assets, setAssets] = useState<LinkableAsset[] | null>(null)
+  const [search, setSearch] = useState("")
   const [isPending, startTransition] = useTransition()
+  const [lightboxAsset, setLightboxAsset] = useState<LinkableAsset | null>(null)
 
   useState(() => {
-    getProjectAssetsForLinking(projectId).then(setAssets)
+    getLinkableAssets(projectId, cycleId).then(setAssets)
     return null
+  })
+
+  const filtered = (assets ?? []).filter((a) => {
+    if (!search.trim()) return true
+    const q = search.toLowerCase()
+    return (a.conceptName ?? "").toLowerCase().includes(q) || (a.targetPersona ?? "").toLowerCase().includes(q)
   })
 
   function pick(assetId: string) {
     startTransition(async () => {
-      await linkAssetToMetaAd(projectId, assetId, adId)
+      await linkAssetToMetaAd(projectId, assetId, card.ad_id)
       onLinked()
       onClose()
     })
   }
 
+  const adMedia = card.displayImageUrl ?? card.displayThumbnailUrl
+
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-background rounded-2xl border border-border max-w-md w-full max-h-[70vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-background rounded-2xl border border-border max-w-lg w-full max-h-[85vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-          <h3 className="text-sm font-semibold">Vincular a un concepto</h3>
+          <h3 className="text-sm font-semibold">Vincular a un asset del dashboard</h3>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
         </div>
+
+        {/* Este creativo — para comparar contra los assets de abajo sin
+            tener que recordar cuál era. */}
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-muted/30">
+          <div className="w-14 h-14 rounded-lg overflow-hidden bg-muted flex-shrink-0">
+            {card.displayVideoUrl ? (
+              <video src={card.displayVideoUrl} className="w-full h-full object-cover" muted />
+            ) : adMedia ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={adMedia} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center"><ImageIcon className="w-4 h-4 text-muted-foreground/40" /></div>
+            )}
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-semibold truncate">{card.ad_name ?? "Sin nombre"}</p>
+            {card.campaign_name && <p className="text-[11px] text-muted-foreground truncate">{card.campaign_name}</p>}
+          </div>
+        </div>
+
+        <div className="px-4 py-2 border-b border-border">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar por concepto o persona…"
+            className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+        </div>
+
         <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
           {!assets && <p className="text-xs text-muted-foreground p-2">Cargando…</p>}
-          {assets?.length === 0 && <p className="text-xs text-muted-foreground p-2">Sin assets en este proyecto todavía.</p>}
-          {assets?.map((a) => (
-            <button
-              key={a.id}
-              onClick={() => pick(a.id)}
-              disabled={isPending}
-              className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-muted transition-colors text-left disabled:opacity-50"
-            >
-              <div className="w-9 h-9 rounded-md overflow-hidden bg-muted flex-shrink-0">
-                {a.thumb_url && <img src={a.thumb_url} alt="" className="w-full h-full object-cover" />}
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-medium truncate">{a.concept_name ?? "Sin concepto"}</p>
-                {a.target_persona && <p className="text-[11px] text-muted-foreground truncate">{a.target_persona}</p>}
-              </div>
-            </button>
+          {assets?.length === 0 && <p className="text-xs text-muted-foreground p-2">Sin assets en este ciclo todavía.</p>}
+          {assets && assets.length > 0 && filtered.length === 0 && <p className="text-xs text-muted-foreground p-2">Nada coincide con "{search}".</p>}
+          {filtered.map((a) => (
+            <div key={a.id} className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-muted transition-colors">
+              <button
+                onClick={() => a.fileType === "video" ? setLightboxAsset(a) : null}
+                className={cn("relative w-11 h-11 rounded-md overflow-hidden bg-muted flex-shrink-0", a.fileType === "video" && "cursor-pointer")}
+                title={a.fileType === "video" ? "Ver video" : undefined}
+              >
+                {a.thumbUrl && <img src={a.thumbUrl} alt="" className="w-full h-full object-cover" />}
+                {a.fileType === "video" && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                    <Film className="w-3.5 h-3.5 text-white" />
+                  </div>
+                )}
+              </button>
+              <button onClick={() => pick(a.id)} disabled={isPending} className="min-w-0 flex-1 text-left disabled:opacity-50">
+                <p className="text-xs font-medium truncate">{a.conceptName ?? "Sin concepto"}</p>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {a.targetPersona && <p className="text-[11px] text-muted-foreground truncate">{a.targetPersona}</p>}
+                  {a.format && <span className="text-[10px] text-muted-foreground/70">· {a.format}</span>}
+                </div>
+                {a.linkedToAdName && (
+                  <p className="text-[10px] text-amber-600 truncate mt-0.5">Ya vinculado a: {a.linkedToAdName}</p>
+                )}
+              </button>
+            </div>
           ))}
         </div>
       </div>
+
+      {lightboxAsset && (
+        <div className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4" onClick={() => setLightboxAsset(null)}>
+          <video src={lightboxAsset.fileUrl ?? undefined} controls autoPlay className="max-w-full max-h-[80vh]" onClick={(e) => e.stopPropagation()} />
+        </div>
+      )}
     </div>
   )
 }
@@ -167,23 +233,24 @@ function CampaignPickerModal({ projectId, savedCampaignIds, onClose, onConfirm }
   )
 }
 
-function CreativeCard({ card, metrics, projectId, canEdit, onRefresh }: {
-  card: AdPerformanceCard; metrics: MetricKey[]; projectId: string; canEdit: boolean; onRefresh: () => void
+function CreativeCard({ card, metrics, projectId, cycleId, canEdit, onRefresh }: {
+  card: AdPerformanceCard; metrics: MetricKey[]; projectId: string; cycleId: string; canEdit: boolean; onRefresh: () => void
 }) {
   const [showLinkPicker, setShowLinkPicker] = useState(false)
-  // El video real (no solo su thumbnail chico/borroso) — Meta ya nos da
-  // la URL del archivo productivo, no hay razón para mostrar solo una
-  // miniatura estática cuando el creativo es un video.
-  const poster = card.image_url ?? card.thumbnail_url ?? undefined
-  const media = card.image_url ?? card.thumbnail_url
-  const isVideo = !!card.video_url
+  // El video real (no solo su thumbnail chico/borroso) — display*Url ya
+  // trae la preferencia resuelta: el archivo del propio dashboard si el
+  // ad está vinculado a un asset (no expira, no depende de Meta), o lo
+  // que trajo el sync si no.
+  const poster = card.displayImageUrl ?? card.displayThumbnailUrl ?? undefined
+  const media = card.displayImageUrl ?? card.displayThumbnailUrl
+  const isVideo = !!card.displayVideoUrl
 
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden flex flex-col">
       <div className="relative aspect-square bg-muted">
         {isVideo ? (
           <video
-            src={card.video_url ?? undefined}
+            src={card.displayVideoUrl ?? undefined}
             poster={poster}
             controls
             preload="none"
@@ -256,7 +323,7 @@ function CreativeCard({ card, metrics, projectId, canEdit, onRefresh }: {
       </div>
 
       {showLinkPicker && (
-        <LinkPickerModal projectId={projectId} adId={card.ad_id} onClose={() => setShowLinkPicker(false)} onLinked={onRefresh} />
+        <LinkPickerModal projectId={projectId} cycleId={cycleId} card={card} onClose={() => setShowLinkPicker(false)} onLinked={onRefresh} />
       )}
     </div>
   )
@@ -410,7 +477,7 @@ export function CreativePerformanceGrid({ projectId, cycleId, initialCards, disp
 
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 p-5">
             {visibleCards.map((card) => (
-              <CreativeCard key={card.ad_id} card={card} metrics={displayMetrics} projectId={projectId} canEdit={canEdit} onRefresh={reload} />
+              <CreativeCard key={card.ad_id} card={card} metrics={displayMetrics} projectId={projectId} cycleId={cycleId} canEdit={canEdit} onRefresh={reload} />
             ))}
           </div>
         </>

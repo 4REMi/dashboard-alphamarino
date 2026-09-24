@@ -383,7 +383,7 @@ function CampaignNode({ data }: NodeProps<Node<{
       {expanded && (
         <div className="border-t border-border divide-y divide-border">
           {campaign.ads.map((ad) => {
-            const media = ad.image_url ?? ad.thumbnail_url
+            const media = ad.displayImageUrl ?? ad.displayThumbnailUrl
             return (
               <div key={ad.ad_id} className="bg-muted/20">
                 <div className="flex items-center gap-2 p-2.5">
