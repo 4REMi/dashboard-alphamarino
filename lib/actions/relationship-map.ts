@@ -49,6 +49,12 @@ export interface RelationshipCampaignNode {
   // colapsado ya es lo que se ve por default).
   aggregate: Record<MetricKey, MetricPoint>
   ads: AdPerformanceCard[]
+  // Ventana de tendencia que se usó para calcular `aggregate` — el
+  // override de la campaña si existe, si no el default de la cuenta. Se
+  // expone para que el mapa pueda mostrar/editar el override sin tener
+  // que resolverlo de nuevo del lado del cliente.
+  trendWindow: TrendWindow
+  hasOverride: boolean
 }
 
 export interface RelationshipMapData {
@@ -183,6 +189,8 @@ export async function getRelationshipMap(projectId: string, cycleId: string | nu
       campaignName: campaignAds[0].campaign_name,
       aggregate: computeMetricsForAd(merged, window),
       ads: campaignAds,
+      trendWindow: window,
+      hasOverride: !!campaignOverrides[campaignId],
     }
   })
 

@@ -1,9 +1,9 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import type { PaidMediaContext, MainObjective, TrendWindow } from "@/lib/types"
+import type { PaidMediaContext, MainObjective } from "@/lib/types"
 import { PAID_MEDIA_PLATFORMS, MAIN_OBJECTIVES } from "@/lib/types"
-import { METRIC_DEFS, type MetricKey } from "@/lib/constants/paid-media-metrics"
+import { METRIC_DEFS, TREND_WINDOW_LABELS, type MetricKey } from "@/lib/constants/paid-media-metrics"
 import { upsertPaidMediaContext } from "@/lib/actions/projects"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
 
@@ -11,14 +11,6 @@ interface Props {
   projectId: string
   context: PaidMediaContext | null
   canEdit: boolean
-}
-
-const TREND_WINDOW_LABELS: Record<TrendWindow, string> = {
-  previous_day: "vs. ayer",
-  last_3d: "vs. últimos 3 días",
-  last_7d: "vs. últimos 7 días",
-  last_14d: "vs. últimos 14 días",
-  baseline: "vs. inicio del ciclo",
 }
 
 // Reconstruido desde cero — la versión anterior comparaba un "real"

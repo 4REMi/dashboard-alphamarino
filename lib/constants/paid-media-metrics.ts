@@ -24,3 +24,14 @@ export const METRIC_DEFS: Record<MetricKey, { label: string; higherIsBetter: boo
   video_views:          { label: "Reproducciones de video", higherIsBetter: true, format: (v) => v.toLocaleString("en-US") },
   purchase_value:       { label: "Valor de compra",    higherIsBetter: true,  format: (v) => `$${v.toLocaleString("en-US", { maximumFractionDigits: 0 })}` },
 }
+
+// Compartido entre el picker de "Contexto de Cuenta" (default por
+// proyecto) y el override puntual por campaña en el mapa de relaciones —
+// mismos presets que Meta Ads Manager.
+export const TREND_WINDOW_LABELS: Record<string, string> = {
+  previous_day: "vs. ayer",
+  last_3d: "vs. últimos 3 días",
+  last_7d: "vs. últimos 7 días",
+  last_14d: "vs. últimos 14 días",
+  baseline: "vs. inicio del ciclo",
+}

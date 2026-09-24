@@ -13,10 +13,11 @@ import {
   updateRelationshipMapNotePosition, deleteRelationshipMapNote,
   type RelationshipMapData,
 } from "@/lib/actions/relationship-map"
-import { METRIC_DEFS, type MetricKey } from "@/lib/constants/paid-media-metrics"
+import { METRIC_DEFS, TREND_WINDOW_LABELS, type MetricKey } from "@/lib/constants/paid-media-metrics"
 import { CONCEPT_STATUS_COLORS, ANGLE_GUIDE, FUNNEL_COLORS, AWARENESS_LABELS } from "@/lib/constants/creatives"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
+import { setCampaignTrendOverride } from "@/lib/actions/projects"
 import { cn } from "@/lib/utils"
 import type { CreativeConcept } from "@/lib/types"
 
@@ -322,10 +323,22 @@ function AssetNode({ data }: NodeProps<Node<{ asset: RelationshipMapData["assets
 // agregadas (nunca resumido); al expandir aparece cada ad individual
 // adentro, con su propio detalle completo — no se pierde nada, solo se
 // organiza.
-function CampaignNode({ data }: NodeProps<Node<{ campaign: RelationshipMapData["campaigns"][number] }>>) {
-  const { campaign } = data
+function CampaignNode({ data }: NodeProps<Node<{
+  campaign: RelationshipMapData["campaigns"][number]
+  projectId: string
+  onOverrideChange: (campaignId: string, window: string | null) => void
+}>>) {
+  const { campaign, projectId, onOverrideChange } = data
   const [expanded, setExpanded] = useState(false)
+  const [savingWindow, setSavingWindow] = useState(false)
   const activeCount = campaign.ads.filter((a) => a.status === "ACTIVE").length
+
+  function handleWindowChange(value: string) {
+    setSavingWindow(true)
+    setCampaignTrendOverride(projectId, campaign.campaignId, value === "default" ? null : value)
+      .then(() => onOverrideChange(campaign.campaignId, value === "default" ? null : value))
+      .finally(() => setSavingWindow(false))
+  }
 
   return (
     <div className="w-80 rounded-xl border-2 border-emerald-300 bg-white shadow-sm overflow-hidden">
@@ -344,6 +357,26 @@ function CampaignNode({ data }: NodeProps<Node<{ campaign: RelationshipMapData["
             tarjeta. */}
         <HealthBadge metrics={campaign.aggregate} />
       </button>
+
+      {/* Ajuste puntual de ventana de tendencia por campaña — mismo ajuste
+          que ya existía como backend (setCampaignTrendOverride) sin
+          ningún lugar en la UI desde donde llamarlo; el mapa, al mostrar
+          la campaña como su propio nodo, es un lugar natural para
+          hacerlo sin ir a Contexto de Cuenta. */}
+      <div className="nodrag px-2.5 py-1.5 border-b border-border bg-muted/20 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+        <span className="text-[9px] text-muted-foreground flex-shrink-0">Tendencia:</span>
+        <select
+          value={campaign.hasOverride ? campaign.trendWindow : "default"}
+          onChange={(e) => handleWindowChange(e.target.value)}
+          disabled={savingWindow}
+          className="nodrag flex-1 text-[10px] font-medium bg-transparent border border-border rounded px-1 py-0.5 disabled:opacity-50"
+        >
+          <option value="default">Default de la cuenta</option>
+          {Object.entries(TREND_WINDOW_LABELS).map(([val, label]) => (
+            <option key={val} value={val}>{label}</option>
+          ))}
+        </select>
+      </div>
 
       <MetricGrid metrics={campaign.aggregate} />
 
@@ -417,6 +450,8 @@ const CONCEPT_ROW_H = 100
 interface GraphHandlers {
   onViewConcept: (concept: CreativeConcept) => void
   onEnlarge: (asset: RelationshipMapData["assets"][number]) => void
+  projectId: string
+  onOverrideChange: (campaignId: string, window: string | null) => void
 }
 
 function buildGraph(data: RelationshipMapData, handlers: GraphHandlers): { nodes: Node[]; edges: Edge[] } {
@@ -442,7 +477,7 @@ function buildGraph(data: RelationshipMapData, handlers: GraphHandlers): { nodes
           if (!placedCampaignIds.has(campaignId)) {
             const campaign = campaignById.get(campaignId)
             if (campaign) {
-              nodes.push({ id: `campaign-${campaignId}`, type: "campaignNode", position: { x: COL_CAMPAIGN, y: cursorY }, data: { campaign }, draggable: true })
+              nodes.push({ id: `campaign-${campaignId}`, type: "campaignNode", position: { x: COL_CAMPAIGN, y: cursorY }, data: { campaign, projectId: handlers.projectId, onOverrideChange: handlers.onOverrideChange }, draggable: true })
               cursorY += CAMPAIGN_ROW_H
             }
             placedCampaignIds.add(campaignId)
@@ -488,11 +523,23 @@ export function RelationshipMap({ projectId, cycleId }: Props) {
   const handleViewConcept = useCallback((concept: CreativeConcept) => setViewingConcept(concept), [])
   const handleEnlarge = useCallback((asset: RelationshipMapData["assets"][number]) => setLightboxAsset(asset), [])
 
+  const refetchData = useCallback(() => {
+    if (!cycleId) return
+    getRelationshipMap(projectId, cycleId).then(setData)
+  }, [projectId, cycleId])
+
   useEffect(() => {
     if (!cycleId) { setData(null); setLoading(false); return }
     setLoading(true)
     getRelationshipMap(projectId, cycleId).then(setData).finally(() => setLoading(false))
   }, [projectId, cycleId])
+
+  // El override de tendencia por campaña recalcula el aggregate del lado
+  // del servidor (necesita las filas diarias completas) — el camino más
+  // simple y correcto es re-traer todo el mapa; las posiciones ya
+  // guardadas se vuelven a aplicar solas en el efecto de abajo, así que
+  // esto no reacomoda nada que el usuario ya haya movido.
+  const handleOverrideChange = useCallback(() => { refetchData() }, [refetchData])
 
   const handleNoteTextChange = useCallback((noteId: string, text: string) => {
     updateRelationshipMapNoteText(noteId, text).catch(() => {})
@@ -515,7 +562,7 @@ export function RelationshipMap({ projectId, cycleId }: Props) {
 
   useEffect(() => {
     if (!data) { setNodes([]); setEdges([]); return }
-    const graph = buildGraph(data, { onViewConcept: handleViewConcept, onEnlarge: handleEnlarge })
+    const graph = buildGraph(data, { onViewConcept: handleViewConcept, onEnlarge: handleEnlarge, projectId, onOverrideChange: handleOverrideChange })
     Promise.all([
       getRelationshipMapPositions(projectId, cycleId),
       getRelationshipMapNotes(projectId, cycleId),
@@ -528,7 +575,7 @@ export function RelationshipMap({ projectId, cycleId }: Props) {
       setNodes([...generatedNodes, ...notes.map(noteToNode)])
     })
     setEdges(graph.edges)
-  }, [data, projectId, cycleId, handleViewConcept, handleEnlarge])
+  }, [data, projectId, cycleId, handleViewConcept, handleEnlarge, handleOverrideChange])
 
   const onNodesChange = useCallback((changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)), [])
 
