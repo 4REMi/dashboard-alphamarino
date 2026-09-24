@@ -500,9 +500,12 @@ export function RelationshipMap({ projectId, cycleId }: Props) {
   }, [projectId, cycleId])
 
   const handleAddNote = useCallback(() => {
-    createRelationshipMapNote(projectId, cycleId, 40, 40).then((note) => {
-      setNodes((nds) => [...nds, noteToNode(note)])
-    })
+    createRelationshipMapNote(projectId, cycleId, 40, 40)
+      .then((note) => setNodes((nds) => [...nds, noteToNode(note)]))
+      .catch((err) => {
+        console.error(err)
+        alert("No se pudo crear la nota — revisa que la migración de relationship_map_notes ya esté corrida en Supabase.")
+      })
   }, [projectId, cycleId, handleNoteTextChange, handleNoteDelete])
 
   if (!cycleId) {
