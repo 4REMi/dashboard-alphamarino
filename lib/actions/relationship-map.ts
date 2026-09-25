@@ -3,7 +3,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { getCreativeConcepts, getCreativeAssets } from "@/lib/actions/creatives"
 import { getCreativePerformance, type AdPerformanceCard } from "@/lib/actions/paid-media-performance"
-import { mergeDailyStatsByDate, computeMetricsForAd, type MetricPoint } from "@/lib/utils/paid-media-calc"
+import { mergeDailyStatsByDate, computeMetricsForAd, withMetaReach, type MetricPoint } from "@/lib/utils/paid-media-calc"
 import { METRIC_DEFS, type MetricKey } from "@/lib/constants/paid-media-metrics"
 import type { TrendWindow, CreativeConcept } from "@/lib/types"
 
@@ -152,12 +152,14 @@ export async function deleteRelationshipMapNote(noteId: string): Promise<void> {
 export async function getRelationshipMap(projectId: string, cycleId: string | null): Promise<RelationshipMapData> {
   const supabase = await createClient()
 
-  const [concepts, assets, ads, contextRes] = await Promise.all([
+  const [concepts, assets, ads, contextRes, reachRes] = await Promise.all([
     getCreativeConcepts(projectId, cycleId),
     getCreativeAssets(projectId, cycleId),
     cycleId ? getCreativePerformance(projectId, cycleId) : Promise.resolve([] as AdPerformanceCard[]),
     supabase.from("paid_media_context").select("trend_window, campaign_trend_overrides").eq("project_id", projectId).maybeSingle(),
+    supabase.from("meta_cycle_reach").select("object_id, reach, frequency").eq("project_id", projectId).eq("cycle_id", cycleId ?? "").eq("level", "campaign"),
   ])
+  const reachByCampaignId = new Map((reachRes.data ?? []).map((r) => [r.object_id as string, r as { reach: number | null; frequency: number | null }]))
 
   const defaultWindow: TrendWindow = (contextRes.data?.trend_window as TrendWindow) ?? "previous_day"
   const campaignOverrides = (contextRes.data?.campaign_trend_overrides ?? {}) as Record<string, TrendWindow>
@@ -187,7 +189,7 @@ export async function getRelationshipMap(projectId: string, cycleId: string | nu
     return {
       campaignId,
       campaignName: campaignAds[0].campaign_name,
-      aggregate: computeMetricsForAd(merged, window),
+      aggregate: withMetaReach(computeMetricsForAd(merged, window), reachByCampaignId.get(campaignId)),
       ads: campaignAds,
       trendWindow: window,
       hasOverride: !!campaignOverrides[campaignId],

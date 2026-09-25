@@ -641,6 +641,50 @@ export async function syncMetaAds(projectId: string, cycleId: string, campaignId
     .not("ad_id", "in", `(${adIds.map((id) => `"${id}"`).join(",")})`)
   if (pruneError) console.error("[syncMetaAds] no se pudieron limpiar los creativos de campañas quitadas:", pruneError.message)
 
+  // Alcance/frecuencia sobre TODO el rango, deduplicados por Meta. No se
+  // pueden reconstruir de las filas diarias (sumar días cuenta dos veces a
+  // la misma persona) ni juntando ads (sumar/maximizar ignora el traslape
+  // de audiencia) — por eso se piden aparte, sin time_increment, y se
+  // guardan tal cual para que coincidan con Ads Manager.
+  const reachRows: { project_id: string; cycle_id: string; level: "ad" | "campaign"; object_id: string; reach: number | null; frequency: number | null }[] = []
+  for (const level of ["ad", "campaign"] as const) {
+    const reachUrl = new URL(`${META_BASE}/act_${meta_ad_account_id}/insights`)
+    reachUrl.searchParams.set("level", level)
+    reachUrl.searchParams.set("fields", level === "ad" ? "ad_id,reach,frequency" : "campaign_id,reach,frequency")
+    reachUrl.searchParams.set("time_range", JSON.stringify({ since, until }))
+    reachUrl.searchParams.set("access_token", accessToken)
+    reachUrl.searchParams.set("limit", "500")
+    if (campaignIds?.length) {
+      reachUrl.searchParams.set("filtering", JSON.stringify([{ field: "campaign.id", operator: "IN", value: campaignIds }]))
+    }
+    try {
+      const reachJson = await (await fetch(reachUrl.toString(), { cache: "no-store" })).json()
+      if (reachJson.error) {
+        console.error(`[syncMetaAds] reach (${level}) fetch failed:`, reachJson.error.message)
+        continue
+      }
+      for (const r of (reachJson.data ?? []) as { ad_id?: string; campaign_id?: string; reach?: string; frequency?: string }[]) {
+        const objectId = level === "ad" ? r.ad_id : r.campaign_id
+        if (!objectId) continue
+        reachRows.push({
+          project_id: projectId,
+          cycle_id: cycleId,
+          level,
+          object_id: objectId,
+          reach: r.reach ? Number(r.reach) : null,
+          frequency: r.frequency ? Number(r.frequency) : null,
+        })
+      }
+    } catch (err) {
+      console.error(`[syncMetaAds] reach (${level}) fetch threw:`, err instanceof Error ? err.message : err)
+    }
+  }
+  if (reachRows.length > 0) {
+    await supabase.from("meta_cycle_reach").delete().eq("project_id", projectId).eq("cycle_id", cycleId)
+    const { error: reachError } = await supabase.from("meta_cycle_reach").insert(reachRows)
+    if (reachError) console.error("[syncMetaAds] no se pudo guardar alcance del ciclo:", reachError.message)
+  }
+
   return { synced: factRows.length }
 }
 

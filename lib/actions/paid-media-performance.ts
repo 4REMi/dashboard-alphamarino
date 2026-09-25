@@ -164,7 +164,7 @@ export async function unlinkAssetFromMetaAd(projectId: string, linkId: string): 
 // mergeDailyStatsByDate) viven en lib/utils/paid-media-calc.ts — un
 // archivo "use server" solo puede exportar funciones async, así que ni
 // esto ni relationship-map.ts los importan de aquí, sino directo de ahí.
-import { computeMetricsForAd, type MetricPoint } from "@/lib/utils/paid-media-calc"
+import { computeMetricsForAd, withMetaReach, type MetricPoint } from "@/lib/utils/paid-media-calc"
 
 export interface AdPerformanceCard {
   ad_id: string
@@ -201,11 +201,13 @@ export interface AdPerformanceCard {
 export async function getCreativePerformance(projectId: string, cycleId: string): Promise<AdPerformanceCard[]> {
   const supabase = await createClient()
 
-  const [adsRes, statsRes, contextRes] = await Promise.all([
+  const [adsRes, statsRes, contextRes, reachRes] = await Promise.all([
     supabase.from("meta_ads").select("*").eq("project_id", projectId),
     supabase.from("meta_ad_daily_stats").select("*").eq("project_id", projectId).eq("cycle_id", cycleId).order("date", { ascending: true }),
     supabase.from("paid_media_context").select("trend_window, campaign_trend_overrides").eq("project_id", projectId).maybeSingle(),
+    supabase.from("meta_cycle_reach").select("object_id, reach, frequency").eq("project_id", projectId).eq("cycle_id", cycleId).eq("level", "ad"),
   ])
+  const reachByAdId = new Map((reachRes.data ?? []).map((r) => [r.object_id as string, r as { reach: number | null; frequency: number | null }]))
 
   const ads: MetaAd[] = adsRes.data ?? []
   const dailyStats: MetaAdDailyStat[] = statsRes.data ?? []
@@ -285,7 +287,7 @@ export async function getCreativePerformance(projectId: string, cycleId: string)
         displayThumbnailUrl: linkedAsset ? assetThumbUrl(linkedAsset) : ad.thumbnail_url,
         displayImageUrl: linkedAsset && !isLinkedVideo ? assetFileUrl(linkedAsset) : ad.image_url,
         displayVideoUrl: linkedAsset && isLinkedVideo ? assetFileUrl(linkedAsset) : ad.video_url,
-        metrics: computeMetricsForAd(statsByAd.get(ad.ad_id)!, window),
+        metrics: withMetaReach(computeMetricsForAd(statsByAd.get(ad.ad_id)!, window), reachByAdId.get(ad.ad_id)),
         linkedConcepts: linksByAdId.get(ad.ad_id) ?? [],
         dailyRows: statsByAd.get(ad.ad_id)!,
       }

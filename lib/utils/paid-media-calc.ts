@@ -92,6 +92,23 @@ export function mergeDailyStatsByDate(rows: MetaAdDailyStat[]): MetaAdDailyStat[
   return Array.from(byDate.values())
 }
 
+// Reemplaza alcance/frecuencia aproximados (derivados de filas diarias)
+// por los que Meta deduplicó sobre todo el ciclo — los únicos que
+// coinciden con Ads Manager. Sin tendencia: comparar alcance de un día
+// contra otro no tiene equivalente directo en Ads Manager, y mostrar un %
+// calculado con la aproximación sería engañoso.
+export function withMetaReach(
+  metrics: Record<MetricKey, MetricPoint>,
+  meta: { reach: number | null; frequency: number | null } | undefined,
+): Record<MetricKey, MetricPoint> {
+  if (!meta) return metrics
+  return {
+    ...metrics,
+    reach: { ...metrics.reach, value: meta.reach, trendPct: null },
+    frequency: { ...metrics.frequency, value: meta.frequency, trendPct: null },
+  }
+}
+
 function avgTotals(days: MetaAdDailyStat[]): DayTotals {
   const t = sumDays(days)
   const n = days.length
