@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState, useTransition } from "react"
-import { Loader2, RefreshCw, ImageIcon, Link2, X, ListFilter, Film } from "lucide-react"
+import { Loader2, RefreshCw, ImageIcon, Link2, X, ListFilter, Film, Info } from "lucide-react"
 import { syncMetaAds, getMetaCampaignOptions } from "@/lib/actions/meta"
 import { setSyncedCampaignIds } from "@/lib/actions/projects"
 import {
@@ -145,7 +145,7 @@ function LinkPickerModal({ projectId, cycleId, card, onClose, onLinked }: {
           <div className="flex-1 overflow-y-auto p-5">
             {!assets && <p className="text-sm text-muted-foreground p-2">Cargando…</p>}
             {assets?.length === 0 && <p className="text-sm text-muted-foreground p-2">Sin assets en este ciclo todavía.</p>}
-            {assets && assets.length > 0 && filtered.length === 0 && <p className="text-sm text-muted-foreground p-2">Nada coincide con "{search}".</p>}
+            {assets && assets.length > 0 && filtered.length === 0 && <p className="text-sm text-muted-foreground p-2">Nada coincide con &quot;{search}&quot;.</p>}
             <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3">
               {filtered.map((a) => (
                 <div key={a.id} className="rounded-xl border border-border overflow-hidden hover:border-primary/50 transition-colors">
@@ -154,6 +154,7 @@ function LinkPickerModal({ projectId, cycleId, card, onClose, onLinked }: {
                     className={cn("relative w-full aspect-square bg-muted block", a.fileType === "video" && "cursor-pointer")}
                     title={a.fileType === "video" ? "Ver video" : undefined}
                   >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     {a.thumbUrl && <img src={a.thumbUrl} alt="" className="w-full h-full object-cover" />}
                     {a.fileType === "video" && (
                       <div className="absolute inset-0 flex items-center justify-center bg-black/20">
@@ -362,6 +363,16 @@ export function CreativePerformanceGrid({ projectId, cycleId, initialCards, disp
   const [showCampaignPicker, setShowCampaignPicker] = useState(false)
   const [campaignSelection, setCampaignSelection] = useState<string[] | null>(savedCampaignIds)
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null)
+  // Nombres de las campañas elegidas — las que no corrieron en el ciclo no
+  // tienen tarjetas, así que su nombre solo se puede sacar de Meta.
+  const [campaignNames, setCampaignNames] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    if (!hasCredentials || !campaignSelection?.length) return
+    getMetaCampaignOptions(projectId).then((r) => {
+      setCampaignNames(Object.fromEntries(r.campaigns.map((c) => [c.id, c.name])))
+    })
+  }, [projectId, hasCredentials, campaignSelection])
 
   useEffect(() => {
     getLastMetaSync(projectId, cycleId).then(setLastSyncedAt)
@@ -435,12 +446,6 @@ export function CreativePerformanceGrid({ projectId, cycleId, initialCards, disp
       <div className="flex items-center justify-between px-5 py-3 border-b border-border flex-wrap gap-2">
         <div>
           <h3 className="font-semibold text-sm text-foreground">Creativos</h3>
-          {cards.length > 0 && (
-            <p className="text-xs text-muted-foreground">
-              {activeCount}/{cards.length} activos · {fmt$(totalSpend)} invertido este ciclo
-              {campaignSelection?.length ? ` · ${campaignSelection.length} campaña${campaignSelection.length !== 1 ? "s" : ""} elegida${campaignSelection.length !== 1 ? "s" : ""}` : ""}
-            </p>
-          )}
           {/* Se sincroniza solo 3 veces al día (cron); el botón sigue
               disponible para forzarlo en cualquier momento. */}
           {lastSyncedAt && (
@@ -470,6 +475,56 @@ export function CreativePerformanceGrid({ projectId, cycleId, initialCards, disp
           </div>
         )}
       </div>
+
+      {hasCredentials && (cards.length > 0 || !!campaignSelection?.length) && (() => {
+        const idsWithAds = new Set(cards.map((c) => c.campaign_id).filter(Boolean))
+        const nameFromCards = Object.fromEntries(cards.filter((c) => c.campaign_id).map((c) => [c.campaign_id!, c.campaign_name ?? c.campaign_id!]))
+        const selected = campaignSelection ?? []
+        const withoutAds = selected.filter((id) => !idsWithAds.has(id))
+        const shownCampaigns = selected.length > 0 ? selected : Array.from(idsWithAds) as string[]
+        return (
+          <div className="px-5 py-3 border-b border-border space-y-3">
+            <div className="grid grid-cols-3 gap-2 max-w-md">
+              {[
+                { label: "Anuncios activos", value: `${activeCount} de ${cards.length}` },
+                { label: "Invertido este ciclo", value: fmt$(totalSpend) },
+                { label: "Campañas", value: selected.length > 0 ? `${selected.length} elegida${selected.length !== 1 ? "s" : ""}` : "Todas" },
+              ].map((t) => (
+                <div key={t.label} className="rounded-lg bg-muted/40 px-3 py-2">
+                  <p className="text-[10px] text-muted-foreground">{t.label}</p>
+                  <p className="text-sm font-semibold text-foreground">{t.value}</p>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[11px] text-muted-foreground mr-1">{selected.length > 0 ? "Campañas elegidas:" : "Todas las campañas de la cuenta:"}</span>
+              {shownCampaigns.map((id) => {
+                const hasAds = idsWithAds.has(id)
+                return (
+                  <span
+                    key={id}
+                    title={hasAds ? undefined : "Sin anuncios con actividad en este ciclo"}
+                    className={cn(
+                      "text-[11px] font-medium px-2 py-0.5 rounded-full",
+                      hasAds ? "bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300" : "bg-muted text-muted-foreground line-through decoration-muted-foreground/40"
+                    )}
+                  >
+                    {nameFromCards[id] ?? campaignNames[id] ?? "Campaña"}
+                  </span>
+                )
+              })}
+            </div>
+            {withoutAds.length > 0 && (
+              <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                <Info className="w-3 h-3 flex-shrink-0" />
+                {withoutAds.length === 1
+                  ? "1 campaña elegida no tuvo anuncios con actividad en este ciclo, por eso no aparece abajo."
+                  : `${withoutAds.length} campañas elegidas no tuvieron anuncios con actividad en este ciclo, por eso no aparecen abajo.`}
+              </p>
+            )}
+          </div>
+        )
+      })()}
 
       {syncError && (
         <div className="mx-5 mt-3 px-3 py-2 rounded-lg bg-destructive/10 text-destructive text-xs">{syncError}</div>
