@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ConceptModal } from "./concept-modal"
 import { AssetModal } from "./asset-modal"
-import { generateCreativeConcepts, confirmAIDrafts, promoteConcept, demoteConcept, deleteConcept, bulkDeleteConcepts, deleteBrief, deleteAsset, toggleClientVisible, updateBriefTitle, setAssetBrief } from "@/lib/actions/creatives"
+import { generateCreativeConcepts, confirmAIDrafts, deleteConcept, bulkDeleteConcepts, deleteBrief, deleteAsset, toggleClientVisible, updateBriefTitle, setAssetBrief } from "@/lib/actions/creatives"
 import { CONCEPT_STATUS_COLORS, AWARENESS_LABELS, ANGLE_GUIDE, PRODUCTION_STATUS_COLORS, VERDICT_COLORS } from "@/lib/constants/creatives"
 import type { CreativeConcept, CreativeAsset, CreativeBrief, BrandLine, AdCloneLine } from "@/lib/types"
 import type { AIDraftConcept } from "@/lib/actions/creatives"
@@ -112,13 +112,6 @@ interface ConceptsTableProps {
   cycleId: string | null
   isAdminOrSubadmin: boolean
   canManageAssets?: boolean
-  // Promover/degradar a Evergreen NO es una edición de contenido del
-  // ciclo — es un estado del concepto en sí, y el backend
-  // (promoteConcept/demoteConcept) nunca lo restringió a ciclo activo.
-  // Separado de isAdminOrSubadmin (que aquí llega mezclado con "¿es el
-  // ciclo activo?" vía canEdit en creatives-hub.tsx) para poder marcar
-  // Evergreen un concepto de un ciclo ya cerrado.
-  canManageConceptStatus: boolean
   onRefresh: () => void
   // Actualiza un asset en el state local del padre sin volver a pedir
   // concepts+assets+briefs completos — publicar/ocultar un asset para el
@@ -259,10 +252,8 @@ function ConceptDetailModal({
   conceptAssets,
   conceptBriefs,
   projectId,
-  cycleId,
   isAdminOrSubadmin,
   canManageAssets,
-  canManageConceptStatus,
   onEdit,
   onClose,
   onNewAsset,
@@ -280,7 +271,6 @@ function ConceptDetailModal({
   cycleId: string | null
   isAdminOrSubadmin: boolean
   canManageAssets: boolean
-  canManageConceptStatus: boolean
   onEdit: () => void
   onClose: () => void
   onNewAsset: (opts?: { briefId?: string | null; revisesAssetId?: string }) => void
@@ -298,25 +288,8 @@ function ConceptDetailModal({
   const [editingBriefId, setEditingBriefId] = useState<string | null>(null)
   const [briefTitleDraft, setBriefTitleDraft] = useState("")
   const angleEntry  = ANGLE_GUIDE.find((a) => a.name === concept.angle_type)
-  const isEvergreen = concept.status === "Evergreen"
   const liveRollup  = conceptLiveRollup(conceptAssets.map((a) => a.id), assetLinkStatus)
   const archivedButLive = concept.status === "Archived" && liveRollup.anyActive
-
-  function handlePromote() {
-    startTransition(async () => {
-      await promoteConcept(concept.id, projectId)
-      onRefresh()
-      onClose()
-    })
-  }
-
-  function handleDemote() {
-    startTransition(async () => {
-      await demoteConcept(concept.id, projectId, cycleId ?? undefined)
-      onRefresh()
-      onClose()
-    })
-  }
 
   function handleDelete() {
     if (!confirm("¿Eliminar este concepto?")) return
@@ -809,18 +782,6 @@ function ConceptDetailModal({
         {/* ── Footer ── */}
         <DialogFooter className="flex-shrink-0 flex items-center justify-between pt-2 gap-2">
           <div className="flex gap-2">
-            {canManageConceptStatus && isEvergreen && (
-              <Button type="button" variant="outline" size="sm" onClick={handleDemote} disabled={isPending} className="text-amber-600 border-amber-200 hover:bg-amber-50">
-                <Star className="w-3.5 h-3.5 mr-1" />
-                Degradar a Activo
-              </Button>
-            )}
-            {canManageConceptStatus && !isEvergreen && (
-              <Button type="button" variant="outline" size="sm" onClick={handlePromote} disabled={isPending}>
-                <Star className="w-3.5 h-3.5 mr-1 text-amber-500" />
-                Evergreen
-              </Button>
-            )}
             {isAdminOrSubadmin && (
               <Button type="button" variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={handleDelete} disabled={isPending}>
                 <Trash2 className="w-3.5 h-3.5" />
@@ -1081,7 +1042,7 @@ function MecanismoCell({
 
 // ── Main table ───────────────────────────────────────────────────────────────
 
-export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleId, isAdminOrSubadmin, canManageAssets = isAdminOrSubadmin, canManageConceptStatus = isAdminOrSubadmin, onRefresh, onUpdateAsset, assetLinkStatus, brandBrains = [], brandLines = [], projectBrandBrainId }: ConceptsTableProps) {
+export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleId, isAdminOrSubadmin, canManageAssets = isAdminOrSubadmin, onRefresh, onUpdateAsset, assetLinkStatus, brandBrains = [], brandLines = [], projectBrandBrainId }: ConceptsTableProps) {
   const [detailConcept, setDetailConcept]   = useState<CreativeConcept | null>(null)
   const [editConcept,   setEditConcept]     = useState<CreativeConcept | null>(null)
   const [createForLineId, setCreateForLineId] = useState<string | null | undefined>(undefined)
@@ -1546,7 +1507,6 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
           cycleId={cycleId}
           isAdminOrSubadmin={isAdminOrSubadmin}
           canManageAssets={canManageAssets}
-          canManageConceptStatus={canManageConceptStatus}
           onEdit={openEditFromDetail}
           onClose={() => setDetailConcept(null)}
           onNewAsset={openDetailAsNewAsset}

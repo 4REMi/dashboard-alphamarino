@@ -99,6 +99,19 @@ export async function getProjectConceptOptions(projectId: string): Promise<{ id:
   return data ?? []
 }
 
+// Ids de conceptos/assets que pertenecen a un ciclo (tablas de membresía de
+// la migración 098). null = las tablas todavía no existen (código ya
+// desplegado, migración aún sin correr) → el que llama cae a la lógica
+// anterior por cycle_id en vez de dejar el tracker vacío.
+export async function cycleMemberIds(kind: "concept" | "asset", cycleId: string): Promise<string[] | null> {
+  const supabase = await createClient()
+  const { data, error } = kind === "concept"
+    ? await supabase.from("creative_concept_cycles").select("concept_id").eq("cycle_id", cycleId)
+    : await supabase.from("creative_asset_cycles").select("asset_id").eq("cycle_id", cycleId)
+  if (error) return null
+  return (data ?? []).map((r) => ("concept_id" in r ? r.concept_id : r.asset_id) as string)
+}
+
 export async function getCreativeConcepts(
   projectId: string,
   cycleId?: string | null
@@ -118,8 +131,10 @@ export async function getCreativeConcepts(
     .order("created_at", { ascending: false })
 
   if (cycleId) {
-    // Show concepts for this cycle OR evergreen concepts (cycle_id IS NULL + status = Evergreen)
-    query = query.or(`cycle_id.eq.${cycleId},and(cycle_id.is.null,status.eq.Evergreen)`)
+    const memberIds = await cycleMemberIds("concept", cycleId)
+    query = memberIds
+      ? query.in("id", memberIds.length ? memberIds : ["00000000-0000-0000-0000-000000000000"])
+      : query.or(`cycle_id.eq.${cycleId},and(cycle_id.is.null,status.eq.Evergreen)`)
   } else {
     // No cycle specified: show only Evergreen
     query = query.is("cycle_id", null).eq("status", "Evergreen")
@@ -202,9 +217,11 @@ export async function promoteConcept(id: string, projectId: string): Promise<voi
   const { role } = await getRole()
   if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
 
+  // Evergreen es solo una etiqueta manual: ya no saca al concepto de su
+  // ciclo (cycle_id = null). Que continúe a otro ciclo lo decide el repaso
+  // de cierre (lib/actions/cycle-review.ts), vía creative_concept_cycles.
   const { error } = await supabase.from("creative_concepts").update({
-    status:   "Evergreen",
-    cycle_id: null,
+    status: "Evergreen",
   }).eq("id", id)
   if (error) throw error
   revalidateProject(projectId)
@@ -262,7 +279,10 @@ export async function getCreativeAssets(
     .order("created_at", { ascending: false })
 
   if (cycleId) {
-    query = query.eq("cycle_id", cycleId)
+    const memberIds = await cycleMemberIds("asset", cycleId)
+    query = memberIds
+      ? query.in("id", memberIds.length ? memberIds : ["00000000-0000-0000-0000-000000000000"])
+      : query.eq("cycle_id", cycleId)
   }
 
   const { data, error } = await query

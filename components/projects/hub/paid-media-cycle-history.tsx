@@ -6,6 +6,7 @@ import type { PaidMediaCycle } from "@/lib/types"
 import { updateCycleManualMetrics } from "@/lib/actions/projects"
 import { formatCycleRange, cn } from "@/lib/utils"
 import { ChevronRight } from "lucide-react"
+import { CycleReviewModal } from "./cycle-review-modal"
 
 interface Props {
   projectId: string
@@ -122,6 +123,7 @@ function CycleRow({ cycle, color, projectId, canEdit }: { cycle: PaidMediaCycle;
   // Solo el ciclo activo abierto por default — los pasados se consultan
   // de vez en cuando, no hace falta que ocupen espacio.
   const [open, setOpen] = useState(cycle.is_active)
+  const [reviewMode, setReviewMode] = useState<"pending" | "edit" | null>(null)
   const [isPending, startTransition] = useTransition()
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -166,6 +168,15 @@ function CycleRow({ cycle, color, projectId, canEdit }: { cycle: PaidMediaCycle;
         {cycle.is_active && (
           <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">Activo</span>
         )}
+        {!cycle.is_active && cycle.review_pending && !cycle.next_cycle_id && (
+          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">Repaso pendiente</span>
+        )}
+        {canEdit && !cycle.is_active && (cycle.review_pending || cycle.next_cycle_id) && (
+          <button onClick={() => setReviewMode(cycle.next_cycle_id ? "edit" : "pending")} className="text-xs text-primary hover:underline">
+            {cycle.next_cycle_id ? "Corregir lo que pasó al siguiente ciclo" : "Hacer repaso"}
+          </button>
+        )}
+        {reviewMode && <CycleReviewModal projectId={projectId} cycleId={cycle.id} mode={reviewMode} onClose={() => setReviewMode(null)} />}
         {canEdit && !editing && open && (
           <button onClick={() => setEditing(true)} className="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors">
             Editar resumen

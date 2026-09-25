@@ -70,6 +70,16 @@ export default async function ShareConceptsPage({ params }: Props) {
   const activeCycle  = cycles.find((c) => c.is_active) ?? null
   const cycleById    = new Map(cycles.map((c) => [c.id, c]))
 
+  // Ciclos a los que pertenece cada concepto (un concepto que continúa
+  // pertenece a varios). Si la tabla aún no existe, se usa su cycle_id.
+  const { data: membershipRows, error: membershipError } = await supabase
+    .from("creative_concept_cycles").select("concept_id, cycle_id").eq("project_id", projectId)
+  const cyclesByConcept = new Map<string, string[]>()
+  for (const r of membershipError ? [] : membershipRows ?? []) {
+    if (!cyclesByConcept.has(r.concept_id)) cyclesByConcept.set(r.concept_id, [])
+    cyclesByConcept.get(r.concept_id)!.push(r.cycle_id)
+  }
+
   const concepts   = conceptsRes.data ?? []
   const assets     = assetsRes.data ?? []
   const briefsData = scriptsRes.data ?? []
@@ -118,11 +128,17 @@ export default async function ShareConceptsPage({ params }: Props) {
     const conceptAssets = assetsByConcept.get(c.id) ?? []
     const angleEntry = ANGLE_GUIDE.find((a) => a.name === c.angle_type) ?? null
 
+    const memberCycles = cyclesByConcept.get(c.id) ?? []
     const vigencia: Concepto["vigencia"] =
       c.status === "Evergreen" ? "evergreen"
-      : !c.cycle_id || c.cycle_id === activeCycle?.id ? "actual"
+      : memberCycles.length === 0 ? (!c.cycle_id || c.cycle_id === activeCycle?.id ? "actual" : "archivado")
+      : activeCycle && memberCycles.includes(activeCycle.id) ? "actual"
       : "archivado"
-    const archivedCycle = vigencia === "archivado" && c.cycle_id ? cycleById.get(c.cycle_id) : null
+    // El último ciclo en el que estuvo (no el de origen).
+    const lastCycleId = memberCycles.length
+      ? memberCycles.map((id) => cycleById.get(id)).filter(Boolean).sort((a, b) => (a!.start_date < b!.start_date ? 1 : -1))[0]?.id ?? c.cycle_id
+      : c.cycle_id
+    const archivedCycle = vigencia === "archivado" && lastCycleId ? cycleById.get(lastCycleId) : null
     const mes = archivedCycle
       ? formatCycleRange(archivedCycle.start_date, archivedCycle.end_date)
       : null

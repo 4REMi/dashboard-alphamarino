@@ -701,6 +701,10 @@ export interface PaidMediaCycle {
   cpl_real: number | null
   real_spend: number | null
   real_results: number | null
+  // Cerrado sin repaso (a mano o por auto-cierre) — ver lib/actions/cycle-review.ts
+  review_pending?: boolean
+  // A qué ciclo se traspasó lo que continuó en el repaso de cierre
+  next_cycle_id?: string | null
   created_at: string
 }
 

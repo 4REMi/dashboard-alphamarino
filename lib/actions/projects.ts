@@ -973,12 +973,11 @@ export async function openNewCycle(projectId: string, startDate: string, endDate
   if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) throw new Error(`Formato de fecha inválido: "${startDate}"`)
   const resolvedEndDate = endDate && /^\d{4}-\d{2}-\d{2}$/.test(endDate) ? endDate : addOneMonthMinusOneDay(startDate)
 
-  // Close current active cycle
-  await supabase
-    .from("paid_media_cycles")
-    .update({ is_active: false })
-    .eq("project_id", projectId)
-    .eq("is_active", true)
+  // Ya no cierra en silencio el ciclo activo: cerrar pasa por el repaso de
+  // cierre (lib/actions/cycle-review.ts), que es el que abre el siguiente.
+  const { data: active } = await supabase
+    .from("paid_media_cycles").select("id").eq("project_id", projectId).eq("is_active", true).maybeSingle()
+  if (active) throw new Error("Ya hay un ciclo activo. Ciérralo desde su repaso de cierre para abrir el siguiente.")
 
   // Open new cycle. cycle_month kept in sync with start_date for backward compat.
   const { error } = await supabase.from("paid_media_cycles").insert({
@@ -1079,14 +1078,21 @@ export async function updateProjectAutoCloseCycles(projectId: string, enabled: b
   revalidatePath(`/projects/${projectId}`)
 }
 
+// Cerrar SIN repaso: queda "Repaso de cierre pendiente" hasta que alguien
+// lo haga (el repaso es el único camino para abrir el siguiente ciclo).
 export async function closeCycle(cycleId: string, projectId: string) {
   const supabase = await createClient()
-  const { error } = await supabase
-    .from("paid_media_cycles")
-    .update({ is_active: false })
-    .eq("id", cycleId)
-  if (error) throw error
+  await markCycleClosed(supabase, cycleId)
   revalidatePath(`/projects/${projectId}`)
+}
+
+// Con fallback: si la columna review_pending todavía no existe (migración
+// 098 sin correr), cierra igual que antes en vez de fallar.
+async function markCycleClosed(supabase: SupabaseClient, cycleId: string) {
+  const { error } = await supabase.from("paid_media_cycles").update({ is_active: false, review_pending: true }).eq("id", cycleId)
+  if (!error) return
+  const { error: fallbackError } = await supabase.from("paid_media_cycles").update({ is_active: false }).eq("id", cycleId)
+  if (fallbackError) throw fallbackError
 }
 
 // Called once a day by app/api/cron/check-cycles (see that route for the
@@ -1121,7 +1127,7 @@ export async function runDailyCycleCheck(): Promise<{ warned: number; overdueNot
 
     if (cycle.end_date < today) {
       if (project.auto_close_cycles) {
-        await admin.from("paid_media_cycles").update({ is_active: false }).eq("id", cycle.id)
+        await markCycleClosed(admin, cycle.id)
         await notifyCycleMembers(admin, cycle.project_id, "cycle_auto_closed", { projectName: project.name, endDate: cycle.end_date })
         autoClosed++
       } else if (!cycle.overdue_notice_sent_at) {

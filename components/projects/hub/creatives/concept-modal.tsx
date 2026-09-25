@@ -5,10 +5,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
-import { createConcept, updateConcept, promoteConcept, deleteConcept, autofillConcept } from "@/lib/actions/creatives"
+import { createConcept, updateConcept, deleteConcept, autofillConcept } from "@/lib/actions/creatives"
 import { ANGLE_GUIDE, AWARENESS_LABELS, CONCEPT_STATUS_COLORS, PRODUCTION_STATUS_COLORS, VERDICT_COLORS } from "@/lib/constants/creatives"
 import type { CreativeConcept, CreativeAsset, FunnelStage } from "@/lib/types"
-import { Sparkles, Star, ChevronDown, ChevronUp, Trash2, ArrowUpRight, Plus, Info, Wand2, Loader2 } from "lucide-react"
+import { Sparkles, ChevronDown, ChevronUp, Trash2, ArrowUpRight, Plus, Info, Wand2, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const ORGANIZING_PRINCIPLES = ["Pain-First", "Desire-First"] as const
@@ -87,15 +87,6 @@ export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSub
       } else {
         await createConcept(projectId, fd)
       }
-      onRefresh?.()
-      onClose()
-    })
-  }
-
-  function handlePromote() {
-    if (!concept) return
-    startTransition(async () => {
-      await promoteConcept(concept.id, projectId)
       onRefresh?.()
       onClose()
     })
@@ -314,12 +305,6 @@ export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSub
           {/* Footer */}
           <DialogFooter className="flex items-center justify-between pt-2 border-t gap-2">
             <div className="flex gap-2">
-              {isEdit && concept?.status !== "Evergreen" && isAdminOrSubadmin && (
-                <Button type="button" variant="outline" size="sm" onClick={handlePromote} disabled={isPending}>
-                  <Star className="w-3.5 h-3.5 mr-1 text-amber-500" />
-                  Evergreen
-                </Button>
-              )}
               {isEdit && isAdminOrSubadmin && (
                 <Button type="button" variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={handleDelete} disabled={isPending}>
                   <Trash2 className="w-3.5 h-3.5" />

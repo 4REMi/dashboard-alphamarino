@@ -114,6 +114,26 @@ ciclo, solo visible para admin/subadmin.
 - **Avisos de ciclo** (preventivo, vencido, auto-cerrado): a todo `project_members` del
   proyecto — mismo patrón de broadcast que Ping.
 
+## Repaso de cierre de ciclo y membresía por ciclo
+
+- **Conceptos y assets pueden pertenecer a varios ciclos** (`creative_concept_cycles`,
+  `creative_asset_cycles`, migración 098). `cycle_id` en las tablas originales es solo el
+  ciclo de origen. Un trigger registra la membresía al crear cualquier concepto/asset. Las
+  consultas del tracker, del selector de vincular y del mapa leen la membresía
+  (`cycleMemberIds`), con fallback al `cycle_id` si la migración no se ha corrido.
+- **Cerrar un ciclo = repaso de cierre** (`components/projects/hub/cycle-review-modal.tsx`,
+  `lib/actions/cycle-review.ts`), 4 pasos: resumen manual multicanal → conceptos
+  (Continúa / Termina, sugeridos por "corre en Meta" o Evergreen; motivo opcional al
+  terminar, se guarda en `insight`) → assets (se preseleccionan los publicados o que corren
+  en Meta; los borradores no) → confirmar y abrir el siguiente ciclo. Continuar agrega
+  membresía al ciclo nuevo: no copia ni mueve nada.
+- **Evergreen es una etiqueta manual** (status `Evergreen`), puesta en el repaso. Ya no saca
+  al concepto de su ciclo ni hay botón en el modal del concepto.
+- **Cerrar sin repaso** (botón en el paso 1, o el auto-cierre del cron) deja
+  `review_pending = true`: la tarjeta del ciclo pide "Hacer repaso y abrir ciclo" y
+  `openNewCycle` ya no cierra en silencio el ciclo activo. `next_cycle_id` guarda a dónde se
+  traspasó; desde el historial se puede corregir después (`editCarryOver`).
+
 ## Dónde vive esto en el código
 
 - `supabase/migrations/050_paid_media_cycle_date_ranges.sql` — `start_date`/`end_date`

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
+import { cycleMemberIds } from "@/lib/actions/creatives"
 import type { MetaAd, MetaAdDailyStat, TrendWindow } from "@/lib/types"
 import type { MetricKey } from "@/lib/constants/paid-media-metrics"
 
@@ -50,7 +51,12 @@ export async function getLinkableAssets(projectId: string, cycleId: string | nul
     .order("created_at", { ascending: false })
     .limit(300)
 
-  if (cycleId) query = query.eq("cycle_id", cycleId)
+  if (cycleId) {
+    const memberIds = await cycleMemberIds("asset", cycleId)
+    query = memberIds
+      ? query.in("id", memberIds.length ? memberIds : ["00000000-0000-0000-0000-000000000000"])
+      : query.eq("cycle_id", cycleId)
+  }
 
   const { data, error } = await query
   if (error) return []

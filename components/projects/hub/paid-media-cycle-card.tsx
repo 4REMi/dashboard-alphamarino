@@ -4,8 +4,9 @@ import { useState, useTransition, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import type { PaidMediaCycle } from "@/lib/types"
 import { CAMPAIGN_STATUS_LABELS } from "@/lib/types"
-import { openNewCycle, updateCycle, closeCycle, suggestNextCycleStartDate, updateCycleStartDay, updateCycleDates, updateProjectAutoCloseCycles } from "@/lib/actions/projects"
+import { openNewCycle, updateCycle, suggestNextCycleStartDate, updateCycleStartDay, updateCycleDates, updateProjectAutoCloseCycles } from "@/lib/actions/projects"
 import { formatCycleRange } from "@/lib/utils"
+import { CycleReviewModal } from "./cycle-review-modal"
 
 interface Props {
   projectId: string
@@ -18,6 +19,9 @@ interface Props {
   isAdminOrSubadmin: boolean
   autoCloseCycles: boolean
   cycleStartDay?: number | null
+  // Último ciclo cerrado sin repaso (a mano o por auto-cierre): el
+  // siguiente ciclo solo se abre desde su repaso.
+  pendingReviewCycleId?: string | null
 }
 
 function addOneMonthMinusOneDay(startDate: string): string {
@@ -145,7 +149,8 @@ function AutoCloseCyclesSetting({ projectId, enabled }: { projectId: string; ena
   )
 }
 
-export function PaidMediaCycleCard({ projectId, activeCycle, canEdit, canEditDates, isAdminOrSubadmin, autoCloseCycles, cycleStartDay = null }: Props) {
+export function PaidMediaCycleCard({ projectId, activeCycle, canEdit, canEditDates, isAdminOrSubadmin, autoCloseCycles, cycleStartDay = null, pendingReviewCycleId = null }: Props) {
+  const [reviewOpen, setReviewOpen] = useState(false)
   const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [editingDates, setEditingDates] = useState(false)
@@ -201,14 +206,6 @@ export function PaidMediaCycleCard({ projectId, activeCycle, canEdit, canEditDat
     })
   }
 
-  function handleClose() {
-    if (!activeCycle || !confirm("¿Cerrar este ciclo? Ya no se podrán editar sus métricas.")) return
-    startTransition(async () => {
-      await closeCycle(activeCycle.id, projectId)
-      router.refresh()
-    })
-  }
-
   // No active cycle
   if (!activeCycle) {
     return (
@@ -218,14 +215,27 @@ export function PaidMediaCycleCard({ projectId, activeCycle, canEdit, canEditDat
         </div>
         <div className="flex items-center justify-between p-5 pb-3">
           <h3 className="font-semibold text-sm text-foreground">Ciclo Activo</h3>
-          {canEdit && (
+          {canEdit && !pendingReviewCycleId && (
             <button onClick={() => setShowOpenForm(true)} className="text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded-md hover:bg-primary/90 transition-colors">
               Abrir ciclo
             </button>
           )}
         </div>
         <div className="px-5 pb-5">
-          {showOpenForm ? (
+          {pendingReviewCycleId ? (
+            <div className="rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-950/30 dark:border-amber-900 px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <p className="text-sm font-medium text-amber-900 dark:text-amber-200">Repaso de cierre pendiente</p>
+                <p className="text-xs text-amber-800/80 dark:text-amber-300/80">El ciclo anterior se cerró sin repaso. Hazlo para decidir qué continúa y abrir el siguiente ciclo.</p>
+              </div>
+              {canEdit && (
+                <button onClick={() => setReviewOpen(true)} className="text-xs font-medium bg-amber-600 text-white px-3 py-1.5 rounded-md hover:bg-amber-700 transition-colors">
+                  Hacer repaso y abrir ciclo
+                </button>
+              )}
+              {reviewOpen && <CycleReviewModal projectId={projectId} cycleId={pendingReviewCycleId} mode="pending" onClose={() => setReviewOpen(false)} />}
+            </div>
+          ) : showOpenForm ? (
             <div className="flex items-end gap-3 flex-wrap">
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">Fecha inicio</label>
@@ -259,6 +269,7 @@ export function PaidMediaCycleCard({ projectId, activeCycle, canEdit, canEditDat
 
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
+      {reviewOpen && <CycleReviewModal projectId={projectId} cycleId={activeCycle.id} mode="close" onClose={() => setReviewOpen(false)} />}
       <div className="px-5 pt-4 pb-3 flex items-start justify-between gap-4 flex-wrap">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -286,7 +297,7 @@ export function PaidMediaCycleCard({ projectId, activeCycle, canEdit, canEditDat
             <button onClick={() => setEditing(!editing)} className="text-xs font-medium px-3 py-1.5 rounded-md border border-border hover:bg-muted transition-colors">
               {editing ? "Cancelar" : "Editar"}
             </button>
-            <button onClick={handleClose} className="text-xs font-medium px-3 py-1.5 rounded-md border border-border text-destructive hover:bg-destructive/10 transition-colors">
+            <button onClick={() => setReviewOpen(true)} className="text-xs font-medium px-3 py-1.5 rounded-md border border-border text-destructive hover:bg-destructive/10 transition-colors">
               Cerrar ciclo
             </button>
           </div>

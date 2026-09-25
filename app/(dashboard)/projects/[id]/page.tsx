@@ -362,7 +362,11 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             </div>
             <div className="p-5 space-y-6">
 
-            <PaidMediaCycleCard projectId={project.id} activeCycle={activeCycle} canEdit={isAdminOrSubadmin} canEditDates={canEditCycleDates} isAdminOrSubadmin={isAdminOrSubadmin} autoCloseCycles={!!project.auto_close_cycles} cycleStartDay={project.paid_media_cycle_start_day} />
+            <PaidMediaCycleCard projectId={project.id} activeCycle={activeCycle} canEdit={isAdminOrSubadmin} canEditDates={canEditCycleDates} isAdminOrSubadmin={isAdminOrSubadmin} autoCloseCycles={!!project.auto_close_cycles} cycleStartDay={project.paid_media_cycle_start_day} pendingReviewCycleId={
+              [...(cycles as PaidMediaCycle[])]
+                .filter((c) => !c.is_active && c.review_pending && !c.next_cycle_id)
+                .sort((a, b) => (a.start_date < b.start_date ? 1 : -1))[0]?.id ?? null
+            } />
 
             <div id="creative-tracker" className="space-y-3">
               <h3 className="text-sm font-semibold">Creative Tracker</h3>
