@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useTransition } from "react"
+import { useState, useTransition } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -92,144 +92,6 @@ function BriefScriptStatus({ brief }: { brief: CreativeBrief }) {
               <span className="font-semibold">{e.label}:</span> &quot;{e.feedback}&quot;
             </div>
           ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// Flattened queue of everything across every concept/service in this project
-// that needs attention — lives inside Creative Tracker itself (not a
-// separate panel elsewhere) and only renders when there's something to show,
-// so it never occupies space when everything is caught up. Two blocks:
-// scripts awaiting client review, and assets uploaded but not yet published
-// to the client (the review gate for point 9 of the operational audit).
-function AttentionBanner({ scriptRows, assetRows, projectId, onUpdateAsset, canManageAssets }: {
-  scriptRows: { key: string; conceptName: string; scriptLabel: string; lineName: string | null; shareToken: string; status: "pending_review" | "changes_requested"; feedback: string | null }[]
-  assetRows: { id: string; conceptName: string; lineName: string | null; thumb: string | null; fileType: string | null; format: string | null }[]
-  projectId: string
-  onUpdateAsset: (assetId: string, patch: Partial<CreativeAsset>) => void
-  canManageAssets: boolean
-}) {
-  const [openKey, setOpenKey] = useState<string | null>(null)
-  const [isPending, startTransition] = useTransition()
-  const changesCount = scriptRows.filter((r) => r.status === "changes_requested").length
-  const pendingCount = scriptRows.filter((r) => r.status === "pending_review").length
-
-  function handlePublish(assetId: string) {
-    // Optimista: se quita del banner y se marca visible al instante — la
-    // escritura real corre en background, sin bloquear la UI ni pedir de
-    // vuelta concepts+assets+briefs completos.
-    onUpdateAsset(assetId, { client_visible: true, client_status: "pending_review" })
-    startTransition(async () => {
-      await toggleClientVisible(assetId, projectId, true)
-    })
-  }
-
-  return (
-    <div className="border rounded-xl overflow-hidden">
-      <div className="px-4 py-2.5 bg-sky-50/60 border-b">
-        <p className="text-xs font-semibold text-sky-900">Requiere tu atención</p>
-      </div>
-
-      {scriptRows.length > 0 && (
-        <div>
-          <div className="px-4 py-2 bg-muted/20 border-b flex items-center gap-2">
-            <FileText className="w-3.5 h-3.5 text-sky-600" />
-            <p className="text-[11px] font-semibold text-sky-900">Guiones</p>
-            <span className="text-[11px] text-sky-700">
-              {changesCount > 0 && `${changesCount} cambios pedidos`}
-              {changesCount > 0 && pendingCount > 0 && " · "}
-              {pendingCount > 0 && `${pendingCount} pendientes`}
-            </span>
-          </div>
-          <div className="divide-y">
-            {scriptRows.map((r) => {
-              const isOpen = openKey === r.key
-              return (
-                <div key={r.key}>
-                  <button
-                    type="button"
-                    onClick={() => setOpenKey((prev) => prev === r.key ? null : r.key)}
-                    className="w-full flex items-center gap-2 px-4 py-2 text-left hover:bg-muted/30 transition-colors"
-                  >
-                    {r.lineName && (
-                      <span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded flex-shrink-0">{r.lineName}</span>
-                    )}
-                    <span className="text-xs font-medium truncate flex-1">
-                      {r.conceptName}
-                      {r.scriptLabel && <span className="text-muted-foreground font-normal"> — {r.scriptLabel}</span>}
-                    </span>
-                    <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded border flex-shrink-0", SCRIPT_STATUS_STYLE[r.status].className)}>
-                      {SCRIPT_STATUS_STYLE[r.status].label}
-                    </span>
-                    {r.feedback && !isOpen && (
-                      <span className="text-[11px] text-muted-foreground truncate max-w-[220px] hidden sm:block">
-                        &quot;{r.feedback}&quot;
-                      </span>
-                    )}
-                  </button>
-                  {isOpen && (
-                    <div className="px-4 pb-2.5 flex items-center justify-between gap-3">
-                      {r.feedback ? (
-                        <p className="text-xs text-sky-900 bg-sky-50/70 border border-sky-100 rounded-lg px-2.5 py-1.5 flex-1">
-                          &quot;{r.feedback}&quot;
-                        </p>
-                      ) : <span />}
-                      <a
-                        href={`/share/brief/${r.shareToken}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[11px] font-medium text-violet-600 hover:text-violet-800 flex-shrink-0"
-                      >
-                        Abrir brief ↗
-                      </a>
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {assetRows.length > 0 && (
-        <div>
-          <div className="px-4 py-2 bg-muted/20 border-b flex items-center gap-2">
-            <EyeOff className="w-3.5 h-3.5 text-slate-600" />
-            <p className="text-[11px] font-semibold text-slate-900">Assets sin publicar</p>
-            <span className="text-[11px] text-slate-600">{assetRows.length} esperando revisión</span>
-          </div>
-          <div className="divide-y">
-            {assetRows.map((a) => (
-              <div key={a.id} className="flex items-center gap-2.5 px-4 py-2">
-                <div className="w-8 h-8 rounded-md overflow-hidden bg-muted border flex-shrink-0 flex items-center justify-center">
-                  {a.thumb ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={a.thumb} alt="" className="w-full h-full object-cover" />
-                  ) : a.fileType === "video" ? (
-                    <Film className="w-3.5 h-3.5 text-muted-foreground/40" />
-                  ) : (
-                    <ImageIcon className="w-3.5 h-3.5 text-muted-foreground/40" />
-                  )}
-                </div>
-                {a.lineName && (
-                  <span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded flex-shrink-0">{a.lineName}</span>
-                )}
-                <span className="text-xs font-medium truncate flex-1">{a.conceptName}</span>
-                {canManageAssets && (
-                  <button
-                    type="button"
-                    onClick={() => handlePublish(a.id)}
-                    disabled={isPending}
-                    className="text-[11px] font-medium text-blue-600 hover:text-blue-800 flex-shrink-0 disabled:opacity-50"
-                  >
-                    Mostrar al cliente
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
         </div>
       )}
     </div>
@@ -1342,75 +1204,8 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
     )
   }
 
-  const pendingScriptRows = useMemo(() => {
-    const conceptById = new Map(concepts.map((c) => [c.id, c]))
-    const lineNameById = new Map(brandLines.map((l) => [l.id, l.name]))
-    const rows: {
-      key: string
-      conceptName: string
-      scriptLabel: string
-      lineName: string | null
-      shareToken: string
-      status: "pending_review" | "changes_requested"
-      feedback: string | null
-    }[] = []
-    for (const b of briefs) {
-      const concept = conceptById.get(b.concept_id)
-      const entries = scriptReviewEntries(b)
-      for (const e of entries) {
-        if (e.status !== "pending_review" && e.status !== "changes_requested") continue
-        rows.push({
-          key: `${b.id}:${e.key}`,
-          conceptName: concept?.name || concept?.angle_type || "Concepto",
-          // Only show the per-script label when it actually distinguishes
-          // something (a custom name, or more than one script in this brief)
-          // — otherwise it'd just repeat "Guión" next to every row.
-          scriptLabel: e.label !== "Guión" ? e.label : "",
-          lineName: concept?.brand_line_id ? lineNameById.get(concept.brand_line_id) ?? null : null,
-          shareToken: b.share_token,
-          status: e.status,
-          feedback: e.feedback,
-        })
-      }
-    }
-    return rows.sort((a, b) => (a.status === b.status ? 0 : a.status === "changes_requested" ? -1 : 1))
-  }, [briefs, concepts, brandLines])
-
-  const unpublishedAssetRows = useMemo(() => {
-    const conceptById = new Map(concepts.map((c) => [c.id, c]))
-    const lineNameById = new Map(brandLines.map((l) => [l.id, l.name]))
-    return assets
-      .filter((a) => !a.client_visible)
-      .map((a) => {
-        const concept = a.concept_id ? conceptById.get(a.concept_id) : null
-        const thumb = a.thumbnail_path
-          ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/creative-assets/${a.thumbnail_path}`
-          : a.file_path
-            ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/creative-assets/${a.file_path}`
-            : a.asset_url
-        return {
-          id: a.id,
-          conceptName: concept?.name || concept?.angle_type || "Sin concepto",
-          lineName: concept?.brand_line_id ? lineNameById.get(concept.brand_line_id) ?? null : null,
-          thumb: thumb ?? null,
-          fileType: a.file_type,
-          format: a.format,
-        }
-      })
-  }, [assets, concepts, brandLines])
-
   return (
     <div className="space-y-4">
-      {(pendingScriptRows.length > 0 || unpublishedAssetRows.length > 0) && (
-        <AttentionBanner
-          scriptRows={pendingScriptRows}
-          assetRows={unpublishedAssetRows}
-          projectId={projectId}
-          onUpdateAsset={onUpdateAsset}
-          canManageAssets={canManageAssets}
-        />
-      )}
-
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <p className="text-xs text-muted-foreground">
@@ -1500,6 +1295,8 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
         const isCollapsed = collapsedGroups.has(groupId)
         const showDraftsHere = (aiDraftsLineId ?? null) === (line?.id ?? null)
         const count = groupConcepts.length
+        const groupConceptIds = new Set(groupConcepts.map((c) => c.id))
+        const unpublishedInGroup = assets.filter((a) => a.concept_id && groupConceptIds.has(a.concept_id) && !a.client_visible).length
 
         return (
           <div key={groupId} className="border rounded-lg overflow-hidden bg-card">
@@ -1516,6 +1313,11 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
               <span className="text-sm font-semibold flex-1">
                 {line?.name ?? "General"}
               </span>
+              {unpublishedInGroup > 0 && (
+                <span className="text-xs text-muted-foreground" title="Assets que el cliente todavía no puede ver ni revisar">
+                  {unpublishedInGroup} asset{unpublishedInGroup !== 1 ? "s" : ""} sin publicar ·
+                </span>
+              )}
               <span className={cn("text-xs mr-2", count === 0 ? "text-muted-foreground/40 italic" : "text-muted-foreground")}>
                 {count === 0 ? "Sin conceptos" : `${count} concepto${count !== 1 ? "s" : ""}`}
               </span>
@@ -1765,6 +1567,25 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
 
 // ── Concept row ──────────────────────────────────────────────────────────────
 
+// Lo que antes vivía en el bloque "Requiere tu atención", ahora en el
+// renglón de cada concepto — escrito, no codificado con colores, y solo
+// cuando hay algo pendiente.
+function ConceptAttentionNotes({ conceptAssets, conceptBriefs }: { conceptAssets: CreativeAsset[]; conceptBriefs: CreativeBrief[] }) {
+  const unpublished = conceptAssets.filter((a) => !a.client_visible).length
+  const assetChanges = conceptAssets.filter((a) => a.client_visible && a.client_status === "changes_requested").length
+  const scriptEntries = conceptBriefs.flatMap((b) => scriptReviewEntries(b))
+  const scriptChanges = scriptEntries.filter((e) => e.status === "changes_requested").length
+  const scriptPending = scriptEntries.filter((e) => e.status === "pending_review").length
+  const notes = [
+    assetChanges > 0 && `${assetChanges} asset${assetChanges !== 1 ? "s" : ""} con cambios pedidos`,
+    scriptChanges > 0 && `${scriptChanges} guión${scriptChanges !== 1 ? "es" : ""} con cambios pedidos`,
+    unpublished > 0 && `${unpublished} asset${unpublished !== 1 ? "s" : ""} sin publicar`,
+    scriptPending > 0 && `${scriptPending} guión${scriptPending !== 1 ? "es" : ""} en revisión del cliente`,
+  ].filter(Boolean) as string[]
+  if (notes.length === 0) return null
+  return <p className="text-[11px] text-muted-foreground mt-0.5">{notes.join(" · ")}</p>
+}
+
 function ConceptRow({
   concept,
   conceptAssets,
@@ -1829,6 +1650,7 @@ function ConceptRow({
       </td>
       <td className="px-3 py-3">
         <div className="text-sm font-medium">{concept.name || "—"}</div>
+        <ConceptAttentionNotes conceptAssets={conceptAssets} conceptBriefs={conceptBriefs} />
       </td>
       <td className="px-3 py-3">
         <div className="text-xs line-clamp-2">{concept.target_persona || "—"}</div>
