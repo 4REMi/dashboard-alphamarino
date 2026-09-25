@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { notify } from "@/lib/notifications/notify"
 import { can } from "@/lib/permissions"
-import type { ProjectStatus, PhaseStatus, CampaignStatus, Profile, ProjectLogCategory } from "@/lib/types"
+import type { ProjectStatus, PhaseStatus, CampaignStatus, Profile, ProjectLogCategory, CycleChannelRow } from "@/lib/types"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
 // Builds position_id → [profile_ids] from a project's current members, so
@@ -1024,9 +1024,16 @@ export async function updateCycleManualMetrics(cycleId: string, projectId: strin
   roas_real: number | null
   cpa_real: number | null
   real_results: number | null
+  channel_breakdown?: CycleChannelRow[]
 }) {
   const supabase = await createClient()
-  const { error } = await supabase.from("paid_media_cycles").update(metrics).eq("id", cycleId).eq("project_id", projectId)
+  let { error } = await supabase.from("paid_media_cycles").update(metrics).eq("id", cycleId).eq("project_id", projectId)
+  // Sin la migración 100 todavía: se guardan solo los totales.
+  if (error && /channel_breakdown/.test(error.message)) {
+    const { channel_breakdown: _omit, ...totals } = metrics
+    void _omit
+    ;({ error } = await supabase.from("paid_media_cycles").update(totals).eq("id", cycleId).eq("project_id", projectId))
+  }
   if (error) throw error
   revalidatePath(`/projects/${projectId}`)
 }

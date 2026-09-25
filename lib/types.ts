@@ -701,11 +701,20 @@ export interface PaidMediaCycle {
   cpl_real: number | null
   real_spend: number | null
   real_results: number | null
+  // Desglose manual por canal; los totales real_* se calculan de aquí.
+  channel_breakdown?: CycleChannelRow[] | null
   // Cerrado sin repaso (a mano o por auto-cierre) — ver lib/actions/cycle-review.ts
   review_pending?: boolean
   // A qué ciclo se traspasó lo que continuó en el repaso de cierre
   next_cycle_id?: string | null
   created_at: string
+}
+
+export interface CycleChannelRow {
+  channel: string
+  spend: number | null
+  results: number | null
+  roas: number | null
 }
 
 export const PAID_MEDIA_PLATFORMS = [

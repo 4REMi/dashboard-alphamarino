@@ -141,6 +141,17 @@ ciclo, solo visible para admin/subadmin.
   `openNewCycle` ya no cierra en silencio el ciclo activo. `next_cycle_id` guarda a dónde se
   traspasó; desde el historial se puede corregir después (`editCarryOver`).
 
+## Resumen del ciclo por canal
+
+El resumen manual (repaso de cierre, paso 1, y "Editar resumen" en el Historial)
+se captura **por canal**: filas de canal + inversión + resultados + ROAS opcional,
+guardadas en `paid_media_cycles.channel_breakdown` (migración 100). Meta Ads se
+prellena con el gasto sincronizado; los demás canales van a mano. Los totales
+`real_spend`, `real_results`, `cpa_real` (inversión ÷ resultados) y `roas_real`
+(ponderado por inversión) se calculan de las filas. Si un ciclo viejo solo tenía
+totales, aparecen como una fila "Sin desglosar". Componente:
+`components/projects/hub/channel-summary-editor.tsx`.
+
 ## Reparar ciclos mal capturados
 
 Botón **"Reparar ciclos"** en el Historial de Ciclos, visible para cualquier

@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server"
 import { assertNoCycleOverlap } from "@/lib/utils/cycle-overlap"
 import { getCreativeConcepts, getCreativeAssets } from "@/lib/actions/creatives"
 import { getCreativePerformance } from "@/lib/actions/paid-media-performance"
-import type { CreativeConcept, CreativeAsset, PaidMediaCycle } from "@/lib/types"
+import type { CreativeConcept, CreativeAsset, PaidMediaCycle, CycleChannelRow } from "@/lib/types"
 
 // Repaso de cierre de ciclo: el único camino para abrir el siguiente ciclo.
 // Decide qué conceptos y assets continúan (se agregan a creative_*_cycles
@@ -167,7 +167,7 @@ async function applyDecisions(
 export async function completeCycleReview(input: {
   projectId: string
   cycleId: string
-  summary: { real_spend: number | null; roas_real: number | null; cpa_real: number | null; real_results: number | null }
+  summary: { real_spend: number | null; roas_real: number | null; cpa_real: number | null; real_results: number | null; channel_breakdown?: CycleChannelRow[] }
   decisions: ConceptDecision[]
   assetIds: string[]
   nextCycle: { start: string; end: string } | null
@@ -207,9 +207,16 @@ export async function completeCycleReview(input: {
     next = opened
   }
 
-  const { error: closeError } = await supabase.from("paid_media_cycles")
-    .update({ ...input.summary, is_active: false, review_pending: false, next_cycle_id: next.id })
+  const close = (summary: typeof input.summary) => supabase.from("paid_media_cycles")
+    .update({ ...summary, is_active: false, review_pending: false, next_cycle_id: next.id })
     .eq("id", cycleId)
+  let { error: closeError } = await close(input.summary)
+  // Sin la migración 100 todavía: se guardan solo los totales.
+  if (closeError && /channel_breakdown/.test(closeError.message)) {
+    const { channel_breakdown: _omit, ...totals } = input.summary
+    void _omit
+    ;({ error: closeError } = await close(totals))
+  }
   if (closeError) throw closeError
 
   const { data: cycleAssets } = await supabase.from("creative_asset_cycles").select("asset_id").eq("cycle_id", cycleId)

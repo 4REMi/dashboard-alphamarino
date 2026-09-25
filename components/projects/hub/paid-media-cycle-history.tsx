@@ -8,6 +8,7 @@ import { formatCycleRange, cn } from "@/lib/utils"
 import { ChevronRight } from "lucide-react"
 import { CycleReviewModal } from "./cycle-review-modal"
 import { CycleRepairModal } from "./cycle-repair-modal"
+import { ChannelSummaryEditor, channelTotals, draftsToRows, initialDrafts, type ChannelDraft } from "./channel-summary-editor"
 
 interface Props {
   projectId: string
@@ -132,26 +133,23 @@ export function PaidMediaCycleHistory({ projectId, cycles, canEdit, canRepair }:
 function CycleRow({ cycle, color, projectId, canEdit }: { cycle: PaidMediaCycle; color: string; projectId: string; canEdit: boolean }) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
+  const [channels, setChannels] = useState<ChannelDraft[]>([])
   // Solo el ciclo activo abierto por default — los pasados se consultan
   // de vez en cuando, no hace falta que ocupen espacio.
   const [open, setOpen] = useState(cycle.is_active)
   const [reviewMode, setReviewMode] = useState<"pending" | "edit" | null>(null)
   const [isPending, startTransition] = useTransition()
 
+  function startEditing() {
+    setChannels(initialDrafts(cycle.channel_breakdown, cycle, null))
+    setEditing(true)
+  }
+
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
-    const fd = new FormData(e.currentTarget)
-    const num = (k: string) => {
-      const raw = (fd.get(k) as string)?.trim()
-      return raw ? Number(raw) : null
-    }
+    const rows = draftsToRows(channels)
     startTransition(async () => {
-      await updateCycleManualMetrics(cycle.id, projectId, {
-        real_spend: num("real_spend"),
-        roas_real: num("roas_real"),
-        cpa_real: num("cpa_real"),
-        real_results: num("real_results"),
-      })
+      await updateCycleManualMetrics(cycle.id, projectId, { ...channelTotals(rows), channel_breakdown: rows })
       setEditing(false)
       router.refresh()
     })
@@ -190,7 +188,7 @@ function CycleRow({ cycle, color, projectId, canEdit }: { cycle: PaidMediaCycle;
         )}
         {reviewMode && <CycleReviewModal projectId={projectId} cycleId={cycle.id} mode={reviewMode} onClose={() => setReviewMode(null)} />}
         {canEdit && !editing && open && (
-          <button onClick={() => setEditing(true)} className="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors">
+          <button onClick={startEditing} className="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors">
             Editar resumen
           </button>
         )}
@@ -198,22 +196,8 @@ function CycleRow({ cycle, color, projectId, canEdit }: { cycle: PaidMediaCycle;
 
       {!open ? null : editing ? (
         <form onSubmit={handleSubmit} className="mt-3 space-y-3">
-          <p className="text-[11px] text-muted-foreground">Totales de todos los canales del ciclo (Meta, Google, TikTok…), capturados a mano.</p>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {fields.map((f) => (
-              <label key={f.key} className="text-xs">
-                <span className="text-muted-foreground">{f.label}</span>
-                <input
-                  name={f.key}
-                  type="number"
-                  step="any"
-                  min="0"
-                  defaultValue={f.value ?? ""}
-                  className="mt-0.5 w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-              </label>
-            ))}
-          </div>
+          <p className="text-[11px] text-muted-foreground">Desglose por canal (Meta, Google, TikTok…), capturado a mano. Los totales se calculan solos.</p>
+          <ChannelSummaryEditor drafts={channels} onChange={setChannels} />
           <div className="flex justify-end gap-2">
             <button type="button" onClick={() => setEditing(false)} className="text-xs text-muted-foreground hover:text-foreground">Cancelar</button>
             <button type="submit" disabled={isPending} className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50">
@@ -229,6 +213,17 @@ function CycleRow({ cycle, color, projectId, canEdit }: { cycle: PaidMediaCycle;
               <p className="font-semibold text-foreground">{f.display}</p>
             </div>
           ))}
+          {!!cycle.channel_breakdown?.length && (
+            <div className="col-span-full flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+              {cycle.channel_breakdown.map((r) => (
+                <span key={r.channel}>
+                  <span className="font-medium text-foreground">{r.channel}</span> {fmtMoney(r.spend)}
+                  {r.results !== null && ` · ${r.results.toLocaleString("en-US")} res.`}
+                  {r.roas !== null && ` · ${r.roas}x`}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

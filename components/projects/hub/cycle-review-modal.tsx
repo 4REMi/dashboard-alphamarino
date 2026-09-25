@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
+import { ChannelSummaryEditor, channelTotals, draftsToRows, initialDrafts, type ChannelDraft } from "./channel-summary-editor"
 import { Loader2, Star, Radio, Check } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -47,7 +48,7 @@ export function CycleReviewModal({ projectId, cycleId, mode, onClose }: {
   const [data, setData] = useState<CycleReviewData | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [step, setStep] = useState(mode === "edit" ? 2 : 1)
-  const [summary, setSummary] = useState({ real_spend: "", roas_real: "", cpa_real: "", real_results: "" })
+  const [channels, setChannels] = useState<ChannelDraft[]>([])
   // continues: null = sin decidir (concepto sin anuncios vinculados — no
   // hay datos para sugerir nada, así que se obliga a elegir).
   const [decisions, setDecisions] = useState<Record<string, Omit<ConceptDecision, "continues"> & { continues: boolean | null }>>({})
@@ -61,12 +62,7 @@ export function CycleReviewModal({ projectId, cycleId, mode, onClose }: {
     getCycleReviewData(projectId, cycleId).then((d) => {
       setData(d)
       const c = d.cycle
-      setSummary({
-        real_spend: c.real_spend?.toString() ?? "",
-        roas_real: c.roas_real?.toString() ?? "",
-        cpa_real: c.cpa_real?.toString() ?? "",
-        real_results: c.real_results?.toString() ?? "",
-      })
+      setChannels(initialDrafts(c.channel_breakdown, c, d.syncedSpend))
       // Sugerencias: continúa lo que corre en Meta o ya era Evergreen; en
       // modo corrección, lo que ya está en el ciclo siguiente.
       const initial: Record<string, Omit<ConceptDecision, "continues"> & { continues: boolean | null }> = {}
@@ -137,7 +133,6 @@ export function CycleReviewModal({ projectId, cycleId, mode, onClose }: {
   function handleSubmit() {
     if (!data) return
     setSaveError(null)
-    const num = (v: string) => (v.trim() ? Number(v) : null)
     // Solo assets de conceptos que continúan.
     const finalAssets = data.assets
       .filter((ra) => assetIds.has(ra.asset.id) && ra.asset.concept_id && decisions[ra.asset.concept_id]?.continues)
@@ -150,7 +145,7 @@ export function CycleReviewModal({ projectId, cycleId, mode, onClose }: {
           await completeCycleReview({
             projectId,
             cycleId,
-            summary: { real_spend: num(summary.real_spend), roas_real: num(summary.roas_real), cpa_real: num(summary.cpa_real), real_results: num(summary.real_results) },
+            summary: { ...channelTotals(draftsToRows(channels)), channel_breakdown: draftsToRows(channels) },
             decisions: Object.values(decisions) as ConceptDecision[],
             assetIds: finalAssets,
             nextCycle: data.otherActiveCycle ? null : { start: nextStart, end: nextEnd },
@@ -212,23 +207,9 @@ export function CycleReviewModal({ projectId, cycleId, mode, onClose }: {
                 ))}
               </div>
               <div>
-                <p className="text-sm font-medium">Resumen del ciclo (todos los canales)</p>
-                <p className="text-xs text-muted-foreground mb-2">Captura a mano los totales, sumando Meta, Google, TikTok, etc.</p>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-2xl">
-                  {([
-                    ["real_spend", "Inversión"], ["roas_real", "ROAS"], ["cpa_real", "CPA"], ["real_results", "Resultados"],
-                  ] as const).map(([key, label]) => (
-                    <label key={key} className="text-xs">
-                      <span className="text-muted-foreground">{label}</span>
-                      <input
-                        type="number" step="any" min="0"
-                        value={summary[key]}
-                        onChange={(e) => setSummary((s) => ({ ...s, [key]: e.target.value }))}
-                        className="mt-0.5 w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                      />
-                    </label>
-                  ))}
-                </div>
+                <p className="text-sm font-medium">Resumen del ciclo por canal</p>
+                <p className="text-xs text-muted-foreground mb-2">Meta viene del sync; el resto de canales (Google, TikTok…) se captura a mano. Los totales se calculan solos.</p>
+                <ChannelSummaryEditor drafts={channels} onChange={setChannels} />
               </div>
             </div>
           )}
