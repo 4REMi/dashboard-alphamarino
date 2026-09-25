@@ -48,7 +48,9 @@ export function CycleReviewModal({ projectId, cycleId, mode, onClose }: {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [step, setStep] = useState(mode === "edit" ? 2 : 1)
   const [summary, setSummary] = useState({ real_spend: "", roas_real: "", cpa_real: "", real_results: "" })
-  const [decisions, setDecisions] = useState<Record<string, ConceptDecision>>({})
+  // continues: null = sin decidir (concepto sin anuncios vinculados — no
+  // hay datos para sugerir nada, así que se obliga a elegir).
+  const [decisions, setDecisions] = useState<Record<string, Omit<ConceptDecision, "continues"> & { continues: boolean | null }>>({})
   const [assetIds, setAssetIds] = useState<Set<string>>(new Set())
   const [nextStart, setNextStart] = useState("")
   const [nextEnd, setNextEnd] = useState("")
@@ -67,10 +69,16 @@ export function CycleReviewModal({ projectId, cycleId, mode, onClose }: {
       })
       // Sugerencias: continúa lo que corre en Meta o ya era Evergreen; en
       // modo corrección, lo que ya está en el ciclo siguiente.
-      const initial: Record<string, ConceptDecision> = {}
+      const initial: Record<string, Omit<ConceptDecision, "continues"> & { continues: boolean | null }> = {}
       for (const rc of d.concepts) {
-        const continues = mode === "edit" ? d.nextConceptIds.includes(rc.concept.id) : rc.running || rc.concept.status === "Evergreen"
-        initial[rc.concept.id] = { conceptId: rc.concept.id, continues, evergreen: rc.concept.status === "Evergreen" }
+        const isEvergreen = rc.concept.status === "Evergreen"
+        const hasLinkedAds = rc.spend > 0 || rc.running
+        const continues = mode === "edit"
+          ? d.nextConceptIds.includes(rc.concept.id)
+          : rc.running || isEvergreen ? true
+          : hasLinkedAds ? false
+          : null
+        initial[rc.concept.id] = { conceptId: rc.concept.id, continues, evergreen: isEvergreen }
       }
       setDecisions(initial)
       const preselected = mode === "edit"
@@ -99,11 +107,12 @@ export function CycleReviewModal({ projectId, cycleId, mode, onClose }: {
     }
   }, [projectId, cycleId, mode])
 
-  const continuing = useMemo(() => Object.values(decisions).filter((d) => d.continues), [decisions])
-  const stopping = useMemo(() => Object.values(decisions).filter((d) => !d.continues), [decisions])
+  const continuing = useMemo(() => Object.values(decisions).filter((d) => d.continues === true), [decisions])
+  const stopping = useMemo(() => Object.values(decisions).filter((d) => d.continues === false), [decisions])
+  const undecided = useMemo(() => Object.values(decisions).filter((d) => d.continues === null), [decisions])
   const selectedAssetsCount = data ? data.assets.filter((ra) => assetIds.has(ra.asset.id) && ra.asset.concept_id && decisions[ra.asset.concept_id]?.continues).length : 0
 
-  function setDecision(id: string, patch: Partial<ConceptDecision>) {
+  function setDecision(id: string, patch: Partial<Omit<ConceptDecision, "continues"> & { continues: boolean | null }>) {
     setDecisions((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }))
   }
 
@@ -136,13 +145,13 @@ export function CycleReviewModal({ projectId, cycleId, mode, onClose }: {
     startTransition(async () => {
       try {
         if (mode === "edit") {
-          await editCarryOver({ projectId, cycleId, decisions: Object.values(decisions), assetIds: finalAssets })
+          await editCarryOver({ projectId, cycleId, decisions: Object.values(decisions) as ConceptDecision[], assetIds: finalAssets })
         } else {
           await completeCycleReview({
             projectId,
             cycleId,
             summary: { real_spend: num(summary.real_spend), roas_real: num(summary.roas_real), cpa_real: num(summary.cpa_real), real_results: num(summary.real_results) },
-            decisions: Object.values(decisions),
+            decisions: Object.values(decisions) as ConceptDecision[],
             assetIds: finalAssets,
             nextCycle: data.otherActiveCycle ? null : { start: nextStart, end: nextEnd },
           })
@@ -239,7 +248,9 @@ export function CycleReviewModal({ projectId, cycleId, mode, onClose }: {
                     key={rc.concept.id}
                     className={cn(
                       "rounded-xl border px-4 py-3 flex items-center gap-4 flex-wrap",
-                      d.continues ? "bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-900" : "bg-muted/40"
+                      d.continues === true ? "bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-900"
+                        : d.continues === null ? "bg-amber-50 border-amber-300 dark:bg-amber-950/30 dark:border-amber-900"
+                        : "bg-muted/40"
                     )}
                   >
                     <div className="flex-1 min-w-[220px]">
@@ -252,6 +263,11 @@ export function CycleReviewModal({ projectId, cycleId, mode, onClose }: {
                           ? `${fmt$(rc.spend)} · ${rc.results.toLocaleString("en-US")} resultados${cpr !== null ? ` · $${cpr.toFixed(2)} por resultado` : ""}`
                           : "Sin anuncios vinculados este ciclo"}
                       </p>
+                      {d.continues === null && (
+                        <span className="inline-flex mt-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                          Sin decidir — no hay anuncios vinculados para sugerir
+                        </span>
+                      )}
                       {rc.running && (
                         <span className="inline-flex items-center gap-1 mt-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
                           <Radio className="w-3 h-3" /> Corriendo en Meta
@@ -263,19 +279,19 @@ export function CycleReviewModal({ projectId, cycleId, mode, onClose }: {
                         <button
                           type="button"
                           onClick={() => setDecision(rc.concept.id, { continues: true })}
-                          className={cn("text-xs font-medium px-3 py-1.5 rounded-md transition-colors", d.continues ? "bg-emerald-600 text-white" : "text-muted-foreground hover:text-foreground")}
+                          className={cn("text-xs font-medium px-3 py-1.5 rounded-md transition-colors", d.continues === true ? "bg-emerald-600 text-white" : "text-muted-foreground hover:text-foreground")}
                         >
                           Continúa
                         </button>
                         <button
                           type="button"
                           onClick={() => setDecision(rc.concept.id, { continues: false })}
-                          className={cn("text-xs font-medium px-3 py-1.5 rounded-md transition-colors", !d.continues ? "bg-slate-600 text-white" : "text-muted-foreground hover:text-foreground")}
+                          className={cn("text-xs font-medium px-3 py-1.5 rounded-md transition-colors", d.continues === false ? "bg-slate-600 text-white" : "text-muted-foreground hover:text-foreground")}
                         >
                           Termina
                         </button>
                       </div>
-                      {d.continues ? (
+                      {d.continues === null ? null : d.continues ? (
                         <button
                           type="button"
                           onClick={() => setDecision(rc.concept.id, { evergreen: !d.evergreen })}
@@ -414,8 +430,11 @@ export function CycleReviewModal({ projectId, cycleId, mode, onClose }: {
             {step > firstStep && (
               <Button type="button" variant="outline" size="sm" onClick={() => setStep((s) => s - 1)} disabled={isPending}>Atrás</Button>
             )}
+            {step === 2 && undecided.length > 0 && (
+              <span className="text-xs text-amber-700">Faltan {undecided.length} concepto{undecided.length !== 1 ? "s" : ""} por decidir</span>
+            )}
             {step < lastStep ? (
-              <Button type="button" size="sm" onClick={() => setStep((s) => s + 1)} disabled={!data}>Siguiente</Button>
+              <Button type="button" size="sm" onClick={() => setStep((s) => s + 1)} disabled={!data || (step === 2 && undecided.length > 0)}>Siguiente</Button>
             ) : (
               <Button type="button" size="sm" onClick={handleSubmit} disabled={!data || isPending || (mode !== "edit" && !data.otherActiveCycle && (!nextStart || !nextEnd))}>
                 {isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
