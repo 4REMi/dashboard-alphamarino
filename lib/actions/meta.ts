@@ -501,6 +501,63 @@ async function fetchByIds<T>(ids: string[], fields: string, accessToken: string)
   return out
 }
 
+// Totales "Máximo" (date_preset=maximum, igual que Ads Manager) de las
+// campañas del sync y sus anuncios. Una sola fila por objeto — Meta ya
+// deduplica el alcance sobre toda la vida, así que nada se deriva aquí.
+// No bloquea el sync: si falla, el modo Máximo simplemente no tiene datos.
+async function syncLifetimeStats(supabase: SupabaseClient, ctx: {
+  projectId: string
+  accountId: string
+  accessToken: string
+  campaignIds: string[]
+  specByAdsetId: Map<string, ResultSpec | null>
+  adsetIdByCampaignId: Map<string, string>
+  objectiveById: Map<string, string | null>
+}) {
+  if (ctx.campaignIds.length === 0) return
+  const out: Record<string, unknown>[] = []
+  for (const level of ["ad", "campaign"] as const) {
+    const u = new URL(`${META_BASE}/act_${ctx.accountId}/insights`)
+    u.searchParams.set("level", level)
+    u.searchParams.set("date_preset", "maximum")
+    u.searchParams.set("use_unified_attribution_setting", "true")
+    u.searchParams.set("fields", `${level === "ad" ? "ad_id,adset_id," : ""}campaign_id,spend,impressions,clicks,reach,frequency,actions,action_values`)
+    u.searchParams.set("filtering", JSON.stringify([{ field: "campaign.id", operator: "IN", value: ctx.campaignIds }]))
+    u.searchParams.set("access_token", ctx.accessToken)
+    u.searchParams.set("limit", "500")
+    try {
+      const page = await fetchAllPages<MetaAdInsightRow>(u.toString())
+      if (page.error) { console.error(`[syncLifetimeStats] ${level}:`, page.error); continue }
+      for (const r of page.data) {
+        const adsetId = level === "ad" ? r.adset_id : ctx.adsetIdByCampaignId.get(r.campaign_id)
+        const spec = adsetId ? ctx.specByAdsetId.get(adsetId) ?? null : null
+        const { results, results_type } = pickResults(r, spec)
+        out.push({
+          project_id: ctx.projectId,
+          level,
+          object_id: level === "ad" ? r.ad_id : r.campaign_id,
+          spend: r.spend ? Number(r.spend) : null,
+          impressions: r.impressions ? Number(r.impressions) : null,
+          clicks: r.clicks ? Number(r.clicks) : null,
+          reach: r.reach ? Number(r.reach) : null,
+          frequency: r.frequency ? Number(r.frequency) : null,
+          results,
+          results_type,
+          purchase_value: pickPurchaseValue(r.action_values, ctx.objectiveById.get(r.campaign_id) ?? null),
+          link_clicks: actionCount(r.actions, ["link_click"]),
+          video_views: actionCount(r.actions, ["video_view"]),
+          synced_at: new Date().toISOString(),
+        })
+      }
+    } catch (err) {
+      console.error(`[syncLifetimeStats] ${level}:`, err instanceof Error ? err.message : err)
+    }
+  }
+  if (out.length === 0) return
+  const { error } = await supabase.from("meta_lifetime_stats").upsert(out, { onConflict: "project_id,level,object_id" })
+  if (error) console.error("[syncLifetimeStats] upsert:", error.message)
+}
+
 async function runMetaAdsSync(supabase: SupabaseClient, projectId: string, cycleId: string, campaignIds?: string[]): Promise<{ synced: number; error?: string }> {
   const accessToken = process.env.META_SYSTEM_USER_TOKEN
   if (!accessToken) return { synced: 0, error: "META_SYSTEM_USER_TOKEN no está configurado en el servidor" }
@@ -784,6 +841,14 @@ async function runMetaAdsSync(supabase: SupabaseClient, projectId: string, cycle
     const { error: reachError } = await supabase.from("meta_cycle_reach").insert(reachRows)
     if (reachError) console.error("[syncMetaAds] no se pudo guardar alcance del ciclo:", reachError.message)
   }
+
+  await syncLifetimeStats(supabase, {
+    projectId, accountId: meta_ad_account_id, accessToken,
+    campaignIds: campaignIdsInRows,
+    specByAdsetId,
+    adsetIdByCampaignId: new Map(rows.map((r) => [r.campaign_id, r.adset_id])),
+    objectiveById,
+  })
 
   return { synced: factRows.length }
 }

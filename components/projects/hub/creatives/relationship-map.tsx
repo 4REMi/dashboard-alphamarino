@@ -339,6 +339,10 @@ function CampaignNode({ data }: NodeProps<Node<{
   const { campaign, projectId, onOverrideChange, displayMetrics, cycleStartDate } = data
   const [expanded, setExpanded] = useState(false)
   const [savingWindow, setSavingWindow] = useState(false)
+  // Ciclo = métricas del ciclo con tendencia; Máximo = totales de toda la
+  // vida de la campaña (como el preset "Máximo" de Ads Manager), sin %.
+  const [range, setRange] = useState<"cycle" | "lifetime">("cycle")
+  const isLifetime = range === "lifetime"
   const activeCount = campaign.ads.filter((a) => a.status === "ACTIVE").length
 
   function handleWindowChange(value: string) {
@@ -363,14 +367,34 @@ function CampaignNode({ data }: NodeProps<Node<{
         {/* Medalla de salud — el veredicto agregado de todas las métricas
             de un vistazo, sin tener que expandir ni leer tarjeta por
             tarjeta. */}
-        <HealthBadge metrics={campaign.aggregate} keys={displayMetrics} />
+        {!isLifetime && <HealthBadge metrics={campaign.aggregate} keys={displayMetrics} />}
       </button>
+
+      <div className="nodrag flex border-b border-border text-[10px] font-semibold" onClick={(e) => e.stopPropagation()}>
+        {([["cycle", "Ciclo"], ["lifetime", "Máximo"]] as const).map(([val, label]) => (
+          <button
+            key={val}
+            onClick={() => setRange(val)}
+            className={cn(
+              "nodrag flex-1 py-1.5 transition-colors",
+              range === val ? "bg-emerald-50 text-emerald-700" : "text-muted-foreground hover:bg-muted/40"
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
       {/* Ajuste puntual de ventana de tendencia por campaña — mismo ajuste
           que ya existía como backend (setCampaignTrendOverride) sin
           ningún lugar en la UI desde donde llamarlo; el mapa, al mostrar
           la campaña como su propio nodo, es un lugar natural para
           hacerlo sin ir a Contexto de Cuenta. */}
+      {isLifetime ? (
+        <p className="px-2.5 py-1.5 border-b border-border bg-muted/20 text-[10px] text-muted-foreground">
+          Total de toda la vida de la campaña (como &quot;Máximo&quot; en Ads Manager)
+        </p>
+      ) : (
       <div className="nodrag px-2.5 py-1.5 border-b border-border bg-muted/20 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
         <span className="text-[9px] text-muted-foreground flex-shrink-0">Tendencia:</span>
         <select
@@ -387,8 +411,13 @@ function CampaignNode({ data }: NodeProps<Node<{
           ))}
         </select>
       </div>
+      )}
 
-      <MetricGrid metrics={campaign.aggregate} keys={displayMetrics} />
+      {isLifetime && !campaign.lifetime ? (
+        <p className="p-3 text-[11px] text-muted-foreground">Sin totales de Máximo todavía — se llenan en la próxima sincronización.</p>
+      ) : (
+        <MetricGrid metrics={isLifetime ? campaign.lifetime! : campaign.aggregate} keys={displayMetrics} />
+      )}
 
       {expanded && (
         <div className="border-t border-border divide-y divide-border">
@@ -410,7 +439,11 @@ function CampaignNode({ data }: NodeProps<Node<{
                     {ad.status === "ACTIVE" ? "Activo" : ad.status ?? "—"}
                   </span>
                 </div>
-                <MetricGrid metrics={ad.metrics} keys={displayMetrics} />
+                {isLifetime && !campaign.adLifetime[ad.ad_id] ? (
+                  <p className="px-2.5 pb-2.5 text-[10px] text-muted-foreground">Sin totales de Máximo todavía.</p>
+                ) : (
+                  <MetricGrid metrics={isLifetime ? campaign.adLifetime[ad.ad_id]! : ad.metrics} keys={displayMetrics} />
+                )}
               </div>
             )
           })}

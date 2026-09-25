@@ -118,6 +118,31 @@ export function withMetaReach(
   return out
 }
 
+export interface LifetimeTotals {
+  spend: number | null
+  impressions: number | null
+  clicks: number | null
+  reach: number | null
+  frequency: number | null
+  results: number | null
+  results_type: string | null
+  purchase_value: number | null
+  link_clicks: number | null
+  video_views: number | null
+}
+
+// Totales "Máximo" (una sola fila de Meta) → mismas métricas que ya pinta
+// MetricGrid. Sin tendencia: no hay periodo contra el cual comparar.
+export function metricsFromLifetime(t: LifetimeTotals): Record<MetricKey, MetricPoint> {
+  const row: MetaAdDailyStat = {
+    id: "", project_id: "", cycle_id: null, ad_id: "", date: "", synced_at: "",
+    spend: t.spend, impressions: t.impressions, clicks: t.clicks,
+    results: t.results, results_type: t.results_type, purchase_value: t.purchase_value,
+    reach: t.reach, frequency: t.frequency, link_clicks: t.link_clicks, video_views: t.video_views,
+  }
+  return withMetaReach(computeMetricsForAd([row], "previous_day"), { reach: t.reach, frequency: t.frequency }, t.results_type)
+}
+
 export function resultsTypeOf(rows: MetaAdDailyStat[]): string | null {
   return rows.find((r) => r.results_type)?.results_type ?? null
 }

@@ -3,7 +3,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { getCreativeConcepts, getCreativeAssets } from "@/lib/actions/creatives"
 import { getCreativePerformance, type AdPerformanceCard } from "@/lib/actions/paid-media-performance"
-import { mergeDailyStatsByDate, computeMetricsForAd, withMetaReach, resultsTypeOf, type MetricPoint } from "@/lib/utils/paid-media-calc"
+import { mergeDailyStatsByDate, computeMetricsForAd, withMetaReach, resultsTypeOf, metricsFromLifetime, type MetricPoint, type LifetimeTotals } from "@/lib/utils/paid-media-calc"
 import { METRIC_DEFS, type MetricKey } from "@/lib/constants/paid-media-metrics"
 import type { TrendWindow, CreativeConcept } from "@/lib/types"
 
@@ -55,6 +55,10 @@ export interface RelationshipCampaignNode {
   // que resolverlo de nuevo del lado del cliente.
   trendWindow: TrendWindow
   hasOverride: boolean
+  // Totales "Máximo" (toda la vida, como Ads Manager) de la campaña y de
+  // cada uno de sus ads — null si todavía no se ha sincronizado con esto.
+  lifetime: Record<MetricKey, MetricPoint> | null
+  adLifetime: Record<string, Record<MetricKey, MetricPoint> | null>
 }
 
 export interface RelationshipMapData {
@@ -157,14 +161,19 @@ export async function deleteRelationshipMapNote(noteId: string): Promise<void> {
 export async function getRelationshipMap(projectId: string, cycleId: string | null): Promise<RelationshipMapData> {
   const supabase = await createClient()
 
-  const [concepts, assets, ads, contextRes, reachRes, cycleRes] = await Promise.all([
+  const [concepts, assets, ads, contextRes, reachRes, cycleRes, lifetimeRes] = await Promise.all([
     getCreativeConcepts(projectId, cycleId),
     getCreativeAssets(projectId, cycleId),
     cycleId ? getCreativePerformance(projectId, cycleId) : Promise.resolve([] as AdPerformanceCard[]),
     supabase.from("paid_media_context").select("trend_window, campaign_trend_overrides, display_metrics").eq("project_id", projectId).maybeSingle(),
     supabase.from("meta_cycle_reach").select("object_id, reach, frequency").eq("project_id", projectId).eq("cycle_id", cycleId ?? "").eq("level", "campaign"),
     cycleId ? supabase.from("paid_media_cycles").select("start_date").eq("id", cycleId).maybeSingle() : Promise.resolve({ data: null }),
+    supabase.from("meta_lifetime_stats").select("*").eq("project_id", projectId),
   ])
+  const lifetimeByKey = new Map(
+    ((lifetimeRes.data ?? []) as (LifetimeTotals & { level: string; object_id: string })[])
+      .map((r) => [`${r.level}:${r.object_id}`, r])
+  )
   const reachByCampaignId = new Map((reachRes.data ?? []).map((r) => [r.object_id as string, r as { reach: number | null; frequency: number | null }]))
 
   const defaultWindow: TrendWindow = (contextRes.data?.trend_window as TrendWindow) ?? "previous_day"
@@ -199,6 +208,11 @@ export async function getRelationshipMap(projectId: string, cycleId: string | nu
       ads: campaignAds,
       trendWindow: window,
       hasOverride: !!campaignOverrides[campaignId],
+      lifetime: lifetimeByKey.has(`campaign:${campaignId}`) ? metricsFromLifetime(lifetimeByKey.get(`campaign:${campaignId}`)!) : null,
+      adLifetime: Object.fromEntries(campaignAds.map((ad) => {
+        const row = lifetimeByKey.get(`ad:${ad.ad_id}`)
+        return [ad.ad_id, row ? metricsFromLifetime(row) : null]
+      })),
     }
   })
 

@@ -129,6 +129,10 @@ ciclo, solo visible para admin/subadmin.
   al día (01:00, 13:00, 19:00 UTC) para todos los ciclos activos de proyectos
   activos, respetando la selección de campañas guardada. El botón "Sincronizar"
   sigue disponible; el grid muestra "Última sincronización" (`getLastMetaSync`).
+- **Mapa de relaciones — selector Ciclo / Máximo** en cada nodo de campaña: "Máximo"
+  muestra totales de toda la vida de la campaña y de sus ads (`date_preset=maximum`,
+  igual que Ads Manager, sin % de tendencia), guardados en `meta_lifetime_stats`
+  por `syncLifetimeStats` en cada sync.
 - **Qué cuenta como "Resultado"** (`resolveResultSpec`/`pickResults` en `meta.ts`):
   se resuelve por ad set — evento exacto de `promoted_object` para conversiones
   (compra, lead, registro, carrito, etc. o conversión personalizada), luego
