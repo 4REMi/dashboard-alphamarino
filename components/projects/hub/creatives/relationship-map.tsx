@@ -26,18 +26,24 @@ interface Props {
   cycleId: string | null
 }
 
-// Todas las métricas configuradas para el proyecto que tengan valor —
-// a propósito NO resumido, ni colapsado ni expandido: si ya es un canvas
-// "infinito", no hay razón para escatimar la información de cada nodo.
+// Solo las métricas elegidas en Contexto de Cuenta (mismo criterio que el
+// grid de creativos), en el orden de METRIC_DEFS.
 const ALL_METRIC_KEYS = Object.keys(METRIC_DEFS) as MetricKey[]
+const selectedKeys = (keys: MetricKey[]) => ALL_METRIC_KEYS.filter((k) => keys.includes(k))
+
+// "2026-09-15" → "15 sep" (sin pasar por Date UTC, que corre el día).
+function formatCycleStart(date: string): string {
+  const [y, m, d] = date.split("-").map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString("es-MX", { day: "numeric", month: "short" })
+}
 
 // Mismo criterio "¿es buena o mala esta tendencia?" que ya usa cada
 // tarjeta de MetricGrid, pero agregado — para poder mostrar un veredicto
 // de un vistazo (medalla) en el header colapsado de un nodo de campaña,
 // sin tener que expandirlo ni leer las 10 tarjetas una por una.
-function summarizeHealth(metrics: Record<MetricKey, { value: number | null; trendPct: number | null; higherIsBetter: boolean }>): { good: number; bad: number } {
+function summarizeHealth(metrics: Record<MetricKey, { value: number | null; trendPct: number | null; higherIsBetter: boolean }>, keys: MetricKey[]): { good: number; bad: number } {
   let good = 0, bad = 0
-  for (const key of ALL_METRIC_KEYS) {
+  for (const key of selectedKeys(keys)) {
     const m = metrics[key]
     if (!m || m.value === null || m.trendPct === null || Math.abs(m.trendPct) < 0.5) continue
     const isUp = m.trendPct > 0
@@ -49,8 +55,8 @@ function summarizeHealth(metrics: Record<MetricKey, { value: number | null; tren
 
 // Medalla discreta con el veredicto agregado — verde/rojo/gris según si
 // gana lo bueno, lo malo, o está parejo, con el desglose en el tooltip.
-function HealthBadge({ metrics }: { metrics: Record<MetricKey, { value: number | null; trendPct: number | null; higherIsBetter: boolean }> }) {
-  const { good, bad } = summarizeHealth(metrics)
+function HealthBadge({ metrics, keys }: { metrics: Record<MetricKey, { value: number | null; trendPct: number | null; higherIsBetter: boolean }>; keys: MetricKey[] }) {
+  const { good, bad } = summarizeHealth(metrics, keys)
   if (good === 0 && bad === 0) return null
   const tone = good > bad ? "bg-emerald-100 text-emerald-700" : bad > good ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"
   return (
@@ -64,8 +70,8 @@ function HealthBadge({ metrics }: { metrics: Record<MetricKey, { value: number |
   )
 }
 
-function MetricGrid({ metrics }: { metrics: Record<MetricKey, { value: number | null; trendPct: number | null; higherIsBetter: boolean }> }) {
-  const withValue = ALL_METRIC_KEYS.filter((k) => metrics[k]?.value !== null)
+function MetricGrid({ metrics, keys }: { metrics: Record<MetricKey, { value: number | null; trendPct: number | null; higherIsBetter: boolean }>; keys: MetricKey[] }) {
+  const withValue = selectedKeys(keys).filter((k) => metrics[k]?.value !== null)
   return (
     <div className="grid grid-cols-2 gap-1.5 p-2.5">
       {withValue.map((key) => {
@@ -319,16 +325,18 @@ function AssetNode({ data }: NodeProps<Node<{ asset: RelationshipMapData["assets
 }
 
 // El bloque real que resuelve "¿qué assets están anidados en la misma
-// campaña?" — colapsado por default, mostrando TODAS las métricas
-// agregadas (nunca resumido); al expandir aparece cada ad individual
+// campaña?" — colapsado por default, mostrando las métricas
+// agregadas elegidas en Contexto de Cuenta; al expandir aparece cada ad individual
 // adentro, con su propio detalle completo — no se pierde nada, solo se
 // organiza.
 function CampaignNode({ data }: NodeProps<Node<{
   campaign: RelationshipMapData["campaigns"][number]
   projectId: string
   onOverrideChange: (campaignId: string, window: string | null) => void
+  displayMetrics: MetricKey[]
+  cycleStartDate: string | null
 }>>) {
-  const { campaign, projectId, onOverrideChange } = data
+  const { campaign, projectId, onOverrideChange, displayMetrics, cycleStartDate } = data
   const [expanded, setExpanded] = useState(false)
   const [savingWindow, setSavingWindow] = useState(false)
   const activeCount = campaign.ads.filter((a) => a.status === "ACTIVE").length
@@ -355,7 +363,7 @@ function CampaignNode({ data }: NodeProps<Node<{
         {/* Medalla de salud — el veredicto agregado de todas las métricas
             de un vistazo, sin tener que expandir ni leer tarjeta por
             tarjeta. */}
-        <HealthBadge metrics={campaign.aggregate} />
+        <HealthBadge metrics={campaign.aggregate} keys={displayMetrics} />
       </button>
 
       {/* Ajuste puntual de ventana de tendencia por campaña — mismo ajuste
@@ -373,12 +381,14 @@ function CampaignNode({ data }: NodeProps<Node<{
         >
           <option value="default">Default de la cuenta</option>
           {Object.entries(TREND_WINDOW_LABELS).map(([val, label]) => (
-            <option key={val} value={val}>{label}</option>
+            <option key={val} value={val}>
+              {val === "baseline" && cycleStartDate ? `${label} (${formatCycleStart(cycleStartDate)})` : label}
+            </option>
           ))}
         </select>
       </div>
 
-      <MetricGrid metrics={campaign.aggregate} />
+      <MetricGrid metrics={campaign.aggregate} keys={displayMetrics} />
 
       {expanded && (
         <div className="border-t border-border divide-y divide-border">
@@ -400,7 +410,7 @@ function CampaignNode({ data }: NodeProps<Node<{
                     {ad.status === "ACTIVE" ? "Activo" : ad.status ?? "—"}
                   </span>
                 </div>
-                <MetricGrid metrics={ad.metrics} />
+                <MetricGrid metrics={ad.metrics} keys={displayMetrics} />
               </div>
             )
           })}
@@ -477,7 +487,7 @@ function buildGraph(data: RelationshipMapData, handlers: GraphHandlers): { nodes
           if (!placedCampaignIds.has(campaignId)) {
             const campaign = campaignById.get(campaignId)
             if (campaign) {
-              nodes.push({ id: `campaign-${campaignId}`, type: "campaignNode", position: { x: COL_CAMPAIGN, y: cursorY }, data: { campaign, projectId: handlers.projectId, onOverrideChange: handlers.onOverrideChange }, draggable: true })
+              nodes.push({ id: `campaign-${campaignId}`, type: "campaignNode", position: { x: COL_CAMPAIGN, y: cursorY }, data: { campaign, projectId: handlers.projectId, onOverrideChange: handlers.onOverrideChange, displayMetrics: data.displayMetrics, cycleStartDate: data.cycleStartDate }, draggable: true })
               cursorY += CAMPAIGN_ROW_H
             }
             placedCampaignIds.add(campaignId)

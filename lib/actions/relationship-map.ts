@@ -64,6 +64,11 @@ export interface RelationshipMapData {
   // asset → campaña (deduplicado — si un asset tiene 2 ads en la misma
   // campaña, es una sola línea, no dos).
   assetCampaignEdges: { assetId: string; campaignId: string }[]
+  // Mismas métricas elegidas en Contexto de Cuenta — el mapa las respeta
+  // igual que el grid, en vez de mostrar todas.
+  displayMetrics: MetricKey[]
+  // Para que "vs. inicio del ciclo" diga la fecha real de inicio.
+  cycleStartDate: string | null
 }
 
 function assetThumbUrl(a: { thumbnail_path: string | null; file_path: string | null; asset_url: string | null }): string | null {
@@ -152,12 +157,13 @@ export async function deleteRelationshipMapNote(noteId: string): Promise<void> {
 export async function getRelationshipMap(projectId: string, cycleId: string | null): Promise<RelationshipMapData> {
   const supabase = await createClient()
 
-  const [concepts, assets, ads, contextRes, reachRes] = await Promise.all([
+  const [concepts, assets, ads, contextRes, reachRes, cycleRes] = await Promise.all([
     getCreativeConcepts(projectId, cycleId),
     getCreativeAssets(projectId, cycleId),
     cycleId ? getCreativePerformance(projectId, cycleId) : Promise.resolve([] as AdPerformanceCard[]),
-    supabase.from("paid_media_context").select("trend_window, campaign_trend_overrides").eq("project_id", projectId).maybeSingle(),
+    supabase.from("paid_media_context").select("trend_window, campaign_trend_overrides, display_metrics").eq("project_id", projectId).maybeSingle(),
     supabase.from("meta_cycle_reach").select("object_id, reach, frequency").eq("project_id", projectId).eq("cycle_id", cycleId ?? "").eq("level", "campaign"),
+    cycleId ? supabase.from("paid_media_cycles").select("start_date").eq("id", cycleId).maybeSingle() : Promise.resolve({ data: null }),
   ])
   const reachByCampaignId = new Map((reachRes.data ?? []).map((r) => [r.object_id as string, r as { reach: number | null; frequency: number | null }]))
 
@@ -226,5 +232,8 @@ export async function getRelationshipMap(projectId: string, cycleId: string | nu
     })),
     campaigns,
     assetCampaignEdges,
+    displayMetrics: ((contextRes.data?.display_metrics as string[] | null) ?? ["spend", "cost_per_result"])
+      .filter((k): k is MetricKey => k in METRIC_DEFS),
+    cycleStartDate: (cycleRes.data as { start_date: string } | null)?.start_date ?? null,
   }
 }
