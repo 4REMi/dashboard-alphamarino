@@ -92,70 +92,87 @@ function LinkPickerModal({ projectId, cycleId, card, onClose, onLinked }: {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-background rounded-2xl border border-border max-w-lg w-full max-h-[85vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-          <h3 className="text-sm font-semibold">Vincular a un asset del dashboard</h3>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
-        </div>
-
-        {/* Este creativo — para comparar contra los assets de abajo sin
-            tener que recordar cuál era. */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-muted/30">
-          <div className="w-14 h-14 rounded-lg overflow-hidden bg-muted flex-shrink-0">
+      {/* Antes era un cuadrito chico con una lista de texto — con tantos
+          creativos casi idénticos (ver captura del usuario) eso era
+          inservible. Ahora ocupa casi toda la pantalla: el creativo que
+          se está vinculando queda grande y fijo a la izquierda, y los
+          assets del dashboard se ven como un grid de tarjetas con media
+          real, no una lista de renglones de texto. */}
+      <div
+        className="bg-background rounded-2xl border border-border w-full max-w-6xl h-[92vh] flex overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Columna izquierda — el creativo de Meta que se está vinculando */}
+        <div className="w-[300px] flex-shrink-0 border-r border-border flex flex-col bg-muted/20">
+          <div className="px-4 py-3 border-b border-border">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Este creativo</p>
+          </div>
+          <div className="flex-1 flex items-center justify-center p-4 bg-black/90">
             {card.displayVideoUrl ? (
-              <video src={card.displayVideoUrl} className="w-full h-full object-cover" muted />
+              <video src={card.displayVideoUrl} controls className="max-w-full max-h-full rounded-lg" />
             ) : adMedia ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={adMedia} alt="" className="w-full h-full object-cover" />
+              <img src={adMedia} alt="" className="max-w-full max-h-full object-contain rounded-lg" />
             ) : (
-              <div className="w-full h-full flex items-center justify-center"><ImageIcon className="w-4 h-4 text-muted-foreground/40" /></div>
+              <ImageIcon className="w-8 h-8 text-white/30" />
             )}
           </div>
-          <div className="min-w-0">
-            <p className="text-xs font-semibold truncate">{card.ad_name ?? "Sin nombre"}</p>
-            {card.campaign_name && <p className="text-[11px] text-muted-foreground truncate">{card.campaign_name}</p>}
+          <div className="px-4 py-3 border-t border-border">
+            <p className="text-sm font-semibold truncate">{card.ad_name ?? "Sin nombre"}</p>
+            {card.campaign_name && <p className="text-xs text-muted-foreground truncate mt-0.5">{card.campaign_name}</p>}
           </div>
         </div>
 
-        <div className="px-4 py-2 border-b border-border">
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por concepto o persona…"
-            className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-          />
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
-          {!assets && <p className="text-xs text-muted-foreground p-2">Cargando…</p>}
-          {assets?.length === 0 && <p className="text-xs text-muted-foreground p-2">Sin assets en este ciclo todavía.</p>}
-          {assets && assets.length > 0 && filtered.length === 0 && <p className="text-xs text-muted-foreground p-2">Nada coincide con "{search}".</p>}
-          {filtered.map((a) => (
-            <div key={a.id} className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-muted transition-colors">
-              <button
-                onClick={() => a.fileType === "video" ? setLightboxAsset(a) : null}
-                className={cn("relative w-11 h-11 rounded-md overflow-hidden bg-muted flex-shrink-0", a.fileType === "video" && "cursor-pointer")}
-                title={a.fileType === "video" ? "Ver video" : undefined}
-              >
-                {a.thumbUrl && <img src={a.thumbUrl} alt="" className="w-full h-full object-cover" />}
-                {a.fileType === "video" && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                    <Film className="w-3.5 h-3.5 text-white" />
-                  </div>
-                )}
-              </button>
-              <button onClick={() => pick(a.id)} disabled={isPending} className="min-w-0 flex-1 text-left disabled:opacity-50">
-                <p className="text-xs font-medium truncate">{a.conceptName ?? "Sin concepto"}</p>
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {a.targetPersona && <p className="text-[11px] text-muted-foreground truncate">{a.targetPersona}</p>}
-                  {a.format && <span className="text-[10px] text-muted-foreground/70">· {a.format}</span>}
-                </div>
-                {a.linkedToAdName && (
-                  <p className="text-[10px] text-amber-600 truncate mt-0.5">Ya vinculado a: {a.linkedToAdName}</p>
-                )}
-              </button>
+        {/* Columna derecha — buscador + grid de assets del dashboard */}
+        <div className="flex-1 flex flex-col min-w-0">
+          <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
+            <div>
+              <h3 className="text-sm font-semibold">Vincular a un asset del dashboard</h3>
+              <p className="text-[11px] text-muted-foreground">Compara contra el creativo de la izquierda antes de elegir.</p>
             </div>
-          ))}
+            <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
+          </div>
+
+          <div className="px-5 py-3 border-b border-border">
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar por concepto o persona…"
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-5">
+            {!assets && <p className="text-sm text-muted-foreground p-2">Cargando…</p>}
+            {assets?.length === 0 && <p className="text-sm text-muted-foreground p-2">Sin assets en este ciclo todavía.</p>}
+            {assets && assets.length > 0 && filtered.length === 0 && <p className="text-sm text-muted-foreground p-2">Nada coincide con "{search}".</p>}
+            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3">
+              {filtered.map((a) => (
+                <div key={a.id} className="rounded-xl border border-border overflow-hidden hover:border-primary/50 transition-colors">
+                  <button
+                    onClick={() => a.fileType === "video" ? setLightboxAsset(a) : undefined}
+                    className={cn("relative w-full aspect-square bg-muted block", a.fileType === "video" && "cursor-pointer")}
+                    title={a.fileType === "video" ? "Ver video" : undefined}
+                  >
+                    {a.thumbUrl && <img src={a.thumbUrl} alt="" className="w-full h-full object-cover" />}
+                    {a.fileType === "video" && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                        <Film className="w-5 h-5 text-white" />
+                      </div>
+                    )}
+                  </button>
+                  <button onClick={() => pick(a.id)} disabled={isPending} className="w-full text-left p-2.5 hover:bg-muted transition-colors disabled:opacity-50">
+                    <p className="text-xs font-medium truncate">{a.conceptName ?? "Sin concepto"}</p>
+                    {a.targetPersona && <p className="text-[11px] text-muted-foreground truncate">{a.targetPersona}</p>}
+                    {a.format && <p className="text-[10px] text-muted-foreground/70 truncate">{a.format}</p>}
+                    {a.linkedToAdName && (
+                      <p className="text-[10px] text-amber-600 truncate mt-1">Ya vinculado a: {a.linkedToAdName}</p>
+                    )}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 

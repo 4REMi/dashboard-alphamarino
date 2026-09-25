@@ -625,6 +625,22 @@ export async function syncMetaAds(projectId: string, cycleId: string, campaignId
   if (dimError) return { synced: 0, error: dimError.message }
   if (factError) return { synced: 0, error: factError.message }
 
+  // factRows es SIEMPRE la verdad completa y fresca para este ciclo + la
+  // selección de campañas actual — pero un upsert nunca BORRA lo que ya
+  // no debería estar. Si antes había más campañas seleccionadas y ahora
+  // hay menos, los creativos de las campañas quitadas se quedaban
+  // pegados en la vista (sus filas de meta_ad_daily_stats de este ciclo
+  // seguían ahí de un sync anterior). Se borran DESPUÉS de que el insert
+  // ya tuvo éxito — nunca antes — para no dejar la vista vacía a medias
+  // si el insert hubiera fallado.
+  const { error: pruneError } = await supabase
+    .from("meta_ad_daily_stats")
+    .delete()
+    .eq("project_id", projectId)
+    .eq("cycle_id", cycleId)
+    .not("ad_id", "in", `(${adIds.map((id) => `"${id}"`).join(",")})`)
+  if (pruneError) console.error("[syncMetaAds] no se pudieron limpiar los creativos de campañas quitadas:", pruneError.message)
+
   return { synced: factRows.length }
 }
 
