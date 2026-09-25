@@ -14,7 +14,7 @@ import type { AssetMetaLinkStatus } from "@/lib/actions/paid-media-performance"
 import { BriefCreator } from "./brief-creator"
 import { AssetCopyBank } from "./asset-copy-bank"
 import { QuickScriptModal } from "./quick-script-modal"
-import { Plus, Sparkles, Check, X, Loader2, Star, ArrowUpRight, Pencil, Trash2, Link2, FileText, Upload, ChevronDown, Film, ImageIcon, Eye, Radio, AlertTriangle } from "lucide-react"
+import { Plus, Sparkles, Check, X, Loader2, Star, ArrowUpRight, Pencil, Trash2, Link2, FileText, Upload, ChevronDown, Film, ImageIcon, Eye, EyeOff, MessageSquare, Clock, Radio, AlertTriangle } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 function fmt$(v: number) {
@@ -1405,9 +1405,9 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
                 {line?.name ?? "General"}
               </span>
               {unpublishedInGroup > 0 && (
-                <span className="text-xs text-muted-foreground" title="Assets que el cliente todavía no puede ver ni revisar">
-                  {unpublishedInGroup} asset{unpublishedInGroup !== 1 ? "s" : ""} sin publicar ·
-                </span>
+                <AttentionPill tone="warn" title="Assets que el cliente todavía no puede ver ni revisar">
+                  {unpublishedInGroup} asset{unpublishedInGroup !== 1 ? "s" : ""} sin publicar
+                </AttentionPill>
               )}
               <span className={cn("text-xs mr-2", count === 0 ? "text-muted-foreground/40 italic" : "text-muted-foreground")}>
                 {count === 0 ? "Sin conceptos" : `${count} concepto${count !== 1 ? "s" : ""}`}
@@ -1667,20 +1667,44 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
 // Lo que antes vivía en el bloque "Requiere tu atención", ahora en el
 // renglón de cada concepto — escrito, no codificado con colores, y solo
 // cuando hay algo pendiente.
+// Color con significado fijo (siempre con texto e ícono, nunca solo color):
+// rojo = el cliente pidió cambios (lo más urgente), ámbar = pendiente del
+// equipo (sin publicar), gris = esperando al cliente.
+const ATTENTION_TONES = {
+  urgent: { className: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300", Icon: MessageSquare },
+  warn:   { className: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300", Icon: EyeOff },
+  wait:   { className: "bg-muted text-muted-foreground", Icon: Clock },
+} as const
+
+function AttentionPill({ tone, title, children }: { tone: keyof typeof ATTENTION_TONES; title?: string; children: React.ReactNode }) {
+  const { className, Icon } = ATTENTION_TONES[tone]
+  return (
+    <span title={title} className={cn("inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap", className)}>
+      <Icon className="w-3 h-3" />
+      {children}
+    </span>
+  )
+}
+
+// Lo que antes vivía en el bloque "Requiere tu atención", ahora en el
+// renglón de cada concepto, y solo cuando hay algo pendiente.
 function ConceptAttentionNotes({ conceptAssets, conceptBriefs }: { conceptAssets: CreativeAsset[]; conceptBriefs: CreativeBrief[] }) {
   const unpublished = conceptAssets.filter((a) => !a.client_visible).length
   const assetChanges = conceptAssets.filter((a) => a.client_visible && a.client_status === "changes_requested").length
   const scriptEntries = conceptBriefs.flatMap((b) => scriptReviewEntries(b))
   const scriptChanges = scriptEntries.filter((e) => e.status === "changes_requested").length
   const scriptPending = scriptEntries.filter((e) => e.status === "pending_review").length
-  const notes = [
-    assetChanges > 0 && `${assetChanges} asset${assetChanges !== 1 ? "s" : ""} con cambios pedidos`,
-    scriptChanges > 0 && `${scriptChanges} guión${scriptChanges !== 1 ? "es" : ""} con cambios pedidos`,
-    unpublished > 0 && `${unpublished} asset${unpublished !== 1 ? "s" : ""} sin publicar`,
-    scriptPending > 0 && `${scriptPending} guión${scriptPending !== 1 ? "es" : ""} en revisión del cliente`,
-  ].filter(Boolean) as string[]
+  const notes: { tone: keyof typeof ATTENTION_TONES; text: string }[] = []
+  if (assetChanges > 0) notes.push({ tone: "urgent", text: `${assetChanges} asset${assetChanges !== 1 ? "s" : ""} con cambios pedidos` })
+  if (scriptChanges > 0) notes.push({ tone: "urgent", text: `${scriptChanges} guión${scriptChanges !== 1 ? "es" : ""} con cambios pedidos` })
+  if (unpublished > 0) notes.push({ tone: "warn", text: `${unpublished} asset${unpublished !== 1 ? "s" : ""} sin publicar` })
+  if (scriptPending > 0) notes.push({ tone: "wait", text: `${scriptPending} guión${scriptPending !== 1 ? "es" : ""} en revisión del cliente` })
   if (notes.length === 0) return null
-  return <p className="text-[11px] text-muted-foreground mt-0.5">{notes.join(" · ")}</p>
+  return (
+    <div className="flex flex-wrap gap-1 mt-1">
+      {notes.map((n) => <AttentionPill key={n.text} tone={n.tone}>{n.text}</AttentionPill>)}
+    </div>
+  )
 }
 
 function ConceptRow({
