@@ -30,6 +30,8 @@ import { TaskTable } from "@/components/tasks/task-table"
 import { ProjectPhases } from "@/components/projects/project-phases"
 import { PaidMediaContextCard } from "@/components/projects/hub/paid-media-context-card"
 import { PaidMediaCycleCard } from "@/components/projects/hub/paid-media-cycle-card"
+import { CreativePerformanceGrid } from "@/components/projects/hub/creative-performance-grid"
+import type { MetricKey } from "@/lib/constants/paid-media-metrics"
 import { PaidMediaCycleHistory } from "@/components/projects/hub/paid-media-cycle-history"
 import { WebContextCard } from "@/components/projects/hub/web-context-card"
 import { ServiceDeliverablesCard } from "@/components/projects/hub/service-deliverables-card"
@@ -346,46 +348,66 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           </section>
         )}
 
+        {/* ── Hub Paid Media — un contenedor propio (no una sección más
+            entre Fases y Tareas), ordenado según el flujo de trabajo:
+            ciclo → conceptos/assets → anuncios de Meta → historial →
+            configuración (lo que se toca una sola vez, al final). ── */}
         {isPaidMedia && (
-          <section className="space-y-4">
-            <h2 className="text-sm font-semibold">Hub Paid Media</h2>
-            {webContext !== null && (
-              <WebContextCard projectId={project.id} context={webContext} canEdit={isAdminOrSubadmin} />
-            )}
-            <PaidMediaContextCard projectId={project.id} context={paidMediaContext} canEdit={isAdminOrSubadmin} />
-            <IntegrationsCard     projectId={project.id} integrations={integrations as ProjectIntegration[]} canEdit={isAdminOrSubadmin} />
-            <PaidMediaCycleCard   projectId={project.id} activeCycle={activeCycle} context={paidMediaContext} canEdit={isAdminOrSubadmin} canEditDates={canEditCycleDates} isAdminOrSubadmin={isAdminOrSubadmin} autoCloseCycles={!!project.auto_close_cycles} initialCards={initialCreativeCards} hasMetaConnected={!!(integrations as ProjectIntegration[]).find((i) => i.platform === "meta")} cycleStartDay={project.paid_media_cycle_start_day} />
-            {historyCycles.length > 0 && <PaidMediaCycleHistory cycles={historyCycles} />}
-          </section>
-        )}
-
-        {/* ── Creative Tracker — full width, own section ──────────────── */}
-        {isPaidMedia && (
-          <section id="creative-tracker">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold">Creative Tracker</h2>
+          <section className="rounded-2xl border-2 border-primary/20 bg-primary/[0.03] p-5 space-y-6">
+            <div>
+              <h2 className="text-base font-semibold text-foreground">Hub Paid Media</h2>
+              <p className="text-xs text-muted-foreground">Ciclo, conceptos y assets, anuncios en Meta y configuración de la cuenta.</p>
             </div>
-            <CreativesHub
-              projectId={project.id}
-              cycles={cycles as PaidMediaCycle[]}
-              initialConcepts={initialConcepts as CreativeConcept[]}
-              initialAssets={initialAssets as CreativeAsset[]}
-              isAdminOrSubadmin={isAdminOrSubadmin}
-              isProjectMember={isProjectMember}
-              brandBrains={brandBrains as any[]}
-              brandLines={brandLines as any[]}
-              projectBrandBrainId={project.brand_brain_id ?? undefined}
-            />
 
-            {/* Historial de Meta (importar creativos de campañas pasadas) —
-                temporalmente quitado de la interfaz: la importación de video
-                nunca resolvió el video/imagen correctamente en ningún
-                proyecto, y el usuario prefiere no mostrar una función rota
-                en vez de dejarla visible a medias. El componente
-                (MetaHistory) y sus acciones (lib/actions/meta.ts) siguen
-                intactos — solo hace falta volver a renderizarlo aquí una vez
-                que se resuelva el bug de origen (ver conversación / logs de
-                Vercel para el JSON crudo de Meta pendiente de revisar). */}
+            <PaidMediaCycleCard projectId={project.id} activeCycle={activeCycle} canEdit={isAdminOrSubadmin} canEditDates={canEditCycleDates} isAdminOrSubadmin={isAdminOrSubadmin} autoCloseCycles={!!project.auto_close_cycles} cycleStartDay={project.paid_media_cycle_start_day} />
+
+            <div id="creative-tracker" className="space-y-3">
+              <h3 className="text-sm font-semibold">Creative Tracker</h3>
+              <CreativesHub
+                projectId={project.id}
+                cycles={cycles as PaidMediaCycle[]}
+                initialConcepts={initialConcepts as CreativeConcept[]}
+                initialAssets={initialAssets as CreativeAsset[]}
+                isAdminOrSubadmin={isAdminOrSubadmin}
+                isProjectMember={isProjectMember}
+                brandBrains={brandBrains as any[]}
+                brandLines={brandLines as any[]}
+                projectBrandBrainId={project.brand_brain_id ?? undefined}
+              />
+              {/* Historial de Meta (importar creativos de campañas pasadas) —
+                  temporalmente quitado de la interfaz: la importación de video
+                  nunca resolvió el video/imagen correctamente en ningún
+                  proyecto. El componente (MetaHistory) y sus acciones
+                  (lib/actions/meta.ts) siguen intactos. */}
+            </div>
+
+            {activeCycle && (
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold">Anuncios en Meta</h3>
+                <div className="rounded-xl border border-border bg-card">
+                  <CreativePerformanceGrid
+                    projectId={project.id}
+                    cycleId={activeCycle.id}
+                    initialCards={initialCreativeCards}
+                    displayMetrics={(paidMediaContext?.display_metrics ?? ["spend", "cost_per_result"]) as MetricKey[]}
+                    savedCampaignIds={paidMediaContext?.synced_campaign_ids ?? null}
+                    hasCredentials={!!(integrations as ProjectIntegration[]).find((i) => i.platform === "meta")}
+                    canEdit={isAdminOrSubadmin}
+                  />
+                </div>
+              </div>
+            )}
+
+            {historyCycles.length > 0 && <PaidMediaCycleHistory cycles={historyCycles} />}
+
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold">Configuración</h3>
+              {webContext !== null && (
+                <WebContextCard projectId={project.id} context={webContext} canEdit={isAdminOrSubadmin} />
+              )}
+              <PaidMediaContextCard projectId={project.id} context={paidMediaContext} canEdit={isAdminOrSubadmin} />
+              <IntegrationsCard projectId={project.id} integrations={integrations as ProjectIntegration[]} canEdit={isAdminOrSubadmin} />
+            </div>
           </section>
         )}
       </div>

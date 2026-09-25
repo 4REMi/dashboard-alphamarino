@@ -2,18 +2,14 @@
 
 import { useState, useTransition, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import type { PaidMediaCycle, PaidMediaContext } from "@/lib/types"
+import type { PaidMediaCycle } from "@/lib/types"
 import { CAMPAIGN_STATUS_LABELS } from "@/lib/types"
 import { openNewCycle, updateCycle, closeCycle, suggestNextCycleStartDate, updateCycleStartDay, updateCycleDates, updateProjectAutoCloseCycles } from "@/lib/actions/projects"
-import type { AdPerformanceCard } from "@/lib/actions/paid-media-performance"
-import type { MetricKey } from "@/lib/constants/paid-media-metrics"
 import { formatCycleRange } from "@/lib/utils"
-import { CreativePerformanceGrid } from "./creative-performance-grid"
 
 interface Props {
   projectId: string
   activeCycle: PaidMediaCycle | null
-  context: PaidMediaContext | null
   canEdit: boolean
   // Separate from canEdit — a real per-person permission override
   // (edit_cycle_dates), not hardcoded to admin/subadmin like the rest of
@@ -21,8 +17,6 @@ interface Props {
   canEditDates: boolean
   isAdminOrSubadmin: boolean
   autoCloseCycles: boolean
-  initialCards?: AdPerformanceCard[]
-  hasMetaConnected?: boolean
   cycleStartDay?: number | null
 }
 
@@ -149,7 +143,7 @@ function AutoCloseCyclesSetting({ projectId, enabled }: { projectId: string; ena
   )
 }
 
-export function PaidMediaCycleCard({ projectId, activeCycle, context, canEdit, canEditDates, isAdminOrSubadmin, autoCloseCycles, initialCards = [], hasMetaConnected = false, cycleStartDay = null }: Props) {
+export function PaidMediaCycleCard({ projectId, activeCycle, canEdit, canEditDates, isAdminOrSubadmin, autoCloseCycles, cycleStartDay = null }: Props) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [editingDates, setEditingDates] = useState(false)
@@ -323,21 +317,6 @@ export function PaidMediaCycleCard({ projectId, activeCycle, context, canEdit, c
           </div>
         </form>
       ) : null}
-
-      {/* Grid creative-first — reemplaza la tabla de campañas de Meta */}
-      {!editing && (
-        <div className="border-t border-border">
-          <CreativePerformanceGrid
-            projectId={projectId}
-            cycleId={activeCycle.id}
-            initialCards={initialCards}
-            displayMetrics={(context?.display_metrics ?? ["spend", "cost_per_result"]) as MetricKey[]}
-            savedCampaignIds={context?.synced_campaign_ids ?? null}
-            hasCredentials={hasMetaConnected}
-            canEdit={canEdit}
-          />
-        </div>
-      )}
     </div>
   )
 }
