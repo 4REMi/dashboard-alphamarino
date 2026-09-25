@@ -546,6 +546,7 @@ async function syncLifetimeStats(supabase: SupabaseClient, ctx: {
           purchase_value: pickPurchaseValue(r.action_values, ctx.objectiveById.get(r.campaign_id) ?? null),
           link_clicks: actionCount(r.actions, ["link_click"]),
           video_views: actionCount(r.actions, ["video_view"]),
+          messaging_conversations: actionCount(r.actions, ["onsite_conversion.messaging_conversation_started_7d"]),
           synced_at: new Date().toISOString(),
         })
       }
@@ -770,6 +771,7 @@ async function runMetaAdsSync(supabase: SupabaseClient, projectId: string, cycle
       frequency:      row.frequency ? Number(row.frequency) : null,
       link_clicks:    actionCount(row.actions, ["link_click"]),
       video_views:    actionCount(row.actions, ["video_view"]),
+      messaging_conversations: actionCount(row.actions, ["onsite_conversion.messaging_conversation_started_7d"]),
       synced_at:      new Date().toISOString(),
     }
   })

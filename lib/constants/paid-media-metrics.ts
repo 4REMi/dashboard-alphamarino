@@ -6,6 +6,7 @@ export type MetricKey =
   | "spend" | "ctr" | "cpc" | "cpm" | "cost_per_result" | "roas" | "results"
   | "clicks" | "impressions" | "reach" | "frequency"
   | "link_clicks" | "cost_per_link_click" | "video_views" | "purchase_value"
+  | "messaging_conversations"
 
 export const METRIC_DEFS: Record<MetricKey, { label: string; higherIsBetter: boolean; format: (v: number) => string }> = {
   spend:                { label: "Inversión",         higherIsBetter: false, format: (v) => `$${v.toLocaleString("en-US", { maximumFractionDigits: 0 })}` },
@@ -22,6 +23,7 @@ export const METRIC_DEFS: Record<MetricKey, { label: string; higherIsBetter: boo
   link_clicks:          { label: "Clics en el enlace",  higherIsBetter: true,  format: (v) => v.toLocaleString("en-US") },
   cost_per_link_click:  { label: "Costo/Clic en enlace", higherIsBetter: false, format: (v) => `$${v.toFixed(2)}` },
   video_views:          { label: "Reproducciones de video", higherIsBetter: true, format: (v) => v.toLocaleString("en-US") },
+  messaging_conversations: { label: "Conversaciones iniciadas", higherIsBetter: true, format: (v) => v.toLocaleString("en-US") },
   purchase_value:       { label: "Valor de compra",    higherIsBetter: true,  format: (v) => `$${v.toLocaleString("en-US", { maximumFractionDigits: 0 })}` },
 }
 

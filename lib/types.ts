@@ -667,6 +667,7 @@ export interface MetaAdDailyStat {
   frequency: number | null
   link_clicks: number | null
   video_views: number | null
+  messaging_conversations: number | null
   synced_at: string
 }
 

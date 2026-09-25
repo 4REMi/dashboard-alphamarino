@@ -15,6 +15,7 @@ interface DayTotals {
   reach: number
   link_clicks: number
   video_views: number
+  messaging_conversations: number
 }
 
 function sumDays(stats: MetaAdDailyStat[]): DayTotals {
@@ -30,7 +31,8 @@ function sumDays(stats: MetaAdDailyStat[]): DayTotals {
     reach:          Math.max(acc.reach, s.reach ?? 0),
     link_clicks:    acc.link_clicks + (s.link_clicks ?? 0),
     video_views:    acc.video_views + (s.video_views ?? 0),
-  }), { spend: 0, impressions: 0, clicks: 0, results: 0, purchase_value: 0, reach: 0, link_clicks: 0, video_views: 0 })
+    messaging_conversations: acc.messaging_conversations + (s.messaging_conversations ?? 0),
+  }), { spend: 0, impressions: 0, clicks: 0, results: 0, purchase_value: 0, reach: 0, link_clicks: 0, video_views: 0, messaging_conversations: 0 })
 }
 
 function deriveMetric(key: MetricKey, t: DayTotals): number | null {
@@ -50,6 +52,7 @@ function deriveMetric(key: MetricKey, t: DayTotals): number | null {
     case "cost_per_link_click": return t.link_clicks > 0 ? t.spend / t.link_clicks : null
     case "video_views":   return t.video_views || null
     case "purchase_value": return t.purchase_value || null
+    case "messaging_conversations": return t.messaging_conversations || null
   }
 }
 
@@ -83,6 +86,7 @@ export function mergeDailyStatsByDate(rows: MetaAdDailyStat[]): MetaAdDailyStat[
       existing.purchase_value = (existing.purchase_value ?? 0) + (row.purchase_value ?? 0)
       existing.link_clicks = (existing.link_clicks ?? 0) + (row.link_clicks ?? 0)
       existing.video_views = (existing.video_views ?? 0) + (row.video_views ?? 0)
+      existing.messaging_conversations = (existing.messaging_conversations ?? 0) + (row.messaging_conversations ?? 0)
       // reach no se suma entre ads del mismo día (personas alcanzadas se
       // solapan entre creativos) — se toma el máximo, misma lógica que
       // sumDays más abajo.
@@ -129,6 +133,7 @@ export interface LifetimeTotals {
   purchase_value: number | null
   link_clicks: number | null
   video_views: number | null
+  messaging_conversations: number | null
 }
 
 // Totales "Máximo" (una sola fila de Meta) → mismas métricas que ya pinta
@@ -139,6 +144,7 @@ export function metricsFromLifetime(t: LifetimeTotals): Record<MetricKey, Metric
     spend: t.spend, impressions: t.impressions, clicks: t.clicks,
     results: t.results, results_type: t.results_type, purchase_value: t.purchase_value,
     reach: t.reach, frequency: t.frequency, link_clicks: t.link_clicks, video_views: t.video_views,
+    messaging_conversations: t.messaging_conversations,
   }
   return withMetaReach(computeMetricsForAd([row], "previous_day"), { reach: t.reach, frequency: t.frequency }, t.results_type)
 }
@@ -159,6 +165,7 @@ function avgTotals(days: MetaAdDailyStat[]): DayTotals {
     reach: t.reach / n,
     link_clicks: t.link_clicks / n,
     video_views: t.video_views / n,
+    messaging_conversations: t.messaging_conversations / n,
   }
 }
 
