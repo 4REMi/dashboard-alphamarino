@@ -333,7 +333,6 @@ export function CreativePerformanceGrid({ projectId, cycleId, initialCards, disp
   const [cards, setCards] = useState(initialCards)
   const [isPending, startTransition] = useTransition()
   const [syncError, setSyncError] = useState<string | null>(null)
-  const [syncWarnings, setSyncWarnings] = useState<string[] | null>(null)
   const [showCampaignPicker, setShowCampaignPicker] = useState(false)
   const [campaignSelection, setCampaignSelection] = useState<string[] | null>(savedCampaignIds)
 
@@ -350,11 +349,9 @@ export function CreativePerformanceGrid({ projectId, cycleId, initialCards, disp
 
   function runSync(campaignIds: string[] | null) {
     setSyncError(null)
-    setSyncWarnings(null)
     startTransition(async () => {
       const result = await syncMetaAds(projectId, cycleId, campaignIds?.length ? campaignIds : undefined)
       if (result.error) { setSyncError(result.error); return }
-      if (result.warnings?.length) setSyncWarnings(result.warnings)
       setCards(await getCreativePerformance(projectId, cycleId))
     })
   }
@@ -437,18 +434,6 @@ export function CreativePerformanceGrid({ projectId, cycleId, initialCards, disp
 
       {syncError && (
         <div className="mx-5 mt-3 px-3 py-2 rounded-lg bg-destructive/10 text-destructive text-xs">{syncError}</div>
-      )}
-
-      {/* No fatal — el sync sí trajo resultados, pero alguno(s) video(s) no
-          se pudieron traer/mirrorear. Antes esto solo quedaba en logs de
-          Vercel, indebuggable para quien está sincronizando. */}
-      {syncWarnings && syncWarnings.length > 0 && (
-        <div className="mx-5 mt-3 px-3 py-2 rounded-lg bg-amber-50 text-amber-800 text-xs space-y-1">
-          <p className="font-medium">{syncWarnings.length} video{syncWarnings.length !== 1 ? "s" : ""} no se pudo{syncWarnings.length !== 1 ? "n" : ""} traer de Meta:</p>
-          <ul className="list-disc pl-4 space-y-0.5">
-            {syncWarnings.map((w, i) => <li key={i}>{w}</li>)}
-          </ul>
-        </div>
       )}
 
       {!hasCredentials && (
