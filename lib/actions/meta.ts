@@ -581,6 +581,17 @@ async function runMetaAdsSync(supabase: SupabaseClient, projectId: string, cycle
   }
 
   const { since, until } = cycleRange(cycleResult.data)
+
+  // Moneda de la cuenta — Meta regresa todos los montos en ella, sin
+  // convertir. No bloquea el sync si falla.
+  try {
+    const acct = await (await fetch(`${META_BASE}/act_${meta_ad_account_id}?fields=currency&access_token=${accessToken}`, { cache: "no-store" })).json()
+    if (acct.currency) {
+      await supabase.from("project_integrations").update({ currency: acct.currency }).eq("project_id", projectId).eq("platform", "meta")
+    }
+  } catch (err) {
+    console.error("[syncMetaAds] currency fetch:", err instanceof Error ? err.message : err)
+  }
   const fields = "ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,spend,impressions,clicks,reach,frequency,actions,action_values"
 
   const url = new URL(`${META_BASE}/act_${meta_ad_account_id}/insights`)

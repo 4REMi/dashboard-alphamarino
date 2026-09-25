@@ -73,6 +73,9 @@ export interface RelationshipMapData {
   displayMetrics: MetricKey[]
   // Para que "vs. inicio del ciclo" diga la fecha real de inicio.
   cycleStartDate: string | null
+  // Moneda de la cuenta publicitaria (USD, MXN...) — todos los montos
+  // vienen en ella.
+  currency: string | null
 }
 
 function assetThumbUrl(a: { thumbnail_path: string | null; file_path: string | null; asset_url: string | null }): string | null {
@@ -161,7 +164,7 @@ export async function deleteRelationshipMapNote(noteId: string): Promise<void> {
 export async function getRelationshipMap(projectId: string, cycleId: string | null): Promise<RelationshipMapData> {
   const supabase = await createClient()
 
-  const [concepts, assets, ads, contextRes, reachRes, cycleRes, lifetimeRes] = await Promise.all([
+  const [concepts, assets, ads, contextRes, reachRes, cycleRes, lifetimeRes, integrationRes] = await Promise.all([
     getCreativeConcepts(projectId, cycleId),
     getCreativeAssets(projectId, cycleId),
     cycleId ? getCreativePerformance(projectId, cycleId) : Promise.resolve([] as AdPerformanceCard[]),
@@ -169,6 +172,7 @@ export async function getRelationshipMap(projectId: string, cycleId: string | nu
     supabase.from("meta_cycle_reach").select("object_id, reach, frequency").eq("project_id", projectId).eq("cycle_id", cycleId ?? "").eq("level", "campaign"),
     cycleId ? supabase.from("paid_media_cycles").select("start_date").eq("id", cycleId).maybeSingle() : Promise.resolve({ data: null }),
     supabase.from("meta_lifetime_stats").select("*").eq("project_id", projectId),
+    supabase.from("project_integrations").select("currency").eq("project_id", projectId).eq("platform", "meta").maybeSingle(),
   ])
   const lifetimeByKey = new Map(
     ((lifetimeRes.data ?? []) as (LifetimeTotals & { level: string; object_id: string })[])
@@ -249,5 +253,6 @@ export async function getRelationshipMap(projectId: string, cycleId: string | nu
     displayMetrics: ((contextRes.data?.display_metrics as string[] | null) ?? ["spend", "cost_per_result"])
       .filter((k): k is MetricKey => k in METRIC_DEFS),
     cycleStartDate: (cycleRes.data as { start_date: string } | null)?.start_date ?? null,
+    currency: (integrationRes.data?.currency as string | null) ?? null,
   }
 }

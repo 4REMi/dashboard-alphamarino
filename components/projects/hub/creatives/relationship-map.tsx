@@ -335,8 +335,9 @@ function CampaignNode({ data }: NodeProps<Node<{
   onOverrideChange: (campaignId: string, window: string | null) => void
   displayMetrics: MetricKey[]
   cycleStartDate: string | null
+  currency: string | null
 }>>) {
-  const { campaign, projectId, onOverrideChange, displayMetrics, cycleStartDate } = data
+  const { campaign, projectId, onOverrideChange, displayMetrics, cycleStartDate, currency } = data
   const [expanded, setExpanded] = useState(false)
   const [savingWindow, setSavingWindow] = useState(false)
   // Ciclo = métricas del ciclo con tendencia; Máximo = totales de toda la
@@ -364,6 +365,11 @@ function CampaignNode({ data }: NodeProps<Node<{
           <p className="text-xs font-semibold truncate">{campaign.campaignName ?? "Sin campaña"}</p>
           <p className="text-[10px] text-muted-foreground">{campaign.ads.length} ad{campaign.ads.length !== 1 ? "s" : ""} · {activeCount} activo{activeCount !== 1 ? "s" : ""}</p>
         </div>
+        {currency && (
+          <span title={`Montos en ${currency}, la moneda de la cuenta publicitaria`} className="flex-shrink-0 text-[9px] font-bold tracking-wide px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+            {currency}
+          </span>
+        )}
         {/* Medalla de salud — el veredicto agregado de todas las métricas
             de un vistazo, sin tener que expandir ni leer tarjeta por
             tarjeta. */}
@@ -520,7 +526,7 @@ function buildGraph(data: RelationshipMapData, handlers: GraphHandlers): { nodes
           if (!placedCampaignIds.has(campaignId)) {
             const campaign = campaignById.get(campaignId)
             if (campaign) {
-              nodes.push({ id: `campaign-${campaignId}`, type: "campaignNode", position: { x: COL_CAMPAIGN, y: cursorY }, data: { campaign, projectId: handlers.projectId, onOverrideChange: handlers.onOverrideChange, displayMetrics: data.displayMetrics, cycleStartDate: data.cycleStartDate }, draggable: true })
+              nodes.push({ id: `campaign-${campaignId}`, type: "campaignNode", position: { x: COL_CAMPAIGN, y: cursorY }, data: { campaign, projectId: handlers.projectId, onOverrideChange: handlers.onOverrideChange, displayMetrics: data.displayMetrics, cycleStartDate: data.cycleStartDate, currency: data.currency }, draggable: true })
               cursorY += CAMPAIGN_ROW_H
             }
             placedCampaignIds.add(campaignId)
