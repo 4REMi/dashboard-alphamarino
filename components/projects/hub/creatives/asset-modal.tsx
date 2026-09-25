@@ -40,6 +40,15 @@ function captureVideoThumbnail(blobUrl: string): Promise<Blob | null> {
   })
 }
 
+const ASSET_BASE = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/creative-assets/`
+
+function revisionStatusLabel(a: CreativeAsset): string {
+  if (!a.client_visible) return "Borrador"
+  if (a.client_status === "approved") return "Aprobado"
+  if (a.client_status === "changes_requested") return "Cambios pedidos"
+  return "En revisión del cliente"
+}
+
 interface AssetModalProps {
   projectId: string
   cycleId: string | null
@@ -86,6 +95,9 @@ export function AssetModal({
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [uploadProgress, setUploadProgress] = useState<string | null>(null)
   const isVideo = file?.type.startsWith("video/") ?? asset?.file_type === "video"
+  // Solo versiones vigentes: una ya reemplazada no se vuelve a revisar.
+  const supersededIds = new Set(siblingAssets.map((a) => a.revises_asset_id).filter(Boolean))
+  const revisableAssets = siblingAssets.filter((a) => !supersededIds.has(a.id))
 
   // ── "Elegir del banco de creativos" — pick an already-generated image
   // clone instead of uploading a file. Only offered when creating (not
@@ -433,21 +445,50 @@ export function AssetModal({
               versión elegida se oculta del cliente automáticamente (ver
               createAsset) — reemplaza el flujo manual de subir + ocultar por
               separado. */}
-          {!isEdit && siblingAssets.length > 0 && (
+          {!isEdit && revisableAssets.length > 0 && (
             <div className={cn("space-y-1.5", source === "bank" && "flex-shrink-0")}>
-              <Label>¿Es una revisión de otro asset?</Label>
-              <select
-                value={revisesAssetId}
-                onChange={(e) => setRevisesAssetId(e.target.value)}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              >
-                <option value="">No, es un asset nuevo</option>
-                {siblingAssets.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {[a.format, a.platform, a.iteration].filter(Boolean).join(" ") || "Asset sin nombre"}
-                  </option>
-                ))}
-              </select>
+              <Label>¿Es una nueva versión de otro asset?</Label>
+              {/* Miniaturas en vez de un desplegable: todas las opciones se
+                  llamaban "Video" y no había forma de saber cuál era cuál. */}
+              <div className="grid grid-cols-4 gap-2 max-h-56 overflow-y-auto p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setRevisesAssetId("")}
+                  className={cn(
+                    "rounded-lg border-2 aspect-[4/5] flex items-center justify-center text-center text-[11px] font-medium px-1 transition-colors",
+                    revisesAssetId === "" ? "border-primary bg-primary/5 text-foreground" : "border-border text-muted-foreground hover:border-foreground/30"
+                  )}
+                >
+                  No, es un asset nuevo
+                </button>
+                {revisableAssets.map((a) => {
+                  const thumb = a.thumbnail_path ? ASSET_BASE + a.thumbnail_path : a.file_path ? ASSET_BASE + a.file_path : a.asset_url
+                  const selected = revisesAssetId === a.id
+                  return (
+                    <button
+                      key={a.id}
+                      type="button"
+                      onClick={() => setRevisesAssetId(a.id)}
+                      className={cn("rounded-lg border-2 overflow-hidden text-left transition-colors", selected ? "border-primary" : "border-border hover:border-foreground/30")}
+                    >
+                      <div className="relative aspect-[4/5] bg-muted">
+                        {thumb && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={thumb} alt="" className="w-full h-full object-cover" />
+                        )}
+                        {a.file_type === "video" && <Film className="absolute bottom-1 left-1 w-3.5 h-3.5 text-white drop-shadow" />}
+                        {selected && <span className="absolute top-1 right-1 text-[9px] font-semibold bg-primary text-primary-foreground px-1.5 py-0.5 rounded">Elegido</span>}
+                      </div>
+                      <div className="px-1.5 py-1">
+                        <p className="text-[10px] font-medium truncate">{revisionStatusLabel(a)}</p>
+                        <p className="text-[10px] text-muted-foreground truncate">
+                          Subido {new Date(a.created_at).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}
+                        </p>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
               {revisesAssetId && (
                 <p className="text-xs text-muted-foreground">La nueva versión se sube oculta. El cliente sigue viendo la anterior hasta que publiques esta.</p>
               )}
