@@ -17,10 +17,13 @@ interface Props {
   projectId: string
   hasConcept: boolean
   canManage: boolean
+  // Dentro del visor dividido: siempre abierto, sin el encabezado plegable
+  // ni altura limitada (antes se recortaba al pie del modal).
+  embedded?: boolean
 }
 
-export function AssetCopyBank({ assetId, projectId, hasConcept, canManage }: Props) {
-  const [expanded, setExpanded]     = useState(false)
+export function AssetCopyBank({ assetId, projectId, hasConcept, canManage, embedded = false }: Props) {
+  const [expanded, setExpanded]     = useState(embedded)
   const [copies, setCopies]         = useState<AssetCopy[] | null>(null)
   const [loading, setLoading]       = useState(false)
   const [error, setError]           = useState<string | null>(null)
@@ -74,7 +77,13 @@ export function AssetCopyBank({ assetId, projectId, hasConcept, canManage }: Pro
   if (!hasConcept) return null
 
   return (
-    <div className="border-t bg-muted/20">
+    <div className={embedded ? "" : "border-t bg-muted/20"}>
+      {embedded ? (
+        <p className="flex items-center gap-1.5 px-5 pt-4 pb-2 text-xs font-semibold text-foreground">
+          <Sparkles className="w-3.5 h-3.5" />
+          Copies y propuestas {copies && copies.length > 0 ? `(${copies.length})` : ""}
+        </p>
+      ) : (
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
@@ -86,6 +95,7 @@ export function AssetCopyBank({ assetId, projectId, hasConcept, canManage }: Pro
         </span>
         {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
       </button>
+      )}
 
       {expanded && (
         <div className="px-5 pb-4 space-y-3">

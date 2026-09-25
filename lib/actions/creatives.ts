@@ -380,6 +380,18 @@ export async function updateAsset(
   revalidateProject(projectId)
 }
 
+// Asignar/cambiar el brief de un asset ya subido — hasta ahora el
+// formulario de subida nunca guardaba el brief, así que los assets
+// existentes no tienen uno.
+export async function setAssetBrief(assetId: string, projectId: string, briefId: string | null): Promise<void> {
+  const supabase = await createClient()
+  const { role, userId } = await getRole()
+  await assertCanManageAssets(projectId, role, userId)
+  const { error } = await supabase.from("creative_assets").update({ brief_id: briefId }).eq("id", assetId)
+  if (error) throw error
+  revalidateProject(projectId)
+}
+
 export async function deleteAsset(id: string, projectId: string): Promise<void> {
   const supabase = await createClient()
   const { role, userId } = await getRole()

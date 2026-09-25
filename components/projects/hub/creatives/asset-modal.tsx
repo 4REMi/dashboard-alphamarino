@@ -54,6 +54,12 @@ interface AssetModalProps {
   // revision is expressed by uploading a NEW asset that points back at
   // the one it replaces, not by rewriting an existing row's identity.
   siblingAssets?: CreativeAsset[]
+  // Briefs del concepto — todo asset sale de un brief, así que se pide al
+  // subir. Si viene briefId, llega preseleccionado.
+  briefs?: { id: string; title: string }[]
+  // "Subir nueva versión" desde una pieza: llega con la versión anterior ya
+  // elegida en "¿Es una revisión de…?".
+  defaultRevisesAssetId?: string
   open: boolean
   onRefresh?: () => void
   onClose: () => void
@@ -63,7 +69,7 @@ type Source = "upload" | "bank"
 
 export function AssetModal({
   projectId, cycleId, conceptId, briefId, asset,
-  isAdminOrSubadmin, canManageAssets, brandBrains = [], siblingAssets = [], open, onRefresh, onClose,
+  isAdminOrSubadmin, canManageAssets, brandBrains = [], siblingAssets = [], briefs = [], defaultRevisesAssetId, open, onRefresh, onClose,
 }: AssetModalProps) {
   const canUpload = canManageAssets ?? isAdminOrSubadmin
   const isEdit = !!asset
@@ -74,7 +80,8 @@ export function AssetModal({
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<string | null>(asset?.thumbnail_path || asset?.file_path || asset?.asset_url || null)
   const [platform, setPlatform] = useState(asset?.platform ?? "")
-  const [revisesAssetId, setRevisesAssetId] = useState("")
+  const [revisesAssetId, setRevisesAssetId] = useState(defaultRevisesAssetId ?? "")
+  const [selectedBriefId, setSelectedBriefId] = useState(briefId ?? asset?.brief_id ?? (briefs.length === 1 ? briefs[0].id : ""))
   const [dragOver, setDragOver] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [uploadProgress, setUploadProgress] = useState<string | null>(null)
@@ -143,7 +150,7 @@ export function AssetModal({
       const fd = new FormData()
       if (cycleId) fd.set("cycle_id", cycleId)
       fd.set("concept_id", conceptId)
-      if (briefId) fd.set("brief_id", briefId)
+      if (selectedBriefId) fd.set("brief_id", selectedBriefId)
       fd.set("platform", platform)
       if (!isEdit && revisesAssetId) fd.set("revises_asset_id", revisesAssetId)
 
@@ -391,6 +398,21 @@ export function AssetModal({
                 <p className="text-xs text-destructive">{uploadError}</p>
               )}
             </>
+          )}
+
+          {briefs.length > 0 && (
+            <div className={cn("space-y-1.5", source === "bank" && !isEdit && "flex-shrink-0")}>
+              <Label>Brief del que sale</Label>
+              <select
+                value={selectedBriefId}
+                onChange={(e) => setSelectedBriefId(e.target.value)}
+                required
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="" disabled>Elegir brief</option>
+                {briefs.map((b) => <option key={b.id} value={b.id}>{b.title}</option>)}
+              </select>
+            </div>
           )}
 
           {/* Platform */}

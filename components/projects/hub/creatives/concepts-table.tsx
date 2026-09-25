@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ConceptModal } from "./concept-modal"
 import { AssetModal } from "./asset-modal"
-import { generateCreativeConcepts, confirmAIDrafts, promoteConcept, demoteConcept, deleteConcept, bulkDeleteConcepts, deleteBrief, deleteAsset, toggleClientVisible, updateBriefTitle } from "@/lib/actions/creatives"
+import { generateCreativeConcepts, confirmAIDrafts, promoteConcept, demoteConcept, deleteConcept, bulkDeleteConcepts, deleteBrief, deleteAsset, toggleClientVisible, updateBriefTitle, setAssetBrief } from "@/lib/actions/creatives"
 import { CONCEPT_STATUS_COLORS, AWARENESS_LABELS, ANGLE_GUIDE, PRODUCTION_STATUS_COLORS, VERDICT_COLORS } from "@/lib/constants/creatives"
 import type { CreativeConcept, CreativeAsset, CreativeBrief, BrandLine, AdCloneLine } from "@/lib/types"
 import type { AIDraftConcept } from "@/lib/actions/creatives"
@@ -14,7 +14,7 @@ import type { AssetMetaLinkStatus } from "@/lib/actions/paid-media-performance"
 import { BriefCreator } from "./brief-creator"
 import { AssetCopyBank } from "./asset-copy-bank"
 import { QuickScriptModal } from "./quick-script-modal"
-import { Plus, Sparkles, Check, X, Loader2, Star, ArrowUpRight, Pencil, Trash2, Link2, FileText, Upload, ChevronDown, Film, ImageIcon, Eye, EyeOff, ZoomIn, Radio, AlertTriangle } from "lucide-react"
+import { Plus, Sparkles, Check, X, Loader2, Star, ArrowUpRight, Pencil, Trash2, Link2, FileText, Upload, ChevronDown, Film, ImageIcon, Eye, Radio, AlertTriangle } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 function fmt$(v: number) {
@@ -135,6 +135,110 @@ interface ConceptsTableProps {
   projectBrandBrainId?: string
 }
 
+// ── Assets: piezas con versiones y estado escrito ───────────────────────────
+
+const ASSET_BASE = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/creative-assets/`
+
+function assetThumbUrl(a: CreativeAsset): string | null {
+  if (a.thumbnail_path) return ASSET_BASE + a.thumbnail_path
+  if (a.file_path) return ASSET_BASE + a.file_path
+  return a.asset_url
+}
+
+function assetFileUrl(a: CreativeAsset): string | null {
+  return a.file_path ? ASSET_BASE + a.file_path : a.asset_url
+}
+
+// Una pieza = la versión vigente + las anteriores (encadenadas con
+// revises_asset_id). Así una revisión no aparece como un asset más.
+interface AssetPiece { current: CreativeAsset; versions: CreativeAsset[] }
+
+function buildPieces(assets: CreativeAsset[]): AssetPiece[] {
+  const byId = new Map(assets.map((a) => [a.id, a]))
+  const superseded = new Set(assets.map((a) => a.revises_asset_id).filter((id): id is string => !!id))
+  return assets
+    .filter((a) => !superseded.has(a.id))
+    .map((head) => {
+      const versions = [head]
+      let cur = head
+      while (cur.revises_asset_id && byId.has(cur.revises_asset_id)) {
+        cur = byId.get(cur.revises_asset_id)!
+        versions.unshift(cur)
+      }
+      return { current: head, versions }
+    })
+}
+
+// Estado escrito — antes eran ojitos de colores sin explicación.
+function assetStatus(a: CreativeAsset): { label: string; detail: string } {
+  if (!a.client_visible) return { label: "Borrador", detail: "Solo el equipo lo ve." }
+  if (a.client_status === "approved") return { label: "Aprobado", detail: "El cliente lo aprobó." }
+  if (a.client_status === "changes_requested") return { label: "Cambios pedidos", detail: "El cliente pidió cambios." }
+  return { label: "En revisión del cliente", detail: "El cliente lo ve y aún no responde." }
+}
+
+function AssetPieceCard({ piece, live, canManage, onOpen, onNewVersion }: {
+  piece: AssetPiece
+  live: AssetMetaLinkStatus | undefined
+  canManage: boolean
+  onOpen: () => void
+  onNewVersion: () => void
+}) {
+  const a = piece.current
+  const thumb = assetThumbUrl(a)
+  const status = assetStatus(a)
+  const needsChanges = a.client_visible && a.client_status === "changes_requested"
+  return (
+    <div className="rounded-xl border overflow-hidden bg-card flex flex-col">
+      <button type="button" onClick={onOpen} className="relative aspect-[4/5] bg-muted/50 flex items-center justify-center group">
+        {thumb ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={thumb} alt="" className="w-full h-full object-cover" />
+        ) : (
+          <ImageIcon className="w-6 h-6 text-muted-foreground/40" />
+        )}
+        {a.file_type === "video" && (
+          <span className="absolute bottom-1.5 left-1.5 inline-flex items-center gap-1 text-[10px] font-medium bg-black/60 text-white px-1.5 py-0.5 rounded">
+            <Film className="w-3 h-3" /> Video
+          </span>
+        )}
+        {piece.versions.length > 1 && (
+          <span className="absolute top-1.5 left-1.5 text-[10px] font-semibold bg-black/60 text-white px-1.5 py-0.5 rounded">
+            v{piece.versions.length}
+          </span>
+        )}
+        {live?.anyActive && (
+          <span className="absolute top-1.5 right-1.5 text-[10px] font-semibold bg-black/60 text-white px-1.5 py-0.5 rounded" title="Corriendo en Meta este ciclo">
+            En Meta · {fmt$(live.totalSpend)}
+          </span>
+        )}
+        <span className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
+      </button>
+      <div className="p-2.5 space-y-1.5 flex-1 flex flex-col">
+        <div>
+          <p className="text-xs font-medium">{status.label}</p>
+          <p className="text-[11px] text-muted-foreground">{status.detail}</p>
+        </div>
+        {needsChanges && a.client_feedback && (
+          <p className="text-[11px] bg-muted/40 border-l-2 border-foreground/30 rounded-r px-2 py-1 line-clamp-3">“{a.client_feedback}”</p>
+        )}
+        {canManage && (
+          <button
+            type="button"
+            onClick={onNewVersion}
+            className={cn(
+              "mt-auto text-[11px] font-medium text-left",
+              needsChanges ? "text-primary hover:underline" : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            + Subir nueva versión
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Concept detail modal (read-only) ─────────────────────────────────────────
 
 function ConceptDetailModal({
@@ -166,7 +270,7 @@ function ConceptDetailModal({
   canManageConceptStatus: boolean
   onEdit: () => void
   onClose: () => void
-  onNewAsset: () => void
+  onNewAsset: (opts?: { briefId?: string | null; revisesAssetId?: string }) => void
   onNewBrief: () => void
   onQuickScript: () => void
   onAddScriptToBrief: (brief: CreativeBrief) => void
@@ -224,484 +328,469 @@ function ConceptDetailModal({
     )
   }
 
+  const pieces = buildPieces(conceptAssets)
+  const briefGroups = [
+    ...conceptBriefs.map((b) => ({
+      key: b.id,
+      title: b.title || b.brand_brain?.name || "Brief",
+      pieces: pieces.filter((p) => p.current.brief_id === b.id),
+    })),
+    {
+      key: "_none",
+      title: "Sin brief asignado",
+      pieces: pieces.filter((p) => !p.current.brief_id || !conceptBriefs.some((b) => b.id === p.current.brief_id)),
+    },
+  ].filter((g) => g.pieces.length > 0 || g.key !== "_none")
+  const unpublished = pieces.filter((p) => !p.current.client_visible)
+
+  function publishAll() {
+    for (const p of unpublished) onUpdateAsset(p.current.id, { client_visible: true, client_status: "pending_review", client_feedback: null })
+    startTransition(async () => {
+      await Promise.all(unpublished.map((p) => toggleClientVisible(p.current.id, projectId, true)))
+    })
+  }
+
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-6xl h-[90vh] flex flex-col overflow-hidden">
 
         {/* ── Header ── */}
-        <DialogHeader className="pb-0">
-          <div className="flex items-start justify-between gap-3">
-            <div className="space-y-1 min-w-0">
-              <DialogTitle className="text-xl leading-tight">
-                {concept.name || "Concepto"}
-              </DialogTitle>
-              <div className="flex items-center gap-2 flex-wrap">
-                <Badge className={cn("text-xs border-0", CONCEPT_STATUS_COLORS[concept.status])}>
-                  {concept.status}
+        <DialogHeader className="pb-0 flex-shrink-0">
+          <div className="space-y-1 min-w-0">
+            <DialogTitle className="text-xl leading-tight">
+              {concept.name || "Concepto"}
+            </DialogTitle>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge className={cn("text-xs border-0", CONCEPT_STATUS_COLORS[concept.status])}>
+                {concept.status}
+              </Badge>
+              {angleEntry && (
+                <span className="text-sm text-muted-foreground flex items-center gap-1">
+                  <span className="text-base">{angleEntry.emoji}</span>
+                  {concept.angle_type}
+                </span>
+              )}
+              {concept.funnel_stage && (
+                <Badge className={cn("text-xs border-0", FUNNEL_COLORS[concept.funnel_stage] ?? "bg-gray-100 text-gray-600")}>
+                  {concept.funnel_stage}
                 </Badge>
-                {angleEntry && (
-                  <span className="text-sm text-muted-foreground flex items-center gap-1">
-                    <span className="text-base">{angleEntry.emoji}</span>
-                    {concept.angle_type}
-                  </span>
-                )}
-                {concept.funnel_stage && (
-                  <Badge className={cn("text-xs border-0", FUNNEL_COLORS[concept.funnel_stage] ?? "bg-gray-100 text-gray-600")}>
-                    {concept.funnel_stage}
-                  </Badge>
-                )}
-                {concept.awareness_stage && (
-                  <span className="text-xs text-muted-foreground">
-                    Stage {concept.awareness_stage} · {AWARENESS_LABELS[concept.awareness_stage]}
-                  </span>
-                )}
-              </div>
+              )}
+              {concept.awareness_stage && (
+                <span className="text-xs text-muted-foreground">
+                  Stage {concept.awareness_stage} · {AWARENESS_LABELS[concept.awareness_stage]}
+                </span>
+              )}
             </div>
           </div>
         </DialogHeader>
 
         {archivedButLive && (
-          <div className="text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2 flex items-center gap-2 font-medium">
+          <div className="flex-shrink-0 text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2 flex items-center gap-2 font-medium">
             <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
             Este concepto está archivado, pero sigue corriendo en Meta — {fmt$(liveRollup.totalSpend)} gastados este ciclo.
           </div>
         )}
 
-        {concept.parent && (
-          <div className="text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-2 flex items-center gap-2">
-            <ArrowUpRight className="w-3.5 h-3.5 flex-shrink-0" />
-            Evolución de: <span className="font-medium">{concept.parent.angle_type ?? "concepto anterior"}</span>
-            {" "}·{" "}<span className={CONCEPT_STATUS_COLORS[concept.parent.status]}>{concept.parent.status}</span>
-          </div>
-        )}
-
-        {/* ── Tabbed slides ── */}
-        <div className="border rounded-xl overflow-hidden">
-          {/* Tab bar */}
-          <div className="flex border-b bg-muted/30">
-            {([
-              { key: "id" as const, label: "Identificación" },
-              { key: "angle" as const, label: "Teoría del Ángulo" },
-              { key: "mech" as const, label: "Mecanismo" },
-            ]).map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => setActiveTab(tab.key)}
-                className={cn(
-                  "flex-1 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide transition-colors relative",
-                  activeTab === tab.key
-                    ? "text-foreground bg-background"
-                    : "text-muted-foreground hover:text-foreground/70"
-                )}
-              >
-                {tab.label}
-                {activeTab === tab.key && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
-                )}
-              </button>
-            ))}
-          </div>
-
-          {/* Slide content */}
-          <div className="px-6 py-5 min-h-[180px]">
-            {activeTab === "id" && (
-              <div className="space-y-5">
-                <F label="Principio organizador" value={concept.organizing_principle} />
-                <div>
-                  <p className={fLabel}>Persona objetivo</p>
-                  {concept.target_persona
-                    ? <p className="text-sm leading-snug">{concept.target_persona}</p>
-                    : <p className={fEmpty}>—</p>}
-                </div>
-                <F label="Awareness Stage" value={concept.awareness_stage ? `${concept.awareness_stage} — ${AWARENESS_LABELS[concept.awareness_stage]}` : null} />
-                <div>
-                  <p className={fLabel}>Funnel Stage</p>
-                  {concept.funnel_stage
-                    ? <Badge className={cn("text-xs border-0 mt-0.5", FUNNEL_COLORS[concept.funnel_stage] ?? "bg-gray-100 text-gray-600")}>{concept.funnel_stage}</Badge>
-                    : <p className={fEmpty}>—</p>}
-                </div>
+        {/* ── Body: ficha a la izquierda, assets (el centro del modal) a la derecha ── */}
+        <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-4">
+          <div className="min-h-0 overflow-y-auto space-y-4 pr-1">
+            {concept.parent && (
+              <div className="text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-2 flex items-center gap-2">
+                <ArrowUpRight className="w-3.5 h-3.5 flex-shrink-0" />
+                Evolución de: <span className="font-medium">{concept.parent.angle_type ?? "concepto anterior"}</span>
               </div>
             )}
 
-            {activeTab === "angle" && (
-              <div className="space-y-5">
-                {angleEntry ? (
-                  <>
-                    <div className="flex items-center gap-3">
-                      <span className="text-4xl leading-none">{angleEntry.emoji}</span>
-                      <div>
-                        <p className="text-base font-semibold">{concept.angle_type}</p>
-                        <p className="text-sm text-muted-foreground italic leading-snug">{angleEntry.guiding_question}</p>
-                      </div>
-                    </div>
-                    {angleEntry.mechanism && (
-                      <p className="text-sm text-muted-foreground leading-relaxed">{angleEntry.mechanism}</p>
+            {/* Ficha del concepto */}
+            <div className="border rounded-xl overflow-hidden">
+              <div className="flex border-b bg-muted/30">
+                {([
+                  { key: "id" as const, label: "Identificación" },
+                  { key: "angle" as const, label: "Ángulo" },
+                  { key: "mech" as const, label: "Mecanismo" },
+                ]).map((tab) => (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setActiveTab(tab.key)}
+                    className={cn(
+                      "flex-1 px-2 py-2 text-[11px] font-semibold uppercase tracking-wide transition-colors relative",
+                      activeTab === tab.key ? "text-foreground bg-background" : "text-muted-foreground hover:text-foreground/70"
                     )}
-                  </>
-                ) : (
-                  <p className={fEmpty}>Sin ángulo asignado</p>
-                )}
-              </div>
-            )}
-
-            {activeTab === "mech" && (
-              <div className="space-y-0 divide-y divide-border">
-                {[
-                  { label: "¿Por qué va a funcionar?", value: concept.why_it_works },
-                  { label: "Pain Point específico",    value: concept.pain_point },
-                  { label: "Objeción que derrumba",    value: concept.objection },
-                  { label: "Transformación prometida", value: concept.transformation },
-                ].map(({ label, value }) => (
-                  <div key={label} className="py-4 first:pt-0 last:pb-0">
-                    <p className={fLabel}>{label}</p>
-                    {value ? <p className="text-sm leading-relaxed">{value}</p> : <p className={fEmpty}>—</p>}
-                  </div>
+                  >
+                    {tab.label}
+                    {activeTab === tab.key && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />}
+                  </button>
                 ))}
               </div>
+              <div className="px-4 py-4">
+                {activeTab === "id" && (
+                  <div className="space-y-4">
+                    <F label="Principio organizador" value={concept.organizing_principle} />
+                    <div>
+                      <p className={fLabel}>Persona objetivo</p>
+                      {concept.target_persona ? <p className="text-sm leading-snug">{concept.target_persona}</p> : <p className={fEmpty}>—</p>}
+                    </div>
+                    <F label="Awareness Stage" value={concept.awareness_stage ? `${concept.awareness_stage} — ${AWARENESS_LABELS[concept.awareness_stage]}` : null} />
+                  </div>
+                )}
+                {activeTab === "angle" && (
+                  <div className="space-y-3">
+                    {angleEntry ? (
+                      <>
+                        <div className="flex items-center gap-3">
+                          <span className="text-3xl leading-none">{angleEntry.emoji}</span>
+                          <div>
+                            <p className="text-sm font-semibold">{concept.angle_type}</p>
+                            <p className="text-xs text-muted-foreground italic leading-snug">{angleEntry.guiding_question}</p>
+                          </div>
+                        </div>
+                        {angleEntry.mechanism && <p className="text-sm text-muted-foreground leading-relaxed">{angleEntry.mechanism}</p>}
+                      </>
+                    ) : (
+                      <p className={fEmpty}>Sin ángulo asignado</p>
+                    )}
+                  </div>
+                )}
+                {activeTab === "mech" && (
+                  <div className="space-y-0 divide-y divide-border">
+                    {[
+                      { label: "¿Por qué va a funcionar?", value: concept.why_it_works },
+                      { label: "Pain Point específico",    value: concept.pain_point },
+                      { label: "Objeción que derrumba",    value: concept.objection },
+                      { label: "Transformación prometida", value: concept.transformation },
+                    ].map(({ label, value }) => (
+                      <div key={label} className="py-3 first:pt-0 last:pb-0">
+                        <p className={fLabel}>{label}</p>
+                        {value ? <p className="text-sm leading-relaxed">{value}</p> : <p className={fEmpty}>—</p>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Briefs */}
+            {(conceptBriefs.length > 0 || isAdminOrSubadmin) && (
+              <div className="border rounded-xl px-4 py-3">
+                <div className="flex items-center justify-between mb-2">
+                  <p className={grpLabel + " mb-0"}>
+                    <FileText className="w-3 h-3 inline mr-1" />
+                    Briefs {conceptBriefs.length > 0 && `(${conceptBriefs.length})`}
+                  </p>
+                  {isAdminOrSubadmin && (
+                    <div className="flex items-center gap-3">
+                      <button type="button" onClick={onQuickScript} className="flex items-center gap-1 text-xs text-violet-600 hover:text-violet-800 transition-colors">
+                        <Sparkles className="w-3 h-3" />
+                        Guión
+                      </button>
+                      <button type="button" onClick={onNewBrief} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                        <Plus className="w-3 h-3" />
+                        Brief
+                      </button>
+                    </div>
+                  )}
+                </div>
+                {conceptBriefs.length > 0 ? (
+                  <div className="space-y-1.5">
+                    {conceptBriefs.map((b) => (
+                      <div key={b.id} className="text-xs py-2 px-3 rounded-lg bg-muted/30 border group">
+                        {editingBriefId === b.id ? (
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              autoFocus
+                              value={briefTitleDraft}
+                              onChange={(e) => setBriefTitleDraft(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  startTransition(async () => {
+                                    await updateBriefTitle(b.id, projectId, briefTitleDraft)
+                                    setEditingBriefId(null)
+                                    onRefresh()
+                                  })
+                                }
+                                if (e.key === "Escape") setEditingBriefId(null)
+                              }}
+                              placeholder="Ej. Escasez — Black Friday"
+                              className="flex-1 min-w-0 text-xs bg-background border rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-ring"
+                            />
+                            <button type="button" className="p-1 rounded text-muted-foreground hover:text-foreground" onClick={() => setEditingBriefId(null)}>
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between gap-2">
+                            <a href={`/share/brief/${b.share_token}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 min-w-0 flex-1 hover:opacity-80">
+                              <FileText className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                              <span className="font-medium truncate">{b.title || b.brand_brain?.name || "Brief"}</span>
+                              <span className="text-muted-foreground text-[10px] flex-shrink-0">Abrir ↗</span>
+                            </a>
+                            {isAdminOrSubadmin && (
+                              <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100">
+                                <button type="button" title="Agregar guión a este brief" className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted" onClick={() => onAddScriptToBrief(b)}>
+                                  <Plus className="w-3 h-3" />
+                                </button>
+                                <button type="button" title="Renombrar" className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted" onClick={() => { setBriefTitleDraft(b.title ?? ""); setEditingBriefId(b.id) }}>
+                                  <Pencil className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  title="Eliminar brief"
+                                  className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                  onClick={() => {
+                                    if (!confirm("¿Eliminar este brief?")) return
+                                    startTransition(async () => { await deleteBrief(b.id, projectId); onRefresh() })
+                                  }}
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        <BriefScriptStatus brief={b} />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className={fEmpty}>Sin briefs — crea uno para compartir con tu editor</p>
+                )}
+              </div>
             )}
+
+            {(concept.ref_links || (isAdminOrSubadmin && concept.insight)) && (
+              <div className="border rounded-xl px-4 py-3 space-y-3">
+                {concept.ref_links && <F label="Referencias / Inspiración" value={concept.ref_links} />}
+                {isAdminOrSubadmin && concept.insight && (
+                  <div>
+                    <div className="flex items-center gap-1 mb-0.5">
+                      <Star className="w-3 h-3 text-amber-500" />
+                      <p className={fLabel}>Insight estratégico</p>
+                    </div>
+                    <p className={fValue}>{concept.insight}</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* ── Assets ── */}
+          <div className="min-h-0 overflow-y-auto border rounded-xl">
+            <div className="sticky top-0 z-10 bg-background border-b px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <p className="text-sm font-semibold">Assets</p>
+                <p className="text-[11px] text-muted-foreground">
+                  {pieces.length} pieza{pieces.length !== 1 ? "s" : ""}
+                  {unpublished.length > 0 && ` · ${unpublished.length} sin publicar`}
+                  {liveRollup.anyActive && ` · ${fmt$(liveRollup.totalSpend)} en Meta este ciclo`}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {isAdminOrSubadmin && unpublished.length > 0 && (
+                  <Button type="button" variant="outline" size="sm" onClick={publishAll} disabled={isPending}>
+                    <Eye className="w-3.5 h-3.5 mr-1.5" />
+                    Mostrar todos al cliente
+                  </Button>
+                )}
+                {canManageAssets && (
+                  <Button type="button" size="sm" onClick={() => onNewAsset()}>
+                    <Plus className="w-3.5 h-3.5 mr-1" />
+                    Subir asset
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <div className="p-4 space-y-6">
+              {briefGroups.length === 0 && <p className={fEmpty}>Crea un brief primero — cada asset sale de uno.</p>}
+              {briefGroups.map((g) => (
+                <div key={g.key}>
+                  <p className="text-xs font-semibold text-foreground mb-2 flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-muted-foreground" />
+                    {g.key === "_none" ? g.title : `Brief: ${g.title}`}
+                    <span className="font-normal text-muted-foreground">· {g.pieces.length} pieza{g.pieces.length !== 1 ? "s" : ""}</span>
+                  </p>
+                  {g.key === "_none" && (
+                    <p className="text-[11px] text-muted-foreground mb-2">Subidos antes de que se guardara el brief. Ábrelos para asignarles uno.</p>
+                  )}
+                  {g.pieces.length === 0 ? (
+                    <p className="text-xs text-muted-foreground/60 italic">Sin assets de este brief todavía.</p>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
+                      {g.pieces.map((p) => (
+                        <AssetPieceCard
+                          key={p.current.id}
+                          piece={p}
+                          live={assetLinkStatus[p.current.id]}
+                          canManage={canManageAssets}
+                          onOpen={() => { setLightboxVideoError(false); setLightboxAsset(p.current) }}
+                          onNewVersion={() => onNewAsset({ briefId: p.current.brief_id, revisesAssetId: p.current.id })}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
-        {/* ── Briefs ── */}
-        {(conceptBriefs.length > 0 || isAdminOrSubadmin) && (
-          <div className="border rounded-xl px-5 py-4">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <p className={grpLabel + " mb-0"}>
-                  <FileText className="w-3 h-3 inline mr-1" />
-                  Briefs {conceptBriefs.length > 0 && `(${conceptBriefs.length})`}
-                </p>
-              </div>
-              {isAdminOrSubadmin && (
-                <div className="flex items-center gap-3">
-                  <button type="button" onClick={onQuickScript} className="flex items-center gap-1 text-xs text-violet-600 hover:text-violet-800 transition-colors">
-                    <Sparkles className="w-3 h-3" />
-                    Agregar guión
-                  </button>
-                  <button type="button" onClick={onNewBrief} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
-                    <Plus className="w-3 h-3" />
-                    Nuevo brief
-                  </button>
-                </div>
-              )}
-            </div>
-            {conceptBriefs.length > 0 ? (
-              <div className="space-y-1.5">
-                {conceptBriefs.map((b) => (
-                  <div
-                    key={b.id}
-                    className="text-xs py-2 px-3 rounded-lg bg-violet-50/60 border border-violet-100 group"
-                  >
-                    {editingBriefId === b.id ? (
-                      <div className="flex items-center gap-1.5">
-                        <FileText className="w-3.5 h-3.5 text-violet-500 flex-shrink-0" />
-                        <input
-                          autoFocus
-                          value={briefTitleDraft}
-                          onChange={(e) => setBriefTitleDraft(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              startTransition(async () => {
-                                await updateBriefTitle(b.id, projectId, briefTitleDraft)
-                                setEditingBriefId(null)
-                                onRefresh()
-                              })
-                            }
-                            if (e.key === "Escape") setEditingBriefId(null)
-                          }}
-                          placeholder="Ej. Escasez — Black Friday"
-                          className="flex-1 min-w-0 text-xs bg-white border border-violet-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-violet-400"
-                        />
-                        <button
-                          type="button"
-                          className="p-1 rounded text-violet-500 hover:text-violet-700"
-                          onClick={() => {
-                            startTransition(async () => {
-                              await updateBriefTitle(b.id, projectId, briefTitleDraft)
-                              setEditingBriefId(null)
-                              onRefresh()
-                            })
-                          }}
-                        >
-                          <Check className="w-3.5 h-3.5" />
-                        </button>
-                        <button type="button" className="p-1 rounded text-muted-foreground hover:text-foreground" onClick={() => setEditingBriefId(null)}>
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-between">
-                        <a
-                          href={`/share/brief/${b.share_token}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-2 min-w-0 flex-1 hover:opacity-80 transition-opacity"
-                        >
-                          <FileText className="w-3.5 h-3.5 text-violet-500 flex-shrink-0" />
-                          <span className="font-medium text-violet-900 truncate">
-                            {b.title || b.brand_brain?.name || "Brief"}
-                          </span>
-                          <span className="text-violet-500">
-                            {new Date(b.created_at).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}
-                          </span>
-                          <span className="text-violet-400 text-[10px] font-medium">Abrir ↗</span>
-                        </a>
-                        {isAdminOrSubadmin && (
-                          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100">
-                            <button
-                              type="button"
-                              title="Agregar guión a este brief"
-                              className="ml-2 p-1 rounded text-violet-300 hover:text-violet-600 hover:bg-violet-100 transition-colors"
-                              onClick={() => onAddScriptToBrief(b)}
-                            >
-                              <Plus className="w-3 h-3" />
-                            </button>
-                            <button
-                              type="button"
-                              className="p-1 rounded text-violet-300 hover:text-violet-600 hover:bg-violet-100 transition-colors"
-                              onClick={() => {
-                                setBriefTitleDraft(b.title ?? "")
-                                setEditingBriefId(b.id)
-                              }}
-                            >
-                              <Pencil className="w-3 h-3" />
-                            </button>
-                            <button
-                              type="button"
-                              className="p-1 rounded text-violet-300 hover:text-destructive hover:bg-destructive/10 transition-colors"
-                              onClick={() => {
-                                if (!confirm("¿Eliminar este brief?")) return
-                                startTransition(async () => {
-                                  await deleteBrief(b.id, projectId)
-                                  onRefresh()
-                                })
-                              }}
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </button>
+        {/* ── Visor del asset — pantalla dividida: info y copies a la izquierda, media a la derecha ── */}
+        {lightboxAsset && (() => {
+          const a = lightboxAsset
+          const piece = pieces.find((p) => p.versions.some((v) => v.id === a.id))
+          const versionIdx = piece ? piece.versions.findIndex((v) => v.id === a.id) : 0
+          const fileUrl = assetFileUrl(a)
+          const status = assetStatus(a)
+          return (
+            <Dialog open onOpenChange={() => setLightboxAsset(null)}>
+              <DialogContent className="max-w-6xl h-[88vh] p-0 overflow-hidden">
+                <div className="h-full grid grid-cols-1 md:grid-cols-[400px_1fr] min-h-0">
+                  <div className="min-h-0 overflow-y-auto border-r bg-background">
+                    <div className="px-5 pt-5 pb-4 border-b space-y-1">
+                      <DialogTitle className="text-base">{a.format || (a.file_type === "video" ? "Video" : "Imagen")}{a.platform ? ` · ${a.platform}` : ""}</DialogTitle>
+                      {piece && piece.versions.length > 1 && (
+                        <p className="text-xs text-muted-foreground">Versión {versionIdx + 1} de {piece.versions.length}{versionIdx === piece.versions.length - 1 ? " (vigente)" : ""}</p>
+                      )}
+                    </div>
+
+                    <div className="px-5 py-4 border-b space-y-3">
+                      {isAdminOrSubadmin ? (
+                        <div className="flex items-start gap-3">
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={a.client_visible}
+                            disabled={isPending}
+                            onClick={() => {
+                              const nextVisible = !a.client_visible
+                              const patch = { client_visible: nextVisible, client_status: nextVisible ? "pending_review" as const : null, client_feedback: null }
+                              setLightboxAsset((prev) => prev ? { ...prev, ...patch } : prev)
+                              onUpdateAsset(a.id, patch)
+                              startTransition(async () => { await toggleClientVisible(a.id, projectId, nextVisible) })
+                            }}
+                            className={cn(
+                              "relative mt-0.5 h-5 w-9 flex-shrink-0 rounded-full transition-colors disabled:opacity-50",
+                              a.client_visible ? "bg-primary" : "bg-muted-foreground/30"
+                            )}
+                          >
+                            <span className={cn("absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform", a.client_visible && "translate-x-4")} />
+                          </button>
+                          <div>
+                            <p className="text-sm font-medium">Visible para el cliente: {a.client_visible ? "Sí" : "No"}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {a.client_visible
+                                ? "El cliente lo ve en su panel y puede aprobarlo o pedir cambios."
+                                : "Solo el equipo lo ve. Actívalo cuando esté listo para que el cliente lo revise."}
+                            </p>
                           </div>
-                        )}
+                        </div>
+                      ) : (
+                        <p className="text-sm">Visible para el cliente: {a.client_visible ? "Sí" : "No"}</p>
+                      )}
+
+                      <div>
+                        <p className="text-xs font-medium">Estado: {status.label}</p>
+                        <p className="text-xs text-muted-foreground">{status.detail}</p>
+                      </div>
+                      {a.client_status === "changes_requested" && a.client_feedback && (
+                        <blockquote className="text-xs bg-muted/40 border-l-2 border-foreground/30 rounded-r px-3 py-2">
+                          <span className="block text-[10px] font-semibold text-muted-foreground mb-0.5">Lo que pidió el cliente</span>
+                          {a.client_feedback}
+                        </blockquote>
+                      )}
+
+                      {canManageAssets && conceptBriefs.length > 0 && (
+                        <label className="block text-xs">
+                          <span className="text-muted-foreground">Brief del que sale</span>
+                          <select
+                            value={a.brief_id ?? ""}
+                            onChange={(e) => {
+                              const briefId = e.target.value || null
+                              setLightboxAsset((prev) => prev ? { ...prev, brief_id: briefId } : prev)
+                              onUpdateAsset(a.id, { brief_id: briefId })
+                              startTransition(async () => { await setAssetBrief(a.id, projectId, briefId) })
+                            }}
+                            className="mt-0.5 w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm"
+                          >
+                            <option value="">Sin brief asignado</option>
+                            {conceptBriefs.map((b) => <option key={b.id} value={b.id}>{b.title || b.brand_brain?.name || "Brief"}</option>)}
+                          </select>
+                        </label>
+                      )}
+                    </div>
+
+                    {piece && piece.versions.length > 1 && (
+                      <div className="px-5 py-4 border-b">
+                        <p className="text-xs font-semibold mb-2">Versiones</p>
+                        <div className="space-y-1">
+                          {[...piece.versions].reverse().map((v) => {
+                            const n = piece.versions.indexOf(v) + 1
+                            return (
+                              <button
+                                key={v.id}
+                                type="button"
+                                onClick={() => { setLightboxVideoError(false); setLightboxAsset(v) }}
+                                className={cn("w-full text-left text-xs px-2.5 py-1.5 rounded-md hover:bg-muted", v.id === a.id && "bg-muted font-medium")}
+                              >
+                                v{n}{n === piece.versions.length ? " · vigente" : ""} — {assetStatus(v).label}
+                              </button>
+                            )
+                          })}
+                        </div>
                       </div>
                     )}
-                    <BriefScriptStatus brief={b} />
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className={fEmpty}>Sin briefs — crea uno para compartir con tu editor</p>
-            )}
-          </div>
-        )}
 
-        {/* ── Assets ── */}
-        {(conceptAssets.length > 0 || canManageAssets) && (
-          <div className="border rounded-xl px-5 py-4">
-            <div className="flex items-center justify-between mb-3">
-              <p className={grpLabel + " mb-0"}>
-                Assets {conceptAssets.length > 0 && `(${conceptAssets.length})`}
-                {liveRollup.anyActive && (
-                  <span className="ml-2 inline-flex items-center gap-1 text-emerald-600 normal-case font-medium tracking-normal">
-                    <Radio className="w-3 h-3" /> {fmt$(liveRollup.totalSpend)} en vivo este ciclo
-                  </span>
-                )}
-              </p>
-              {canManageAssets && (
-                <button type="button" onClick={onNewAsset} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
-                  <Plus className="w-3 h-3" />
-                  Nuevo
-                </button>
-              )}
-            </div>
-            {conceptAssets.length > 0 ? (
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
-                {conceptAssets.map((a) => {
-                  const thumb = a.thumbnail_path
-                    ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/creative-assets/${a.thumbnail_path}`
-                    : a.file_path
-                      ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/creative-assets/${a.file_path}`
-                      : a.asset_url
-                  const liveStatus = assetLinkStatus[a.id]
-                  return (
-                    <div
-                      key={a.id}
-                      className="relative aspect-square rounded-xl overflow-hidden bg-muted/50 border flex items-center justify-center group cursor-pointer hover:ring-2 hover:ring-primary/30 transition-all"
-                      onClick={() => { setLightboxVideoError(false); setLightboxAsset(a) }}
-                    >
-                      {thumb ? (
-                        <>
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={thumb} alt="" className="w-full h-full object-cover" />
-                          {a.file_type === "video" && (
-                            <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                              <Film className="w-6 h-6 text-white drop-shadow" />
-                            </div>
-                          )}
-                        </>
-                      ) : (
-                        <ImageIcon className="w-6 h-6 text-muted-foreground/40" />
-                      )}
-                      {/* Hover overlay */}
-                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-                        <ZoomIn className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow" />
-                      </div>
-                      {/* Platform badge */}
-                      {a.platform && (
-                        <span className="absolute bottom-1 left-1 text-[9px] font-semibold bg-black/60 text-white px-1.5 py-0.5 rounded">
-                          {a.platform.replace(" Ads", "")}
-                        </span>
-                      )}
-                      {/* Vive de verdad en Meta — no todo asset corre, solo
-                          se marca cuando SÍ hay un link real y activo. */}
-                      {liveStatus?.anyActive && (
-                        <span className="absolute top-1 left-1 inline-flex items-center gap-0.5 text-[9px] font-semibold bg-emerald-600 text-white px-1.5 py-0.5 rounded-full" title={`Corriendo en Meta — ${fmt$(liveStatus.totalSpend)} este ciclo`}>
-                          <Radio className="w-2.5 h-2.5" />
-                          {fmt$(liveStatus.totalSpend)}
-                        </span>
-                      )}
-                      {/* Client visibility indicator */}
-                      {a.client_visible ? (
-                        <span className={cn(
-                          "absolute top-1 right-1 p-0.5 rounded-full",
-                          a.client_status === "approved" ? "bg-emerald-500" :
-                          a.client_status === "changes_requested" ? "bg-amber-500" :
-                          "bg-blue-500"
-                        )}>
-                          <Eye className="w-2.5 h-2.5 text-white" />
-                        </span>
-                      ) : (
-                        <span className="absolute top-1 right-1 text-[9px] font-semibold bg-slate-900/80 text-white px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
-                          <EyeOff className="w-2.5 h-2.5" />
-                          Sin publicar
-                        </span>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            ) : (
-              <p className={fEmpty}>Sin assets aún</p>
-            )}
-          </div>
-        )}
+                    <AssetCopyBank key={a.id} assetId={a.id} projectId={projectId} hasConcept={!!a.concept_id} canManage={canManageAssets} embedded />
 
-        {/* ── Refs + insight ── */}
-        {(concept.ref_links || (isAdminOrSubadmin && concept.insight)) && (
-          <div className="border rounded-xl px-5 py-4 space-y-4">
-            {concept.ref_links && <F label="Referencias / Inspiración" value={concept.ref_links} />}
-            {isAdminOrSubadmin && concept.insight && (
-              <div>
-                <div className="flex items-center gap-1 mb-0.5">
-                  <Star className="w-3 h-3 text-amber-500" />
-                  <p className={fLabel}>Insight estratégico</p>
-                </div>
-                <p className={fValue}>{concept.insight}</p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ── Asset lightbox ── */}
-        {lightboxAsset && (
-          <Dialog open onOpenChange={() => setLightboxAsset(null)}>
-            <DialogContent className="max-w-3xl max-h-[90vh] p-0 overflow-hidden">
-              {(() => {
-                const a = lightboxAsset
-                const fileUrl = a.file_path
-                  ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/creative-assets/${a.file_path}`
-                  : a.asset_url
-                return (
-                  <div className="flex flex-col">
-                    {/* Media */}
-                    <div className="bg-black flex items-center justify-center min-h-[300px] max-h-[70vh]">
-                      {a.file_type === "video" && fileUrl ? (
-                        lightboxVideoError ? (
-                          <p className="text-white/70 text-sm py-16 px-6 text-center">
-                            Este video ya no se puede reproducir — probablemente venció el enlace original.
-                          </p>
-                        ) : (
-                          <video
-                            controls
-                            autoPlay
-                            className="max-w-full max-h-[70vh]"
-                            style={{ display: "block" }}
-                            onError={() => setLightboxVideoError(true)}
-                          >
-                            <source src={fileUrl} />
-                          </video>
-                        )
-                      ) : fileUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={fileUrl} alt="" className="max-w-full max-h-[70vh] object-contain" />
-                      ) : (
-                        <div className="text-white/40 text-sm py-20">Sin archivo</div>
-                      )}
-                    </div>
-                    {/* Info bar */}
-                    <div className="px-5 py-3 border-t flex items-center justify-between gap-3 bg-background">
-                      <div className="flex items-center gap-2 text-sm">
-                        {a.format && <span className="font-medium">{a.format}</span>}
-                        {a.platform && <span className="text-muted-foreground">· {a.platform}</span>}
-                        {canManageAssets && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            disabled={isPending}
-                            className="text-destructive hover:text-destructive hover:bg-destructive/10 ml-1"
-                            onClick={() => {
-                              if (!confirm("¿Eliminar este asset?")) return
-                              startTransition(async () => {
-                                await deleteAsset(a.id, projectId)
-                                onRefresh()
-                                setLightboxAsset(null)
-                              })
-                            }}
-                          >
-                            <Trash2 className="w-3.5 h-3.5 mr-1" />
-                            Eliminar
-                          </Button>
-                        )}
-                      </div>
-                      {isAdminOrSubadmin && (
+                    {canManageAssets && (
+                      <div className="px-5 py-4 border-t flex items-center justify-between gap-2">
+                        <Button type="button" size="sm" variant="outline" onClick={() => { setLightboxAsset(null); onNewAsset({ briefId: a.brief_id, revisesAssetId: piece?.current.id ?? a.id }) }}>
+                          <Plus className="w-3.5 h-3.5 mr-1" />
+                          Subir nueva versión
+                        </Button>
                         <Button
                           type="button"
-                          variant={a.client_visible ? "default" : "outline"}
+                          variant="ghost"
                           size="sm"
                           disabled={isPending}
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
                           onClick={() => {
-                            const nextVisible = !a.client_visible
-                            const patch = { client_visible: nextVisible, client_status: nextVisible ? "pending_review" as const : null, client_feedback: null }
-                            // Optimista y sin cerrar el lightbox — se ve el
-                            // cambio al instante en el mismo modal, sin
-                            // esperar ningún refetch para reflejarlo.
-                            setLightboxAsset((prev) => prev ? { ...prev, ...patch } : prev)
-                            onUpdateAsset(a.id, patch)
-                            startTransition(async () => {
-                              await toggleClientVisible(a.id, projectId, nextVisible)
-                            })
+                            if (!confirm("¿Eliminar este asset?")) return
+                            startTransition(async () => { await deleteAsset(a.id, projectId); onRefresh(); setLightboxAsset(null) })
                           }}
                         >
-                          {a.client_visible ? <Eye className="w-3.5 h-3.5 mr-1.5" /> : <EyeOff className="w-3.5 h-3.5 mr-1.5" />}
-                          {a.client_visible ? "Visible al cliente" : "Mostrar al cliente"}
+                          <Trash2 className="w-3.5 h-3.5 mr-1" />
+                          Eliminar
                         </Button>
-                      )}
-                    </div>
-                    <AssetCopyBank
-                      assetId={a.id}
-                      projectId={projectId}
-                      hasConcept={!!a.concept_id}
-                      canManage={canManageAssets}
-                    />
+                      </div>
+                    )}
                   </div>
-                )
-              })()}
-            </DialogContent>
-          </Dialog>
-        )}
+
+                  <div className="bg-black flex items-center justify-center min-h-[300px] overflow-hidden">
+                    {a.file_type === "video" && fileUrl ? (
+                      lightboxVideoError ? (
+                        <p className="text-white/70 text-sm py-16 px-6 text-center">Este video ya no se puede reproducir — probablemente venció el enlace original.</p>
+                      ) : (
+                        <video key={a.id} controls autoPlay className="max-w-full max-h-full" onError={() => setLightboxVideoError(true)}>
+                          <source src={fileUrl} />
+                        </video>
+                      )
+                    ) : fileUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={fileUrl} alt="" className="max-w-full max-h-full object-contain" />
+                    ) : (
+                      <div className="text-white/40 text-sm py-20">Sin archivo</div>
+                    )}
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+          )
+        })()}
 
         {/* ── Footer ── */}
-        <DialogFooter className="flex items-center justify-between pt-2 gap-2">
+        <DialogFooter className="flex-shrink-0 flex items-center justify-between pt-2 gap-2">
           <div className="flex gap-2">
             {canManageConceptStatus && isEvergreen && (
               <Button type="button" variant="outline" size="sm" onClick={handleDemote} disabled={isPending} className="text-amber-600 border-amber-200 hover:bg-amber-50">
@@ -982,7 +1071,9 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
   const [aiDrafts,      setAiDrafts]        = useState<AIDraftConcept[]>([])
   const [aiDraftsLineId, setAiDraftsLineId] = useState<string | null>(null)
   const [previewIdx,    setPreviewIdx]      = useState<number | null>(null)
-  const [newAssetForConceptId, setNewAssetForConceptId] = useState<string | null>(null)
+  // Para qué concepto se sube el asset, y opcionalmente de qué brief sale y
+  // de qué pieza es nueva versión ("Subir nueva versión").
+  const [newAssetFor, setNewAssetFor] = useState<{ conceptId: string; briefId?: string | null; revisesAssetId?: string } | null>(null)
   const [briefForConcept, setBriefForConcept] = useState<CreativeConcept | null>(null)
   const [quickScriptForConcept, setQuickScriptForConcept] = useState<CreativeConcept | null>(null)
   const [addScriptToBrief, setAddScriptToBrief] = useState<CreativeBrief | null>(null)
@@ -1084,11 +1175,11 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
     })
   }
 
-  function openDetailAsNewAsset() {
+  function openDetailAsNewAsset(opts?: { briefId?: string | null; revisesAssetId?: string }) {
     if (!detailConcept) return
     const id = detailConcept.id
     setDetailConcept(null)
-    setNewAssetForConceptId(id)
+    setNewAssetFor({ conceptId: id, ...opts })
   }
 
   function openEditFromDetail() {
@@ -1181,7 +1272,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
             onToggleSelect={() => toggleSelect(c.id)}
             onClick={() => setDetailConcept(c)}
             onNewBrief={() => setBriefForConcept(c)}
-            onNewAsset={() => setNewAssetForConceptId(c.id)}
+            onNewAsset={() => setNewAssetFor({ conceptId: c.id })}
           />
         ))}
         {cycleOnly.map((c) => (
@@ -1197,7 +1288,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
             onToggleSelect={() => toggleSelect(c.id)}
             onClick={() => setDetailConcept(c)}
             onNewBrief={() => setBriefForConcept(c)}
-            onNewAsset={() => setNewAssetForConceptId(c.id)}
+            onNewAsset={() => setNewAssetFor({ conceptId: c.id })}
           />
         ))}
       </>
@@ -1464,7 +1555,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
           onNewAsset={() => {
             const id = editConcept.id
             setEditConcept(null)
-            setNewAssetForConceptId(id)
+            setNewAssetFor({ conceptId: id })
           }}
         />
       )}
@@ -1484,17 +1575,23 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
       )}
 
       {/* Asset creation pre-linked to concept */}
-      {newAssetForConceptId && (
+      {newAssetFor && (
         <AssetModal
           projectId={projectId}
           cycleId={cycleId}
-          conceptId={newAssetForConceptId}
+          conceptId={newAssetFor.conceptId}
+          briefId={newAssetFor.briefId ?? null}
+          briefs={briefs
+            .filter((b) => b.concept_id === newAssetFor.conceptId)
+            .map((b) => ({ id: b.id, title: b.title || b.brand_brain?.name || "Brief" }))}
+          siblingAssets={assets.filter((a) => a.concept_id === newAssetFor.conceptId)}
+          defaultRevisesAssetId={newAssetFor.revisesAssetId}
           isAdminOrSubadmin={isAdminOrSubadmin}
           canManageAssets={canManageAssets}
           brandBrains={brandBrains}
-          open={!!newAssetForConceptId}
+          open
           onRefresh={onRefresh}
-          onClose={() => setNewAssetForConceptId(null)}
+          onClose={() => setNewAssetFor(null)}
         />
       )}
 
