@@ -134,6 +134,36 @@ ciclo, solo visible para admin/subadmin.
   `openNewCycle` ya no cierra en silencio el ciclo activo. `next_cycle_id` guarda a dónde se
   traspasó; desde el historial se puede corregir después (`editCarryOver`).
 
+## Reparar ciclos mal capturados
+
+Botón **"Reparar ciclos"** en el Historial de Ciclos, visible para cualquier
+miembro del proyecto (y admins/subadmins). Sirve para arreglar traslapes,
+huecos y ciclos duplicados (caso Union Padel) sin perder datos.
+
+- **Diagnóstico**: traslapes en rojo; huecos y duraciones fuera de 25–35 días en ámbar.
+- **Editar**: cada ciclo se conserva (con fechas nuevas), se fusiona en otro o
+  se elimina (solo si no tiene conceptos ni assets). Se pueden agregar ciclos
+  faltantes; se crean cerrados.
+- **"Proponer según corte"**: conserva los ciclos limpios del principio y, desde
+  el día siguiente al último, genera periodos según el día de corte hasta cubrir
+  hoy; cada ciclo existente cae en el periodo donde empieza (el primero se
+  conserva, los demás se fusionan en él).
+- Al fusionar se elige de qué ciclo se conserva el **resumen manual**.
+- **Vista previa**: días con gasto, gasto de Meta, conceptos y assets por ciclo
+  final. Las métricas diarias se reasignan por fecha; conceptos, assets, notas
+  del mapa y `next_cycle_id` se mueven al ciclo destino.
+- **Motivo obligatorio**. Queda en la Bitácora (categoría Interno) y en `cycle_repairs`.
+- Al aplicar se re-sincronizan con Meta los ciclos nuevos o con fechas cambiadas;
+  si falla, la reparación queda igual y se avisa.
+- **Deshacer**: solo la última reparación, y solo si los ciclos no cambiaron
+  después (no se abrió, cerró ni editó ninguno).
+- **Prevención**: abrir ciclo, editar fechas y el repaso de cierre rechazan
+  fechas que se traslapen con otro ciclo.
+
+Código: `supabase/migrations/099_cycle_repairs.sql` (`apply_cycle_repair`,
+`undo_cycle_repair`, atómicas), `lib/actions/cycle-repair.ts`,
+`components/projects/hub/cycle-repair-modal.tsx`, `lib/utils/cycle-overlap.ts`.
+
 ## Dónde vive esto en el código
 
 - `supabase/migrations/050_paid_media_cycle_date_ranges.sql` — `start_date`/`end_date`

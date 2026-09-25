@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
+import { assertNoCycleOverlap } from "@/lib/utils/cycle-overlap"
 import { getCreativeConcepts, getCreativeAssets } from "@/lib/actions/creatives"
 import { getCreativePerformance } from "@/lib/actions/paid-media-performance"
 import type { CreativeConcept, CreativeAsset, PaidMediaCycle } from "@/lib/types"
@@ -191,6 +192,7 @@ export async function completeCycleReview(input: {
     if (!input.nextCycle || !/^\d{4}-\d{2}-\d{2}$/.test(input.nextCycle.start) || !/^\d{4}-\d{2}-\d{2}$/.test(input.nextCycle.end)) {
       throw new Error("Fechas del siguiente ciclo inválidas")
     }
+    await assertNoCycleOverlap(supabase, projectId, input.nextCycle.start, input.nextCycle.end)
     // Primero se abre el siguiente (si falla, no cambió nada), luego se
     // cierra este apuntando al nuevo. Si algo falla después, lo que
     // continúa se puede corregir desde el historial (editCarryOver).

@@ -1,6 +1,7 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
+import { assertNoCycleOverlap } from "@/lib/utils/cycle-overlap"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { notify } from "@/lib/notifications/notify"
@@ -978,6 +979,7 @@ export async function openNewCycle(projectId: string, startDate: string, endDate
   const { data: active } = await supabase
     .from("paid_media_cycles").select("id").eq("project_id", projectId).eq("is_active", true).maybeSingle()
   if (active) throw new Error("Ya hay un ciclo activo. Ciérralo desde su repaso de cierre para abrir el siguiente.")
+  await assertNoCycleOverlap(supabase, projectId, startDate, resolvedEndDate)
 
   // Open new cycle. cycle_month kept in sync with start_date for backward compat.
   const { error } = await supabase.from("paid_media_cycles").insert({
@@ -1046,6 +1048,7 @@ export async function updateCycleDates(cycleId: string, projectId: string, start
     throw new Error("Formato de fecha inválido")
   }
   if (endDate <= startDate) throw new Error("La fecha de fin debe ser posterior a la fecha de inicio")
+  await assertNoCycleOverlap(supabase, projectId, startDate, endDate, cycleId)
 
   const { error } = await supabase
     .from("paid_media_cycles")

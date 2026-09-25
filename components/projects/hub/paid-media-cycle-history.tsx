@@ -7,11 +7,14 @@ import { updateCycleManualMetrics } from "@/lib/actions/projects"
 import { formatCycleRange, cn } from "@/lib/utils"
 import { ChevronRight } from "lucide-react"
 import { CycleReviewModal } from "./cycle-review-modal"
+import { CycleRepairModal } from "./cycle-repair-modal"
 
 interface Props {
   projectId: string
   cycles: PaidMediaCycle[]
   canEdit: boolean
+  // Miembros del proyecto (y admins) pueden reparar ciclos mal capturados.
+  canRepair?: boolean
 }
 
 // Un color por ciclo (en orden cronológico) para distinguirlos en el
@@ -32,7 +35,8 @@ function fmtMoney(v: number | null) {
   return v === null ? "—" : `$${v.toLocaleString("en-US", { maximumFractionDigits: 2 })}`
 }
 
-export function PaidMediaCycleHistory({ projectId, cycles, canEdit }: Props) {
+export function PaidMediaCycleHistory({ projectId, cycles, canEdit, canRepair }: Props) {
+  const [repairing, setRepairing] = useState(false)
   const today = new Date()
   const todayIso = isoDate(today.getFullYear(), today.getMonth(), today.getDate())
 
@@ -65,9 +69,17 @@ export function PaidMediaCycleHistory({ projectId, cycles, canEdit }: Props) {
 
   return (
     <div className="rounded-xl border border-border bg-card">
-      <div className="px-5 py-4 border-b border-border">
-        <h3 className="font-semibold text-sm text-foreground">Historial de Ciclos</h3>
-        <p className="text-xs text-muted-foreground">Últimos 12 meses. Pasa el cursor sobre un día para ver su ciclo.</p>
+      <div className="px-5 py-4 border-b border-border flex items-start gap-3">
+        <div className="flex-1">
+          <h3 className="font-semibold text-sm text-foreground">Historial de Ciclos</h3>
+          <p className="text-xs text-muted-foreground">Últimos 12 meses. Pasa el cursor sobre un día para ver su ciclo.</p>
+        </div>
+        {canRepair && (
+          <button onClick={() => setRepairing(true)} className="text-xs text-muted-foreground hover:text-foreground border border-border rounded-md px-2.5 py-1">
+            Reparar ciclos
+          </button>
+        )}
+        {repairing && <CycleRepairModal projectId={projectId} onClose={() => setRepairing(false)} />}
       </div>
 
       <div className="p-5 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-x-5 gap-y-4">

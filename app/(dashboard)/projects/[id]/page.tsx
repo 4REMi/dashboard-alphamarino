@@ -407,7 +407,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             )}
 
             {(cycles as PaidMediaCycle[]).length > 0 && (
-              <PaidMediaCycleHistory projectId={project.id} cycles={cycles as PaidMediaCycle[]} canEdit={isAdminOrSubadmin} />
+              <PaidMediaCycleHistory projectId={project.id} cycles={cycles as PaidMediaCycle[]} canEdit={isAdminOrSubadmin} canRepair={isAdminOrSubadmin || memberProfiles.some((m) => m.id === user!.id)} />
             )}
 
             <div className="space-y-3">
