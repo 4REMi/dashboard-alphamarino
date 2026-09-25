@@ -93,19 +93,27 @@ function pickResults(
   objective: string | null,
   optimizationGoal: string | null = null,
 ): { results: number | null; results_type: string | null } {
-  if (!actions?.length) return { results: null, results_type: null }
-
   const goalCandidates = (optimizationGoal && OPTIMIZATION_GOAL_ACTION_TYPES[optimizationGoal]) || []
+  const candidates = (objective && OBJECTIVE_ACTION_TYPES[objective]) || []
+  // Si ya sabemos cuál es el resultado de la campaña, un día sin esa
+  // acción es un día con 0 resultados — Meta simplemente omite la acción
+  // en vez de mandarla en 0. Antes eso caía al fallback genérico y sumaba
+  // otra acción de ese día (interacciones, clics...), inflando
+  // "Resultados" (126 vs 88 reales en una campaña de mensajes).
+  const expected = goalCandidates.length > 0 ? goalCandidates : candidates
+  if (!actions?.length) return expected.length > 0 ? { results: 0, results_type: expected[0] } : { results: null, results_type: null }
+
   for (const t of goalCandidates) {
     const hit = actions.find((a) => a.action_type === t)
     if (hit) return { results: Number(hit.value), results_type: t }
   }
 
-  const candidates = (objective && OBJECTIVE_ACTION_TYPES[objective]) || []
   for (const t of candidates) {
     const hit = actions.find((a) => a.action_type === t)
     if (hit) return { results: Number(hit.value), results_type: t }
   }
+
+  if (expected.length > 0) return { results: 0, results_type: expected[0] }
 
   // Ni optimization_goal ni objective están mapeados, o ninguna de sus
   // action_types esperadas está presente (ej. pixel sin disparar todavía)
