@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import type { PaidMediaCycle } from "@/lib/types"
 import { updateCycleManualMetrics } from "@/lib/actions/projects"
 import { formatCycleRange, cn } from "@/lib/utils"
+import { ChevronRight } from "lucide-react"
 
 interface Props {
   projectId: string
@@ -118,6 +119,9 @@ export function PaidMediaCycleHistory({ projectId, cycles, canEdit }: Props) {
 function CycleRow({ cycle, color, projectId, canEdit }: { cycle: PaidMediaCycle; color: string; projectId: string; canEdit: boolean }) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
+  // Solo el ciclo activo abierto por default — los pasados se consultan
+  // de vez en cuando, no hace falta que ocupen espacio.
+  const [open, setOpen] = useState(cycle.is_active)
   const [isPending, startTransition] = useTransition()
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -149,20 +153,27 @@ function CycleRow({ cycle, color, projectId, canEdit }: { cycle: PaidMediaCycle;
   return (
     <div className="px-5 py-3">
       <div className="flex items-center gap-3 flex-wrap">
-        <span className="w-3 h-3 rounded-[3px] flex-shrink-0" style={{ backgroundColor: color }} />
+        <button
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className="flex items-center gap-3 text-left"
+        >
+          <ChevronRight className={cn("w-3.5 h-3.5 text-muted-foreground transition-transform", open && "rotate-90")} />
+          <span className="w-3 h-3 rounded-[3px] flex-shrink-0" style={{ backgroundColor: color }} />
         <span className="text-sm font-medium text-foreground">{formatCycleRange(cycle.start_date, cycle.end_date)}</span>
         <span className="text-xs text-muted-foreground">{durationDays(cycle.start_date, cycle.end_date)} días</span>
+        </button>
         {cycle.is_active && (
           <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">Activo</span>
         )}
-        {canEdit && !editing && (
+        {canEdit && !editing && open && (
           <button onClick={() => setEditing(true)} className="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors">
             Editar resumen
           </button>
         )}
       </div>
 
-      {editing ? (
+      {!open ? null : editing ? (
         <form onSubmit={handleSubmit} className="mt-3 space-y-3">
           <p className="text-[11px] text-muted-foreground">Totales de todos los canales del ciclo (Meta, Google, TikTok…), capturados a mano.</p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
