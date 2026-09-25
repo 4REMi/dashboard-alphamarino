@@ -7,7 +7,9 @@
 ## Qué es y para qué sirve
 
 Un ciclo (`paid_media_cycles`) es el periodo mensual (u otro rango) de gestión de ads de
-un proyecto — estado de campañas, entrega de reporte, producción creativa. Solo hay un
+un proyecto — estado de campañas, creativos y conceptos del periodo (los entregables
+recurrentes como reporte mensual o producción creativa viven en "Alcance del servicio",
+no en el ciclo). Solo hay un
 ciclo activo (`is_active = true`) por proyecto a la vez; abrir uno nuevo cierra
 automáticamente el anterior. Conceptos y assets del Creative Tracker
 (`creative_concepts`/`creative_assets`) se ligan a un ciclo por `cycle_id` — un simple

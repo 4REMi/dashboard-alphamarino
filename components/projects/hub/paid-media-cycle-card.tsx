@@ -2,8 +2,8 @@
 
 import { useState, useTransition, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import type { PaidMediaCycle, PaidMediaContext, CycleDeliverableStatus } from "@/lib/types"
-import { CAMPAIGN_STATUS_LABELS, DELIVERABLE_STATUS_LABELS } from "@/lib/types"
+import type { PaidMediaCycle, PaidMediaContext } from "@/lib/types"
+import { CAMPAIGN_STATUS_LABELS } from "@/lib/types"
 import { openNewCycle, updateCycle, closeCycle, suggestNextCycleStartDate, updateCycleStartDay, updateCycleDates, updateProjectAutoCloseCycles } from "@/lib/actions/projects"
 import type { AdPerformanceCard } from "@/lib/actions/paid-media-performance"
 import type { MetricKey } from "@/lib/constants/paid-media-metrics"
@@ -33,12 +33,6 @@ function addOneMonthMinusOneDay(startDate: string): string {
   d.setDate(d.getDate() - 1)
   const pad = (n: number) => String(n).padStart(2, "0")
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-}
-
-const STATUS_PILL: Record<CycleDeliverableStatus, string> = {
-  pending: "bg-muted text-muted-foreground",
-  in_progress: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
-  delivered: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300",
 }
 
 function CycleStartDaySetting({ projectId, value, canEdit }: { projectId: string; value: number | null | undefined; canEdit: boolean }) {
@@ -321,34 +315,6 @@ export function PaidMediaCycleCard({ projectId, activeCycle, context, canEdit, c
               </select>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            {[
-              { name: "report_status", label: "Estado del reporte", val: activeCycle.report_status },
-              { name: "creative_status", label: "Estado producción creativa", val: activeCycle.creative_status },
-            ].map(({ name, label, val }) => (
-              <div key={name}>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">{label}</label>
-                <select name={name} defaultValue={val}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
-                  {Object.entries(DELIVERABLE_STATUS_LABELS).map(([v, l]) => (
-                    <option key={v} value={v}>{l}</option>
-                  ))}
-                </select>
-              </div>
-            ))}
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Fecha de corte</label>
-              <input name="report_cutoff_date" type="date" defaultValue={activeCycle.report_cutoff_date ?? ""}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Fecha entrega reporte</label>
-              <input name="report_delivery_date" type="date" defaultValue={activeCycle.report_delivery_date ?? ""}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
-            </div>
-          </div>
           <div className="flex justify-end gap-2">
             <button type="button" onClick={() => setEditing(false)} className="text-sm text-muted-foreground hover:text-foreground transition-colors">Cancelar</button>
             <button type="submit" disabled={isPending} className="px-4 py-1.5 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 disabled:opacity-50 transition-colors">
@@ -356,32 +322,7 @@ export function PaidMediaCycleCard({ projectId, activeCycle, context, canEdit, c
             </button>
           </div>
         </form>
-      ) : (
-        <div className="p-5 space-y-4">
-          {/* Deliverables */}
-          <div className="grid grid-cols-2 gap-3">
-            {[
-              { label: "Reporte del mes", status: activeCycle.report_status },
-              { label: "Producción creativa", status: activeCycle.creative_status },
-            ].map(({ label, status }) => (
-              <div key={label} className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
-                <span className="text-sm text-foreground">{label}</span>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_PILL[status]}`}>
-                  {DELIVERABLE_STATUS_LABELS[status]}
-                </span>
-              </div>
-            ))}
-          </div>
-
-          {/* Dates */}
-          {(activeCycle.report_cutoff_date || activeCycle.report_delivery_date) && (
-            <div className="flex gap-4 text-xs text-muted-foreground">
-              {activeCycle.report_cutoff_date && <span>Corte: {activeCycle.report_cutoff_date}</span>}
-              {activeCycle.report_delivery_date && <span>Entrega reporte: {activeCycle.report_delivery_date}</span>}
-            </div>
-          )}
-        </div>
-      )}
+      ) : null}
 
       {/* Grid creative-first — reemplaza la tabla de campañas de Meta */}
       {!editing && (

@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { notify } from "@/lib/notifications/notify"
 import { can } from "@/lib/permissions"
-import type { ProjectStatus, PhaseStatus, CycleDeliverableStatus, CampaignStatus, Profile, ProjectLogCategory } from "@/lib/types"
+import type { ProjectStatus, PhaseStatus, CampaignStatus, Profile, ProjectLogCategory } from "@/lib/types"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
 // Builds position_id → [profile_ids] from a project's current members, so
@@ -996,7 +996,10 @@ export async function openNewCycle(projectId: string, startDate: string, endDate
 // aquí — duplicaban lo que el sync de Meta ya trae (ver
 // creative-performance-grid.tsx), nadie los llenaba, y por eso esos
 // tiles siempre se veían vacíos. Las columnas se dejan intactas en la
-// base, simplemente ya no se escriben desde este formulario.
+// base, simplemente ya no se escriben desde este formulario. Lo mismo con
+// report_status/creative_status y las fechas de reporte: los entregables
+// recurrentes (reporte mensual, producción creativa) ahora viven en
+// "Alcance del servicio", que varía por proyecto.
 export async function updateCycle(cycleId: string, projectId: string, formData: FormData) {
   const supabase = await createClient()
   const campaignStatus = formData.get("campaign_status") as string
@@ -1005,10 +1008,6 @@ export async function updateCycle(cycleId: string, projectId: string, formData: 
     .from("paid_media_cycles")
     .update({
       campaign_status: campaignStatus && campaignStatus !== "none" ? (campaignStatus as CampaignStatus) : null,
-      report_cutoff_date: (formData.get("report_cutoff_date") as string) || null,
-      report_delivery_date: (formData.get("report_delivery_date") as string) || null,
-      report_status: (formData.get("report_status") as CycleDeliverableStatus) ?? "pending",
-      creative_status: (formData.get("creative_status") as CycleDeliverableStatus) ?? "pending",
     })
     .eq("id", cycleId)
 

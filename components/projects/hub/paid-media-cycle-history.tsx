@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import type { PaidMediaCycle } from "@/lib/types"
-import { DELIVERABLE_STATUS_LABELS, CAMPAIGN_STATUS_LABELS } from "@/lib/types"
+import { CAMPAIGN_STATUS_LABELS } from "@/lib/types"
 import { formatCycleRange } from "@/lib/utils"
 
 interface Props {
@@ -53,10 +53,6 @@ export function PaidMediaCycleHistory({ cycles }: Props) {
                     ))}
                   </div>
 
-                  <div className="flex gap-3 text-xs">
-                    <span>Reporte: <span className="font-medium">{DELIVERABLE_STATUS_LABELS[cycle.report_status]}</span></span>
-                    <span>Creativo: <span className="font-medium">{DELIVERABLE_STATUS_LABELS[cycle.creative_status]}</span></span>
-                  </div>
                 </div>
               )}
             </div>
