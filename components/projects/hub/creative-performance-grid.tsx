@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react"
 import { Loader2, RefreshCw, ImageIcon, Link2, X, ListFilter, Film, Info } from "lucide-react"
-import { syncMetaAds, getMetaCampaignOptions } from "@/lib/actions/meta"
+import { syncMetaAds, getMetaCampaignOptions, getMetaCampaignNames } from "@/lib/actions/meta"
 import { setSyncedCampaignIds } from "@/lib/actions/projects"
 import {
   getCreativePerformance, getLinkableAssets, getLastMetaSync, linkAssetToMetaAd, unlinkAssetFromMetaAd,
@@ -369,10 +369,8 @@ export function CreativePerformanceGrid({ projectId, cycleId, initialCards, disp
 
   useEffect(() => {
     if (!hasCredentials || !campaignSelection?.length) return
-    getMetaCampaignOptions(projectId).then((r) => {
-      setCampaignNames(Object.fromEntries(r.campaigns.map((c) => [c.id, c.name])))
-    })
-  }, [projectId, hasCredentials, campaignSelection])
+    getMetaCampaignNames(campaignSelection).then(setCampaignNames)
+  }, [hasCredentials, campaignSelection])
 
   useEffect(() => {
     getLastMetaSync(projectId, cycleId).then(setLastSyncedAt)
@@ -509,7 +507,7 @@ export function CreativePerformanceGrid({ projectId, cycleId, initialCards, disp
                       hasAds ? "bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300" : "bg-muted text-muted-foreground line-through decoration-muted-foreground/40"
                     )}
                   >
-                    {nameFromCards[id] ?? campaignNames[id] ?? "Campaña"}
+                    {nameFromCards[id] ?? campaignNames[id] ?? "Campaña eliminada en Meta"}
                   </span>
                 )
               })}

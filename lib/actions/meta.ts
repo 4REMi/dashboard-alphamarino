@@ -465,6 +465,19 @@ export async function runScheduledMetaSync(cronSecret: string): Promise<{ synced
   return { synced, failed }
 }
 
+// Nombres de campañas por id — a diferencia de /act_X/campaigns (que omite
+// las archivadas/eliminadas), la consulta por id sí las encuentra. Para
+// mostrar las campañas elegidas aunque ya no estén activas.
+export async function getMetaCampaignNames(campaignIds: string[]): Promise<Record<string, string>> {
+  const accessToken = process.env.META_SYSTEM_USER_TOKEN
+  if (!accessToken || campaignIds.length === 0) return {}
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return {}
+  const byId = await fetchByIds<{ name?: string }>(campaignIds, "name", accessToken)
+  return Object.fromEntries(Array.from(byId.entries()).filter(([, c]) => c.name).map(([id, c]) => [id, c.name!]))
+}
+
 // Sigue `paging.next` — insights con desglose diario rebasa fácil el
 // límite de una página (20 ads × 30 días = 600 filas) y sin esto se
 // perdían filas en silencio.
