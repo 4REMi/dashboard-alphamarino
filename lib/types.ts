@@ -573,6 +573,8 @@ export interface ProjectIntegration {
   project_id: string
   platform: string
   account_id: string
+  // Moneda de la cuenta publicitaria (USD, MXN...) — la llena el sync.
+  currency?: string | null
   extra: Record<string, unknown> | null
   created_at: string
   updated_at: string

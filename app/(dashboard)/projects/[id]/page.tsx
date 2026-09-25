@@ -395,6 +395,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                     displayMetrics={(paidMediaContext?.display_metrics ?? ["spend", "cost_per_result"]) as MetricKey[]}
                     savedCampaignIds={paidMediaContext?.synced_campaign_ids ?? null}
                     hasCredentials={!!(integrations as ProjectIntegration[]).find((i) => i.platform === "meta")}
+                    currency={(integrations as ProjectIntegration[]).find((i) => i.platform === "meta")?.currency ?? null}
                     canEdit={isAdminOrSubadmin}
                   />
                 </div>

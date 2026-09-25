@@ -188,8 +188,18 @@ function AssetPieceCard({ piece, live, canManage, onOpen, onNewVersion }: {
   const thumb = assetThumbUrl(a)
   const status = assetStatus(a)
   const needsChanges = a.client_visible && a.client_status === "changes_requested"
+  // Mismo significado que las pastillas del tracker: rojo = cambios
+  // pedidos, verde = aprobado, ámbar = borrador (sin publicar), neutro =
+  // esperando al cliente.
+  const tone = !a.client_visible
+    ? "bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-900"
+    : a.client_status === "approved"
+      ? "bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-900"
+      : needsChanges
+        ? "bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-900"
+        : "bg-card"
   return (
-    <div className="rounded-xl border overflow-hidden bg-card flex flex-col">
+    <div className={cn("rounded-xl border overflow-hidden flex flex-col", tone)}>
       <button type="button" onClick={onOpen} className="relative aspect-[4/5] bg-muted/50 flex items-center justify-center group">
         {thumb ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -220,7 +230,7 @@ function AssetPieceCard({ piece, live, canManage, onOpen, onNewVersion }: {
           <p className="text-[11px] text-muted-foreground">{status.detail}</p>
         </div>
         {needsChanges && a.client_feedback && (
-          <div className="text-xs bg-muted/40 border-l-2 border-foreground/30 rounded-r px-2.5 py-1.5 max-h-48 overflow-y-auto whitespace-pre-wrap leading-snug">
+          <div className="text-xs bg-background/70 border-l-2 border-red-300 rounded-r px-2.5 py-1.5 max-h-48 overflow-y-auto whitespace-pre-wrap leading-snug">
             <span className="block text-[10px] font-semibold text-muted-foreground mb-0.5">Lo que pidió el cliente</span>
             {a.client_feedback}
           </div>

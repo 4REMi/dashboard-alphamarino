@@ -19,7 +19,12 @@ interface Props {
   savedCampaignIds: string[] | null
   hasCredentials: boolean
   canEdit: boolean
+  // Moneda de la cuenta publicitaria — Meta regresa todos los montos en ella.
+  currency?: string | null
 }
+
+// Métricas que son montos de dinero (llevan la moneda de la cuenta).
+const MONEY_METRICS = new Set<MetricKey>(["spend", "cpc", "cpm", "cost_per_result", "cost_per_link_click", "purchase_value"])
 
 type SortMode = "worst_trend" | "spend_desc" | "name_asc"
 
@@ -148,11 +153,11 @@ function LinkPickerModal({ projectId, cycleId, card, onClose, onLinked }: {
             {assets && assets.length > 0 && filtered.length === 0 && <p className="text-sm text-muted-foreground p-2">Nada coincide con &quot;{search}&quot;.</p>}
             <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3">
               {filtered.map((a) => (
-                <div key={a.id} className="rounded-xl border border-border overflow-hidden hover:border-primary/50 transition-colors">
+                <div key={a.id} className="rounded-xl border border-border overflow-hidden hover:border-primary/50 transition-colors flex flex-col">
                   <button
-                    onClick={() => a.fileType === "video" ? setLightboxAsset(a) : undefined}
-                    className={cn("relative w-full aspect-square bg-muted block", a.fileType === "video" && "cursor-pointer")}
-                    title={a.fileType === "video" ? "Ver video" : undefined}
+                    onClick={() => setLightboxAsset(a)}
+                    className="relative w-full aspect-square bg-muted block cursor-pointer"
+                    title="Ver en grande"
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     {a.thumbUrl && <img src={a.thumbUrl} alt="" className="w-full h-full object-cover" />}
@@ -162,14 +167,23 @@ function LinkPickerModal({ projectId, cycleId, card, onClose, onLinked }: {
                       </div>
                     )}
                   </button>
-                  <button onClick={() => pick(a.id)} disabled={isPending} className="w-full text-left p-2.5 hover:bg-muted transition-colors disabled:opacity-50">
-                    <p className="text-xs font-medium truncate">{a.conceptName ?? "Sin concepto"}</p>
-                    {a.targetPersona && <p className="text-[11px] text-muted-foreground truncate">{a.targetPersona}</p>}
-                    {a.format && <p className="text-[10px] text-muted-foreground/70 truncate">{a.format}</p>}
-                    {a.linkedToAdName && (
-                      <p className="text-[10px] text-amber-600 truncate mt-1">Ya vinculado a: {a.linkedToAdName}</p>
-                    )}
-                  </button>
+                  <div className="p-2.5 flex-1 flex flex-col gap-2">
+                    <div>
+                      <p className="text-xs font-medium truncate">{a.conceptName ?? "Sin concepto"}</p>
+                      {a.targetPersona && <p className="text-[11px] text-muted-foreground truncate">{a.targetPersona}</p>}
+                      {a.format && <p className="text-[10px] text-muted-foreground/70 truncate">{a.format}</p>}
+                      {a.linkedToAdName && (
+                        <p className="text-[10px] text-amber-600 truncate mt-1">Ya vinculado a: {a.linkedToAdName}</p>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => pick(a.id)}
+                      disabled={isPending}
+                      className="mt-auto w-full text-xs font-medium py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                    >
+                      Vincular
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -177,9 +191,33 @@ function LinkPickerModal({ projectId, cycleId, card, onClose, onLinked }: {
         </div>
       </div>
 
+      {/* Vista previa en grande. stopPropagation: sin él, el clic fuera
+          llegaba también al fondo del modal de vincular y cerraba los dos. */}
       {lightboxAsset && (
-        <div className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4" onClick={() => setLightboxAsset(null)}>
-          <video src={lightboxAsset.fileUrl ?? undefined} controls autoPlay className="max-w-full max-h-[80vh]" onClick={(e) => e.stopPropagation()} />
+        <div
+          className="fixed inset-0 z-[60] bg-black/80 flex flex-col items-center justify-center gap-3 p-4"
+          onClick={(e) => { e.stopPropagation(); setLightboxAsset(null) }}
+        >
+          <div onClick={(e) => e.stopPropagation()} className="flex flex-col items-center gap-3">
+            {lightboxAsset.fileType === "video" ? (
+              <video src={lightboxAsset.fileUrl ?? undefined} controls autoPlay className="max-w-full max-h-[75vh] rounded-lg" />
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={lightboxAsset.fileUrl ?? lightboxAsset.thumbUrl ?? undefined} alt="" className="max-w-full max-h-[75vh] rounded-lg object-contain" />
+            )}
+            <div className="flex items-center gap-2">
+              <button onClick={() => setLightboxAsset(null)} className="text-sm font-medium px-4 py-2 rounded-md bg-white/10 text-white hover:bg-white/20 transition-colors">
+                ← Volver
+              </button>
+              <button
+                onClick={() => { const id = lightboxAsset.id; setLightboxAsset(null); pick(id) }}
+                disabled={isPending}
+                className="text-sm font-medium px-4 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+              >
+                Vincular este asset
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -251,8 +289,8 @@ function CampaignPickerModal({ projectId, savedCampaignIds, onClose, onConfirm }
   )
 }
 
-function CreativeCard({ card, metrics, projectId, cycleId, canEdit, onRefresh }: {
-  card: AdPerformanceCard; metrics: MetricKey[]; projectId: string; cycleId: string; canEdit: boolean; onRefresh: () => void
+function CreativeCard({ card, metrics, projectId, cycleId, canEdit, onRefresh, currency }: {
+  card: AdPerformanceCard; metrics: MetricKey[]; projectId: string; cycleId: string; canEdit: boolean; onRefresh: () => void; currency: string | null
 }) {
   const [showLinkPicker, setShowLinkPicker] = useState(false)
   // El video real (no solo su thumbnail chico/borroso) — display*Url ya
@@ -310,7 +348,10 @@ function CreativeCard({ card, metrics, projectId, cycleId, canEdit, onRefresh }:
               <div key={key} className="bg-muted/40 rounded-md p-1.5">
                 <p className="text-[10px] text-muted-foreground">{METRIC_DEFS[key].label}</p>
                 <div className="flex items-center gap-1">
-                  <p className="text-xs font-semibold">{METRIC_DEFS[key].format(m.value)}</p>
+                  <p className="text-xs font-semibold">
+                    {METRIC_DEFS[key].format(m.value)}
+                    {currency && MONEY_METRICS.has(key) && <span className="ml-0.5 text-[9px] font-medium text-muted-foreground">{currency}</span>}
+                  </p>
                   <TrendBadge trendPct={m.trendPct} higherIsBetter={m.higherIsBetter} />
                 </div>
               </div>
@@ -356,7 +397,7 @@ function CreativeCard({ card, metrics, projectId, cycleId, canEdit, onRefresh }:
   )
 }
 
-export function CreativePerformanceGrid({ projectId, cycleId, initialCards, displayMetrics, savedCampaignIds, hasCredentials, canEdit }: Props) {
+export function CreativePerformanceGrid({ projectId, cycleId, initialCards, displayMetrics, savedCampaignIds, hasCredentials, canEdit, currency = null }: Props) {
   const [cards, setCards] = useState(initialCards)
   const [isPending, startTransition] = useTransition()
   const [syncError, setSyncError] = useState<string | null>(null)
@@ -485,7 +526,7 @@ export function CreativePerformanceGrid({ projectId, cycleId, initialCards, disp
             <div className="grid grid-cols-3 gap-2 max-w-md">
               {[
                 { label: "Anuncios activos", value: `${activeCount} de ${cards.length}` },
-                { label: "Invertido este ciclo", value: fmt$(totalSpend) },
+                { label: "Invertido este ciclo", value: `${fmt$(totalSpend)}${currency ? ` ${currency}` : ""}` },
                 { label: "Campañas", value: selected.length > 0 ? `${selected.length} elegida${selected.length !== 1 ? "s" : ""}` : "Todas" },
               ].map((t) => (
                 <div key={t.label} className="rounded-lg bg-muted/40 px-3 py-2">
@@ -569,7 +610,7 @@ export function CreativePerformanceGrid({ projectId, cycleId, initialCards, disp
 
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 p-5">
             {visibleCards.map((card) => (
-              <CreativeCard key={card.ad_id} card={card} metrics={displayMetrics} projectId={projectId} cycleId={cycleId} canEdit={canEdit} onRefresh={reload} />
+              <CreativeCard key={card.ad_id} card={card} metrics={displayMetrics} projectId={projectId} cycleId={cycleId} canEdit={canEdit} onRefresh={reload} currency={currency} />
             ))}
           </div>
         </>
