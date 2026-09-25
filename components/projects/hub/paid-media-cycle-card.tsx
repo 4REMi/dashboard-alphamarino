@@ -47,7 +47,7 @@ function CycleStartDaySetting({ projectId, value, canEdit }: { projectId: string
   if (!canEdit && !value) return null
 
   return (
-    <div className="flex items-center gap-2 text-xs text-muted-foreground px-5 py-2 border-b border-border bg-muted/20">
+    <div className="flex items-center gap-2 text-xs text-muted-foreground">
       <span>Día fijo de ciclo:</span>
       {editing ? (
         <>
@@ -129,16 +129,18 @@ function AutoCloseCyclesSetting({ projectId, enabled }: { projectId: string; ena
   }
 
   return (
-    <div className="flex items-center gap-2 text-xs text-muted-foreground px-5 py-2 border-b border-border bg-muted/20">
-      <span>Auto-cerrar ciclos vencidos en este proyecto:</span>
+    <div className="flex items-center gap-2 text-xs text-muted-foreground" title="Sin esto activado, un ciclo vencido solo avisa por Telegram — nunca se cierra solo">
       <button
+        type="button"
+        role="switch"
+        aria-checked={enabled}
         onClick={toggle}
         disabled={isPending}
-        className={`font-medium disabled:opacity-50 ${enabled ? "text-primary" : "hover:text-foreground"}`}
-        title="Sin esto activado, un ciclo vencido solo avisa por Telegram — nunca se cierra solo"
+        className={`relative h-4 w-7 flex-shrink-0 rounded-full transition-colors disabled:opacity-50 ${enabled ? "bg-primary" : "bg-muted-foreground/30"}`}
       >
-        {enabled ? "Activado — click para desactivar" : "Desactivado — click para activar"}
+        <span className={`absolute top-0.5 left-0.5 h-3 w-3 rounded-full bg-white shadow transition-transform ${enabled ? "translate-x-3" : ""}`} />
       </button>
+      <span>Auto-cerrar al vencer: <span className="font-medium text-foreground">{enabled ? "Sí" : "No"}</span></span>
     </div>
   )
 }
@@ -211,7 +213,9 @@ export function PaidMediaCycleCard({ projectId, activeCycle, canEdit, canEditDat
   if (!activeCycle) {
     return (
       <div className="rounded-xl border border-dashed border-border bg-card">
-        <CycleStartDaySetting projectId={projectId} value={cycleStartDay} canEdit={canEdit} />
+        <div className="px-5 pt-3">
+          <CycleStartDaySetting projectId={projectId} value={cycleStartDay} canEdit={canEdit} />
+        </div>
         <div className="flex items-center justify-between p-5 pb-3">
           <h3 className="font-semibold text-sm text-foreground">Ciclo Activo</h3>
           {canEdit && (
@@ -246,43 +250,72 @@ export function PaidMediaCycleCard({ projectId, activeCycle, canEdit, canEditDat
 
   const today = new Date().toISOString().slice(0, 10)
   const isOverdue = activeCycle.end_date < today
+  const dayNum = (iso: string) => { const [y, m, d] = iso.split("-").map(Number); return Date.UTC(y, m - 1, d) / 86_400_000 }
+  const totalDays = dayNum(activeCycle.end_date) - dayNum(activeCycle.start_date) + 1
+  const elapsed = Math.min(Math.max(dayNum(today) - dayNum(activeCycle.start_date) + 1, 0), totalDays)
+  const remaining = dayNum(activeCycle.end_date) - dayNum(today)
+  const pct = totalDays > 0 ? Math.round((elapsed / totalDays) * 100) : 0
+  const fmtDay = (iso: string) => { const [y, m, d] = iso.split("-").map(Number); return new Date(y, m - 1, d).toLocaleDateString("es-MX", { day: "numeric", month: "short" }) }
 
   return (
-    <div className="rounded-xl border border-border bg-card">
-      <CycleStartDaySetting projectId={projectId} value={cycleStartDay} canEdit={canEdit} />
-      {isAdminOrSubadmin && (
-        <AutoCloseCyclesSetting projectId={projectId} enabled={autoCloseCycles} />
-      )}
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-        <div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="font-semibold text-sm text-foreground">Ciclo Activo — {formatCycleRange(activeCycle.start_date, activeCycle.end_date)}</h3>
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <div className="px-5 pt-4 pb-3 flex items-start justify-between gap-4 flex-wrap">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Ciclo activo</span>
             {isOverdue && (
               <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
                 Vencido
               </span>
             )}
+            {activeCycle.campaign_status && (
+              <span className="text-[11px] text-muted-foreground">· {CAMPAIGN_STATUS_LABELS[activeCycle.campaign_status]}</span>
+            )}
+          </div>
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <h3 className="text-lg font-semibold text-foreground">{formatCycleRange(activeCycle.start_date, activeCycle.end_date)}</h3>
             {canEditDates && (
               <button onClick={() => setEditingDates((v) => !v)} className="text-[11px] text-primary hover:underline">
                 {editingDates ? "Cancelar" : "Corregir fechas"}
               </button>
             )}
           </div>
-          {activeCycle.campaign_status && (
-            <span className="text-xs text-muted-foreground">{CAMPAIGN_STATUS_LABELS[activeCycle.campaign_status]}</span>
-          )}
         </div>
         {canEdit && (
           <div className="flex gap-2">
-            <button onClick={() => setEditing(!editing)} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+            <button onClick={() => setEditing(!editing)} className="text-xs font-medium px-3 py-1.5 rounded-md border border-border hover:bg-muted transition-colors">
               {editing ? "Cancelar" : "Editar"}
             </button>
-            <button onClick={handleClose} className="text-xs text-muted-foreground hover:text-destructive transition-colors">
+            <button onClick={handleClose} className="text-xs font-medium px-3 py-1.5 rounded-md border border-border text-destructive hover:bg-destructive/10 transition-colors">
               Cerrar ciclo
             </button>
           </div>
         )}
+      </div>
+
+      {/* Avance del ciclo */}
+      <div className="px-5 pb-4">
+        <div className="flex items-center justify-between text-xs mb-1.5">
+          <span className="font-medium text-foreground">Día {elapsed} de {totalDays}</span>
+          <span className={isOverdue ? "font-medium text-amber-700 dark:text-amber-300" : "text-muted-foreground"}>
+            {isOverdue
+              ? `Venció hace ${-remaining} día${-remaining !== 1 ? "s" : ""}`
+              : remaining === 0 ? "Termina hoy" : `Faltan ${remaining} día${remaining !== 1 ? "s" : ""}`}
+          </span>
+        </div>
+        <div className="h-2 rounded-full bg-muted overflow-hidden">
+          <div className={`h-full rounded-full ${isOverdue ? "bg-amber-500" : "bg-primary"}`} style={{ width: `${pct}%` }} />
+        </div>
+        <div className="flex justify-between text-[11px] text-muted-foreground mt-1">
+          <span>{fmtDay(activeCycle.start_date)}</span>
+          <span>{fmtDay(activeCycle.end_date)}</span>
+        </div>
+      </div>
+
+      {/* Ajustes del ciclo — se tocan poco, van compactos al pie */}
+      <div className="px-5 py-2.5 border-t border-border bg-muted/20 flex flex-wrap items-center gap-x-6 gap-y-2">
+        <CycleStartDaySetting projectId={projectId} value={cycleStartDay} canEdit={canEdit} />
+        {isAdminOrSubadmin && <AutoCloseCyclesSetting projectId={projectId} enabled={autoCloseCycles} />}
       </div>
 
       {editingDates && (

@@ -281,12 +281,21 @@ function CreativeCard({ card, metrics, projectId, cycleId, canEdit, onRefresh }:
             <ImageIcon className="w-8 h-8" />
           </div>
         )}
-        <span className={cn(
-          "absolute top-1.5 right-1.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full",
-          card.status === "ACTIVE" ? "bg-emerald-500 text-white" : "bg-slate-900/70 text-white"
-        )}>
-          {card.status === "ACTIVE" ? "Activo" : card.status ?? "—"}
-        </span>
+        <div className="absolute top-1.5 right-1.5 flex items-center gap-1">
+          {/* Sin vincular = la miniatura es la de Meta (baja calidad, video
+              sin reproducir en cuentas compartidas). Desaparece al vincular. */}
+          {card.linkedConcepts.length === 0 && (
+            <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800" title="Vincúlalo a un asset para ver el archivo original">
+              Sin asset de dashboard
+            </span>
+          )}
+          <span className={cn(
+            "text-[9px] font-semibold px-1.5 py-0.5 rounded-full",
+            card.status === "ACTIVE" ? "bg-emerald-500 text-white" : "bg-slate-900/70 text-white"
+          )}>
+            {card.status === "ACTIVE" ? "Activo" : card.status ?? "—"}
+          </span>
+        </div>
       </div>
 
       <div className="p-3 space-y-2 flex-1 flex flex-col">

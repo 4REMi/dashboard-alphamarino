@@ -6,6 +6,7 @@ import { upsertProjectIntegration, deleteProjectIntegration } from "@/lib/action
 import { getMetaAdAccounts } from "@/lib/actions/meta"
 import type { MetaAdAccount } from "@/lib/actions/meta"
 import { Loader2, Search, Check, Unplug, ExternalLink } from "lucide-react"
+import { SiMeta } from "@icons-pack/react-simple-icons"
 import { cn } from "@/lib/utils"
 
 interface Props {
@@ -97,8 +98,8 @@ export function IntegrationsCard({ projectId, integrations: initial, canEdit }: 
       {integration && !showPicker && (
         <div className="px-5 py-4">
           <div className="flex items-center gap-4">
-            <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
-              𝕄
+            <div className="w-10 h-10 rounded-xl bg-[#0866FF] flex items-center justify-center shrink-0">
+              <SiMeta color="white" size={22} title="Meta" />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-foreground truncate">
@@ -204,8 +205,8 @@ export function IntegrationsCard({ projectId, integrations: initial, canEdit }: 
                         isSelected ? "bg-primary/5" : "hover:bg-muted/50",
                       )}
                     >
-                      <div className="w-8 h-8 rounded-lg bg-blue-600/10 flex items-center justify-center text-blue-600 text-xs font-bold shrink-0">
-                        𝕄
+                      <div className="w-8 h-8 rounded-lg bg-[#0866FF]/10 flex items-center justify-center shrink-0">
+                        <SiMeta color="#0866FF" size={16} title="Meta" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
