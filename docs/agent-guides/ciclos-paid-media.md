@@ -41,6 +41,13 @@ un `creative_assets` (con su `concept_id`, persona, ángulo) y el `ad_id` real d
 en el que se volvió — se vincula desde la propia tarjeta ("Vincular a concepto"),
 nunca bloqueante, nunca un paso obligatorio upstream.
 
+**Código de color del asset** (`lib/utils/asset-review-tone.ts`, el mismo del
+Creative Tracker): verde = aprobado, rojo = cambios pedidos, ámbar = borrador,
+neutro = en revisión del cliente. En el modal de vincular los aprobados salen
+primero y son los únicos con "Vincular"; los demás dicen "Vincular sin aprobar"
+y piden confirmación. En el mapa cada asset lleva ese color, su estado escrito y
+"En campaña" o "Sin ad vinculado · no se ha probado".
+
 **Escala (cuentas con muchos creativos corriendo a la vez)**: dos cosas
 pensadas para cuando una cuenta tiene 80+ creativos, no solo 4-8.
 - **Picker "Elegir campañas"** antes de sincronizar — `getMetaCampaignOptions`

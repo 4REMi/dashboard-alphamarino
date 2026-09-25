@@ -1,5 +1,6 @@
 "use client"
 
+import { assetReviewTone } from "@/lib/utils/asset-review-tone"
 import { useEffect, useMemo, useState, useTransition } from "react"
 import { Loader2, RefreshCw, ImageIcon, Link2, X, ListFilter, Film, Info } from "lucide-react"
 import { syncMetaAds, getMetaCampaignOptions, getMetaCampaignNames } from "@/lib/actions/meta"
@@ -79,13 +80,18 @@ function LinkPickerModal({ projectId, cycleId, card, onClose, onLinked }: {
     return null
   })
 
+  // Aprobados primero: lo ideal es vincular solo creativos aprobados.
+  const REVIEW_ORDER = { approved: 0, waiting: 1, changes: 2, draft: 3 }
   const filtered = (assets ?? []).filter((a) => {
     if (!search.trim()) return true
     const q = search.toLowerCase()
     return (a.conceptName ?? "").toLowerCase().includes(q) || (a.targetPersona ?? "").toLowerCase().includes(q)
-  })
+  }).sort((a, b) => REVIEW_ORDER[assetReviewTone(a).key] - REVIEW_ORDER[assetReviewTone(b).key])
 
   function pick(assetId: string) {
+    const a = assets?.find((x) => x.id === assetId)
+    const tone = a ? assetReviewTone(a) : null
+    if (tone && tone.key !== "approved" && !confirm(`Este asset no está aprobado (${tone.label}). ¿Vincularlo de todos modos?`)) return
     startTransition(async () => {
       await linkAssetToMetaAd(projectId, assetId, card.ad_id)
       onLinked()
@@ -152,8 +158,11 @@ function LinkPickerModal({ projectId, cycleId, card, onClose, onLinked }: {
             {assets?.length === 0 && <p className="text-sm text-muted-foreground p-2">Sin assets en este ciclo todavía.</p>}
             {assets && assets.length > 0 && filtered.length === 0 && <p className="text-sm text-muted-foreground p-2">Nada coincide con &quot;{search}&quot;.</p>}
             <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3">
-              {filtered.map((a) => (
-                <div key={a.id} className="rounded-xl border border-border overflow-hidden hover:border-primary/50 transition-colors flex flex-col">
+              {filtered.map((a) => {
+                const tone = assetReviewTone(a)
+                const approved = tone.key === "approved"
+                return (
+                <div key={a.id} className={cn("rounded-xl border-2 overflow-hidden transition-colors flex flex-col", tone.card)}>
                   <button
                     onClick={() => setLightboxAsset(a)}
                     className="relative w-full aspect-square bg-muted block cursor-pointer"
@@ -169,6 +178,7 @@ function LinkPickerModal({ projectId, cycleId, card, onClose, onLinked }: {
                   </button>
                   <div className="p-2.5 flex-1 flex flex-col gap-2">
                     <div>
+                      <span className={cn("inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded-full mb-1", tone.pill)}>{tone.label}</span>
                       <p className="text-xs font-medium truncate">{a.conceptName ?? "Sin concepto"}</p>
                       {a.targetPersona && <p className="text-[11px] text-muted-foreground truncate">{a.targetPersona}</p>}
                       {a.format && <p className="text-[10px] text-muted-foreground/70 truncate">{a.format}</p>}
@@ -179,13 +189,17 @@ function LinkPickerModal({ projectId, cycleId, card, onClose, onLinked }: {
                     <button
                       onClick={() => pick(a.id)}
                       disabled={isPending}
-                      className="mt-auto w-full text-xs font-medium py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                      className={cn(
+                        "mt-auto w-full text-xs font-medium py-1.5 rounded-md disabled:opacity-50 transition-colors",
+                        approved ? "bg-primary text-primary-foreground hover:bg-primary/90" : "border border-border bg-background text-muted-foreground hover:text-foreground",
+                      )}
                     >
-                      Vincular
+                      {approved ? "Vincular" : "Vincular sin aprobar"}
                     </button>
                   </div>
                 </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         </div>

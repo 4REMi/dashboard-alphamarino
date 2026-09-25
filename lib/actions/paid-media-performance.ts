@@ -32,6 +32,9 @@ export interface LinkableAsset {
   // sin darse cuenta de que ya estaba vinculado es justo lo que este
   // aviso previene.
   linkedToAdName: string | null
+  // Estado de revisión (mismo código de color que el Creative Tracker).
+  clientVisible: boolean
+  clientStatus: string | null
 }
 
 // Lista de assets para el picker de vinculación asset↔ad — acotada al
@@ -44,7 +47,7 @@ export async function getLinkableAssets(projectId: string, cycleId: string | nul
   let query = supabase
     .from("creative_assets")
     .select(`
-      id, format, platform, file_type, asset_url, file_path, thumbnail_path,
+      id, format, platform, file_type, asset_url, file_path, thumbnail_path, client_visible, client_status,
       concept:creative_concepts(name, target_persona)
     `)
     .eq("project_id", projectId)
@@ -87,6 +90,8 @@ export async function getLinkableAssets(projectId: string, cycleId: string | nul
       thumbUrl,
       fileUrl,
       linkedToAdName: linkedAdNameByAssetId.get(a.id) ?? null,
+      clientVisible: !!a.client_visible,
+      clientStatus: a.client_status ?? null,
     }
   })
 }

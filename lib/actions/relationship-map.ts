@@ -40,6 +40,8 @@ export interface RelationshipAssetNode {
   fileType: string | null
   format: string | null
   platform: string | null
+  clientVisible: boolean
+  clientStatus: string | null
 }
 
 export interface RelationshipCampaignNode {
@@ -247,6 +249,8 @@ export async function getRelationshipMap(projectId: string, cycleId: string | nu
       fileType: a.file_type,
       format: a.format,
       platform: a.platform,
+      clientVisible: !!a.client_visible,
+      clientStatus: a.client_status ?? null,
     })),
     campaigns,
     assetCampaignEdges,

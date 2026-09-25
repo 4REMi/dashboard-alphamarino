@@ -1,5 +1,6 @@
 "use client"
 
+import { assetReviewTone } from "@/lib/utils/asset-review-tone"
 import { useEffect, useState, useCallback } from "react"
 import {
   ReactFlow, Background, Controls, MiniMap, Handle, Position, applyNodeChanges,
@@ -288,12 +289,16 @@ function ConceptNode({ data }: NodeProps<Node<{ concept: RelationshipMapData["co
 // (components/ad-lab/nodes/ad-node.tsx): video reproducible con controles
 // directo en la tarjeta, imagen clickeable para agrandar (lightbox, ver
 // onEnlarge más abajo) en vez del recorte chico + ícono de antes.
-function AssetNode({ data }: NodeProps<Node<{ asset: RelationshipMapData["assets"][number]; onEnlarge: (asset: RelationshipMapData["assets"][number]) => void }>>) {
-  const { asset, onEnlarge } = data
+// Mismo código de color que el Creative Tracker (aprobado/cambios/
+// borrador/en revisión) y, escrito, si el asset corre en algún ad del
+// ciclo o nunca se ha probado — para no perder de vista cuál está vivo.
+function AssetNode({ data }: NodeProps<Node<{ asset: RelationshipMapData["assets"][number]; inCampaign: boolean; onEnlarge: (asset: RelationshipMapData["assets"][number]) => void }>>) {
+  const { asset, inCampaign, onEnlarge } = data
   const isVideo = asset.fileType === "video"
   const media = asset.fileUrl ?? asset.thumbUrl
+  const tone = assetReviewTone(asset)
   return (
-    <div className="w-56 rounded-xl border-2 border-sky-300 bg-sky-50 shadow-sm overflow-hidden">
+    <div className={cn("w-56 rounded-xl border-2 shadow-sm overflow-hidden", tone.card, !inCampaign && "opacity-80")}>
       <Handle type="target" position={Position.Left} className="!opacity-0" />
       <Handle type="source" position={Position.Right} className="!opacity-0" />
       <div className="relative bg-black/90">
@@ -319,6 +324,14 @@ function AssetNode({ data }: NodeProps<Node<{ asset: RelationshipMapData["assets
         {isVideo && <Film className="w-3 h-3 text-sky-600 flex-shrink-0" />}
         <p className="text-xs font-medium truncate">{asset.format ?? "Asset"}</p>
         {asset.platform && <p className="text-[10px] text-muted-foreground truncate">· {asset.platform}</p>}
+      </div>
+      <div className="px-2.5 pb-2 flex items-center gap-1.5 flex-wrap">
+        <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded-full", tone.pill)}>{tone.label}</span>
+        {inCampaign ? (
+          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300">En campaña</span>
+        ) : (
+          <span className="text-[10px] font-medium text-muted-foreground">Sin ad vinculado · no se ha probado</span>
+        )}
       </div>
     </div>
   )
@@ -493,7 +506,7 @@ const COL_CONCEPT = 0
 const COL_ASSET = 340
 const COL_CAMPAIGN = 760
 const CAMPAIGN_ROW_H = 210 // altura estimada COLAPSADA — expandir puede solapar visualmente, por eso los nodos son arrastrables
-const ASSET_ROW_H = 230 // el asset ahora muestra el media (imagen agrandable / video reproducible), como en Ad Lab — ya no es una fila chica de ícono + texto
+const ASSET_ROW_H = 250 // el asset ahora muestra el media (imagen agrandable / video reproducible), como en Ad Lab — ya no es una fila chica de ícono + texto
 const CONCEPT_ROW_H = 100
 
 interface GraphHandlers {
@@ -544,7 +557,7 @@ function buildGraph(data: RelationshipMapData, handlers: GraphHandlers): { nodes
         // asset donde en realidad había varios, solapados).
         cursorY = Math.max(cursorY, assetRowStartY + ASSET_ROW_H)
 
-        nodes.push({ id: `asset-${asset.id}`, type: "assetNode", position: { x: COL_ASSET, y: Math.max(campaignsStartY, cursorY - ASSET_ROW_H) }, data: { asset, onEnlarge: handlers.onEnlarge }, draggable: true })
+        nodes.push({ id: `asset-${asset.id}`, type: "assetNode", position: { x: COL_ASSET, y: Math.max(campaignsStartY, cursorY - ASSET_ROW_H) }, data: { asset, inCampaign: assetCampaignIds.length > 0, onEnlarge: handlers.onEnlarge }, draggable: true })
         edges.push({ id: `e-${concept.id}-${asset.id}`, source: `concept-${concept.id}`, target: `asset-${asset.id}`, style: { stroke: "#0ea5e9" } })
       }
     }
