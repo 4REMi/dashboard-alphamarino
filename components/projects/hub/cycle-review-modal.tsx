@@ -87,7 +87,12 @@ export function CycleReviewModal({ projectId, cycleId, mode, onClose }: {
     }).catch((e) => setLoadError(e instanceof Error ? e.message : "No se pudo cargar el repaso"))
 
     if (mode !== "edit") {
-      suggestNextCycleStartDate(projectId).then((start) => {
+      Promise.all([suggestNextCycleStartDate(projectId), getCycleReviewData(projectId, cycleId)]).then(([suggested, d]) => {
+        // Nunca empezar el mismo día (o antes) de que termina este ciclo:
+        // el día fijo puede caer justo en su fecha de fin.
+        const [y, m, day] = d.cycle.end_date.split("-").map(Number)
+        const dayAfterEnd = new Date(Date.UTC(y, m - 1, day + 1)).toISOString().slice(0, 10)
+        const start = suggested > d.cycle.end_date ? suggested : dayAfterEnd
         setNextStart(start)
         setNextEnd(addOneMonthMinusOneDay(start))
       })
