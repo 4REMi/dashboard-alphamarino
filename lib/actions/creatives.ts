@@ -307,20 +307,10 @@ export async function createAsset(projectId: string, formData: FormData): Promis
   })
   if (error) throw error
 
-  // Marking an upload as "a revision of X" replaces the old manual
-  // two-step (upload new + hide old by hand) with one action — the
-  // previous version gets pulled from client view automatically, same
-  // fields toggleClientVisible(false) would set, using the same
-  // already-verified write access as the insert above (not the
-  // admin-only toggleClientVisible action itself, which has its own
-  // stricter role check unrelated to this flow).
-  if (revisesAssetId) {
-    await supabase.from("creative_assets").update({
-      client_visible: false,
-      client_status: null,
-      client_feedback: null,
-    }).eq("id", revisesAssetId)
-  }
+  // La versión anterior NO se oculta aquí: el cliente la sigue viendo
+  // (con su comentario) mientras el equipo revisa la nueva, que nace
+  // oculta. Se reemplaza en el panel del cliente hasta que se publica la
+  // nueva — ver toggleClientVisible.
 
   revalidateProject(projectId)
 }
@@ -411,12 +401,19 @@ export async function toggleClientVisible(
   const { role } = await getRole()
   if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
 
-  const { error } = await supabase.from("creative_assets").update({
+  const { data: updated, error } = await supabase.from("creative_assets").update({
     client_visible: visible,
     client_status:  visible ? "pending_review" : null,
     client_feedback: null,
-  }).eq("id", assetId)
+  }).eq("id", assetId).select("revises_asset_id").single()
   if (error) throw error
+
+  // Publicar una nueva versión la reemplaza en el panel del cliente: se
+  // oculta la anterior, pero se conserva su estado y comentario como
+  // historial.
+  if (visible && updated?.revises_asset_id) {
+    await supabase.from("creative_assets").update({ client_visible: false }).eq("id", updated.revises_asset_id)
+  }
   revalidateProject(projectId)
 }
 

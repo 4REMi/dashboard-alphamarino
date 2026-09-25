@@ -220,7 +220,10 @@ function AssetPieceCard({ piece, live, canManage, onOpen, onNewVersion }: {
           <p className="text-[11px] text-muted-foreground">{status.detail}</p>
         </div>
         {needsChanges && a.client_feedback && (
-          <p className="text-[11px] bg-muted/40 border-l-2 border-foreground/30 rounded-r px-2 py-1 line-clamp-3">“{a.client_feedback}”</p>
+          <div className="text-xs bg-muted/40 border-l-2 border-foreground/30 rounded-r px-2.5 py-1.5 max-h-48 overflow-y-auto whitespace-pre-wrap leading-snug">
+            <span className="block text-[10px] font-semibold text-muted-foreground mb-0.5">Lo que pidió el cliente</span>
+            {a.client_feedback}
+          </div>
         )}
         {canManage && (
           <button
@@ -344,7 +347,10 @@ function ConceptDetailModal({
   const unpublished = pieces.filter((p) => !p.current.client_visible)
 
   function publishAll() {
-    for (const p of unpublished) onUpdateAsset(p.current.id, { client_visible: true, client_status: "pending_review", client_feedback: null })
+    for (const p of unpublished) {
+      onUpdateAsset(p.current.id, { client_visible: true, client_status: "pending_review", client_feedback: null })
+      if (p.current.revises_asset_id) onUpdateAsset(p.current.revises_asset_id, { client_visible: false })
+    }
     startTransition(async () => {
       await Promise.all(unpublished.map((p) => toggleClientVisible(p.current.id, projectId, true)))
     })
@@ -667,6 +673,7 @@ function ConceptDetailModal({
                               const patch = { client_visible: nextVisible, client_status: nextVisible ? "pending_review" as const : null, client_feedback: null }
                               setLightboxAsset((prev) => prev ? { ...prev, ...patch } : prev)
                               onUpdateAsset(a.id, patch)
+                              if (nextVisible && a.revises_asset_id) onUpdateAsset(a.revises_asset_id, { client_visible: false })
                               startTransition(async () => { await toggleClientVisible(a.id, projectId, nextVisible) })
                             }}
                             className={cn(
@@ -1387,7 +1394,8 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
         const showDraftsHere = (aiDraftsLineId ?? null) === (line?.id ?? null)
         const count = groupConcepts.length
         const groupConceptIds = new Set(groupConcepts.map((c) => c.id))
-        const unpublishedInGroup = assets.filter((a) => a.concept_id && groupConceptIds.has(a.concept_id) && !a.client_visible).length
+        const unpublishedInGroup = buildPieces(assets.filter((a) => a.concept_id && groupConceptIds.has(a.concept_id)))
+          .filter((p) => !p.current.client_visible).length
 
         return (
           <div key={groupId} className="border rounded-lg overflow-hidden bg-card">
@@ -1689,8 +1697,11 @@ function AttentionPill({ tone, title, children }: { tone: keyof typeof ATTENTION
 // Lo que antes vivía en el bloque "Requiere tu atención", ahora en el
 // renglón de cada concepto, y solo cuando hay algo pendiente.
 function ConceptAttentionNotes({ conceptAssets, conceptBriefs }: { conceptAssets: CreativeAsset[]; conceptBriefs: CreativeBrief[] }) {
-  const unpublished = conceptAssets.filter((a) => !a.client_visible).length
-  const assetChanges = conceptAssets.filter((a) => a.client_visible && a.client_status === "changes_requested").length
+  // Solo la versión vigente de cada pieza — una versión anterior ya
+  // reemplazada no es algo pendiente.
+  const current = buildPieces(conceptAssets).map((p) => p.current)
+  const unpublished = current.filter((a) => !a.client_visible).length
+  const assetChanges = current.filter((a) => a.client_visible && a.client_status === "changes_requested").length
   const scriptEntries = conceptBriefs.flatMap((b) => scriptReviewEntries(b))
   const scriptChanges = scriptEntries.filter((e) => e.status === "changes_requested").length
   const scriptPending = scriptEntries.filter((e) => e.status === "pending_review").length

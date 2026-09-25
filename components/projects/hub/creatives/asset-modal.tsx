@@ -449,7 +449,7 @@ export function AssetModal({
                 ))}
               </select>
               {revisesAssetId && (
-                <p className="text-xs text-muted-foreground">La versión anterior se ocultará del cliente automáticamente al guardar.</p>
+                <p className="text-xs text-muted-foreground">La nueva versión se sube oculta. El cliente sigue viendo la anterior hasta que publiques esta.</p>
               )}
             </div>
           )}
