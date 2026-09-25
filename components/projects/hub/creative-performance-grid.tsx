@@ -127,7 +127,7 @@ function LinkPickerModal({ projectId, cycleId, card, onClose, onLinked }: {
         <div className="flex-1 flex flex-col min-w-0">
           <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
             <div>
-              <h3 className="text-sm font-semibold">Vincular a un asset del dashboard</h3>
+              <h3 className="text-sm font-semibold">Vincular a un asset</h3>
               <p className="text-[11px] text-muted-foreground">Compara contra el creativo de la izquierda antes de elegir.</p>
             </div>
             <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
@@ -333,7 +333,7 @@ function CreativeCard({ card, metrics, projectId, cycleId, canEdit, onRefresh }:
               onClick={() => setShowLinkPicker(true)}
               className="text-[10px] font-medium px-1.5 py-0.5 rounded-full border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 flex items-center gap-1 transition-colors"
             >
-              <Link2 className="w-2.5 h-2.5" /> Vincular a concepto
+              <Link2 className="w-2.5 h-2.5" /> Vincular a asset
             </button>
           )}
         </div>

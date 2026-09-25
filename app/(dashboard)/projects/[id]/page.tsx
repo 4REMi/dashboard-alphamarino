@@ -41,7 +41,7 @@ import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { createClient } from "@/lib/supabase/server"
 import { ProjectContextBar } from "@/components/projects/project-context-bar"
-import { ArrowLeft, CalendarDays, Plus } from "lucide-react"
+import { ArrowLeft, CalendarDays, Megaphone, Plus } from "lucide-react"
 import { formatDate, formatCurrency } from "@/lib/utils"
 import type { Customer, Profile, Project, Task, ProjectType, PaidMediaContext, PaidMediaCycle, WebProjectContext, ProjectLogEntry, ProjectPhase, Deliverable, Sop, CreativeConcept, CreativeAsset, ProjectIntegration } from "@/lib/types"
 import { can } from "@/lib/permissions"
@@ -112,7 +112,6 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const webContext       = unwrapSingle(project.web_project_context) as WebProjectContext | null
 
   const activeCycle   = (cycles as PaidMediaCycle[]).find((c) =>  c.is_active) ?? null
-  const historyCycles = (cycles as PaidMediaCycle[]).filter((c) => !c.is_active)
 
   // Fetch initial creatives + meta campaigns + integrations for active cycle
   const [initialConcepts, initialAssets, integrations, brandBrains, brandLines, importedMetaCreatives, initialCreativeCards] = isPaidMedia
@@ -353,11 +352,15 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             ciclo → conceptos/assets → anuncios de Meta → historial →
             configuración (lo que se toca una sola vez, al final). ── */}
         {isPaidMedia && (
-          <section className="rounded-2xl border-2 border-primary/20 bg-primary/[0.03] p-5 space-y-6">
-            <div>
-              <h2 className="text-base font-semibold text-foreground">Hub Paid Media</h2>
-              <p className="text-xs text-muted-foreground">Ciclo, conceptos y assets, anuncios en Meta y configuración de la cuenta.</p>
+          <section className="rounded-2xl border-2 border-primary/30 bg-primary/[0.07] dark:bg-primary/[0.12] overflow-hidden">
+            <div className="flex items-center gap-3 px-5 py-4 bg-primary text-primary-foreground">
+              <Megaphone className="w-5 h-5 flex-shrink-0" />
+              <div>
+                <h2 className="text-base font-semibold">Hub Paid Media</h2>
+                <p className="text-xs text-primary-foreground/80">Ciclo, conceptos y assets, anuncios en Meta y configuración de la cuenta.</p>
+              </div>
             </div>
+            <div className="p-5 space-y-6">
 
             <PaidMediaCycleCard projectId={project.id} activeCycle={activeCycle} canEdit={isAdminOrSubadmin} canEditDates={canEditCycleDates} isAdminOrSubadmin={isAdminOrSubadmin} autoCloseCycles={!!project.auto_close_cycles} cycleStartDay={project.paid_media_cycle_start_day} />
 
@@ -398,7 +401,9 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               </div>
             )}
 
-            {historyCycles.length > 0 && <PaidMediaCycleHistory cycles={historyCycles} />}
+            {(cycles as PaidMediaCycle[]).length > 0 && (
+              <PaidMediaCycleHistory projectId={project.id} cycles={cycles as PaidMediaCycle[]} canEdit={isAdminOrSubadmin} />
+            )}
 
             <div className="space-y-3">
               <h3 className="text-sm font-semibold">Configuración</h3>
@@ -407,6 +412,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               )}
               <PaidMediaContextCard projectId={project.id} context={paidMediaContext} canEdit={isAdminOrSubadmin} />
               <IntegrationsCard projectId={project.id} integrations={integrations as ProjectIntegration[]} canEdit={isAdminOrSubadmin} />
+            </div>
             </div>
           </section>
         )}

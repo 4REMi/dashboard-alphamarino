@@ -1015,6 +1015,21 @@ export async function updateCycle(cycleId: string, projectId: string, formData: 
   revalidatePath(`/projects/${projectId}`)
 }
 
+// Resumen manual de un ciclo (inversión, ROAS, CPA, resultados) — a mano
+// a propósito: hay clientes con varios canales (no solo Meta), y el total
+// real es la suma de todos, que el sync de Meta no puede conocer.
+export async function updateCycleManualMetrics(cycleId: string, projectId: string, metrics: {
+  real_spend: number | null
+  roas_real: number | null
+  cpa_real: number | null
+  real_results: number | null
+}) {
+  const supabase = await createClient()
+  const { error } = await supabase.from("paid_media_cycles").update(metrics).eq("id", cycleId).eq("project_id", projectId)
+  if (error) throw error
+  revalidatePath(`/projects/${projectId}`)
+}
+
 // Corrects a cycle's dates after the fact (e.g. someone typed the wrong
 // month when opening it). Safe to do at any point, even with concepts
 // already active — creative_concepts/creative_assets link to a cycle by
