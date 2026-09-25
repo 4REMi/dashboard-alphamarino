@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/check-cycles",
       "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/cron/sync-meta",
+      "schedule": "0 1,13,19 * * *"
     }
   ]
 }

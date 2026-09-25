@@ -3,7 +3,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { getCreativeConcepts, getCreativeAssets } from "@/lib/actions/creatives"
 import { getCreativePerformance, type AdPerformanceCard } from "@/lib/actions/paid-media-performance"
-import { mergeDailyStatsByDate, computeMetricsForAd, withMetaReach, type MetricPoint } from "@/lib/utils/paid-media-calc"
+import { mergeDailyStatsByDate, computeMetricsForAd, withMetaReach, resultsTypeOf, type MetricPoint } from "@/lib/utils/paid-media-calc"
 import { METRIC_DEFS, type MetricKey } from "@/lib/constants/paid-media-metrics"
 import type { TrendWindow, CreativeConcept } from "@/lib/types"
 
@@ -189,7 +189,7 @@ export async function getRelationshipMap(projectId: string, cycleId: string | nu
     return {
       campaignId,
       campaignName: campaignAds[0].campaign_name,
-      aggregate: withMetaReach(computeMetricsForAd(merged, window), reachByCampaignId.get(campaignId)),
+      aggregate: withMetaReach(computeMetricsForAd(merged, window), reachByCampaignId.get(campaignId), resultsTypeOf(merged)),
       ads: campaignAds,
       trendWindow: window,
       hasOverride: !!campaignOverrides[campaignId],

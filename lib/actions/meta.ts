@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import type { SupabaseClient } from "@supabase/supabase-js"
 import type { MetaCampaign, MetaCampaignCreative } from "@/lib/types"
 
 const META_API_VERSION = "v21.0"
@@ -88,36 +89,88 @@ const OPTIMIZATION_GOAL_ACTION_TYPES: Record<string, string[]> = {
   SUBSCRIBERS:                 ["subscribe"],
 }
 
+// Evento estándar del pixel configurado en el ad set (promoted_object
+// .custom_event_type) → nombre base de la acción en insights. Una campaña
+// de "Conversiones" puede optimizar para cualquiera de estos, no solo
+// compra — antes todas se asumían compra y las demás salían en 0.
+const PIXEL_EVENT_ACTION: Record<string, string> = {
+  PURCHASE: "purchase",
+  LEAD: "lead",
+  COMPLETE_REGISTRATION: "complete_registration",
+  ADD_TO_CART: "add_to_cart",
+  INITIATED_CHECKOUT: "initiate_checkout",
+  ADD_PAYMENT_INFO: "add_payment_info",
+  CONTENT_VIEW: "view_content",
+  SEARCH: "search",
+  ADD_TO_WISHLIST: "add_to_wishlist",
+  CONTACT: "contact",
+  SCHEDULE: "schedule",
+  SUBSCRIBE: "subscribe",
+  START_TRIAL: "start_trial",
+  SUBMIT_APPLICATION: "submit_application",
+  FIND_LOCATION: "find_location",
+  CUSTOMIZE_PRODUCT: "customize_product",
+  DONATE: "donate",
+}
+
+interface PromotedObject {
+  custom_event_type?: string
+  custom_conversion_id?: string
+}
+
+// Qué cuenta como "Resultado" para un ad set. La mayoría son acciones
+// (conversaciones, leads, compras...), pero Alcance e Impresiones son el
+// propio campo de insights, no una acción.
+type ResultSpec =
+  | { kind: "action"; actionTypes: string[] }
+  | { kind: "field"; field: "reach" | "impressions" }
+
+function resolveResultSpec(objective: string | null, optimizationGoal: string | null, promoted: PromotedObject | null): ResultSpec | null {
+  if (promoted?.custom_conversion_id) {
+    return { kind: "action", actionTypes: [`offsite_conversion.custom.${promoted.custom_conversion_id}`] }
+  }
+  const isConversionGoal = optimizationGoal === "OFFSITE_CONVERSIONS" || optimizationGoal === "VALUE"
+  const event = promoted?.custom_event_type
+  if (isConversionGoal && event && event !== "OTHER" && PIXEL_EVENT_ACTION[event]) {
+    const base = PIXEL_EVENT_ACTION[event]
+    const types = [`omni_${base}`, `offsite_conversion.fb_pixel_${base}`, base]
+    if (base === "initiate_checkout") types.unshift("omni_initiated_checkout")
+    return { kind: "action", actionTypes: types }
+  }
+  if (isConversionGoal && event === "OTHER") {
+    return { kind: "action", actionTypes: ["offsite_conversion.fb_pixel_custom"] }
+  }
+  if (optimizationGoal === "REACH") return { kind: "field", field: "reach" }
+  if (optimizationGoal === "IMPRESSIONS") return { kind: "field", field: "impressions" }
+  const goalTypes = optimizationGoal ? OPTIMIZATION_GOAL_ACTION_TYPES[optimizationGoal] : undefined
+  if (goalTypes) return { kind: "action", actionTypes: goalTypes }
+  const objectiveTypes = objective ? OBJECTIVE_ACTION_TYPES[objective] : undefined
+  if (objectiveTypes) return { kind: "action", actionTypes: objectiveTypes }
+  return null
+}
+
 function pickResults(
-  actions: MetaInsightRow["actions"],
-  objective: string | null,
-  optimizationGoal: string | null = null,
+  row: { actions?: MetaInsightRow["actions"]; reach?: string; impressions?: string },
+  spec: ResultSpec | null,
 ): { results: number | null; results_type: string | null } {
-  const goalCandidates = (optimizationGoal && OPTIMIZATION_GOAL_ACTION_TYPES[optimizationGoal]) || []
-  const candidates = (objective && OBJECTIVE_ACTION_TYPES[objective]) || []
-  // Si ya sabemos cuál es el resultado de la campaña, un día sin esa
-  // acción es un día con 0 resultados — Meta simplemente omite la acción
-  // en vez de mandarla en 0. Antes eso caía al fallback genérico y sumaba
-  // otra acción de ese día (interacciones, clics...), inflando
-  // "Resultados" (126 vs 88 reales en una campaña de mensajes).
-  const expected = goalCandidates.length > 0 ? goalCandidates : candidates
-  if (!actions?.length) return expected.length > 0 ? { results: 0, results_type: expected[0] } : { results: null, results_type: null }
-
-  for (const t of goalCandidates) {
-    const hit = actions.find((a) => a.action_type === t)
-    if (hit) return { results: Number(hit.value), results_type: t }
+  if (spec?.kind === "field") {
+    const raw = row[spec.field]
+    return { results: raw ? Number(raw) : 0, results_type: spec.field }
   }
-
-  for (const t of candidates) {
-    const hit = actions.find((a) => a.action_type === t)
-    if (hit) return { results: Number(hit.value), results_type: t }
+  const actions = row.actions ?? []
+  if (spec) {
+    for (const t of spec.actionTypes) {
+      const hit = actions.find((a) => a.action_type === t)
+      if (hit) return { results: Number(hit.value), results_type: t }
+    }
+    // Si ya sabemos cuál es el resultado, un día sin esa acción es un día
+    // con 0 — Meta omite la acción en vez de mandarla en 0. Caer al
+    // fallback aquí sumaba otra acción de ese día (interacciones,
+    // clics...) e inflaba "Resultados" (126 vs 88 reales en mensajes).
+    return { results: 0, results_type: spec.actionTypes[0] }
   }
-
-  if (expected.length > 0) return { results: 0, results_type: expected[0] }
-
-  // Ni optimization_goal ni objective están mapeados, o ninguna de sus
-  // action_types esperadas está presente (ej. pixel sin disparar todavía)
-  // — cae al heurístico genérico.
+  if (!actions.length) return { results: null, results_type: null }
+  // Meta de la campaña desconocida — heurístico genérico.
   for (const t of FALLBACK_PRIORITY) {
     const hit = actions.find((a) => a.action_type === t)
     if (hit) return { results: Number(hit.value), results_type: t }
@@ -263,7 +316,7 @@ export async function syncMetaCampaigns(projectId: string, cycleId: string): Pro
   const upsertRows = rows.map((row) => {
     const objective = objectiveById.get(row.campaign_id) ?? null
     const optimizationGoal = optimizationGoalByCampaignId.get(row.campaign_id) ?? null
-    const { results, results_type } = pickResults(row.actions, objective, optimizationGoal)
+    const { results, results_type } = pickResults(row, resolveResultSpec(objective, optimizationGoal, null))
     return {
       project_id: projectId,
       cycle_id: cycleId,
@@ -371,10 +424,86 @@ export async function getMetaCampaignOptions(projectId: string): Promise<{ campa
 }
 
 export async function syncMetaAds(projectId: string, cycleId: string, campaignIds?: string[]): Promise<{ synced: number; error?: string }> {
+  return runMetaAdsSync(await createClient(), projectId, cycleId, campaignIds)
+}
+
+// Sincronización automática (cron, 3 veces al día) de todos los ciclos
+// activos de proyectos activos con Meta conectado. Corre con el cliente
+// admin (no hay sesión de usuario en un cron) — por eso exige el
+// CRON_SECRET: este archivo es "use server", así que cualquier función
+// exportada es invocable desde el cliente.
+export async function runScheduledMetaSync(cronSecret: string): Promise<{ synced: number; failed: number }> {
+  const expected = process.env.CRON_SECRET
+  if (!expected || cronSecret !== expected) throw new Error("unauthorized")
+
+  const admin = createAdminClient()
+  const { data: cycles, error } = await admin
+    .from("paid_media_cycles")
+    .select("id, project_id, project:projects(status)")
+    .eq("is_active", true)
+  if (error) throw error
+
+  let synced = 0, failed = 0
+  for (const cycle of cycles ?? []) {
+    const project = cycle.project as unknown as { status: string } | null
+    if (!project || project.status !== "Active") continue
+    const [{ data: integration }, { data: context }] = await Promise.all([
+      admin.from("project_integrations").select("account_id").eq("project_id", cycle.project_id).eq("platform", "meta").maybeSingle(),
+      admin.from("paid_media_context").select("synced_campaign_ids").eq("project_id", cycle.project_id).maybeSingle(),
+    ])
+    if (!integration?.account_id) continue
+    try {
+      const campaignIds = (context?.synced_campaign_ids as string[] | null) ?? undefined
+      const result = await runMetaAdsSync(admin, cycle.project_id, cycle.id, campaignIds?.length ? campaignIds : undefined)
+      if (result.error) { failed++; console.error(`[runScheduledMetaSync] ${cycle.project_id}:`, result.error) }
+      else synced++
+    } catch (err) {
+      failed++
+      console.error(`[runScheduledMetaSync] ${cycle.project_id}:`, err instanceof Error ? err.message : err)
+    }
+  }
+  return { synced, failed }
+}
+
+// Sigue `paging.next` — insights con desglose diario rebasa fácil el
+// límite de una página (20 ads × 30 días = 600 filas) y sin esto se
+// perdían filas en silencio.
+async function fetchAllPages<T>(firstUrl: string): Promise<{ data: T[]; error?: string }> {
+  const data: T[] = []
+  let next: string | null = firstUrl
+  for (let page = 0; next && page < 50; page++) {
+    const json = await (await fetch(next, { cache: "no-store" })).json()
+    if (json.error) return { data, error: json.error.message }
+    data.push(...((json.data ?? []) as T[]))
+    next = json.paging?.next ?? null
+  }
+  return { data }
+}
+
+// GET /?ids=a,b,c acepta máximo 50 ids por llamada — se parte en lotes.
+async function fetchByIds<T>(ids: string[], fields: string, accessToken: string): Promise<Map<string, T>> {
+  const out = new Map<string, T>()
+  for (let i = 0; i < ids.length; i += 50) {
+    const u = new URL(`${META_BASE}/`)
+    u.searchParams.set("ids", ids.slice(i, i + 50).join(","))
+    u.searchParams.set("fields", fields)
+    u.searchParams.set("access_token", accessToken)
+    try {
+      const json = await (await fetch(u.toString(), { cache: "no-store" })).json()
+      if (json.error) { console.error("[fetchByIds]", fields, json.error.message); continue }
+      for (const [id, v] of Object.entries(json)) {
+        if (v && typeof v === "object") out.set(id, v as T)
+      }
+    } catch (err) {
+      console.error("[fetchByIds]", fields, err instanceof Error ? err.message : err)
+    }
+  }
+  return out
+}
+
+async function runMetaAdsSync(supabase: SupabaseClient, projectId: string, cycleId: string, campaignIds?: string[]): Promise<{ synced: number; error?: string }> {
   const accessToken = process.env.META_SYSTEM_USER_TOKEN
   if (!accessToken) return { synced: 0, error: "META_SYSTEM_USER_TOKEN no está configurado en el servidor" }
-
-  const supabase = await createClient()
 
   const [integrationResult, cycleResult] = await Promise.all([
     supabase.from("project_integrations").select("account_id").eq("project_id", projectId).eq("platform", "meta").maybeSingle(),
@@ -416,50 +545,37 @@ export async function syncMetaAds(projectId: string, cycleId: string, campaignId
     url.searchParams.set("filtering", JSON.stringify([{ field: "campaign.id", operator: "IN", value: campaignIds }]))
   }
 
-  // Mismo motivo que en syncMetaCampaigns: el objetivo no es un campo de
-  // insights válido, y es lo que decide qué action_type cuenta como
-  // "Resultados" — se resuelve por campaign_id, no por ad.
-  const campaignsUrl = new URL(`${META_BASE}/act_${meta_ad_account_id}/campaigns`)
-  campaignsUrl.searchParams.set("fields", "id,objective")
-  campaignsUrl.searchParams.set("access_token", accessToken)
-  campaignsUrl.searchParams.set("limit", "300")
-
-  // A nivel ad SÍ tenemos el adset_id de cada fila (insights con
-  // level=ad ya lo trae), así que optimization_goal se resuelve por ad
-  // set real, no por aproximación a nivel campaña.
-  const adsetsUrl = new URL(`${META_BASE}/act_${meta_ad_account_id}/adsets`)
-  adsetsUrl.searchParams.set("fields", "id,optimization_goal")
-  adsetsUrl.searchParams.set("access_token", accessToken)
-  adsetsUrl.searchParams.set("limit", "500")
-
-  let res: Response, campaignsRes: Response, adsetsRes: Response
+  let rows: MetaAdInsightRow[]
   try {
-    ;[res, campaignsRes, adsetsRes] = await Promise.all([
-      fetch(url.toString(), { cache: "no-store" }),
-      fetch(campaignsUrl.toString(), { cache: "no-store" }),
-      fetch(adsetsUrl.toString(), { cache: "no-store" }),
-    ])
+    const page = await fetchAllPages<MetaAdInsightRow>(url.toString())
+    if (page.error) return { synced: 0, error: `Meta API: ${page.error}` }
+    rows = page.data
   } catch {
     return { synced: 0, error: "Error de red al conectar con Meta" }
   }
-
-  const json = await res.json()
-  if (json.error) return { synced: 0, error: `Meta API: ${json.error.message}` }
-
-  const campaignsJson = await campaignsRes.json()
-  const objectiveById = new Map<string, string>(
-    (campaignsJson.data ?? []).map((c: { id: string; objective?: string }) => [c.id, c.objective ?? ""])
-  )
-
-  const adsetsJson = await adsetsRes.json()
-  const optimizationGoalByAdsetId = new Map<string, string>(
-    ((adsetsJson.data ?? []) as { id: string; optimization_goal?: string }[])
-      .filter((a) => a.optimization_goal)
-      .map((a) => [a.id, a.optimization_goal!])
-  )
-
-  const rows: MetaAdInsightRow[] = json.data ?? []
   if (!rows.length) return { synced: 0 }
+
+  // Qué cuenta como "Resultado" se resuelve por ad set: su
+  // optimization_goal y, para conversiones, el evento exacto en
+  // promoted_object. Se piden SOLO los ad sets / campañas que aparecen en
+  // los datos (en vez de listar toda la cuenta, que se cortaba en 500).
+  const adsetIds = Array.from(new Set(rows.map((r) => r.adset_id).filter(Boolean)))
+  const campaignIdsInRows = Array.from(new Set(rows.map((r) => r.campaign_id).filter(Boolean)))
+  const [adsetsById, campaignsById] = await Promise.all([
+    fetchByIds<{ optimization_goal?: string; promoted_object?: PromotedObject }>(adsetIds, "optimization_goal,promoted_object", accessToken),
+    fetchByIds<{ objective?: string }>(campaignIdsInRows, "objective", accessToken),
+  ])
+  const specByAdsetId = new Map<string, ResultSpec | null>()
+  for (const row of rows) {
+    if (specByAdsetId.has(row.adset_id)) continue
+    const adset = adsetsById.get(row.adset_id)
+    specByAdsetId.set(row.adset_id, resolveResultSpec(
+      campaignsById.get(row.campaign_id)?.objective ?? null,
+      adset?.optimization_goal ?? null,
+      adset?.promoted_object ?? null,
+    ))
+  }
+  const objectiveById = new Map(Array.from(campaignsById.entries()).map(([id, c]) => [id, c.objective ?? null]))
 
   // Dimensión (un ad, sus datos no cambian por día) — se resuelve el
   // creativo (thumbnail/imagen/video) solo una vez por ad_id único, no por
@@ -473,19 +589,7 @@ export async function syncMetaAds(projectId: string, cycleId: string, campaignId
   // con "filtering": ese filtro es para insights/edges, no para traer
   // objetos puntuales por id; "filtering" ahí se ignora silenciosamente
   // y por eso el creativo (thumbnail/imagen/video) siempre llegaba null.
-  const adsUrl = new URL(`${META_BASE}/`)
-  adsUrl.searchParams.set("ids", adIds.join(","))
-  adsUrl.searchParams.set("fields", AD_CREATIVE_FIELDS)
-  adsUrl.searchParams.set("access_token", accessToken)
-
-  let adsJson: any = {}
-  try {
-    const adsRes = await fetch(adsUrl.toString(), { cache: "no-store" })
-    adsJson = await adsRes.json()
-    if (adsJson.error) console.error("[syncMetaAds] ads creative fetch failed:", adsJson.error.message)
-  } catch (err) {
-    console.error("[syncMetaAds] ads creative fetch threw:", err instanceof Error ? err.message : err)
-  }
+  const adsById = await fetchByIds<Record<string, unknown>>(adIds, AD_CREATIVE_FIELDS, accessToken)
 
   // A diferencia de getMetaAds/getMetaAdById (un ad puntual, on-demand),
   // aquí puede haber muchos ads a la vez — resolver el video de cada uno
@@ -495,7 +599,7 @@ export async function syncMetaAds(projectId: string, cycleId: string, campaignId
   // el mismo: video_url queda null). Se resuelve TODO el creativo sin
   // video primero, y los videos de una sola vez con el mismo patrón
   // multi-id que ya arregló el thumbnail/imagen.
-  const adNodes: any[] = Object.values(adsJson).filter((v): v is Record<string, unknown> => !!v && typeof v === "object" && "id" in v)
+  const adNodes: any[] = Array.from(adsById.values()).filter((v) => "id" in v)
 
   const creativeByAdId = new Map<string, { videoId: string | null } & Omit<MetaAdCreative, "id" | "videoUrl">>()
   for (const a of adNodes) {
@@ -517,32 +621,16 @@ export async function syncMetaAds(projectId: string, cycleId: string, campaignId
   }
 
   const videoIds = Array.from(new Set(Array.from(creativeByAdId.values()).map((c) => c.videoId).filter((v): v is string => !!v)))
+  // (#10) "Application does not have permission for this action" en este
+  // fetch es un caso conocido y sin fix de nuestro lado: cuentas
+  // compartidas entre Business Managers distintos ("socio") comparten
+  // métricas pero NUNCA la Biblioteca de Assets del negocio dueño, sin
+  // importar el scope del token. La salida real es vincular el archivo
+  // original como asset del dashboard (ver displayVideoUrl).
   const videoSourceById = new Map<string, string>()
-  if (videoIds.length > 0) {
-    const videosUrl = new URL(`${META_BASE}/`)
-    videosUrl.searchParams.set("ids", videoIds.join(","))
-    videosUrl.searchParams.set("fields", "source")
-    videosUrl.searchParams.set("access_token", accessToken)
-    try {
-      const videosRes = await fetch(videosUrl.toString(), { cache: "no-store" })
-      const videosJson = await videosRes.json()
-      // (#10) "Application does not have permission for this action" es un
-      // caso conocido y sin fix de nuestro lado: cuentas compartidas entre
-      // Business Managers distintos ("socio") comparten métricas/insights
-      // pero NUNCA la Biblioteca de Assets (Video/Imagen) del negocio
-      // dueño original — sin importar el scope del token. La única salida
-      // real es vincular el archivo original como asset del dashboard
-      // (ver linkAssetToMetaAd / displayVideoUrl), no reintentar aquí.
-      if (videosJson.error) {
-        console.error("[syncMetaAds] video sources fetch failed:", videosJson.error.message)
-      } else {
-        for (const [id, v] of Object.entries(videosJson)) {
-          if (v && typeof v === "object" && "source" in v) videoSourceById.set(id, (v as { source: string }).source)
-        }
-      }
-    } catch (err) {
-      console.error("[syncMetaAds] video sources fetch threw:", err instanceof Error ? err.message : err)
-    }
+  const videosById = await fetchByIds<{ source?: string }>(videoIds, "source", accessToken)
+  for (const [id, v] of videosById) {
+    if (v.source) videoSourceById.set(id, v.source)
   }
 
   const creativeById = new Map<string, MetaAdCreative>(
@@ -609,8 +697,7 @@ export async function syncMetaAds(projectId: string, cycleId: string, campaignId
 
   const factRows = rows.map((row) => {
     const objective = objectiveById.get(row.campaign_id) ?? null
-    const optimizationGoal = optimizationGoalByAdsetId.get(row.adset_id) ?? null
-    const { results, results_type } = pickResults(row.actions, objective, optimizationGoal)
+    const { results, results_type } = pickResults(row, specByAdsetId.get(row.adset_id) ?? null)
     return {
       project_id:     projectId,
       cycle_id:       cycleId,
@@ -898,7 +985,7 @@ export async function getMetaCampaignsHistory(accountId: string): Promise<{ camp
 
   const campaigns: MetaCampaignSummary[] = (campaignsJson.data ?? []).map((c: { id: string; name: string; effective_status: string; objective?: string }) => {
     const insight = insightsById.get(c.id)
-    const { results, results_type } = pickResults(insight?.actions, c.objective ?? null)
+    const { results, results_type } = pickResults(insight ?? {}, resolveResultSpec(c.objective ?? null, null, null))
     return {
       id: c.id,
       name: c.name ?? c.id,

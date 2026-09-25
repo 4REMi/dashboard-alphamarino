@@ -100,13 +100,26 @@ export function mergeDailyStatsByDate(rows: MetaAdDailyStat[]): MetaAdDailyStat[
 export function withMetaReach(
   metrics: Record<MetricKey, MetricPoint>,
   meta: { reach: number | null; frequency: number | null } | undefined,
+  resultsType?: string | null,
 ): Record<MetricKey, MetricPoint> {
   if (!meta) return metrics
-  return {
+  const out = {
     ...metrics,
     reach: { ...metrics.reach, value: meta.reach, trendPct: null },
     frequency: { ...metrics.frequency, value: meta.frequency, trendPct: null },
   }
+  // Campañas de alcance: el resultado ES el alcance, y sumado día a día
+  // cuenta varias veces a la misma persona — se usa el deduplicado.
+  if (resultsType === "reach" && meta.reach) {
+    const spend = metrics.spend.value
+    out.results = { ...metrics.results, value: meta.reach, trendPct: null }
+    out.cost_per_result = { ...metrics.cost_per_result, value: spend ? (spend / meta.reach) * 1000 : null, trendPct: null }
+  }
+  return out
+}
+
+export function resultsTypeOf(rows: MetaAdDailyStat[]): string | null {
+  return rows.find((r) => r.results_type)?.results_type ?? null
 }
 
 function avgTotals(days: MetaAdDailyStat[]): DayTotals {
@@ -162,6 +175,12 @@ export function computeMetricsForAd(dailyRows: MetaAdDailyStat[], window: TrendW
     const latestDayValue = lastDayTotals ? deriveMetric(key, lastDayTotals) : null
     const compareValue = compareTotals ? deriveMetric(key, compareTotals) : null
     result[key] = { value, trendPct: pctChange(latestDayValue, compareValue), higherIsBetter: METRIC_DEFS[key].higherIsBetter }
+  }
+  // Ads Manager reporta el costo por resultado de alcance/impresiones por
+  // cada 1,000 (igual que el CPM), no por persona/impresión.
+  const resultsType = resultsTypeOf(sorted)
+  if ((resultsType === "reach" || resultsType === "impressions") && result.cost_per_result.value !== null) {
+    result.cost_per_result = { ...result.cost_per_result, value: result.cost_per_result.value * 1000 }
   }
   return result
 }

@@ -1,11 +1,11 @@
 "use client"
 
-import { useMemo, useState, useTransition } from "react"
+import { useEffect, useMemo, useState, useTransition } from "react"
 import { Loader2, RefreshCw, ImageIcon, Link2, X, ListFilter, Film } from "lucide-react"
 import { syncMetaAds, getMetaCampaignOptions } from "@/lib/actions/meta"
 import { setSyncedCampaignIds } from "@/lib/actions/projects"
 import {
-  getCreativePerformance, getLinkableAssets, linkAssetToMetaAd, unlinkAssetFromMetaAd,
+  getCreativePerformance, getLinkableAssets, getLastMetaSync, linkAssetToMetaAd, unlinkAssetFromMetaAd,
   type AdPerformanceCard, type LinkableAsset,
 } from "@/lib/actions/paid-media-performance"
 import { METRIC_DEFS, type MetricKey } from "@/lib/constants/paid-media-metrics"
@@ -352,6 +352,11 @@ export function CreativePerformanceGrid({ projectId, cycleId, initialCards, disp
   const [syncError, setSyncError] = useState<string | null>(null)
   const [showCampaignPicker, setShowCampaignPicker] = useState(false)
   const [campaignSelection, setCampaignSelection] = useState<string[] | null>(savedCampaignIds)
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null)
+
+  useEffect(() => {
+    getLastMetaSync(projectId, cycleId).then(setLastSyncedAt)
+  }, [projectId, cycleId])
 
   const [sortBy, setSortBy] = useState<SortMode>("worst_trend")
   const [filterCampaign, setFilterCampaign] = useState<string>("all")
@@ -370,6 +375,7 @@ export function CreativePerformanceGrid({ projectId, cycleId, initialCards, disp
       const result = await syncMetaAds(projectId, cycleId, campaignIds?.length ? campaignIds : undefined)
       if (result.error) { setSyncError(result.error); return }
       setCards(await getCreativePerformance(projectId, cycleId))
+      setLastSyncedAt(await getLastMetaSync(projectId, cycleId))
     })
   }
 
@@ -424,6 +430,13 @@ export function CreativePerformanceGrid({ projectId, cycleId, initialCards, disp
             <p className="text-xs text-muted-foreground">
               {activeCount}/{cards.length} activos · {fmt$(totalSpend)} invertido este ciclo
               {campaignSelection?.length ? ` · ${campaignSelection.length} campaña${campaignSelection.length !== 1 ? "s" : ""} elegida${campaignSelection.length !== 1 ? "s" : ""}` : ""}
+            </p>
+          )}
+          {/* Se sincroniza solo 3 veces al día (cron); el botón sigue
+              disponible para forzarlo en cualquier momento. */}
+          {lastSyncedAt && (
+            <p className="text-[11px] text-muted-foreground/80">
+              Última sincronización: {new Date(lastSyncedAt).toLocaleString("es-MX", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })} · se actualiza sola 3 veces al día
             </p>
           )}
         </div>

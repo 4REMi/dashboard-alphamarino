@@ -85,6 +85,21 @@ export async function getLinkableAssets(projectId: string, cycleId: string | nul
   })
 }
 
+// Cuándo se sincronizó este ciclo por última vez (manual o automático) —
+// para la leyenda junto al botón "Sincronizar".
+export async function getLastMetaSync(projectId: string, cycleId: string): Promise<string | null> {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from("meta_ad_daily_stats")
+    .select("synced_at")
+    .eq("project_id", projectId)
+    .eq("cycle_id", cycleId)
+    .order("synced_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  return data?.synced_at ?? null
+}
+
 export interface AssetMetaLinkStatus {
   anyActive: boolean
   totalSpend: number
@@ -164,7 +179,7 @@ export async function unlinkAssetFromMetaAd(projectId: string, linkId: string): 
 // mergeDailyStatsByDate) viven en lib/utils/paid-media-calc.ts — un
 // archivo "use server" solo puede exportar funciones async, así que ni
 // esto ni relationship-map.ts los importan de aquí, sino directo de ahí.
-import { computeMetricsForAd, withMetaReach, type MetricPoint } from "@/lib/utils/paid-media-calc"
+import { computeMetricsForAd, withMetaReach, resultsTypeOf, type MetricPoint } from "@/lib/utils/paid-media-calc"
 
 export interface AdPerformanceCard {
   ad_id: string
@@ -287,7 +302,7 @@ export async function getCreativePerformance(projectId: string, cycleId: string)
         displayThumbnailUrl: linkedAsset ? assetThumbUrl(linkedAsset) : ad.thumbnail_url,
         displayImageUrl: linkedAsset && !isLinkedVideo ? assetFileUrl(linkedAsset) : ad.image_url,
         displayVideoUrl: linkedAsset && isLinkedVideo ? assetFileUrl(linkedAsset) : ad.video_url,
-        metrics: withMetaReach(computeMetricsForAd(statsByAd.get(ad.ad_id)!, window), reachByAdId.get(ad.ad_id)),
+        metrics: withMetaReach(computeMetricsForAd(statsByAd.get(ad.ad_id)!, window), reachByAdId.get(ad.ad_id), resultsTypeOf(statsByAd.get(ad.ad_id)!)),
         linkedConcepts: linksByAdId.get(ad.ad_id) ?? [],
         dailyRows: statsByAd.get(ad.ad_id)!,
       }

@@ -125,6 +125,17 @@ ciclo, solo visible para admin/subadmin.
   `meta_ad_daily_stats`, `creative_asset_meta_ads`, y las columnas nuevas de
   `paid_media_context` (`display_metrics`/`trend_window`/`campaign_trend_overrides`).
 - `supabase/migrations/089_synced_campaign_selection.sql` — `synced_campaign_ids`.
+- `app/api/cron/sync-meta/route.ts` + `vercel.json` — sync automático de Meta 3 veces
+  al día (01:00, 13:00, 19:00 UTC) para todos los ciclos activos de proyectos
+  activos, respetando la selección de campañas guardada. El botón "Sincronizar"
+  sigue disponible; el grid muestra "Última sincronización" (`getLastMetaSync`).
+- **Qué cuenta como "Resultado"** (`resolveResultSpec`/`pickResults` en `meta.ts`):
+  se resuelve por ad set — evento exacto de `promoted_object` para conversiones
+  (compra, lead, registro, carrito, etc. o conversión personalizada), luego
+  `optimization_goal`, luego el `objective` de la campaña. Alcance/Impresiones usan
+  el propio campo (costo por 1,000). Un día sin la acción esperada cuenta 0 — nunca
+  caer a otra acción. Alcance/frecuencia se toman deduplicados por Meta sobre todo
+  el ciclo (`meta_cycle_reach`), no se derivan de filas diarias.
 - `lib/actions/meta.ts` — `syncMetaAds` (sync a nivel ad, `time_increment=1`,
   filtro opcional por `campaign_id`; mirror-ea a Storage el video de cada ad de
   video UNA sola vez, nunca en cada sync, porque el `video_url` que da Meta es
