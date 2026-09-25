@@ -1,6 +1,9 @@
 "use client"
 
 import { assetReviewTone } from "@/lib/utils/asset-review-tone"
+import type { ManualCampaign } from "@/lib/actions/manual-campaigns"
+import { derivedMetrics } from "@/lib/utils/manual-campaign-calc"
+import { ManualCampaignModal } from "@/components/projects/hub/manual-campaigns/manual-campaign-modal"
 import { useEffect, useState, useCallback } from "react"
 import {
   ReactFlow, Background, Controls, MiniMap, Handle, Position, applyNodeChanges,
@@ -292,8 +295,8 @@ function ConceptNode({ data }: NodeProps<Node<{ concept: RelationshipMapData["co
 // Mismo código de color que el Creative Tracker (aprobado/cambios/
 // borrador/en revisión) y, escrito, si el asset corre en algún ad del
 // ciclo o nunca se ha probado — para no perder de vista cuál está vivo.
-function AssetNode({ data }: NodeProps<Node<{ asset: RelationshipMapData["assets"][number]; inCampaign: boolean; onEnlarge: (asset: RelationshipMapData["assets"][number]) => void }>>) {
-  const { asset, inCampaign, onEnlarge } = data
+function AssetNode({ data }: NodeProps<Node<{ asset: RelationshipMapData["assets"][number]; inCampaign: boolean; manualChannels?: string[]; onEnlarge: (asset: RelationshipMapData["assets"][number]) => void }>>) {
+  const { asset, inCampaign, manualChannels, onEnlarge } = data
   const isVideo = asset.fileType === "video"
   const media = asset.fileUrl ?? asset.thumbUrl
   const tone = assetReviewTone(asset)
@@ -328,7 +331,7 @@ function AssetNode({ data }: NodeProps<Node<{ asset: RelationshipMapData["assets
       <div className="px-2.5 pb-2 flex items-center gap-1.5 flex-wrap">
         <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded-full", tone.pill)}>{tone.label}</span>
         {inCampaign ? (
-          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300">En campaña</span>
+          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300">En campaña{manualChannels?.length ? ` · ${[...new Set(manualChannels)].join(", ")}` : ""}</span>
         ) : (
           <span className="text-[10px] font-medium text-muted-foreground">Sin ad vinculado · no se ha probado</span>
         )}
@@ -500,7 +503,37 @@ function StickyNode({ id, data }: NodeProps<Node<{ text: string; onTextChange: (
   )
 }
 
-const NODE_TYPES = { conceptNode: ConceptNode, assetNode: AssetNode, campaignNode: CampaignNode, stickyNode: StickyNode }
+// Campaña manual (canal sin integración): mismo lugar que las de Meta,
+// con su canal, etiqueta "Manual" y la fecha de la última captura. Click
+// abre su ventana para capturar métricas o vincular assets.
+function ManualCampaignNode({ data }: NodeProps<Node<{ campaign: ManualCampaign; onOpen: (c: ManualCampaign) => void }>>) {
+  const { campaign: c, onOpen } = data
+  const d = derivedMetrics(c.cycleTotals)
+  const money = (v: number | null | undefined) => (v === null || v === undefined ? "—" : `$${v.toLocaleString("en-US", { maximumFractionDigits: 2 })}`)
+  return (
+    <div className={cn("w-64 rounded-xl border-2 bg-violet-50 dark:bg-violet-950/30 shadow-sm", c.stale ? "border-amber-400" : "border-violet-300 dark:border-violet-900")}>
+      <Handle type="target" position={Position.Left} className="!opacity-0" />
+      <button onClick={() => onOpen(c)} className="nodrag w-full text-left px-3 py-2.5">
+        <div className="flex items-center gap-1.5 mb-1">
+          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-foreground/5">{c.channel}</span>
+          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-violet-200 text-violet-800 dark:bg-violet-900 dark:text-violet-200">Manual</span>
+          {c.status !== "active" && <span className="text-[10px] text-muted-foreground">{c.status === "paused" ? "Pausada" : "Terminada"}</span>}
+        </div>
+        <p className="text-xs font-semibold truncate">{c.name}</p>
+        <div className="mt-1.5 grid grid-cols-3 gap-1 text-[10px]">
+          {[["Inversión", money(c.cycleTotals?.spend)], ["Resultados", c.cycleTotals?.results?.toLocaleString("en-US") ?? "—"], ["CPA", money(d.cpa)]].map(([l, v]) => (
+            <div key={l} className="rounded bg-background/70 px-1.5 py-1"><p className="text-muted-foreground">{l}</p><p className="font-semibold text-xs">{v}</p></div>
+          ))}
+        </div>
+        <p className={cn("mt-1.5 text-[10px]", c.stale ? "text-amber-700 font-medium" : "text-muted-foreground")}>
+          {c.lastSnapshotDate ? `Datos al ${c.lastSnapshotDate}` : "Sin métricas capturadas"}{c.stale ? " · actualizar" : ""}
+        </p>
+      </button>
+    </div>
+  )
+}
+
+const NODE_TYPES = { conceptNode: ConceptNode, assetNode: AssetNode, campaignNode: CampaignNode, stickyNode: StickyNode, manualCampaignNode: ManualCampaignNode }
 
 const COL_CONCEPT = 0
 const COL_ASSET = 340
@@ -508,12 +541,14 @@ const COL_CAMPAIGN = 760
 const CAMPAIGN_ROW_H = 210 // altura estimada COLAPSADA — expandir puede solapar visualmente, por eso los nodos son arrastrables
 const ASSET_ROW_H = 250 // el asset ahora muestra el media (imagen agrandable / video reproducible), como en Ad Lab — ya no es una fila chica de ícono + texto
 const CONCEPT_ROW_H = 100
+const MANUAL_ROW_H = 150
 
 interface GraphHandlers {
   onViewConcept: (concept: CreativeConcept) => void
   onEnlarge: (asset: RelationshipMapData["assets"][number]) => void
   projectId: string
   onOverrideChange: (campaignId: string, window: string | null) => void
+  onOpenManual: (c: ManualCampaign) => void
 }
 
 function buildGraph(data: RelationshipMapData, handlers: GraphHandlers): { nodes: Node[]; edges: Edge[] } {
@@ -522,6 +557,12 @@ function buildGraph(data: RelationshipMapData, handlers: GraphHandlers): { nodes
   let cursorY = 0
   const placedCampaignIds = new Set<string>()
   const campaignById = new Map(data.campaigns.map((c) => [c.campaignId, c]))
+  const placedManualIds = new Set<string>()
+  const placeManual = (c: ManualCampaign) => {
+    nodes.push({ id: `manual-${c.id}`, type: "manualCampaignNode", position: { x: COL_CAMPAIGN, y: cursorY }, data: { campaign: c, onOpen: handlers.onOpenManual }, draggable: true })
+    placedManualIds.add(c.id)
+    cursorY += MANUAL_ROW_H
+  }
 
   for (const concept of data.concepts) {
     const conceptAssets = data.assets.filter((a) => a.conceptId === concept.id)
@@ -550,6 +591,12 @@ function buildGraph(data: RelationshipMapData, handlers: GraphHandlers): { nodes
           edges.push({ id: `e-${asset.id}-${campaignId}`, source: `asset-${asset.id}`, target: `campaign-${campaignId}`, style: { stroke: "#10b981" } })
         }
 
+        const assetManual = data.manualCampaigns.filter((m) => m.assetIds.includes(asset.id))
+        for (const m of assetManual) {
+          if (!placedManualIds.has(m.id)) placeManual(m)
+          edges.push({ id: `e-${asset.id}-manual-${m.id}`, source: `asset-${asset.id}`, target: `manual-${m.id}`, style: { stroke: "#8b5cf6" } })
+        }
+
         // cursorY debe avanzar SIEMPRE al menos ASSET_ROW_H por asset —
         // si sus campañas ya estaban colocadas (0 filas nuevas) esto no
         // pasaba antes, y varios assets terminaban apilados exactamente
@@ -557,13 +604,17 @@ function buildGraph(data: RelationshipMapData, handlers: GraphHandlers): { nodes
         // asset donde en realidad había varios, solapados).
         cursorY = Math.max(cursorY, assetRowStartY + ASSET_ROW_H)
 
-        nodes.push({ id: `asset-${asset.id}`, type: "assetNode", position: { x: COL_ASSET, y: Math.max(campaignsStartY, cursorY - ASSET_ROW_H) }, data: { asset, inCampaign: assetCampaignIds.length > 0, onEnlarge: handlers.onEnlarge }, draggable: true })
+        nodes.push({ id: `asset-${asset.id}`, type: "assetNode", position: { x: COL_ASSET, y: Math.max(campaignsStartY, cursorY - ASSET_ROW_H) }, data: { asset, inCampaign: assetCampaignIds.length > 0 || assetManual.length > 0, manualChannels: assetManual.map((m) => m.channel), onEnlarge: handlers.onEnlarge }, draggable: true })
         edges.push({ id: `e-${concept.id}-${asset.id}`, source: `concept-${concept.id}`, target: `asset-${asset.id}`, style: { stroke: "#0ea5e9" } })
       }
     }
 
     nodes.push({ id: `concept-${concept.id}`, type: "conceptNode", position: { x: COL_CONCEPT, y: (assetsStartY + cursorY) / 2 - CONCEPT_ROW_H / 2 }, data: { concept, onViewConcept: handlers.onViewConcept }, draggable: true })
   }
+
+  // Campañas manuales sin assets de este ciclo: igual se muestran (abajo),
+  // para que no queden fuera de la vista.
+  for (const m of data.manualCampaigns) if (!placedManualIds.has(m.id)) placeManual(m)
 
   return { nodes, edges }
 }
@@ -581,6 +632,8 @@ export function RelationshipMap({ projectId, cycleId }: Props) {
   const [edges, setEdges] = useState<Edge[]>([])
   const [viewingConcept, setViewingConcept] = useState<CreativeConcept | null>(null)
   const [lightboxAsset, setLightboxAsset] = useState<RelationshipMapData["assets"][number] | null>(null)
+  const [manualOpen, setManualOpen] = useState<ManualCampaign | "new" | null>(null)
+  const handleOpenManual = useCallback((c: ManualCampaign) => setManualOpen(c), [])
 
   const handleViewConcept = useCallback((concept: CreativeConcept) => setViewingConcept(concept), [])
   const handleEnlarge = useCallback((asset: RelationshipMapData["assets"][number]) => setLightboxAsset(asset), [])
@@ -624,7 +677,7 @@ export function RelationshipMap({ projectId, cycleId }: Props) {
 
   useEffect(() => {
     if (!data) { setNodes([]); setEdges([]); return }
-    const graph = buildGraph(data, { onViewConcept: handleViewConcept, onEnlarge: handleEnlarge, projectId, onOverrideChange: handleOverrideChange })
+    const graph = buildGraph(data, { onViewConcept: handleViewConcept, onEnlarge: handleEnlarge, projectId, onOverrideChange: handleOverrideChange, onOpenManual: handleOpenManual })
     Promise.all([
       getRelationshipMapPositions(projectId, cycleId),
       getRelationshipMapNotes(projectId, cycleId),
@@ -637,7 +690,7 @@ export function RelationshipMap({ projectId, cycleId }: Props) {
       setNodes([...generatedNodes, ...notes.map(noteToNode)])
     })
     setEdges(graph.edges)
-  }, [data, projectId, cycleId, handleViewConcept, handleEnlarge, handleOverrideChange])
+  }, [data, projectId, cycleId, handleViewConcept, handleEnlarge, handleOverrideChange, handleOpenManual])
 
   const onNodesChange = useCallback((changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)), [])
 
@@ -666,9 +719,11 @@ export function RelationshipMap({ projectId, cycleId }: Props) {
   }
   if (nodes.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground px-5 py-10 text-center">
-        Sin conceptos en este ciclo todavía — o ninguno tiene assets vinculados a un ad de Meta.
-      </p>
+      <div className="px-5 py-10 text-center space-y-3">
+        <p className="text-sm text-muted-foreground">Sin conceptos en este ciclo todavía — o ninguno tiene assets vinculados a un ad de Meta.</p>
+        <button onClick={() => setManualOpen("new")} className="text-xs px-2.5 py-1.5 rounded-lg border border-violet-300 bg-violet-100 text-violet-700 font-semibold">+ Campaña manual</button>
+        {manualOpen && <ManualCampaignModal projectId={projectId} cycleId={cycleId} campaign={manualOpen === "new" ? null : manualOpen} onClose={() => { setManualOpen(null); refetchData() }} />}
+      </div>
     )
   }
 
@@ -693,6 +748,13 @@ export function RelationshipMap({ projectId, cycleId }: Props) {
         <AlertTriangle className="w-3 h-3" />
         Los datos son de solo lectura — puedes arrastrar los nodos para acomodar la vista, la posición se recuerda para la próxima vez.
       </div>
+      <button
+        onClick={() => setManualOpen("new")}
+        className="absolute top-3 right-[5.5rem] flex items-center gap-1.5 text-[11px] font-semibold bg-violet-100 text-violet-700 border border-violet-300 px-2.5 py-1.5 rounded-lg shadow-sm hover:bg-violet-200 transition-colors"
+      >
+        + Campaña manual
+      </button>
+      {manualOpen && <ManualCampaignModal projectId={projectId} cycleId={cycleId} campaign={manualOpen === "new" ? null : manualOpen} onClose={() => { setManualOpen(null); refetchData() }} />}
       <button
         onClick={handleAddNote}
         className="absolute top-3 right-3 flex items-center gap-1.5 text-[11px] font-semibold bg-amber-100 text-amber-700 border border-amber-300 px-2.5 py-1.5 rounded-lg shadow-sm hover:bg-amber-200 transition-colors"

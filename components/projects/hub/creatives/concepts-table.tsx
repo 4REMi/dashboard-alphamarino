@@ -211,8 +211,8 @@ function AssetPieceCard({ piece, live, canManage, onOpen, onNewVersion }: {
           </span>
         )}
         {live?.anyActive && (
-          <span className="absolute top-1.5 right-1.5 text-[10px] font-semibold bg-black/60 text-white px-1.5 py-0.5 rounded" title="Corriendo en Meta este ciclo">
-            En Meta · {fmt$(live.totalSpend)}
+          <span className="absolute top-1.5 right-1.5 text-[10px] font-semibold bg-black/60 text-white px-1.5 py-0.5 rounded" title="Corriendo este ciclo">
+            {[live.metaActive ? "Meta" : null, ...(live.manualChannels ?? [])].filter(Boolean).join(" + ")} · {fmt$(live.totalSpend)}
           </span>
         )}
         <span className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />

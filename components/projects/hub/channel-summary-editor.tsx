@@ -38,12 +38,29 @@ export function channelTotals(rows: CycleChannelRow[]) {
 
 // Filas iniciales: el desglose guardado; si no hay, Meta con lo
 // sincronizado (y el total viejo sin desglosar, si existía, aparte).
-export function initialDrafts(saved: CycleChannelRow[] | null | undefined, legacy: { real_spend: number | null; real_results: number | null; roas_real: number | null }, metaSpend: number | null): ChannelDraft[] {
+// Las campañas manuales suman su canal (ej. TikTok Ads) igual que Meta con el sync.
+export function initialDrafts(
+  saved: CycleChannelRow[] | null | undefined,
+  legacy: { real_spend: number | null; real_results: number | null; roas_real: number | null },
+  metaSpend: number | null,
+  manual: { channel: string; spend: number; results: number | null }[] = [],
+): ChannelDraft[] {
   if (saved?.length) return saved.map(toDraft)
   if (legacy.real_spend !== null || legacy.real_results !== null) {
     return [toDraft({ channel: "Sin desglosar", spend: legacy.real_spend, results: legacy.real_results, roas: legacy.roas_real })]
   }
-  return [{ channel: "Meta Ads", spend: metaSpend ? String(Math.round(metaSpend * 100) / 100) : "", results: "", roas: "" }]
+  const r2 = (v: number) => String(Math.round(v * 100) / 100)
+  const byChannel = new Map<string, { spend: number; results: number | null }>()
+  for (const m of manual) {
+    const cur = byChannel.get(m.channel) ?? { spend: 0, results: null }
+    cur.spend += m.spend
+    if (m.results !== null) cur.results = (cur.results ?? 0) + m.results
+    byChannel.set(m.channel, cur)
+  }
+  return [
+    { channel: "Meta Ads", spend: metaSpend ? r2(metaSpend) : "", results: "", roas: "" },
+    ...[...byChannel].map(([channel, v]) => ({ channel, spend: r2(v.spend), results: v.results === null ? "" : r2(v.results), roas: "" })),
+  ]
 }
 
 const fmt$ = (v: number | null) => (v === null ? "—" : `$${v.toLocaleString("en-US", { maximumFractionDigits: 2 })}`)

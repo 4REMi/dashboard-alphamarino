@@ -152,6 +152,33 @@ prellena con el gasto sincronizado; los demás canales van a mano. Los totales
 totales, aparecen como una fila "Sin desglosar". Componente:
 `components/projects/hub/channel-summary-editor.tsx`.
 
+## Campañas manuales (canales sin integración)
+
+Para TikTok, Pinterest u otros canales que operamos pero que todavía no están
+conectados. **Internas**: el portal del cliente no las lee. Nivel **campaña**
+(sin conjuntos de anuncios ni anuncios).
+
+- Viven en el **proyecto**, no en un ciclo: tienen fecha de inicio y de fin (opcional) y
+  aparecen en cada ciclo que se traslapa con esas fechas.
+- **Métricas**: se captura el **acumulado a una fecha** (inversión, impresiones,
+  clics, resultados + tipo de resultado libre), tal como lo muestra el Ads Manager
+  del canal. Una captura por día (se reemplaza). Lo de un ciclo = última captura
+  dentro del ciclo − última antes del ciclo. CTR, CPC y CPA se calculan.
+- **Assets**: se vinculan assets del dashboard (con su código de color).
+- **Dónde se ven**:
+  - Hub: panel "Campañas manuales" bajo los anuncios de Meta. Las activas sin
+    captura en 7 días salen en ámbar.
+  - Mapa: botón "+ Campaña manual" y nodo violeta, con líneas desde sus assets.
+  - Creative Tracker: el asset dice en qué canal corre ("Meta + TikTok Ads · $…").
+  - Resumen por canal del repaso: su canal se prellena con la suma.
+  - Repaso de cierre: sus conceptos cuentan como corriendo y con gasto. **No se
+    puede pasar del paso 1** con una campaña manual activa sin captura al cierre;
+    hay que capturarla o marcarla "Terminó".
+- `external_id` queda reservado para enlazarla con la campaña real cuando exista
+  la integración del canal.
+- Código: migración 101, `lib/actions/manual-campaigns.ts`,
+  `lib/utils/manual-campaign-calc.ts`, `components/projects/hub/manual-campaigns/`.
+
 ## Reparar ciclos mal capturados
 
 Botón **"Reparar ciclos"** en el Historial de Ciclos, visible para cualquier

@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
+import { getManualCampaigns, endManualCampaign, type ManualCampaign } from "@/lib/actions/manual-campaigns"
+import { isoToday } from "@/lib/utils/manual-campaign-calc"
+import { ManualCampaignModal } from "./manual-campaigns/manual-campaign-modal"
 import { ChannelSummaryEditor, channelTotals, draftsToRows, initialDrafts, type ChannelDraft } from "./channel-summary-editor"
 import { Loader2, Star, Radio, Check } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -57,12 +60,51 @@ export function CycleReviewModal({ projectId, cycleId, mode, onClose }: {
   const [nextEnd, setNextEnd] = useState("")
   const [isPending, startTransition] = useTransition()
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [manualOpen, setManualOpen] = useState<ManualCampaign | null>(null)
+
+  // Campañas manuales: no se cierra el ciclo con una activa sin su captura
+  // al cierre (o marcada como terminada) — así no se quedan huérfanas.
+  const closeDate = data ? (data.cycle.end_date < isoToday() ? data.cycle.end_date : isoToday()) : ""
+  const pendingManual = mode === "edit" || !data ? [] : data.manualCampaigns.filter(
+    (m) => m.status !== "ended" && (!m.lastSnapshotDate || m.lastSnapshotDate < closeDate),
+  )
+  function reloadManual() {
+    getManualCampaigns(projectId, cycleId).then((mc) => {
+      setData((d) => (d ? { ...d, manualCampaigns: mc } : d))
+      // Actualiza las filas de canal que vienen de campañas manuales.
+      const byChannel = new Map<string, { spend: number; results: number | null }>()
+      for (const m of mc) if (m.cycleTotals) {
+        const cur = byChannel.get(m.channel) ?? { spend: 0, results: null }
+        cur.spend += m.cycleTotals.spend
+        if (m.cycleTotals.results !== null) cur.results = (cur.results ?? 0) + m.cycleTotals.results
+        byChannel.set(m.channel, cur)
+      }
+      setChannels((rows) => {
+        const r2 = (v: number) => String(Math.round(v * 100) / 100)
+        const next = rows.map((r) => {
+          const v = byChannel.get(r.channel)
+          if (!v) return r
+          byChannel.delete(r.channel)
+          return { ...r, spend: r2(v.spend), results: v.results === null ? r.results : r2(v.results) }
+        })
+        return [...next, ...[...byChannel].map(([channel, v]) => ({ channel, spend: r2(v.spend), results: v.results === null ? "" : r2(v.results), roas: "" }))]
+      })
+    })
+  }
+  function endManual(m: ManualCampaign) {
+    startTransition(async () => {
+      await endManualCampaign(projectId, m.id, data!.cycle.end_date < isoToday() ? data!.cycle.end_date : isoToday())
+      reloadManual()
+    })
+  }
 
   useEffect(() => {
     getCycleReviewData(projectId, cycleId).then((d) => {
       setData(d)
       const c = d.cycle
-      setChannels(initialDrafts(c.channel_breakdown, c, d.syncedSpend))
+      setChannels(initialDrafts(c.channel_breakdown, c, d.syncedSpend, d.manualCampaigns
+        .filter((m) => m.cycleTotals)
+        .map((m) => ({ channel: m.channel, spend: m.cycleTotals!.spend, results: m.cycleTotals!.results }))))
       // Sugerencias: continúa lo que corre en Meta o ya era Evergreen; en
       // modo corrección, lo que ya está en el ciclo siguiente.
       const initial: Record<string, Omit<ConceptDecision, "continues"> & { continues: boolean | null }> = {}
@@ -211,6 +253,35 @@ export function CycleReviewModal({ projectId, cycleId, mode, onClose }: {
                 <p className="text-xs text-muted-foreground mb-2">Meta viene del sync; el resto de canales (Google, TikTok…) se captura a mano. Los totales se calculan solos.</p>
                 <ChannelSummaryEditor drafts={channels} onChange={setChannels} />
               </div>
+              {data.manualCampaigns.length > 0 && (
+                <div>
+                  <p className="text-sm font-medium">Campañas manuales</p>
+                  <p className="text-xs text-muted-foreground mb-2">Captura sus números al cierre ({closeDate}) o márcalas como terminadas. Su gasto ya se suma a su canal arriba.</p>
+                  <div className="space-y-1.5 max-w-3xl">
+                    {data.manualCampaigns.map((m) => {
+                      const pending = pendingManual.includes(m)
+                      return (
+                        <div key={m.id} className={cn("flex items-center gap-2 flex-wrap rounded-lg border px-3 py-2 text-xs", pending ? "border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900" : "border-border")}>
+                          <span className="font-semibold px-1.5 py-0.5 rounded bg-foreground/5">{m.channel}</span>
+                          <span className="font-medium">{m.name}</span>
+                          <span className="text-muted-foreground">
+                            {m.status === "ended" ? "Terminada" : m.lastSnapshotDate ? `Datos al ${m.lastSnapshotDate}` : "Sin métricas"}
+                            {m.cycleTotals ? ` · ${fmt$(m.cycleTotals.spend)} en el ciclo` : ""}
+                          </span>
+                          {pending && <span className="text-amber-700 dark:text-amber-400 font-medium">Falta captura al cierre</span>}
+                          <span className="ml-auto flex gap-2">
+                            <button type="button" onClick={() => setManualOpen(m)} className="text-primary hover:underline">Capturar</button>
+                            {m.status !== "ended" && <button type="button" onClick={() => endManual(m)} disabled={isPending} className="text-muted-foreground hover:text-foreground">Terminó</button>}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+              {manualOpen && (
+                <ManualCampaignModal projectId={projectId} cycleId={cycleId} campaign={manualOpen} onClose={() => { setManualOpen(null); reloadManual() }} />
+              )}
             </div>
           )}
 
@@ -415,7 +486,7 @@ export function CycleReviewModal({ projectId, cycleId, mode, onClose }: {
               <span className="text-xs text-amber-700">Faltan {undecided.length} concepto{undecided.length !== 1 ? "s" : ""} por decidir</span>
             )}
             {step < lastStep ? (
-              <Button type="button" size="sm" onClick={() => setStep((s) => s + 1)} disabled={!data || (step === 2 && undecided.length > 0)}>Siguiente</Button>
+              <Button type="button" size="sm" onClick={() => setStep((s) => s + 1)} disabled={!data || (step === 1 && pendingManual.length > 0) || (step === 2 && undecided.length > 0)}>Siguiente</Button>
             ) : (
               <Button type="button" size="sm" onClick={handleSubmit} disabled={!data || isPending || (mode !== "edit" && !data.otherActiveCycle && (!nextStart || !nextEnd))}>
                 {isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}

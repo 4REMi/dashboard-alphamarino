@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
+import { getManualCampaigns } from "@/lib/actions/manual-campaigns"
 import { cycleMemberIds } from "@/lib/actions/creatives"
 import type { MetaAd, MetaAdDailyStat, TrendWindow } from "@/lib/types"
 import type { MetricKey } from "@/lib/constants/paid-media-metrics"
@@ -116,6 +117,10 @@ export interface AssetMetaLinkStatus {
   totalSpend: number
   totalResults: number
   ads: { adId: string; status: string | null; campaignName: string | null }[]
+  // Canales de campañas manuales activas donde corre (TikTok, Pinterest…).
+  manualChannels: string[]
+  // Solo lo de Meta (anyActive/totalSpend incluyen también lo manual).
+  metaActive: boolean
 }
 
 // Vista inversa del link — desde el Creative Tracker, "¿este asset (o
@@ -130,9 +135,10 @@ export async function getAssetMetaLinkStatus(projectId: string, cycleId: string 
     .from("creative_asset_meta_ads")
     .select("id, creative_asset_id, meta_ad_id")
     .eq("project_id", projectId)
-  if (!links?.length) return {}
+  const manual = await getManualCampaigns(projectId, cycleId)
+  if (!links?.length && !manual.length) return {}
 
-  const adIds = Array.from(new Set(links.map((l) => l.meta_ad_id)))
+  const adIds = Array.from(new Set((links ?? []).map((l) => l.meta_ad_id)))
   const [adsRes, statsRes] = await Promise.all([
     supabase.from("meta_ads").select("ad_id, status, campaign_name").eq("project_id", projectId).in("ad_id", adIds),
     cycleId
@@ -150,15 +156,31 @@ export async function getAssetMetaLinkStatus(projectId: string, cycleId: string 
   }
 
   const result: Record<string, AssetMetaLinkStatus> = {}
-  for (const l of links) {
+  const empty = (): AssetMetaLinkStatus => ({ anyActive: false, metaActive: false, totalSpend: 0, totalResults: 0, ads: [], manualChannels: [] })
+  for (const l of links ?? []) {
     const adInfo = adInfoById.get(l.meta_ad_id)
     const totals = totalsByAdId.get(l.meta_ad_id) ?? { spend: 0, results: 0 }
-    const entry = result[l.creative_asset_id] ?? { anyActive: false, totalSpend: 0, totalResults: 0, ads: [] }
+    const entry = result[l.creative_asset_id] ?? empty()
     entry.anyActive = entry.anyActive || adInfo?.status === "ACTIVE"
+    entry.metaActive = entry.metaActive || adInfo?.status === "ACTIVE"
     entry.totalSpend += totals.spend
     entry.totalResults += totals.results
     entry.ads.push({ adId: l.meta_ad_id, status: adInfo?.status ?? null, campaignName: adInfo?.campaign_name ?? null })
     result[l.creative_asset_id] = entry
+  }
+  // Lo de una campaña manual se reparte completo a cada asset (como en
+  // Meta: un ad = un asset); solo cuentan las activas como "corriendo".
+  for (const m of manual) {
+    for (const assetId of m.assetIds) {
+      const entry = result[assetId] ?? empty()
+      if (m.status === "active") {
+        entry.anyActive = true
+        if (!entry.manualChannels.includes(m.channel)) entry.manualChannels.push(m.channel)
+      }
+      entry.totalSpend += m.cycleTotals?.spend ?? 0
+      entry.totalResults += m.cycleTotals?.results ?? 0
+      result[assetId] = entry
+    }
   }
   return result
 }

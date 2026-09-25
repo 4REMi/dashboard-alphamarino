@@ -1,5 +1,6 @@
 "use server"
 
+import { getManualCampaigns, type ManualCampaign } from "@/lib/actions/manual-campaigns"
 import { createClient } from "@/lib/supabase/server"
 import { getCreativeConcepts, getCreativeAssets } from "@/lib/actions/creatives"
 import { getCreativePerformance, type AdPerformanceCard } from "@/lib/actions/paid-media-performance"
@@ -78,6 +79,8 @@ export interface RelationshipMapData {
   // Moneda de la cuenta publicitaria (USD, MXN...) — todos los montos
   // vienen en ella.
   currency: string | null
+  // Campañas manuales (TikTok, Pinterest… sin integración) del ciclo.
+  manualCampaigns: ManualCampaign[]
 }
 
 function assetThumbUrl(a: { thumbnail_path: string | null; file_path: string | null; asset_url: string | null }): string | null {
@@ -166,7 +169,7 @@ export async function deleteRelationshipMapNote(noteId: string): Promise<void> {
 export async function getRelationshipMap(projectId: string, cycleId: string | null): Promise<RelationshipMapData> {
   const supabase = await createClient()
 
-  const [concepts, assets, ads, contextRes, reachRes, cycleRes, lifetimeRes, integrationRes] = await Promise.all([
+  const [concepts, assets, ads, contextRes, reachRes, cycleRes, lifetimeRes, integrationRes, manualCampaigns] = await Promise.all([
     getCreativeConcepts(projectId, cycleId),
     getCreativeAssets(projectId, cycleId),
     cycleId ? getCreativePerformance(projectId, cycleId) : Promise.resolve([] as AdPerformanceCard[]),
@@ -175,6 +178,7 @@ export async function getRelationshipMap(projectId: string, cycleId: string | nu
     cycleId ? supabase.from("paid_media_cycles").select("start_date").eq("id", cycleId).maybeSingle() : Promise.resolve({ data: null }),
     supabase.from("meta_lifetime_stats").select("*").eq("project_id", projectId),
     supabase.from("project_integrations").select("currency").eq("project_id", projectId).eq("platform", "meta").maybeSingle(),
+    getManualCampaigns(projectId, cycleId),
   ])
   const lifetimeByKey = new Map(
     ((lifetimeRes.data ?? []) as (LifetimeTotals & { level: string; object_id: string })[])
@@ -258,5 +262,6 @@ export async function getRelationshipMap(projectId: string, cycleId: string | nu
       .filter((k): k is MetricKey => k in METRIC_DEFS),
     cycleStartDate: (cycleRes.data as { start_date: string } | null)?.start_date ?? null,
     currency: (integrationRes.data?.currency as string | null) ?? null,
+    manualCampaigns,
   }
 }

@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server"
 import { assertNoCycleOverlap } from "@/lib/utils/cycle-overlap"
 import { getCreativeConcepts, getCreativeAssets } from "@/lib/actions/creatives"
 import { getCreativePerformance } from "@/lib/actions/paid-media-performance"
+import { getManualCampaigns, type ManualCampaign } from "@/lib/actions/manual-campaigns"
 import type { CreativeConcept, CreativeAsset, PaidMediaCycle, CycleChannelRow } from "@/lib/types"
 
 // Repaso de cierre de ciclo: el único camino para abrir el siguiente ciclo.
@@ -46,6 +47,8 @@ export interface CycleReviewData {
   nextAssetIds: string[]
   // Si ya hay otro ciclo activo (datos viejos), el repaso traspasa a ese.
   otherActiveCycle: PaidMediaCycle | null
+  // Campañas manuales del ciclo (TikTok, Pinterest…): se cierran aquí.
+  manualCampaigns: ManualCampaign[]
 }
 
 export async function getCycleReviewData(projectId: string, cycleId: string): Promise<CycleReviewData> {
@@ -53,10 +56,11 @@ export async function getCycleReviewData(projectId: string, cycleId: string): Pr
   const { data: cycle, error } = await supabase.from("paid_media_cycles").select("*").eq("id", cycleId).single()
   if (error || !cycle) throw new Error("No se encontró el ciclo")
 
-  const [concepts, assets, ads] = await Promise.all([
+  const [concepts, assets, ads, manualCampaigns] = await Promise.all([
     getCreativeConcepts(projectId, cycleId),
     getCreativeAssets(projectId, cycleId),
     getCreativePerformance(projectId, cycleId),
+    getManualCampaigns(projectId, cycleId),
   ])
 
   const spendByConcept = new Map<string, { spend: number; results: number; running: boolean }>()
@@ -75,6 +79,22 @@ export async function getCycleReviewData(projectId: string, cycleId: string): Pr
       spendByConcept.set(id, cur)
     }
     if (ad.status === "ACTIVE") for (const l of ad.linkedConcepts) runningAssetIds.add(l.assetId)
+  }
+
+  // Campañas manuales: lo del ciclo se reparte entre los conceptos de sus
+  // assets (igual que un ad de Meta), y cuentan como "corriendo" si siguen activas.
+  const conceptByAsset = new Map(assets.map((a) => [a.id, a.concept_id]))
+  for (const m of manualCampaigns) {
+    const running = m.status === "active"
+    const conceptIds = new Set(m.assetIds.map((id) => conceptByAsset.get(id)).filter(Boolean) as string[])
+    for (const id of conceptIds) {
+      const cur = spendByConcept.get(id) ?? { spend: 0, results: 0, running: false }
+      cur.spend += m.cycleTotals?.spend ?? 0
+      cur.results += m.cycleTotals?.results ?? 0
+      cur.running = cur.running || running
+      spendByConcept.set(id, cur)
+    }
+    if (running) for (const id of m.assetIds) runningAssetIds.add(id)
   }
 
   const superseded = new Set(assets.map((a) => a.revises_asset_id).filter(Boolean) as string[])
@@ -98,6 +118,7 @@ export async function getCycleReviewData(projectId: string, cycleId: string): Pr
 
   return {
     otherActiveCycle: (otherActive as PaidMediaCycle | null) ?? null,
+    manualCampaigns,
     cycle: cycle as PaidMediaCycle,
     concepts: concepts.map((c) => ({ concept: c, ...(spendByConcept.get(c.id) ?? { spend: 0, results: 0, running: false }) })),
     assets: assets.filter((a) => !superseded.has(a.id)).map((a) => ({ asset: a, running: runningAssetIds.has(a.id) })),

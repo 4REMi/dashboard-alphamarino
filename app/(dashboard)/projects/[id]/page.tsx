@@ -31,6 +31,7 @@ import { ProjectPhases } from "@/components/projects/project-phases"
 import { PaidMediaContextCard } from "@/components/projects/hub/paid-media-context-card"
 import { PaidMediaCycleCard } from "@/components/projects/hub/paid-media-cycle-card"
 import { CreativePerformanceGrid } from "@/components/projects/hub/creative-performance-grid"
+import { ManualCampaignsPanel } from "@/components/projects/hub/manual-campaigns/manual-campaigns-panel"
 import type { MetricKey } from "@/lib/constants/paid-media-metrics"
 import { PaidMediaCycleHistory } from "@/components/projects/hub/paid-media-cycle-history"
 import { WebContextCard } from "@/components/projects/hub/web-context-card"
@@ -403,6 +404,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                     canEdit={isAdminOrSubadmin}
                   />
                 </div>
+                <ManualCampaignsPanel projectId={project.id} cycleId={activeCycle.id} />
               </div>
             )}
 
