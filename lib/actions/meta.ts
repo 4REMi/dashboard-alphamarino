@@ -391,6 +391,11 @@ export async function syncMetaAds(projectId: string, cycleId: string, campaignId
   const url = new URL(`${META_BASE}/act_${meta_ad_account_id}/insights`)
   url.searchParams.set("level", "ad")
   url.searchParams.set("time_increment", "1")
+  // Sin esto, la API cuenta conversiones con su ventana por defecto
+  // (incluye gente que solo vio el anuncio), mientras Ads Manager usa la
+  // atribución configurada en cada conjunto (ej. "7 días tras clic") — por
+  // eso "Resultados" salía más alto que en Ads Manager.
+  url.searchParams.set("use_unified_attribution_setting", "true")
   url.searchParams.set("fields", fields)
   url.searchParams.set("time_range", JSON.stringify({ since, until }))
   url.searchParams.set("access_token", accessToken)
