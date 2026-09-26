@@ -23,6 +23,14 @@ entre sí:
 - **`verdict`** — llamada de desempeño post-lanzamiento (Winner/Scale/Iterate/
   Archive), admin/subadmin only.
 
+## Ver/editar guiones desde el concepto
+
+En el modal del concepto, las pastillas "Guión #n · estado" (y el feedback del
+cliente) se pueden clickear: abren `script-quick-view.tsx`, una vista ligera con la
+lista de guiones del brief, el guion a todo lo ancho, "Comparar" con el original,
+copiar y editar (admin/subadmin). Guardar usa `updateBriefScript` y regresa ese guion
+a "pendiente" del cliente. Los borradores se conservan al cambiar de guion.
+
 ## Crear brief (modal)
 
 `components/projects/hub/creatives/brief-creator.tsx` — pantalla casi completa en

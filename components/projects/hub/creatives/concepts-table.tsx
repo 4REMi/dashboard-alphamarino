@@ -1,5 +1,6 @@
 "use client"
 
+import { ScriptQuickView } from "./script-quick-view"
 import { useState, useTransition } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
@@ -68,10 +69,13 @@ function scriptReviewEntries(brief: CreativeBrief): ScriptReviewEntry[] {
 const SCRIPT_STATUS_STYLE: Record<ScriptReviewEntry["status"], { label: string; className: string }> = {
   pending_review:    { label: "Pendiente",       className: "bg-amber-50 text-amber-700 border-amber-200" },
   approved:          { label: "Aprobado",        className: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-  changes_requested: { label: "Cambios pedidos", className: "bg-sky-50 text-sky-700 border-sky-200" },
+  changes_requested: { label: "Cambios pedidos", className: "bg-red-50 text-red-700 border-red-200" },
 }
 
-function BriefScriptStatus({ brief }: { brief: CreativeBrief }) {
+// Pastillas de guion clickeables: abren la vista ligera para revisar y
+// corregir el guion sin salir del concepto (ver script-quick-view.tsx).
+function BriefScriptStatus({ brief, canEdit }: { brief: CreativeBrief; canEdit: boolean }) {
+  const [openKey, setOpenKey] = useState<string | null>(null)
   const entries = scriptReviewEntries(brief)
   if (entries.length === 0) return null
   const changes = entries.filter((e) => e.status === "changes_requested")
@@ -80,20 +84,22 @@ function BriefScriptStatus({ brief }: { brief: CreativeBrief }) {
     <div className="mt-1.5 space-y-1">
       <div className="flex flex-wrap gap-1">
         {entries.map((e) => (
-          <span key={e.key} className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded border", SCRIPT_STATUS_STYLE[e.status].className)}>
+          <button type="button" key={e.key} onClick={() => setOpenKey(e.key)} title="Ver y editar guion"
+            className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded border hover:ring-1 hover:ring-current transition-shadow", SCRIPT_STATUS_STYLE[e.status].className)}>
             {e.label} · {SCRIPT_STATUS_STYLE[e.status].label}
-          </span>
+          </button>
         ))}
       </div>
       {changes.length > 0 && (
         <div className="space-y-1">
           {changes.filter((e) => e.feedback).map((e) => (
-            <div key={e.key} className="text-[11px] text-sky-800 bg-sky-50/70 border border-sky-100 rounded-lg px-2.5 py-1.5">
+            <button type="button" key={e.key} onClick={() => setOpenKey(e.key)} className="block w-full text-left text-[11px] text-red-800 bg-red-50/70 border border-red-100 rounded-lg px-2.5 py-1.5 hover:bg-red-50">
               <span className="font-semibold">{e.label}:</span> &quot;{e.feedback}&quot;
-            </div>
+            </button>
           ))}
         </div>
       )}
+      {openKey && <ScriptQuickView brief={brief} scripts={entries} initialKey={openKey} canEdit={canEdit} onClose={() => setOpenKey(null)} />}
     </div>
   )
 }
@@ -537,7 +543,7 @@ function ConceptDetailModal({
                             )}
                           </div>
                         )}
-                        <BriefScriptStatus brief={b} />
+                        <BriefScriptStatus brief={b} canEdit={isAdminOrSubadmin} />
                       </div>
                     ))}
                   </div>
