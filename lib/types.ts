@@ -1359,7 +1359,10 @@ export interface ScratchAdIdea {
 // ============================================================
 
 export type ServiceStatus = "active" | "archived"
-export type DeliverableCadence = "once" | "monthly" | "quarterly" | "biannual"
+// once = hito de arranque; monthly = por periodo del proyecto (ya no mes
+// calendario); quarterly/biannual = cada 3/6 periodos; continuous = parte
+// del alcance sin conteo (gestión, optimización).
+export type DeliverableCadence = "once" | "monthly" | "quarterly" | "biannual" | "continuous"
 
 export interface ServiceDeliverable {
   // Generated client-side (crypto.randomUUID()) when a line is added — lets a
@@ -1374,6 +1377,9 @@ export interface ServiceDeliverable {
   // = no defined quantity — treated as 1 (a single trackable unit) wherever
   // this gets turned into a tracked deliverable period.
   quantity: number | null
+  // Texto corto para operar (lo que se ve en el proyecto). `text` queda
+  // como texto de venta del catálogo. Vacío = se usa `text`.
+  control_text?: string | null
 }
 
 export interface ServiceAddon {
@@ -1442,6 +1448,10 @@ export interface ProjectDeliverablePeriod {
   period_label: string
   expected_quantity: number
   fulfilled_quantity: number
+  period_end?: string | null
+  // Marcado cuando el periodo ya había terminado.
+  marked_late?: boolean
+  fulfilled_at?: string | null
   notes: string | null
   created_at: string
   updated_at: string

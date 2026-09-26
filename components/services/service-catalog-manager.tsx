@@ -52,11 +52,14 @@ function CurrencySwitch({ value, onChange }: { value: Currency; onChange: (c: Cu
   )
 }
 
+// El periodo lo define cada proyecto (sus ciclos, mensual desde un día,
+// cada N semanas…), no el calendario — por eso "por periodo".
 const CADENCE_LABEL: Record<DeliverableCadence, string> = {
-  once: "Una vez",
-  monthly: "Mensual",
-  quarterly: "Trimestral",
-  biannual: "Semestral",
+  once: "Una vez (arranque)",
+  monthly: "Por periodo",
+  quarterly: "Cada 3 periodos",
+  biannual: "Cada 6 periodos",
+  continuous: "Continuo (sin conteo)",
 }
 const CADENCE_OPTIONS = Object.keys(CADENCE_LABEL) as DeliverableCadence[]
 
@@ -78,11 +81,12 @@ function DeliverablesEditor({ value, onChange }: { value: ServiceDeliverable[]; 
     <div className="space-y-1.5">
       <input type="hidden" name="deliverables_json" value={JSON.stringify(value)} />
       {value.map((d, i) => (
-        <div key={d.id} className="flex items-center gap-1.5">
+        <div key={d.id} className="space-y-1 rounded-md border border-border/60 p-1.5">
+        <div className="flex items-center gap-1.5">
           <input
             value={d.text}
             onChange={(e) => update(i, { text: e.target.value })}
-            placeholder="Reporte semanal de resultados"
+            placeholder="Texto de venta — ej. Reporte semanal de resultados (para que…)"
             className="flex-1 min-w-0 rounded-md border border-input bg-background px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
           />
           <input
@@ -108,6 +112,13 @@ function DeliverablesEditor({ value, onChange }: { value: ServiceDeliverable[]; 
           >
             <X className="w-3.5 h-3.5" />
           </button>
+        </div>
+        <input
+          value={d.control_text ?? ""}
+          onChange={(e) => update(i, { control_text: e.target.value })}
+          placeholder="Texto de control (corto, lo que se ve en el proyecto) — ej. Reporte PDF"
+          className="w-full rounded-md border border-input bg-muted/30 px-2.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+        />
         </div>
       ))}
       <button
@@ -153,6 +164,7 @@ function OfferForm({
       text: d.text,
       cadence: d.cadence,
       quantity: d.quantity ?? null,
+      control_text: d.control_text ?? null,
     }))
   )
   const [projectTypeId, setProjectTypeId] = useState(initial?.default_project_type_id ?? "")

@@ -2,7 +2,7 @@
 
 **Ruta:** dentro de `/projects/[id]` — tarjeta "Alcance del servicio"
 **Para quién:** ambos, gateado por permiso (ver "Quién puede ver/hacer qué")
-**Actualizado:** 2026-09-11
+**Actualizado:** 2026-09-26
 
 ## Qué es y para qué sirve
 
@@ -24,6 +24,32 @@ sistema completamente separado de:
 
 **Es 100% interno.** No existe ningún portal, link o vista de cliente para esto —
 nunca se expone fuera del dashboard. Es control interno del equipo, punto.
+
+## Rediseño 2026-09-26 (lo más reciente manda sobre lo de abajo)
+
+- **Periodo por proyecto, no calendario** (migración 102, `lib/utils/scope-periods.ts`):
+  regla en `projects.scope_period_mode` — `cycles` (los ciclos de paid media),
+  `monthly` (mensual desde el día de `scope_period_anchor`), `weeks` (cada
+  `scope_period_weeks` semanas desde el ancla) o `calendar`. `NULL` = automático:
+  ciclos si el proyecto tiene, si no, mensual desde su fecha de inicio. Se cambia
+  con el engrane de la tarjeta (admin/subadmin).
+- **Cadencias**: `once` = Arranque (hito único), `monthly` = **por periodo**,
+  `quarterly`/`biannual` = cada 3/6 periodos (bloques contados desde que la línea
+  entró), `continuous` = parte del alcance sin conteo (se muestra como chips).
+- **Texto de control** (`control_text` en cada línea de la oferta): corto, es lo que
+  se ve en el proyecto. `text` queda como texto de venta (solo en hover).
+- **Historial**: fila de puntos arriba, uno por periodo (máx. 12) desde que la línea
+  entró al proyecto. Verde = completo, ámbar = parcial (≥50%), rojo = menos, contorno
+  azul = periodo actual. Hover = qué faltó; click = ver/corregir ese periodo. Los
+  pendientes de periodos pasados **solo se marcan** (no se arrastran al actual).
+- **Marcar después**: marcar en un periodo ya terminado guarda `marked_late`.
+- **Sobre-entrega**: sin tope ("4/3 +1"); el porcentaje del periodo no deja que la
+  sobre-entrega de una línea tape lo que falta en otra.
+- **Escala**: grupos plegables "Por periodo" / "Arranque" / "Continuo"; lo pendiente
+  arriba y lo completo colapsado; acciones (sumar, editar, eliminar) solo al hover;
+  ofertas como chips al pie (la × aparece al hover).
+- Al cambiar la regla, las filas en 0 que ya no caen en la cuadrícula se borran y se
+  regeneran; las que tienen algo marcado se conservan en la base.
 
 ## Conceptos y vocabulario clave
 

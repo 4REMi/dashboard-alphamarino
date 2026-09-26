@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { can } from "@/lib/permissions"
+import { computePeriods, todayIso, CADENCE_EVERY, type ScopePeriod, type ScopePeriodRule } from "@/lib/utils/scope-periods"
 import type { ServiceOffer, ProjectServiceOffer, ProjectDeliverablePeriod, ProjectCustomDeliverable, DeliverableCadence } from "@/lib/types"
 
 // Tracks contracted scope per project — what the client is owed vs. what's
@@ -168,143 +169,210 @@ export async function deleteCustomDeliverable(customDeliverableId: string, proje
 }
 
 // ============================================================
-// PERIODS — lazy generation + read
+// PERIODS — por proyecto (no calendario), con historial
 // ============================================================
 
-// Calendar-based period boundaries — deliberately the same logic for every
-// project type (see migration comment for why this doesn't anchor to
-// paid_media_cycles or any other project-type-specific cycle concept).
-function currentPeriod(cadence: DeliverableCadence, projectCreatedAt: string): { start: string; label: string } {
-  const now = new Date()
-
-  if (cadence === "once") {
-    const d = new Date(projectCreatedAt)
-    return { start: isoDate(d), label: "Único" }
-  }
-
-  if (cadence === "monthly") {
-    const start = new Date(now.getFullYear(), now.getMonth(), 1)
-    const label = start.toLocaleDateString("es-MX", { month: "long", year: "numeric" })
-    return { start: isoDate(start), label: capitalize(label) }
-  }
-
-  if (cadence === "quarterly") {
-    const q = Math.floor(now.getMonth() / 3)
-    const start = new Date(now.getFullYear(), q * 3, 1)
-    return { start: isoDate(start), label: `Q${q + 1} ${now.getFullYear()}` }
-  }
-
-  // biannual
-  const half = now.getMonth() < 6 ? 0 : 1
-  const start = new Date(now.getFullYear(), half * 6, 1)
-  return { start: isoDate(start), label: `${half === 0 ? "H1" : "H2"} ${now.getFullYear()}` }
+export interface ScopeLine {
+  key: string
+  offerId: string | null
+  offerName: string | null
+  customId: string | null
+  // Texto de control (corto) y el de venta completo (solo para hover).
+  text: string
+  fullText: string
+  cadence: DeliverableCadence
+  quantity: number | null
 }
 
-function isoDate(d: Date): string {
-  return d.toISOString().slice(0, 10)
+export interface ScopeOverview {
+  rule: ScopePeriodRule
+  ruleIsDefault: boolean
+  hasCycles: boolean
+  // Periodos desde que hay alcance, del más viejo al actual (máx. 12).
+  periods: (ScopePeriod & { isCurrent: boolean })[]
+  lines: ScopeLine[]
+  // Filas de todos los periodos listados + hitos únicos.
+  rows: ProjectDeliverablePeriod[]
 }
 
-function capitalize(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1)
+const MAX_PERIODS = 12
+
+// Regla efectiva: la guardada, o automática (ciclos si el proyecto los
+// tiene; si no, mensual desde su fecha de inicio).
+function resolveRule(
+  project: { scope_period_mode: string | null; scope_period_anchor: string | null; scope_period_weeks: number | null; start_date: string | null; created_at: string },
+  hasCycles: boolean,
+): { rule: ScopePeriodRule; isDefault: boolean } {
+  const fallbackAnchor = project.start_date ?? project.created_at.slice(0, 10)
+  if (project.scope_period_mode) {
+    return {
+      isDefault: false,
+      rule: {
+        mode: project.scope_period_mode as ScopePeriodRule["mode"],
+        anchor: project.scope_period_anchor ?? fallbackAnchor,
+        weeks: project.scope_period_weeks,
+      },
+    }
+  }
+  return { isDefault: true, rule: hasCycles ? { mode: "cycles", anchor: null, weeks: null } : { mode: "monthly", anchor: fallbackAnchor, weeks: null } }
 }
 
-// Ensures the current period's row exists for every deliverable line of
-// every offer attached to the project, AND every custom (non-catalog)
-// deliverable defined directly on it (upsert — never overwrites an
-// existing row, so a manual override is never lost), then returns all
-// current-period rows for that project (offer-derived and custom alike;
-// periods left behind by a detached offer or deleted custom deliverable
-// are excluded from this "current" view, but not deleted from the DB).
-export async function getCurrentPeriodDeliverables(projectId: string): Promise<ProjectDeliverablePeriod[]> {
+// Genera (perezosamente) las filas de cada periodo desde que cada línea
+// entró al proyecto hasta el periodo actual, y regresa todo para el
+// historial. Filas en 0 que ya no caen en la cuadrícula de periodos (ej.
+// se cambió la regla) se borran; las que tienen algo marcado se conservan.
+export async function getScopeOverview(projectId: string): Promise<ScopeOverview> {
   const profile = await requireProfile()
   if (!can(profile, "view_service_deliverables")) throw new Error("Permission denied")
 
   const supabase = await createClient()
-  const { data: project } = await supabase.from("projects").select("created_at").eq("id", projectId).single()
-  if (!project) throw new Error("Project not found")
+  const { data: projectRow } = await supabase.from("projects").select("*").eq("id", projectId).single()
+  if (!projectRow) throw new Error("Project not found")
+  const project = projectRow as { scope_period_mode: string | null; scope_period_anchor: string | null; scope_period_weeks: number | null; start_date: string | null; created_at: string }
 
-  const [attached, customDeliverables] = await Promise.all([
+  const [attached, customDeliverables, { data: cycles }, { data: attachRows }] = await Promise.all([
     getProjectServiceOffers(projectId),
     getProjectCustomDeliverables(projectId),
+    supabase.from("paid_media_cycles").select("start_date, end_date").eq("project_id", projectId),
+    supabase.from("project_service_offers").select("service_offer_id, created_at").eq("project_id", projectId),
   ])
-  if (attached.length === 0 && customDeliverables.length === 0) return []
+  const hasCycles = (cycles ?? []).length > 0
+  const { rule, isDefault } = resolveRule(project, hasCycles)
 
-  const admin = createAdminClient()
-  const toUpsert: Record<string, unknown>[] = []
-  const activeKeys: string[] = []
-
+  const lines: ScopeLine[] = []
+  const since = new Map<string, string>() // desde cuándo cuenta cada línea
+  const attachedAt = new Map((attachRows ?? []).map((r) => [r.service_offer_id as string, (r.created_at as string).slice(0, 10)]))
   for (const row of attached) {
     const offer = row.service_offer
     if (!offer) continue
     for (const d of offer.deliverables) {
-      const { start, label } = currentPeriod(d.cadence, project.created_at)
-      activeKeys.push(d.id)
-      toUpsert.push({
-        project_id: projectId,
-        service_offer_id: offer.id,
-        deliverable_key: d.id,
-        deliverable_text: d.text,
-        period_start: start,
-        period_label: label,
-        expected_quantity: d.quantity ?? 1,
+      lines.push({
+        key: d.id, offerId: offer.id, offerName: offer.name, customId: null,
+        text: d.control_text?.trim() || d.text, fullText: d.text, cadence: d.cadence, quantity: d.quantity,
       })
+      since.set(d.id, attachedAt.get(offer.id) ?? todayIso())
     }
   }
   for (const d of customDeliverables) {
-    const { start, label } = currentPeriod(d.cadence, project.created_at)
-    activeKeys.push(d.id)
-    toUpsert.push({
+    lines.push({ key: d.id, offerId: null, offerName: null, customId: d.id, text: d.text, fullText: d.text, cadence: d.cadence, quantity: d.quantity })
+    since.set(d.id, d.created_at.slice(0, 10))
+  }
+  if (lines.length === 0) return { rule, ruleIsDefault: isDefault, hasCycles, periods: [], lines, rows: [] }
+
+  const today = todayIso()
+  const earliest = [...since.values()].reduce((a, b) => (a < b ? a : b))
+  const allPeriods = computePeriods(rule, cycles ?? [], earliest, today, 6)
+  const currentIdx = Math.max(0, allPeriods.findIndex((p) => p.start <= today && today <= p.end))
+  const lastIdx = allPeriods.findIndex((p) => p.start <= today && today <= p.end) >= 0 ? currentIdx : allPeriods.length - 1
+  const visible = allPeriods.slice(Math.max(0, lastIdx - MAX_PERIODS + 1), lastIdx + 1)
+
+  const toUpsert: Record<string, unknown>[] = []
+  const validStarts = new Map<string, Set<string>>()
+  for (const line of lines) {
+    if (line.cadence === "continuous") continue
+    const base = {
       project_id: projectId,
-      service_offer_id: null,
-      deliverable_key: d.id,
-      deliverable_text: d.text,
-      period_start: start,
-      period_label: label,
-      expected_quantity: d.quantity ?? 1,
-    })
+      service_offer_id: line.offerId,
+      deliverable_key: line.key,
+      deliverable_text: line.text,
+      expected_quantity: line.quantity ?? 1,
+    }
+    if (line.cadence === "once") {
+      toUpsert.push({ ...base, period_start: project.created_at.slice(0, 10), period_label: "Único" })
+      continue
+    }
+    // Cada N periodos: bloques contados desde el periodo en que entró la línea.
+    const every = CADENCE_EVERY[line.cadence] ?? 1
+    const firstIdx = allPeriods.findIndex((p) => p.end >= since.get(line.key)!)
+    if (firstIdx < 0) continue
+    const starts = new Set<string>()
+    for (let i = firstIdx; i <= lastIdx; i += every) {
+      const block = allPeriods.slice(i, i + every)
+      const start = block[0].start
+      const end = block.length === every ? block[block.length - 1].end : null
+      starts.add(start)
+      if (!visible.some((p) => p.start === start)) continue
+      toUpsert.push({
+        ...base, period_start: start, period_end: end,
+        period_label: every === 1 ? block[0].label : `${block[0].label.split(" – ")[0]} · ${every} periodos`,
+      })
+    }
+    validStarts.set(line.key, starts)
   }
 
-  if (toUpsert.length > 0) {
-    // ignoreDuplicates so an already-existing period (possibly with a
-    // manually-overridden expected_quantity/text) is left untouched.
-    const { error } = await admin
-      .from("project_deliverable_periods")
-      .upsert(toUpsert, {
-        onConflict: "project_id,deliverable_key,period_start",
-        ignoreDuplicates: true,
-      })
+  const admin = createAdminClient()
+  if (toUpsert.length) {
+    const upsert = (rows: Record<string, unknown>[]) => admin.from("project_deliverable_periods")
+      .upsert(rows, { onConflict: "project_id,deliverable_key,period_start", ignoreDuplicates: true })
+    let { error } = await upsert(toUpsert)
+    // Sin la migración 102 todavía: sin period_end.
+    if (error && /period_end/.test(error.message)) {
+      ;({ error } = await upsert(toUpsert.map(({ period_end: _omit, ...r }) => { void _omit; return r })))
+    }
     if (error) throw error
   }
 
-  if (activeKeys.length === 0) return []
+  const keys = lines.filter((l) => l.cadence !== "continuous").map((l) => l.key)
+  const { data } = keys.length
+    ? await supabase.from("project_deliverable_periods").select("*").eq("project_id", projectId).in("deliverable_key", keys)
+    : { data: [] }
+  const rows: ProjectDeliverablePeriod[] = []
+  const stale: string[] = []
+  for (const r of (data ?? []) as ProjectDeliverablePeriod[]) {
+    const line = lines.find((l) => l.key === r.deliverable_key)!
+    if (line.cadence === "once") { rows.push(r); continue }
+    if (validStarts.get(r.deliverable_key)?.has(r.period_start)) rows.push(r)
+    else if (r.fulfilled_quantity === 0) stale.push(r.id)
+  }
+  if (stale.length) await admin.from("project_deliverable_periods").delete().in("id", stale)
 
-  const { data, error } = await supabase
-    .from("project_deliverable_periods")
-    .select("*")
-    .eq("project_id", projectId)
-    .in("deliverable_key", activeKeys)
-    .order("deliverable_text")
-  if (error) throw error
-  return (data ?? []) as ProjectDeliverablePeriod[]
+  return {
+    rule,
+    ruleIsDefault: isDefault,
+    hasCycles,
+    periods: visible.map((p) => ({ ...p, isCurrent: p.start <= today && today <= p.end })),
+    lines,
+    rows,
+  }
 }
 
+export async function setScopePeriodRule(projectId: string, rule: { mode: ScopePeriodRule["mode"] | null; anchor: string | null; weeks: number | null }): Promise<void> {
+  const profile = await requireProfile()
+  if (!isAdminOrSubadmin(profile.role)) throw new Error("Permission denied")
+  if (rule.mode === "weeks" && !(rule.weeks && rule.weeks > 0)) throw new Error("Indica cada cuántas semanas")
+  const admin = createAdminClient()
+  const { error } = await admin.from("projects").update({
+    scope_period_mode: rule.mode,
+    scope_period_anchor: rule.mode === "monthly" || rule.mode === "weeks" ? rule.anchor : null,
+    scope_period_weeks: rule.mode === "weeks" ? rule.weeks : null,
+  }).eq("id", projectId)
+  if (error) throw new Error(error.message)
+  revalidateProject(projectId)
+}
+
+// Sin tope: si tocaban 3 y se entregaron 4, se registra 4 (sobre-entrega
+// visible). Marcar un periodo ya terminado queda como "marcado después".
 export async function updateDeliverableFulfilled(periodId: string, fulfilledQuantity: number, projectId: string): Promise<void> {
   const profile = await requireProfile()
   if (!isAdminOrSubadmin(profile.role) && !can(profile, "manage_tasks")) throw new Error("Permission denied")
 
   const admin = createAdminClient()
-  const { data: period, error: fetchError } = await admin
+  const { data: period } = await admin
     .from("project_deliverable_periods")
-    .select("expected_quantity")
+    .select("period_end")
     .eq("id", periodId)
-    .single()
-  if (fetchError || !period) throw fetchError ?? new Error("Period not found")
+    .maybeSingle()
 
-  const clamped = Math.max(0, Math.min(fulfilledQuantity, period.expected_quantity))
-  const { error } = await admin
+  const late = !!period?.period_end && period.period_end < todayIso()
+  const base = { fulfilled_quantity: Math.max(0, Math.floor(fulfilledQuantity)), updated_at: new Date().toISOString() }
+  let { error } = await admin
     .from("project_deliverable_periods")
-    .update({ fulfilled_quantity: clamped, updated_at: new Date().toISOString() })
+    .update({ ...base, fulfilled_at: new Date().toISOString(), ...(late ? { marked_late: true } : {}) })
     .eq("id", periodId)
+  // Sin la migración 102 todavía.
+  if (error && /fulfilled_at|marked_late/.test(error.message)) {
+    ;({ error } = await admin.from("project_deliverable_periods").update(base).eq("id", periodId))
+  }
   if (error) throw error
   revalidateProject(projectId)
 }

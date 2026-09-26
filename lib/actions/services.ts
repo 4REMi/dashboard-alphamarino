@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import type { ServiceOffer, ServiceAddon, Currency, ServiceDeliverable, DeliverableCadence } from "@/lib/types"
 
-const CADENCES: DeliverableCadence[] = ["once", "monthly", "quarterly", "biannual"]
+const CADENCES: DeliverableCadence[] = ["once", "monthly", "quarterly", "biannual", "continuous"]
 
 // Crear/editar/archivar una oferta es admin/subadmin-only — hasta ahora eso
 // SOLO se enforced vía RLS (`is_admin_or_subadmin()`, migración 057), nunca
@@ -58,6 +58,7 @@ function parseDeliverables(formData: FormData): ServiceDeliverable[] {
         text: String(d?.text ?? "").trim(),
         cadence: (CADENCES as string[]).includes(d?.cadence) ? d.cadence as DeliverableCadence : "once",
         quantity: Number.isFinite(Number(d?.quantity)) && d?.quantity !== "" && d?.quantity != null ? Number(d.quantity) : null,
+        control_text: String(d?.control_text ?? "").trim() || null,
       }))
       .filter((d) => d.text)
   } catch {
@@ -139,7 +140,7 @@ export async function exportServiceOffers(): Promise<string> {
     price: o.price,
     currency: o.currency,
     price_note: o.price_note,
-    deliverables: o.deliverables.map((d) => ({ text: d.text, cadence: d.cadence, quantity: d.quantity })),
+    deliverables: o.deliverables.map((d) => ({ text: d.text, control_text: d.control_text ?? null, cadence: d.cadence, quantity: d.quantity })),
   }))
   return JSON.stringify({ offers: portable }, null, 2)
 }
@@ -152,6 +153,7 @@ function parsePortableDeliverables(raw: unknown): ServiceDeliverable[] {
       text: String(d?.text ?? "").trim(),
       cadence: (CADENCES as string[]).includes(d?.cadence as string) ? (d.cadence as DeliverableCadence) : "once",
       quantity: Number.isFinite(Number(d?.quantity)) && d?.quantity !== "" && d?.quantity != null ? Number(d.quantity) : null,
+      control_text: String(d?.control_text ?? "").trim() || null,
     }))
     .filter((d) => d.text)
 }
