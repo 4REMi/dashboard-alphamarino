@@ -434,18 +434,21 @@ ${input.hint?.trim() ? `Contexto adicional dado por el admin: ${input.hint.trim(
 
 Escribe:
 1. Una descripción corta (1-2 oraciones) que sea la promesa de valor de la oferta — qué resultado obtiene el cliente, no una lista de tareas.
-2. Entre 3 y 7 entregables concretos y verificables (cosas que el cliente puede ver/recibir), cada uno una frase corta. Para cada uno decide su cadencia: "once" si es un entregable de una sola vez (ej. configuración inicial, auditoría de arranque), o "monthly"/"quarterly"/"biannual" si se repite con esa frecuencia (ej. reporte mensual, revisión trimestral de estrategia). Si no es obvio, usa "once".
+2. Entre 3 y 7 entregables concretos y verificables (cosas que el cliente puede ver/recibir). Para cada uno escribe:
+   - "text": texto de venta (una frase que comunique el valor).
+   - "control_text": texto de control, corto y operativo (3-6 palabras, sin justificaciones), ej. "Reporte PDF quincenal".
+   - "cadence": "once" si es de una sola vez (configuración inicial, auditoría de arranque); "monthly" si se repite cada periodo del proyecto; "quarterly"/"biannual" si es cada 3/6 periodos; "continuous" si es un servicio continuo que no se entrega en unidades (gestión, optimización). Si no es obvio, usa "once".
 3. De esta lista de tipos de proyecto ya existentes en el sistema, cuál (si alguno) es el más relevante para esta oferta — o null si ninguno aplica bien:
 ${typeList}
 
 Responde ÚNICAMENTE con JSON válido (sin markdown, sin explicación):
-{"description": "...", "deliverables": [{"text": "...", "cadence": "once"}, {"text": "...", "cadence": "monthly"}], "project_type_id": "<id o null>"}`,
+{"description": "...", "deliverables": [{"text": "...", "control_text": "...", "cadence": "once"}, {"text": "...", "control_text": "...", "cadence": "monthly"}], "project_type_id": "<id o null>"}`,
     }],
   })
 
   const raw = (msg.content[0] as { type: string; text: string }).text.trim()
   const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim()
-  let parsed: { description?: string; deliverables?: { text?: string; cadence?: string }[]; project_type_id?: string | null }
+  let parsed: { description?: string; deliverables?: { text?: string; control_text?: string; cadence?: string }[]; project_type_id?: string | null }
   try {
     parsed = JSON.parse(cleaned)
   } catch {
@@ -463,6 +466,7 @@ Responde ÚNICAMENTE con JSON válido (sin markdown, sin explicación):
         text: (d.text ?? "").trim(),
         cadence: (CADENCES as string[]).includes(d.cadence ?? "") ? (d.cadence as DeliverableCadence) : "once",
         quantity: null,
+        control_text: (d.control_text ?? "").trim() || null,
       }))
       .filter((d) => d.text),
     project_type_id: validTypeId,

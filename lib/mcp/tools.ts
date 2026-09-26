@@ -437,13 +437,13 @@ export function registerMcpTools(server: McpServer) {
       const { data: offer } = await admin.from("service_offers").select("name, category, description, price, currency, price_note, status, deliverables").eq("id", id).single()
       if (!offer) throw new Error(`No encontré la oferta "${nombre}".`)
 
-      const deliverables = (offer.deliverables ?? []) as { text: string; cadence: string; quantity: number | null }[]
+      const deliverables = (offer.deliverables ?? []) as { text: string; control_text?: string | null; cadence: string; quantity: number | null }[]
       const lines = [
         `${offer.name} [${offer.category}]${offer.status === "archived" ? " (archivada)" : ""}`,
         offer.description ? offer.description : null,
         offer.price != null ? `Precio: $${offer.price} ${offer.currency}${offer.price_note ? ` (${offer.price_note})` : ""}` : "Sin precio fijo.",
         deliverables.length > 0
-          ? `Deliverables:\n${deliverables.map((d) => `  - ${d.text} (${d.cadence}${d.quantity ? `, x${d.quantity}` : ""})`).join("\n")}`
+          ? `Deliverables:\n${deliverables.map((d) => `  - ${d.text}${d.control_text ? ` [control: ${d.control_text}]` : ""} (${d.cadence}${d.quantity ? `, x${d.quantity}` : ""})`).join("\n")}`
           : "Sin deliverables estructurados.",
       ].filter(Boolean)
       return textResult(lines.join("\n"))

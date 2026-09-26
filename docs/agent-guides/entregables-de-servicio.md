@@ -37,7 +37,9 @@ nunca se expone fuera del dashboard. Es control interno del equipo, punto.
   `quarterly`/`biannual` = cada 3/6 periodos (bloques contados desde que la línea
   entró), `continuous` = parte del alcance sin conteo (se muestra como chips).
 - **Texto de control** (`control_text` en cada línea de la oferta): corto, es lo que
-  se ve en el proyecto. `text` queda como texto de venta (solo en hover).
+  se ve en el proyecto. `text` queda como texto de venta (solo en hover). Viaja en
+  el JSON de exportar/importar ofertas, lo propone el autollenado con IA y lo
+  muestra la herramienta MCP de detalle de oferta.
 - **Historial**: fila de puntos arriba, uno por periodo (máx. 12) desde que la línea
   entró al proyecto. Verde = completo, ámbar = parcial (≥50%), rojo = menos, contorno
   azul = periodo actual. Hover = qué faltó; click = ver/corregir ese periodo. Los
