@@ -23,6 +23,18 @@ entre sí:
 - **`verdict`** — llamada de desempeño post-lanzamiento (Winner/Scale/Iterate/
   Archive), admin/subadmin only.
 
+## Crear brief (modal)
+
+`components/projects/hub/creatives/brief-creator.tsx` — pantalla casi completa en
+dos columnas. Izquierda: concepto, nombre, **cerebro de marca del proyecto (fijo;
+solo se elige si el proyecto no tiene)** y la bandeja de referencias elegidas, donde
+cada video tiene su interruptor escrito "Tropicalizar guion" / "Solo visual".
+Derecha: biblioteca por **Boards** (mosaico de 4 miniaturas, click entra al board;
+se puede usar el board completo como inspiración) o por Videos / Imágenes, con
+buscador, miniaturas 9:16 que se reproducen al hover y vista en grande. Si el texto
+del brief falla, los videos se tropicalizan igual y se avisa
+(`lib/utils/ai-json.ts` da el motivo: respuesta cortada, vacía o formato inválido).
+
 ## Conceptos y vocabulario clave
 
 - **Revisión de un asset (`revises_asset_id`)**: subir una versión corregida de

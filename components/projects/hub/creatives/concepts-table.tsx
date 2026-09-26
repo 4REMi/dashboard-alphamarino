@@ -1579,6 +1579,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
           concept={briefForConcept}
           projectId={projectId}
           brandBrains={brandBrains}
+          projectBrandBrainId={projectBrandBrainId}
           onClose={() => setBriefForConcept(null)}
           onCreated={() => { setBriefForConcept(null); onRefresh(); }}
         />
