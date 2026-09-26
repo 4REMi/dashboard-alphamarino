@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { assertNoCycleOverlap } from "@/lib/utils/cycle-overlap"
+import type { ProjectSignals } from "@/lib/utils/project-signals"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { notify } from "@/lib/notifications/notify"
@@ -268,8 +269,9 @@ export async function getProjects(includeArchived = false) {
   // full-table scans) and run in parallel instead of one after another.
   const projectIds = rawData.map((p) => p.id as string)
 
-  const [logsRes, taskDatesRes, phaseDatesRes, assetChangesRes, briefsWithReviewsRes] = projectIds.length === 0
-    ? [{ data: null }, { data: null }, { data: null }, { data: null }, { data: null }]
+  const noData = { data: null } as { data: null }
+  const [logsRes, taskDatesRes, phaseDatesRes, assetChangesRes, briefsWithReviewsRes, periodsRes, cyclesRes, draftsRes, manualRes] = projectIds.length === 0
+    ? [noData, noData, noData, noData, noData, noData, noData, noData, noData]
     : await Promise.all([
     supabase
       .from("project_log_entries")
@@ -291,7 +293,7 @@ export async function getProjects(includeArchived = false) {
       .then((r) => r, () => ({ data: null })),
     supabase
       .from("creative_assets")
-      .select("project_id")
+      .select("project_id, concept:creative_concepts(name)")
       .in("project_id", projectIds)
       .eq("client_status", "changes_requested")
       .eq("client_visible", true)
@@ -302,7 +304,41 @@ export async function getProjects(includeArchived = false) {
       .in("project_id", projectIds)
       .not("script_reviews", "eq", "{}")
       .then((r) => r, () => ({ data: null })),
+    // Señales de la tarjeta (ver lib/utils/project-signals.ts).
+    supabase
+      .from("project_deliverable_periods")
+      .select("project_id, deliverable_text, period_start, period_label, expected_quantity, fulfilled_quantity")
+      .in("project_id", projectIds)
+      .neq("period_label", "Único")
+      .lte("period_start", now)
+      .then((r) => r, () => ({ data: null })),
+    supabase
+      .from("paid_media_cycles")
+      .select("id, project_id, start_date, end_date, is_active, review_pending, next_cycle_id")
+      .in("project_id", projectIds)
+      .then((r) => r, () => ({ data: null })),
+    supabase
+      .from("creative_assets")
+      .select("project_id")
+      .in("project_id", projectIds)
+      .eq("client_visible", false)
+      .then((r) => r, () => ({ data: null })),
+    supabase
+      .from("manual_campaigns")
+      .select("project_id, name, snapshots:manual_campaign_snapshots(as_of)")
+      .in("project_id", projectIds)
+      .eq("status", "active")
+      .then((r) => r, () => ({ data: null })),
   ])
+
+  // Gasto de Meta del ciclo activo de cada proyecto.
+  const activeCycles = ((cyclesRes.data ?? []) as { id: string; project_id: string; start_date: string; end_date: string; is_active: boolean; review_pending: boolean | null; next_cycle_id: string | null }[])
+  const activeIds = activeCycles.filter((c) => c.is_active).map((c) => c.id)
+  const spendByCycle: Record<string, number> = {}
+  if (activeIds.length) {
+    const { data: stats } = await supabase.from("meta_ad_daily_stats").select("cycle_id, spend").in("cycle_id", activeIds).range(0, 19999)
+    for (const r of stats ?? []) spendByCycle[r.cycle_id as string] = (spendByCycle[r.cycle_id as string] ?? 0) + Number(r.spend ?? 0)
+  }
 
   const logMap: Record<string, string> = {}
   for (const l of logsRes.data ?? []) {
@@ -328,7 +364,59 @@ export async function getProjects(includeArchived = false) {
   // changes_requested for a while with no further admin activity, so this has
   // to be its own signal rather than folded into inactiveForDays.
   const pendingChangesSet = new Set<string>()
-  for (const a of assetChangesRes.data ?? []) pendingChangesSet.add(a.project_id as string)
+  const changesByProject: Record<string, string[]> = {}
+  for (const a of (assetChangesRes.data ?? []) as { project_id: string; concept?: unknown }[]) {
+    pendingChangesSet.add(a.project_id)
+    const name = (a.concept as { name?: string } | null)?.name ?? "Pieza sin concepto"
+    ;(changesByProject[a.project_id] ??= []).push(name)
+  }
+  const draftsByProject: Record<string, number> = {}
+  for (const a of (draftsRes.data ?? []) as { project_id: string }[]) draftsByProject[a.project_id] = (draftsByProject[a.project_id] ?? 0) + 1
+
+  // Entregables: periodo actual = el más reciente que ya empezó.
+  const periodsByProject: Record<string, { deliverable_text: string; period_start: string; period_label: string; expected_quantity: number; fulfilled_quantity: number }[]> = {}
+  for (const r of (periodsRes.data ?? []) as typeof periodsByProject[string]) (periodsByProject[(r as unknown as { project_id: string }).project_id] ??= []).push(r)
+  const scopeFor = (pid: string): ProjectSignals["scope"] => {
+    const rows = periodsByProject[pid]
+    if (!rows?.length) return null
+    const starts = [...new Set(rows.map((r) => r.period_start))].sort().reverse()
+    const sum = (list: typeof rows) => ({
+      done: list.reduce((s, r) => s + Math.min(r.fulfilled_quantity, r.expected_quantity), 0),
+      expected: list.reduce((s, r) => s + r.expected_quantity, 0),
+    })
+    const cur = rows.filter((r) => r.period_start === starts[0])
+    const prev = starts[1] ? rows.filter((r) => r.period_start === starts[1]) : []
+    const prevSum = sum(prev)
+    return {
+      label: cur[0].period_label,
+      ...sum(cur),
+      missing: cur.filter((r) => r.fulfilled_quantity < r.expected_quantity).map((r) => r.deliverable_text),
+      prevIncomplete: prev.length && prevSum.done < prevSum.expected ? { label: prev[0].period_label, ...prevSum } : null,
+    }
+  }
+
+  const staleBefore = new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10)
+  const staleManualByProject: Record<string, string[]> = {}
+  for (const m of (manualRes.data ?? []) as { project_id: string; name: string; snapshots: { as_of: string }[] }[]) {
+    const last = (m.snapshots ?? []).map((s) => s.as_of).sort().pop()
+    if (!last || last < staleBefore) (staleManualByProject[m.project_id] ??= []).push(m.name)
+  }
+  const cycleFor = (pid: string): ProjectSignals["cycle"] => {
+    const mine = activeCycles.filter((c) => c.project_id === pid)
+    if (!mine.length) return null
+    const reviewPending = mine.some((c) => !c.is_active && c.review_pending && !c.next_cycle_id)
+    const active = mine.find((c) => c.is_active)
+    const ref = active ?? [...mine].sort((a, b) => (a.end_date < b.end_date ? 1 : -1))[0]
+    if (!active && !reviewPending) return null
+    return {
+      start: ref.start_date,
+      end: ref.end_date,
+      daysLeft: Math.round((Date.parse(ref.end_date + "T00:00:00Z") - Date.parse(now + "T00:00:00Z")) / 86_400_000),
+      reviewPending,
+      metaSpend: active ? spendByCycle[active.id] ?? 0 : null,
+      staleManual: staleManualByProject[pid] ?? [],
+    }
+  }
   for (const b of briefsWithReviewsRes.data ?? []) {
     const reviews = (b.script_reviews ?? {}) as Record<string, { client_status?: string }>
     if (Object.values(reviews).some((r) => r?.client_status === "changes_requested")) {
@@ -357,8 +445,20 @@ export async function getProjects(includeArchived = false) {
       (Date.now() - new Date(lastActivity).getTime()) / (1000 * 60 * 60 * 24)
     )
 
+    const signals: ProjectSignals = {
+      scope: scopeFor(pid),
+      cycle: cycleFor(pid),
+      changesRequested: changesByProject[pid] ?? (pendingChangesSet.has(pid) ? ["Guion"] : []),
+      unpublished: draftsByProject[pid] ?? 0,
+      overdueTasks: ((p.tasks ?? []) as Array<{ title?: string; status: string; due_date: string | null; is_personal?: boolean }>)
+        .filter((t) => !t.is_personal && t.status !== "Done" && t.due_date && t.due_date < now)
+        .map((t) => t.title ?? "Tarea"),
+      inactiveDays: inactiveForDays,
+    }
+
     return {
       ...p,
+      signals,
       tasks,
       members: ((p.members ?? []) as Array<{ profile: { id: string; full_name: string; avatar_url: string | null } | null }>)
         .map((m) => m.profile)

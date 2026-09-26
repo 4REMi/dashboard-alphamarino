@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { useTranslations } from "next-intl"
 import { ProjectCard } from "@/components/projects/project-card"
+import { SIGNAL_FILTER_LABEL, matchesSignal, type SignalFilter } from "@/lib/utils/project-signals"
 import { ArchivedProjectsSection } from "@/components/projects/archived-projects-section"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { getProjectTypeIcon } from "@/lib/project-type-icons"
@@ -121,6 +122,7 @@ export function ProjectsClient({ active, completed, archived, canViewFinancials,
   const [view, setView] = useState<ViewMode>("grid")
   const [tab, setTab] = useState<StatusFilter>("active")
   const [typeFilter, setTypeFilter] = useState<TypeFilter>(null)
+  const [signalFilter, setSignalFilter] = useState<SignalFilter | null>(null)
 
   // Persist view preference
   useEffect(() => {
@@ -145,9 +147,14 @@ export function ProjectsClient({ active, completed, archived, canViewFinancials,
   )
 
   const baseProjects = tab === "active" ? active : completed
-  const projects = typeFilter
+  const byType = typeFilter
     ? baseProjects.filter((p) => (p.project_type as any)?.id === typeFilter)
     : baseProjects
+  const projects = signalFilter ? byType.filter((p) => matchesSignal(p.signals, signalFilter)) : byType
+  // Filtros por señal: solo los que tienen algún proyecto que los cumpla.
+  const signalCounts = (Object.keys(SIGNAL_FILTER_LABEL) as SignalFilter[])
+    .map((f) => ({ f, n: byType.filter((p) => matchesSignal(p.signals, f)).length }))
+    .filter((x) => x.n > 0)
 
   return (
     <div className="space-y-4">
@@ -229,10 +236,29 @@ export function ProjectsClient({ active, completed, archived, canViewFinancials,
         </div>
       </div>
 
+      {signalCounts.length > 0 && (
+        <div className="flex items-center gap-1.5 flex-wrap text-xs">
+          <span className="text-muted-foreground mr-1">Requieren algo:</span>
+          {signalCounts.map(({ f, n }) => (
+            <button
+              key={f}
+              onClick={() => setSignalFilter(signalFilter === f ? null : f)}
+              className={cn(
+                "px-2.5 py-1 rounded-full border font-medium transition-colors",
+                signalFilter === f ? "bg-foreground text-background border-foreground" : "border-border text-muted-foreground hover:text-foreground hover:bg-muted",
+              )}
+            >
+              {SIGNAL_FILTER_LABEL[f]} <span className="opacity-70">{n}</span>
+            </button>
+          ))}
+          {signalFilter && <button onClick={() => setSignalFilter(null)} className="text-muted-foreground hover:text-foreground underline">Quitar filtro</button>}
+        </div>
+      )}
+
       {/* Project grid or list */}
       {projects.length === 0 ? (
         <div className="text-center py-16 text-muted-foreground text-sm">
-          {typeFilter ? "Sin proyectos de este tipo" : tab === "active" ? tP("noActive") : tP("noCompleted")}
+          {signalFilter ? "Ningún proyecto con esta señal" : typeFilter ? "Sin proyectos de este tipo" : tab === "active" ? tP("noActive") : tP("noCompleted")}
         </div>
       ) : view === "grid" ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
