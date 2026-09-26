@@ -513,7 +513,9 @@ function ManualCampaignNode({ data }: NodeProps<Node<{ campaign: ManualCampaign;
   return (
     <div className={cn("w-64 rounded-xl border-2 bg-violet-50 dark:bg-violet-950/30 shadow-sm", c.stale ? "border-amber-400" : "border-violet-300 dark:border-violet-900")}>
       <Handle type="target" position={Position.Left} className="!opacity-0" />
-      <button onClick={() => onOpen(c)} className="nodrag w-full text-left px-3 py-2.5">
+      {/* Toda la tarjeta se arrastra; solo el botón de abajo abre la campaña
+          (antes la tarjeta entera era un botón "nodrag" y no se podía mover). */}
+      <div className="w-full text-left px-3 py-2.5 cursor-grab active:cursor-grabbing">
         <div className="flex items-center gap-1.5 mb-1">
           <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-foreground/5">{c.channel}</span>
           <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-violet-200 text-violet-800 dark:bg-violet-900 dark:text-violet-200">Manual</span>
@@ -528,7 +530,10 @@ function ManualCampaignNode({ data }: NodeProps<Node<{ campaign: ManualCampaign;
         <p className={cn("mt-1.5 text-[10px]", c.stale ? "text-amber-700 font-medium" : "text-muted-foreground")}>
           {c.lastSnapshotDate ? `Datos al ${c.lastSnapshotDate}` : "Sin métricas capturadas"}{c.stale ? " · actualizar" : ""}
         </p>
-      </button>
+        <button onClick={() => onOpen(c)} className="nodrag mt-2 w-full text-[11px] font-semibold py-1 rounded-md bg-violet-600 text-white hover:bg-violet-700 transition-colors">
+          Capturar métricas / editar
+        </button>
+      </div>
     </div>
   )
 }
@@ -541,7 +546,7 @@ const COL_CAMPAIGN = 760
 const CAMPAIGN_ROW_H = 210 // altura estimada COLAPSADA — expandir puede solapar visualmente, por eso los nodos son arrastrables
 const ASSET_ROW_H = 250 // el asset ahora muestra el media (imagen agrandable / video reproducible), como en Ad Lab — ya no es una fila chica de ícono + texto
 const CONCEPT_ROW_H = 100
-const MANUAL_ROW_H = 150
+const MANUAL_ROW_H = 180
 
 interface GraphHandlers {
   onViewConcept: (concept: CreativeConcept) => void
