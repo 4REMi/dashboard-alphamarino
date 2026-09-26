@@ -1,5 +1,6 @@
 "use server"
 
+import { parseAiJson } from "@/lib/utils/ai-json"
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
@@ -886,7 +887,7 @@ El brief debe enfocarse en este producto/servicio específico.`
 
     const message = await client.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 2048,
+      max_tokens: 4096, // 2048 cortaba el JSON con Línea de producto + referencias
       system: `Eres un director creativo senior especializado en performance marketing. Tu trabajo es crear briefs creativos enriquecidos que un editor de video, diseñador gráfico o creator pueda usar directamente para producir un asset publicitario.
 
 Responde ÚNICAMENTE con un JSON válido con estos campos exactos. Sin markdown ni texto extra:
@@ -934,20 +935,20 @@ El brief debe ser accionable: un editor o diseñador que lo lea debe poder empez
       }],
     })
 
-    const text = message.content[0].type === "text" ? message.content[0].text : ""
-    let parsed: BriefContent
+    // Si el texto del brief falla, igual se tropicalizan los videos (antes
+    // un fallo aquí cortaba todo) y se avisa al final.
+    let parsed: BriefContent | null = null
+    let briefError: string | null = null
+    let adaptedCount = 0
     try {
-      parsed = JSON.parse(text)
-    } catch {
-      const match = text.match(/\{[\s\S]*\}/)
-      if (match) parsed = JSON.parse(match[0])
-      else throw new Error("AI returned invalid JSON")
+      parsed = parseAiJson<BriefContent>(message, "generateBriefContent")
+      await supabase.from("creative_briefs").update({
+        brief_content: parsed,
+        updated_at: new Date().toISOString(),
+      }).eq("id", briefId)
+    } catch (e) {
+      briefError = e instanceof Error ? e.message : String(e)
     }
-
-    await supabase.from("creative_briefs").update({
-      brief_content: parsed,
-      updated_at: new Date().toISOString(),
-    }).eq("id", briefId)
 
     // Tropicalize video scripts for each video reference. Videos are processed
     // IN PARALLEL (not sequentially) — with several references, sequential
@@ -1018,6 +1019,7 @@ El brief debe ser accionable: un editor o diseñador que lo lea debe poder empez
             if (r.status === "fulfilled" && r.value) scripts[r.value.id] = r.value.lines
           }
 
+          adaptedCount = Object.keys(scripts).length
           if (Object.keys(scripts).length > 0) {
             await supabase.from("creative_briefs").update({
               adapted_script: scripts,
@@ -1031,6 +1033,7 @@ El brief debe ser accionable: un editor o diseñador que lo lea debe poder empez
     }
 
     revalidateProject(brief.project_id)
+    if (!parsed) return { error: adaptedCount ? `${briefError} Los guiones de ${adaptedCount} video${adaptedCount === 1 ? "" : "s"} sí se tropicalizaron.` : briefError! }
     return parsed
   } catch (e) {
     console.error("generateBriefContent failed:", e)
@@ -1321,15 +1324,7 @@ async function generateCopyText(prompt: string): Promise<{ hook: string; copy: s
 Responde ÚNICAMENTE con un JSON válido: {"hook": "...", "copy": "...", "cta": "..."}. Sin markdown, sin texto adicional.`,
   })
 
-  const text = message.content[0].type === "text" ? message.content[0].text : ""
-  let parsed: { hook?: string; copy?: string; cta?: string }
-  try {
-    parsed = JSON.parse(text)
-  } catch {
-    const match = text.match(/\{[\s\S]*\}/)
-    if (!match) throw new Error("AI returned invalid JSON")
-    parsed = JSON.parse(match[0])
-  }
+  const parsed = parseAiJson<{ hook?: string; copy?: string; cta?: string }>(message, "generateCopyText")
   return { hook: parsed.hook ?? "", copy: parsed.copy ?? "", cta: parsed.cta ?? "" }
 }
 
