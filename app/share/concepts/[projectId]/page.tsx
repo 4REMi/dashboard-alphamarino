@@ -15,6 +15,16 @@ const FUNNEL_LABELS: Record<string, string> = {
   BOF: "Audiencia caliente",
 }
 
+function resultLabel(type: string | null): string {
+  if (!type) return "Resultados"
+  if (type.includes("messaging")) return "Conversaciones"
+  if (type.includes("lead")) return "Leads"
+  if (type.includes("purchase")) return "Compras"
+  if (type.includes("link_click")) return "Clics"
+  if (type.includes("registration")) return "Registros"
+  return "Resultados"
+}
+
 export default async function ShareConceptsPage({ params }: Props) {
   const { projectId } = await params
   const supabase = createAdminClient()
@@ -36,7 +46,7 @@ export default async function ShareConceptsPage({ params }: Props) {
     supabase
       .from("creative_assets")
       .select(`id, format, platform, asset_url, file_path, thumbnail_path, file_type, brief_id,
-               client_status, client_feedback, concept_id, created_at`)
+               client_status, client_feedback, concept_id, created_at, revises_asset_id`)
       .eq("project_id", projectId)
       .eq("client_visible", true)
       .order("created_at", { ascending: false }),
@@ -47,13 +57,13 @@ export default async function ShareConceptsPage({ params }: Props) {
       .maybeSingle(),
     supabase
       .from("creative_briefs")
-      .select("id, concept_id, adapted_script, script_reviews, created_at")
+      .select("id, concept_id, title, adapted_script, script_reviews, script_titles, created_at")
       .eq("project_id", projectId)
       .not("adapted_script", "is", null)
       .order("created_at", { ascending: true }),
     supabase
       .from("paid_media_cycles")
-      .select("id, start_date, end_date, is_active")
+      .select("id, start_date, end_date, is_active, real_spend, real_results, roas_real, cpa_real")
       .eq("project_id", projectId),
   ])
 
@@ -90,7 +100,8 @@ export default async function ShareConceptsPage({ params }: Props) {
   const brandLines = [...(brandBrain?.brand_lines ?? [])].sort((a, b) => a.position - b.position)
 
   // ── Normalize scripts (guiones) — one per script, keyed independently ──
-  type ScriptEntry = { conceptId: string; briefId: string; scriptKey: string; lines: AdCloneLine[]; client_status: string | null; client_feedback: string | null; createdAt: string }
+  type ScriptEntry = { conceptId: string; briefId: string; scriptKey: string; title: string | null; lines: AdCloneLine[]; client_status: string | null; client_feedback: string | null; createdAt: string }
+  const briefTitle = new Map(briefsData.map((b) => [b.id as string, (b.title as string | null) ?? null]))
   const scriptEntries: ScriptEntry[] = []
   for (const b of briefsData) {
     const raw = b.adapted_script as Record<string, AdCloneLine[]> | AdCloneLine[] | null
@@ -99,13 +110,13 @@ export default async function ShareConceptsPage({ params }: Props) {
     if (Array.isArray(raw)) {
       if (raw.length > 0) {
         const r = reviews["_single"]
-        scriptEntries.push({ conceptId: b.concept_id, briefId: b.id, scriptKey: "_single", lines: raw, client_status: r?.client_status ?? null, client_feedback: r?.client_feedback ?? null, createdAt: b.created_at })
+        scriptEntries.push({ conceptId: b.concept_id, briefId: b.id, scriptKey: "_single", title: (b.script_titles as Record<string, string> | null)?.["_single"] ?? null, lines: raw, client_status: r?.client_status ?? null, client_feedback: r?.client_feedback ?? null, createdAt: b.created_at })
       }
     } else {
       Object.entries(raw).forEach(([adId, lines]) => {
         if (lines?.length) {
           const r = reviews[adId]
-          scriptEntries.push({ conceptId: b.concept_id, briefId: b.id, scriptKey: adId, lines, client_status: r?.client_status ?? null, client_feedback: r?.client_feedback ?? null, createdAt: b.created_at })
+          scriptEntries.push({ conceptId: b.concept_id, briefId: b.id, scriptKey: adId, title: (b.script_titles as Record<string, string> | null)?.[adId] ?? null, lines, client_status: r?.client_status ?? null, client_feedback: r?.client_feedback ?? null, createdAt: b.created_at })
         }
       })
     }
@@ -144,19 +155,19 @@ export default async function ShareConceptsPage({ params }: Props) {
       : null
 
     const piezas: Pieza[] = [
-      ...scripts.map((s): Pieza => ({
+      ...scripts.map((s, i): Pieza => ({
         id: `${s.briefId}:${s.scriptKey}`,
         briefId: s.briefId,
         scriptKey: s.scriptKey,
         tipo: "guion",
-        titulo: `Guion VO — "${c.name || "Sin título"}"`,
+        titulo: s.title || `Guion ${scripts.length > 1 ? `opción ${i + 1}` : "VO"}`,
         sub: "Paso 1 · se produce el video al aprobarlo",
         guion: s.lines.map((l, i) => ({ n: i + 1, t: l.adapted })),
         client_status: s.client_status,
         client_feedback: s.client_feedback,
         createdAt: s.createdAt,
       })),
-      ...conceptAssets.map((a): Pieza => {
+      ...conceptAssets.map((a, i): Pieza => {
         const isVideo = a.file_type === "video" || /video/i.test(a.format ?? "")
         const meta = [a.platform, a.format].filter(Boolean).join(" · ")
         const mediaUrl = a.file_path
@@ -174,7 +185,9 @@ export default async function ShareConceptsPage({ params }: Props) {
           id: a.id,
           assetId: a.id,
           tipo: isVideo ? "video" : "imagen",
-          titulo: a.format || (isVideo ? "Video" : "Imagen"),
+          // Antes "Video / Video": ahora el brief + número de pieza.
+          titulo: `${(a.brief_id && briefTitle.get(a.brief_id)) || (isVideo ? "Video" : "Imagen")} · pieza ${conceptAssets.length - i}`,
+          nuevaVersion: !!a.revises_asset_id,
           sub: meta || (isVideo ? "Video" : "Imagen estática"),
           mediaUrl: mediaUrl ?? null,
           thumbUrl: thumbUrl ?? null,
@@ -228,10 +241,41 @@ export default async function ShareConceptsPage({ params }: Props) {
       : []),
   ].filter((s) => s.conceptos.length > 0)
 
+  // Métricas del ciclo actual en Meta (el cliente sí las ve).
+  let metricas: PortalData["metricas"] = null
+  if (activeCycle) {
+    const [{ data: stats }, { data: integ }] = await Promise.all([
+      supabase.from("meta_ad_daily_stats").select("spend, results, results_type, impressions, link_clicks").eq("project_id", projectId).eq("cycle_id", activeCycle.id).range(0, 19999),
+      supabase.from("project_integrations").select("currency").eq("project_id", projectId).eq("platform", "meta").maybeSingle(),
+    ])
+    if (stats?.length) {
+      const sum = (k: "spend" | "results" | "impressions" | "link_clicks") => stats.reduce((n, r) => n + Number(r[k] ?? 0), 0)
+      const spend = sum("spend"), results = sum("results")
+      const type = stats.find((r) => r.results_type)?.results_type ?? null
+      metricas = {
+        inversion: spend,
+        resultados: results,
+        resultadoLabel: resultLabel(type),
+        costoPorResultado: results > 0 ? spend / results : null,
+        impresiones: sum("impressions"),
+        clics: sum("link_clicks"),
+        moneda: (integ?.currency as string | null) ?? null,
+      }
+    }
+  }
+
+  const today = new Date().toISOString().slice(0, 10)
   const data: PortalData = {
     clienteNombre: clientName ?? projectName,
     logoUrl,
     cicloActualLabel: activeCycle ? formatCycleRange(activeCycle.start_date, activeCycle.end_date) : null,
+    diasRestantes: activeCycle ? Math.max(0, Math.round((Date.parse(activeCycle.end_date) - Date.parse(today)) / 86_400_000)) : null,
+    metricas,
+    // Resumen manual (multicanal) de cada ciclo pasado, por etiqueta.
+    ciclosResumen: Object.fromEntries(cycles.filter((c) => !c.is_active).map((c) => [formatCycleRange(c.start_date, c.end_date), {
+      inversion: c.real_spend as number | null, resultados: c.real_results as number | null,
+      roas: c.roas_real as number | null, cpa: c.cpa_real as number | null, inicio: c.start_date as string,
+    }])),
     servicios,
   }
 

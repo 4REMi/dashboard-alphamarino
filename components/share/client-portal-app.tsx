@@ -2,9 +2,9 @@
 
 import { useMemo, useState, useTransition } from "react"
 import { submitClientReview, submitBriefClientReview } from "@/lib/actions/client-review"
-import { PiezaCard } from "@/components/share/pieza-card"
 import { EstrategiaPanel } from "@/components/share/estrategia-panel"
 import { MediaLightbox } from "@/components/share/media-lightbox"
+import { HomeView, Archive, ConceptPieces } from "@/components/share/portal-parts"
 
 // ─────────────────────────────────────────────────────────────────
 // Types
@@ -26,6 +26,8 @@ export interface Pieza {
   client_status:   string | null
   client_feedback: string | null
   createdAt:       string
+  // Reemplaza a una versión anterior (el cliente pidió cambios).
+  nuevaVersion?:   boolean
 }
 
 export interface Concepto {
@@ -62,6 +64,17 @@ export interface PortalData {
   clienteNombre:    string
   logoUrl:          string | null
   cicloActualLabel: string | null
+  diasRestantes:    number | null
+  metricas: {
+    inversion: number
+    resultados: number
+    resultadoLabel: string
+    costoPorResultado: number | null
+    impresiones: number
+    clics: number
+    moneda: string | null
+  } | null
+  ciclosResumen: Record<string, { inversion: number | null; resultados: number | null; roas: number | null; cpa: number | null; inicio: string }>
   servicios:        Servicio[]
 }
 
@@ -130,6 +143,14 @@ export function ClientPortalApp({ data }: { data: PortalData }) {
           if (getStatus(p) === "pendiente") out.push({ pieza: p, servicio: s, concepto: c })
     return out
   }, [data, overrides])
+
+  const activeEntries = useMemo(() => {
+    const out: { pieza: Pieza; servicio: Servicio; concepto: Concepto }[] = []
+    for (const s of data.servicios)
+      for (const c of s.conceptos.filter((x) => x.vigencia !== "archivado"))
+        for (const p of c.piezas) out.push({ pieza: p, servicio: s, concepto: c })
+    return out
+  }, [data])
 
   function findPieza(id: string) {
     for (const s of data.servicios)
@@ -206,7 +227,7 @@ export function ClientPortalApp({ data }: { data: PortalData }) {
           data={data} screen={screen} setScreen={setScreen}
           servicio={servicio} concepto={concepto}
           servicioId={servicioId} setServicioId={setServicioId}
-          abrirConcepto={abrirConcepto}
+          abrirConcepto={abrirConcepto} activeEntries={activeEntries}
           tabEstrategia={tabEstrategia} setTab={setTab}
           estrategiaOpen={estrategiaOpen} setEstrategiaOpen={setEstrategiaOpen}
           archivoOpenIds={archivoOpenIds} setArchivoOpenIds={setArchivoOpenIds}
@@ -225,7 +246,7 @@ export function ClientPortalApp({ data }: { data: PortalData }) {
         <DesktopApp
           data={data} servicio={servicio} concepto={concepto}
           setServicioId={setServicioId}
-          abrirConcepto={abrirConcepto}
+          abrirConcepto={abrirConcepto} irInicio={() => setConceptoId(null)} activeEntries={activeEntries}
           tabEstrategia={tabEstrategia} setTab={setTab}
           archivoOpenIds={archivoOpenIds} setArchivoOpenIds={setArchivoOpenIds}
           getStatus={getStatus} getFeedback={getFeedback}
@@ -313,7 +334,7 @@ function MobileApp(props: any) {
     return (
       <div className="min-h-screen flex flex-col">
         <div className="px-5 py-3 flex items-center gap-3 border-b border-slate-200/60 bg-white/85 backdrop-blur-sm sticky top-0 z-10">
-          <button onClick={() => setScreen("servicio")} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 text-[15px]">‹</button>
+          <button onClick={() => setScreen("servicios")} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 text-[15px]">‹</button>
           <div className="min-w-0">
             <div className="text-[10px] text-slate-500">{servicio?.nombre} /</div>
             <div className="text-sm font-bold text-slate-900 truncate">{concepto.nombre || "Concepto"}</div>
@@ -330,18 +351,11 @@ function MobileApp(props: any) {
               <EstrategiaPanel concepto={concepto} tab={tabEstrategia} setTab={setTab} compact />
             )}
           </div>
-          {concepto.piezas.map((p: Pieza) => (
-            <PiezaCard
-              key={p.id} pieza={p} readonly={concepto.vigencia === "archivado"}
-              status={getStatus(p)} feedback={getFeedback(p)}
-              feedbackOpen={feedbackFor === p.id} feedbackText={feedbackText}
-              onFeedbackChange={setFeedbackText}
-              onPedirCambios={() => { setFeedbackFor(p.id); setFeedbackText("") }}
-              onCancelar={() => { setFeedbackFor(null); setFeedbackText("") }}
-              onEnviarCambios={() => enviarCambios(p, feedbackText)}
-              onAprobar={() => aprobar(p)}
-            />
-          ))}
+          <ConceptPieces
+            concepto={concepto} getStatus={getStatus} getFeedback={getFeedback}
+            feedbackFor={feedbackFor} setFeedbackFor={setFeedbackFor} feedbackText={feedbackText} setFeedbackText={setFeedbackText}
+            aprobar={aprobar} enviarCambios={enviarCambios}
+          />
         </div>
       </div>
     )
@@ -416,7 +430,7 @@ function MobileApp(props: any) {
     )
   }
 
-  // servicios (home)
+  // Portada: resumen del ciclo (igual que en escritorio) + archivo por ciclo.
   return (
     <div className="min-h-screen flex flex-col">
       <div className="px-5 py-3.5 flex items-center gap-2.5 border-b border-slate-200/60 bg-white/85 backdrop-blur-sm sticky top-0 z-10">
@@ -424,48 +438,11 @@ function MobileApp(props: any) {
         <span className="text-[13px] font-semibold text-slate-900">Alpha Marino</span>
         <span className="ml-auto text-[10.5px] text-slate-500">{data.clienteNombre}</span>
       </div>
-      <div className="flex-1 px-5 py-5.5 flex flex-col gap-4">
-        <div>
-          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500 mb-1.5">Tu publicidad, por servicio</div>
-          <div className="text-[20px] font-semibold text-slate-900 leading-tight" style={{ fontFamily: "'Unbounded', sans-serif" }}>¿Qué servicio quieres revisar?</div>
+      <div className="flex-1 px-5 py-5 flex flex-col gap-6">
+        <HomeView data={data} entries={props.activeEntries} getStatus={getStatus} getFeedback={getFeedback} abrirConcepto={abrirConcepto} irQuick={irQuick} />
+        <div className="bg-white border border-slate-200 rounded-2xl p-2">
+          <Archive data={data} abrirConcepto={abrirConcepto} />
         </div>
-        {data.servicios.map((s: Servicio) => {
-          const activos = s.conceptos.filter((c) => c.vigencia !== "archivado")
-          const piezas = activos.flatMap((c) => c.piezas)
-          const kReal = { pend: piezas.filter((p: Pieza) => getStatus(p) === "pendiente").length, apr: piezas.filter((p: Pieza) => getStatus(p) === "aprobada").length, total: piezas.length }
-          const pct = kReal.total ? Math.round((kReal.apr / kReal.total) * 100) : 0
-          return (
-            <button key={s.id} onClick={() => { setServicioId(s.id); setScreen("servicio") }} className="relative bg-white border border-slate-200 rounded-[20px] p-4.5 shadow-[0_1px_3px_rgba(15,23,42,0.05)] flex flex-col gap-3 text-left">
-              {kReal.pend > 0 ? (
-                <span className="absolute top-4.5 right-4 text-[10px] font-bold text-[#b45309] bg-[#fffbeb] border border-[#fde68a] px-2.5 py-0.5 rounded-full">{kReal.pend} por revisar</span>
-              ) : (
-                <span className="absolute top-4.5 right-4 text-[10px] font-bold text-[#047857] bg-[#ecfdf5] px-2.5 py-0.5 rounded-full">✓ Al día</span>
-              )}
-              <span className="w-11 h-11 rounded-[13px] flex items-center justify-center text-xl" style={{ background: s.color ? `${s.color}1a` : "#f1f5f9" }}>
-                <span className="w-2.5 h-2.5 rounded-full" style={{ background: s.color ?? "#94a3b8" }} />
-              </span>
-              <div>
-                <div className="text-[15px] font-bold tracking-tight text-slate-900">{s.nombre}</div>
-                <div className="text-[11px] text-slate-500 mt-0.5">{activos.length} concepto{activos.length !== 1 ? "s" : ""} activo{activos.length !== 1 ? "s" : ""} · {kReal.total} piezas</div>
-              </div>
-              <div className="flex items-center gap-2.5">
-                <div className="flex-1 h-[5px] rounded-full bg-[#e8edf4] overflow-hidden">
-                  <div className="h-full rounded-full bg-[#10b981] transition-all" style={{ width: `${pct}%` }} />
-                </div>
-                <span className="text-[10.5px] text-slate-500 tabular-nums">{kReal.apr}/{kReal.total} aprobadas</span>
-              </div>
-            </button>
-          )
-        })}
-        {allPending.length > 0 && (
-          <button onClick={irQuick} className="border border-dashed border-[#d1dce8] rounded-[16px] px-4 py-3.5 flex items-center gap-3 text-left">
-            <span className="text-base">⚡</span>
-            <div className="flex-1 text-[11.5px] leading-relaxed text-slate-500">
-              ¿Poco tiempo? Revisa las <strong className="text-slate-900">{allPending.length} piezas pendientes</strong> de corrido.
-            </div>
-            <span className="text-[11px] font-semibold text-blue-600 shrink-0">Revisar →</span>
-          </button>
-        )}
       </div>
     </div>
   )
@@ -657,8 +634,8 @@ function QuickScreen(props: any) {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function DesktopApp(props: any) {
-  const { data, servicio, concepto, setServicioId, abrirConcepto,
-    tabEstrategia, setTab, archivoOpenIds, setArchivoOpenIds,
+  const { data, servicio, concepto, abrirConcepto, irInicio, activeEntries,
+    tabEstrategia, setTab,
     getStatus, getFeedback, feedbackFor, setFeedbackFor, feedbackText, setFeedbackText,
     aprobar, enviarCambios, allPending, irQuick, progresoPct, gk,
     quickModalOpen, cerrarQuick, quickQueue, quickIdx, quickNext, findPieza } = props
@@ -671,12 +648,13 @@ function DesktopApp(props: any) {
         <span className="text-sm font-semibold tracking-tight text-slate-900">Alpha Marino</span>
         <span className="text-slate-300">·</span>
         <span className="text-xs text-slate-500">{data.clienteNombre} — Portal del cliente</span>
+        {data.cicloActualLabel && <span className="text-[10.5px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">Ciclo {data.cicloActualLabel}</span>}
         <div className="ml-auto flex items-center gap-3.5">
           <div className="flex items-center gap-2">
             <div className="w-[120px] h-[5px] rounded-full bg-[#e8edf4] overflow-hidden">
-              <div className="h-full rounded-full bg-[#10b981] transition-all" style={{ width: `${progresoPct}%` }} />
+              <div className="h-full rounded-full bg-[#10b981] transition-all" style={{ width: `${gk.total ? (gk.apr / gk.total) * 100 : 0}%` }} />
             </div>
-            <span className="text-[11px] text-slate-500 tabular-nums">{gk.apr + gk.cam}/{gk.total} revisadas</span>
+            <span className="text-[11px] text-slate-500 tabular-nums">{gk.apr}/{gk.total} aprobadas{gk.cam ? ` · ${gk.cam} en ajustes` : ""}</span>
           </div>
           {allPending.length > 0 && (
             <button onClick={irQuick} className="text-xs font-semibold border border-[#fde68a] rounded-[10px] px-3.5 py-2 bg-[#fffbeb] text-[#78350f] flex items-center gap-1.5">
@@ -688,70 +666,39 @@ function DesktopApp(props: any) {
 
       {/* Body */}
       <div className="flex-1 grid" style={{ gridTemplateColumns: "280px 1fr" }}>
-        {/* Sidebar */}
+        {/* Sidebar: resumen, líneas con conceptos del ciclo, archivo por ciclo */}
         <div className="border-r border-slate-200/80 bg-white overflow-y-auto py-5 px-3.5 flex flex-col gap-5">
+          <button onClick={irInicio} className={`flex items-center gap-2 px-2.5 py-2 rounded-[9px] text-left ${!concepto ? "bg-[#0f172a] text-white" : "text-slate-700 hover:bg-slate-100"}`}>
+            <span className="text-[12px]">◎</span>
+            <span className="flex-1 text-[12px] font-semibold">Resumen del ciclo</span>
+            {allPending.length > 0 && <span className="text-[9.5px] font-bold text-[#b45309] bg-[#fffbeb] border border-[#fde68a] px-1.5 py-0.5 rounded-full">{allPending.length}</span>}
+          </button>
           {data.servicios.map((s: Servicio) => {
             const activos = s.conceptos.filter((c) => c.vigencia !== "archivado")
-            const archivados = s.conceptos.filter((c) => c.vigencia === "archivado")
+            if (activos.length === 0) return null
             const pend = activos.flatMap((c) => c.piezas).filter((p) => getStatus(p) === "pendiente").length
-            const archivoOpen = archivoOpenIds.has(s.id)
-            const mesesMap = new Map<string, Concepto[]>()
-            for (const c of archivados) {
-              const key = c.mes ?? ""
-              if (!mesesMap.has(key)) mesesMap.set(key, [])
-              mesesMap.get(key)!.push(c)
-            }
             return (
               <div key={s.id} className="flex flex-col gap-1">
-                <div className="flex items-center gap-2 px-2.5 pb-2">
+                <div className="flex items-center gap-2 px-2.5 pb-1">
                   <span className="w-2 h-2 rounded-full shrink-0" style={{ background: s.color ?? "#94a3b8" }} />
-                  <span className="text-xs font-bold text-slate-900 flex-1">{s.nombre}</span>
-                  {pend > 0 ? (
-                    <span className="text-[9.5px] font-bold text-[#b45309] bg-[#fffbeb] border border-[#fde68a] px-1.5 py-0.5 rounded-full">{pend}</span>
-                  ) : (
-                    <span className="text-[10px] text-[#047857]">✓</span>
-                  )}
+                  <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500 flex-1">{s.nombre}</span>
+                  {pend > 0 && <span className="text-[9.5px] font-bold text-[#b45309] bg-[#fffbeb] border border-[#fde68a] px-1.5 py-0.5 rounded-full">{pend}</span>}
                 </div>
                 {activos.map((c: Concepto) => {
                   const selected = concepto?.id === c.id
-                  const hasPend = c.piezas.some((p) => getStatus(p) === "pendiente")
+                  const st = c.piezas.some((p) => getStatus(p) === "pendiente") ? "#f59e0b" : c.piezas.some((p) => getStatus(p) === "cambios") ? "#ef4444" : c.piezas.length ? "#10b981" : "#cbd5e1"
                   return (
                     <button key={c.id} onClick={() => abrirConcepto(s, c)} className={`flex items-center gap-2 px-2.5 py-2 rounded-[9px] text-left ${selected ? "bg-[#0f172a] text-white" : "text-slate-700 hover:bg-slate-100"}`}>
-                      <span className="text-[11px] shrink-0">{c.vigencia === "evergreen" ? "♾️" : "•"}</span>
+                      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: st }} />
                       <span className="flex-1 min-w-0 text-[11.5px] font-medium truncate">{c.nombre}</span>
-                      {hasPend && <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />}
+                      {c.vigencia === "evergreen" && <span className="text-[10px]">⭐</span>}
                     </button>
                   )
                 })}
-                {archivados.length > 0 && (
-                  <>
-                    <button
-                      onClick={() => setArchivoOpenIds((set: Set<string>) => { const n = new Set(set); n.has(s.id) ? n.delete(s.id) : n.add(s.id); return n })}
-                      className="flex items-center gap-2 px-2.5 py-2 rounded-[9px] text-slate-400 hover:bg-slate-50 text-left"
-                    >
-                      <span className="text-[11px]">🗂️</span>
-                      <span className="flex-1 text-[11px] font-medium">Meses anteriores</span>
-                      <span className="text-[10px]">{archivoOpen ? "⌃" : "⌄"}</span>
-                    </button>
-                    {archivoOpen && [...mesesMap.entries()].map(([mes, cs]) => (
-                      <div key={mes}>
-                        <div className="text-[9px] font-bold uppercase tracking-wider text-slate-300 px-2.5 pt-1.5 pb-0.5">{mes}</div>
-                        {cs.map((c) => {
-                          const selected = concepto?.id === c.id
-                          return (
-                            <button key={c.id} onClick={() => abrirConcepto(s, c)} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-[9px] text-left w-full ${selected ? "bg-[#0f172a] text-white" : "text-slate-700 hover:bg-slate-100"}`}>
-                              <span className="flex-1 min-w-0 text-[11px] truncate">{c.nombre}</span>
-                              <span className="text-[9px] opacity-60">solo lectura</span>
-                            </button>
-                          )
-                        })}
-                      </div>
-                    ))}
-                  </>
-                )}
               </div>
             )
           })}
+          <Archive data={data} abrirConcepto={abrirConcepto} selectedId={concepto?.id ?? null} />
         </div>
 
         {/* Main */}
@@ -759,6 +706,7 @@ function DesktopApp(props: any) {
           {concepto ? (
             <div className="w-full max-w-[1600px] flex flex-col gap-4.5">
               <div>
+                <button onClick={irInicio} className="text-[11px] text-slate-500 hover:text-slate-900 mb-2">‹ Resumen del ciclo</button>
                 <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 mb-1.5">{servicio.nombre}</div>
                 <div className="flex items-center gap-3 flex-wrap">
                   <span className="text-[22px] font-semibold tracking-tight text-slate-900" style={{ fontFamily: "'Unbounded', sans-serif" }}>{concepto.nombre}</span>
@@ -768,30 +716,21 @@ function DesktopApp(props: any) {
               </div>
               <VigenciaBanner concepto={concepto} />
 
-              <div className="grid gap-6 items-start" style={{ gridTemplateColumns: "minmax(0,1fr) 360px" }}>
-                <div className="flex flex-col gap-4 min-w-0">
-                  {concepto.piezas.map((p: Pieza) => (
-                    <PiezaCard
-                      key={p.id} pieza={p} readonly={concepto.vigencia === "archivado"}
-                      status={getStatus(p)} feedback={getFeedback(p)}
-                      feedbackOpen={feedbackFor === p.id} feedbackText={feedbackText}
-                      onFeedbackChange={setFeedbackText}
-                      onPedirCambios={() => { setFeedbackFor(p.id); setFeedbackText("") }}
-                      onCancelar={() => { setFeedbackFor(null); setFeedbackText("") }}
-                      onEnviarCambios={() => enviarCambios(p, feedbackText)}
-                      onAprobar={() => aprobar(p)}
-                      dense
-                    />
-                  ))}
+              <div className="grid gap-6 items-start" style={{ gridTemplateColumns: "minmax(0,1fr) 340px" }}>
+                <div className="min-w-0">
+                  <ConceptPieces
+                    concepto={concepto} getStatus={getStatus} getFeedback={getFeedback}
+                    feedbackFor={feedbackFor} setFeedbackFor={setFeedbackFor} feedbackText={feedbackText} setFeedbackText={setFeedbackText}
+                    aprobar={aprobar} enviarCambios={enviarCambios}
+                  />
                 </div>
-
                 <div className="sticky top-0">
                   <EstrategiaPanel concepto={concepto} tab={tabEstrategia} setTab={setTab} />
                 </div>
               </div>
             </div>
           ) : (
-            <div className="h-40 flex items-center justify-center text-sm text-slate-400">Selecciona un concepto</div>
+            <HomeView data={data} entries={activeEntries} getStatus={getStatus} getFeedback={getFeedback} abrirConcepto={abrirConcepto} irQuick={irQuick} />
           )}
         </div>
       </div>

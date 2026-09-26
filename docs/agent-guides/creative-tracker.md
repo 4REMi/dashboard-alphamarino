@@ -23,6 +23,26 @@ entre sí:
 - **`verdict`** — llamada de desempeño post-lanzamiento (Winner/Scale/Iterate/
   Archive), admin/subadmin only.
 
+## Portal del cliente (`/share/concepts/[projectId]`)
+
+Rediseño 2026-09-26 (`components/share/client-portal-app.tsx` + `portal-parts.tsx`):
+- **Portada = resumen del ciclo** (escritorio y celular): fechas y días restantes,
+  **métricas de Meta del ciclo** (inversión, resultados según el objetivo, costo por
+  resultado, impresiones, clics — el cliente sí las ve), barra de aprobadas / en
+  ajustes / pendientes, tres columnas "Te toca revisar" (ámbar), "El equipo está
+  ajustando" (rojo, con su comentario recortado) y "Aprobado" (verde, galería), y
+  tarjetas de los conceptos del ciclo.
+- **Menú**: "Resumen del ciclo", solo líneas con conceptos del ciclo (punto de color
+  por concepto según su estado) y un único **"Ciclos anteriores"** agrupado por
+  ciclo, con el resumen manual (inversión/resultados) si existe.
+- **Concepto**: tira del flujo (Guiones x/y → Piezas x/y · n en ajustes); piezas
+  pendientes completas arriba; "en ajustes" y "aprobado" colapsados (aprobado en
+  cuadrícula 9:16 con lightbox; guiones aprobados como una línea). El panel de
+  estrategia se queda como estaba.
+- Nombres de pieza: brief + número de pieza (antes "Video / Video"); guiones con su
+  título. Aún no se muestra qué piezas están publicadas en Meta (pendiente de decidir).
+- Pendiente a futuro: vista del mapa de relaciones para el cliente.
+
 ## Ver/editar guiones desde el concepto
 
 En el modal del concepto, las pastillas "Guión #n · estado" (y el feedback del
