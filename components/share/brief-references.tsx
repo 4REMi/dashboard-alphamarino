@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { updateBriefScript, updateScriptTitle, deleteBriefReference, autoApproveBriefScripts } from "@/lib/actions/creatives"
 import { CopyScriptButton } from "@/components/share/copy-script-button"
 import { cn } from "@/lib/utils"
-import { Pencil, Check, X, Trash2, BadgeCheck } from "lucide-react"
+import { Pencil, Check, X, Trash2, BadgeCheck, ChevronLeft, ChevronRight } from "lucide-react"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
 import type { AdCloneLine } from "@/lib/types"
 
@@ -20,10 +20,11 @@ interface Reference {
   clientFeedback?: string | null
 }
 
-const CLIENT_STATUS_STYLE: Record<string, { label: string; className: string }> = {
-  pending_review:    { label: "Pendiente de revisión", className: "bg-amber-50 text-amber-700" },
-  approved:          { label: "✓ Aprobado por el cliente", className: "bg-emerald-50 text-emerald-700" },
-  changes_requested: { label: "Cambios pedidos por el cliente", className: "bg-sky-50 text-sky-700" },
+// Mismo código de color del dashboard: verde aprobado, rojo cambios, ámbar pendiente.
+const CLIENT_STATUS_STYLE: Record<string, { label: string; short: string; className: string; dot: string }> = {
+  pending_review:    { label: "Pendiente de revisión", short: "Pendiente", className: "bg-amber-50 text-amber-700", dot: "bg-amber-400" },
+  approved:          { label: "Aprobado por el cliente", short: "Aprobado", className: "bg-emerald-50 text-emerald-700", dot: "bg-emerald-500" },
+  changes_requested: { label: "Cambios pedidos por el cliente", short: "Cambios pedidos", className: "bg-red-50 text-red-700", dot: "bg-red-500" },
 }
 
 interface Props {
@@ -33,23 +34,23 @@ interface Props {
   editable?: boolean
 }
 
+// Vista maestro-detalle: una lista compacta de referencias (miniatura,
+// estado con color, líneas) y UNA referencia en grande — video fijo a la
+// izquierda, guion a todo lo ancho a la derecha. Antes: tarjetas de media
+// columna con video gigante arriba y el guion en dos columnas angostas
+// (~8,800 px de alto con 6 referencias). El original solo aparece en modo
+// "Comparar".
 export function BriefReferences({ references, briefId, projectId, editable = false }: Props) {
-  // Independently toggleable, open by default — a designer/editor needs to
-  // compare multiple references at once on desktop, not click through an
-  // accordion one at a time. Collapsing one just hides that one panel.
-  const [closedIds, setClosedIds] = useState<Set<string>>(new Set())
+  const [selectedId, setSelectedId] = useState<string | null>(references[0]?.id ?? null)
+  const [compare, setCompare] = useState(false)
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
   const router = useRouter()
+  const canEdit = editable && !!briefId && !!projectId
 
-  function toggle(id: string) {
-    setClosedIds((prev) => {
-      const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
-      return next
-    })
-  }
+  const idx = Math.max(0, references.findIndex((r) => r.id === selectedId))
+  const ref = references[idx]
 
   function saveRename(scriptKey: string, title: string) {
     if (!briefId || !projectId) return
@@ -65,6 +66,7 @@ export function BriefReferences({ references, briefId, projectId, editable = fal
     startTransition(async () => {
       await deleteBriefReference(briefId, projectId, referenceKey)
       setDeletingId(null)
+      setSelectedId(references.find((r) => r.id !== referenceKey)?.id ?? null)
       router.refresh()
     })
   }
@@ -77,293 +79,218 @@ export function BriefReferences({ references, briefId, projectId, editable = fal
     })
   }
 
-  // Wide desktops have room to compare references side by side instead of
-  // scrolling through one long column — grid kicks in only with 2+ refs.
+  const counts = {
+    approved: references.filter((r) => r.clientStatus === "approved").length,
+    changes: references.filter((r) => r.clientStatus === "changes_requested").length,
+    pending: references.filter((r) => r.script?.length && r.clientStatus !== "approved" && r.clientStatus !== "changes_requested").length,
+  }
+
+  if (!ref) return null
+  const isVideo = ref.type === "video"
+  const isText = ref.type === "text"
+  const hasScript = (isVideo || isText) && !!ref.script?.length
+  const hasOriginal = !!ref.script?.some((l) => l.original?.trim())
+
   return (
-    <div className="flex flex-col gap-3">
-      {editable && briefId && projectId && references.some((r) => r.script && r.script.length > 0) && (
-        <div className="flex items-center justify-end">
-          <button
-            type="button"
-            disabled={isPending}
-            onClick={autoApproveAll}
-            title="Marca todos los guiones como aprobados sin pasar por revisión del cliente — para proyectos que no reciben enlace de cliente"
-            className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 transition-colors"
-          >
-            <BadgeCheck className="w-3.5 h-3.5" />
-            Aprobar automáticamente
+    <div className="space-y-3">
+      {/* Resumen + acciones */}
+      <div className="flex items-center gap-2 flex-wrap text-xs">
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 mr-2">Referencias ({references.length})</p>
+        {counts.approved > 0 && <StatusPill status="approved" text={`${counts.approved} aprobada${counts.approved === 1 ? "" : "s"}`} />}
+        {counts.changes > 0 && <StatusPill status="changes_requested" text={`${counts.changes} con cambios`} />}
+        {counts.pending > 0 && <StatusPill status="pending_review" text={`${counts.pending} pendiente${counts.pending === 1 ? "" : "s"}`} />}
+        {canEdit && references.some((r) => r.script?.length) && (
+          <button type="button" disabled={isPending} onClick={autoApproveAll}
+            title="Marca todos los guiones como aprobados sin pasar por el cliente — para proyectos sin enlace de cliente"
+            className="ml-auto flex items-center gap-1.5 font-medium px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50">
+            <BadgeCheck className="w-3.5 h-3.5" /> Aprobar automáticamente
           </button>
-        </div>
-      )}
-      <div className={cn(
-        "flex flex-col gap-3",
-        references.length > 1 && "xl:grid xl:grid-cols-2 xl:items-start"
-      )}>
-      {references.map((ref) => {
-        const isOpen = !closedIds.has(ref.id)
-        const isVideo = ref.type === "video"
-        const isText = ref.type === "text"
+        )}
+      </div>
 
-        return (
-          <div
-            key={ref.id}
-            className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)] transition-shadow hover:shadow-md"
-          >
-            {/* ── Collapsed header ── */}
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={() => toggle(ref.id)}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(ref.id) } }}
-              className="w-full flex items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-gray-50/60 cursor-pointer"
-            >
-              {/* Thumbnail */}
-              <div className="flex-shrink-0 w-14 h-14 rounded-xl overflow-hidden bg-gray-100 border border-gray-200">
-                {ref.thumbSrc ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={ref.thumbSrc}
-                    alt=""
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-gray-400">
-                    {isVideo ? (
-                      <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
-                        <path d="M8 5v14l11-7z" />
-                      </svg>
-                    ) : isText ? (
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
-                        <path d="M8 4h6l4 4v12a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z" />
-                        <path d="M9.5 12h5M9.5 15.5h5M9.5 8.5h2" />
-                      </svg>
-                    ) : (
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
-                        <rect x="3" y="3" width="18" height="18" rx="3" />
-                        <circle cx="8.5" cy="8.5" r="1.5" />
-                        <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
-                      </svg>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Info */}
-              <div className="flex-1 min-w-0">
-                {editable && briefId && projectId && renamingId === ref.id ? (
-                  <RenameField
-                    initial={ref.name}
-                    isPending={isPending}
-                    onCancel={() => setRenamingId(null)}
-                    onSave={(title) => saveRename(ref.id, title)}
-                  />
-                ) : (
-                  <div className="flex items-center gap-1.5 group/name">
-                    <p className="text-sm font-semibold text-gray-900 truncate">{ref.name}</p>
-                    {editable && briefId && projectId && (isVideo || isText) && (
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); setRenamingId(ref.id) }}
-                        className="opacity-0 group-hover/name:opacity-100 flex-shrink-0 text-gray-400 hover:text-gray-600 transition-opacity"
-                        title="Renombrar"
-                      >
-                        <Pencil className="w-3 h-3" />
-                      </button>
-                    )}
-                  </div>
-                )}
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span className={`text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded ${
-                    isVideo ? "bg-indigo-50 text-indigo-600" : isText ? "bg-violet-50 text-violet-600" : "bg-amber-50 text-amber-600"
-                  }`}>
-                    {isVideo ? "Video" : isText ? "Guión" : "Imagen"}
+      <div className="lg:grid lg:grid-cols-[220px_1fr] lg:gap-4 lg:items-start">
+        {/* Lista de referencias (horizontal en móvil) */}
+        <nav className="flex lg:flex-col gap-2 overflow-x-auto lg:overflow-visible pb-2 lg:pb-0 lg:sticky lg:top-[88px] mb-3 lg:mb-0">
+          {references.map((r, i) => {
+            const active = r.id === ref.id
+            const st = r.clientStatus ? CLIENT_STATUS_STYLE[r.clientStatus] : null
+            return (
+              <button key={r.id} type="button" onClick={() => { setSelectedId(r.id); setDeletingId(null); setRenamingId(null) }}
+                className={cn("flex items-center gap-2.5 p-2 rounded-xl border text-left transition-all flex-shrink-0 w-[220px] lg:w-auto",
+                  active ? "bg-white border-gray-900 shadow-sm" : "bg-white/60 border-gray-200 hover:bg-white hover:border-gray-300")}>
+                <span className="relative w-10 h-14 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
+                  {r.thumbSrc
+                    // eslint-disable-next-line @next/next/no-img-element
+                    ? <img src={r.thumbSrc} alt="" className="w-full h-full object-cover" />
+                    : <span className="w-full h-full flex items-center justify-center text-[10px] font-bold text-gray-400">{r.type === "text" ? "TXT" : "IMG"}</span>}
+                  {st && <span className={cn("absolute bottom-1 right-1 w-2.5 h-2.5 rounded-full ring-2 ring-white", st.dot)} />}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[10px] text-gray-400">{i + 1} · {r.type === "video" ? "Video" : r.type === "text" ? "Guion" : "Imagen"}</span>
+                  <span className="block text-xs font-semibold text-gray-900 truncate">{r.name}</span>
+                  <span className="block text-[10px] text-gray-500 truncate">
+                    {r.script?.length ? `${r.script.length} líneas` : "Sin guion"}{st ? ` · ${st.short}` : ""}
                   </span>
-                  {(isVideo || isText) && ref.script && ref.script.length > 0 && (
-                    <span className="text-[10px] text-gray-400">
-                      · {ref.script.length} líneas de guión
-                    </span>
+                </span>
+              </button>
+            )
+          })}
+        </nav>
+
+        {/* Referencia elegida */}
+        <article className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)] min-w-0">
+          <header className="px-5 py-3.5 border-b border-gray-100 flex items-center gap-3 flex-wrap">
+            <div className="flex-1 min-w-0">
+              {canEdit && renamingId === ref.id ? (
+                <RenameField initial={ref.name} isPending={isPending} onCancel={() => setRenamingId(null)} onSave={(t) => saveRename(ref.id, t)} />
+              ) : (
+                <div className="flex items-center gap-1.5 group/name">
+                  <h2 className="text-base font-semibold text-gray-900 truncate">{ref.name}</h2>
+                  {canEdit && (isVideo || isText) && (
+                    <button type="button" onClick={() => setRenamingId(ref.id)} title="Renombrar"
+                      className="opacity-0 group-hover/name:opacity-100 text-gray-400 hover:text-gray-600"><Pencil className="w-3.5 h-3.5" /></button>
                   )}
-                  {ref.clientStatus && CLIENT_STATUS_STYLE[ref.clientStatus] && (
-                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${CLIENT_STATUS_STYLE[ref.clientStatus].className}`}>
-                      {CLIENT_STATUS_STYLE[ref.clientStatus].label}
-                    </span>
+                </div>
+              )}
+              <div className="flex items-center gap-2 mt-0.5 text-[11px] text-gray-500">
+                <span>{idx + 1} de {references.length}</span>
+                {hasScript && <span>· {ref.script!.length} líneas</span>}
+                {ref.clientStatus && CLIENT_STATUS_STYLE[ref.clientStatus] && <StatusPill status={ref.clientStatus} />}
+              </div>
+            </div>
+            {hasScript && hasOriginal && (
+              <div className="flex items-center bg-gray-100 rounded-lg p-0.5 text-xs">
+                <button type="button" onClick={() => setCompare(false)} className={cn("px-2.5 py-1 rounded-md font-medium", !compare ? "bg-white shadow-sm text-gray-900" : "text-gray-500")}>Guion</button>
+                <button type="button" onClick={() => setCompare(true)} className={cn("px-2.5 py-1 rounded-md font-medium", compare ? "bg-white shadow-sm text-gray-900" : "text-gray-500")}>Comparar con original</button>
+              </div>
+            )}
+            <div className="flex items-center gap-1">
+              <button type="button" disabled={idx === 0} onClick={() => setSelectedId(references[idx - 1].id)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-30" title="Anterior"><ChevronLeft className="w-4 h-4" /></button>
+              <button type="button" disabled={idx === references.length - 1} onClick={() => setSelectedId(references[idx + 1].id)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-30" title="Siguiente"><ChevronRight className="w-4 h-4" /></button>
+            </div>
+            {canEdit && (deletingId === ref.id ? (
+              <div className="flex items-center gap-1">
+                <span className="text-[11px] text-gray-500">¿Eliminar?</span>
+                <button type="button" disabled={isPending} onClick={() => confirmDelete(ref.id)} className="p-1 rounded text-red-600 hover:bg-red-50"><Check className="w-3.5 h-3.5" /></button>
+                <button type="button" onClick={() => setDeletingId(null)} className="p-1 rounded text-gray-400 hover:bg-gray-100"><X className="w-3.5 h-3.5" /></button>
+              </div>
+            ) : (
+              <button type="button" onClick={() => setDeletingId(ref.id)} className="p-1.5 text-gray-300 hover:text-red-600" title="Eliminar esta referencia del brief"><Trash2 className="w-3.5 h-3.5" /></button>
+            ))}
+          </header>
+
+          {ref.clientStatus === "changes_requested" && ref.clientFeedback && (
+            <div className="px-5 py-3 bg-red-50 border-b border-red-100">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-red-600 mb-1">Cambios pedidos por el cliente</p>
+              <p className="text-sm text-red-900 leading-relaxed whitespace-pre-wrap">&quot;{ref.clientFeedback}&quot;</p>
+            </div>
+          )}
+
+          <div className={cn(!isText && (ref.videoSrc || ref.thumbSrc) && "md:grid md:grid-cols-[minmax(220px,300px)_1fr]")}>
+            {/* Media fija mientras se lee el guion */}
+            {!isText && (ref.videoSrc || ref.thumbSrc) && (
+              <div className="bg-gray-950 md:border-r border-gray-100">
+                <div className="md:sticky md:top-[88px] p-3 flex justify-center">
+                  {isVideo && ref.videoSrc ? (
+                    <video key={ref.id} controls preload="metadata" poster={ref.thumbSrc} className="w-full max-h-[70vh] rounded-lg object-contain bg-black">
+                      <source src={ref.videoSrc} />
+                    </video>
+                  ) : (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={ref.thumbSrc} alt={ref.name} className="w-full max-h-[70vh] rounded-lg object-contain" />
                   )}
                 </div>
               </div>
-
-              {/* Delete reference */}
-              {editable && briefId && projectId && (
-                deletingId === ref.id ? (
-                  <div className="flex items-center gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-                    <span className="text-[10px] text-gray-500">¿Eliminar?</span>
-                    <button
-                      type="button"
-                      disabled={isPending}
-                      onClick={() => confirmDelete(ref.id)}
-                      className="p-1 rounded text-red-600 hover:bg-red-50 disabled:opacity-50"
-                      title="Confirmar eliminación"
-                    >
-                      <Check className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDeletingId(null)}
-                      className="p-1 rounded text-gray-400 hover:bg-gray-100"
-                      title="Cancelar"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); setDeletingId(ref.id) }}
-                    className="flex-shrink-0 p-1 text-gray-300 hover:text-red-600 transition-colors"
-                    title="Eliminar esta referencia del brief"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                )
-              )}
-
-              {/* Chevron */}
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
-              >
-                <path d="m6 9 6 6 6-6" />
-              </svg>
-            </div>
-
-            {/* ── Expanded content ── */}
-            {isOpen && (
-              <div className="border-t border-gray-100">
-                {/* Media */}
-                {isVideo && ref.videoSrc ? (
-                  <div className="bg-black">
-                    <video
-                      controls
-                      preload="metadata"
-                      poster={ref.thumbSrc}
-                      className="w-full max-h-[500px] object-contain"
-                      style={{ display: "block" }}
-                    >
-                      <source src={ref.videoSrc} />
-                    </video>
-                  </div>
-                ) : ref.thumbSrc ? (
-                  <div className="bg-gray-50">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={ref.thumbSrc}
-                      alt={ref.name}
-                      className="w-full max-h-[500px] object-contain"
-                    />
-                  </div>
-                ) : null}
-
-                {/* Client feedback */}
-                {ref.clientStatus === "changes_requested" && ref.clientFeedback && (
-                  <div className="px-5 py-3 bg-sky-50 border-t border-sky-100">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-sky-600 mb-1">
-                      Cambios pedidos por el cliente
-                    </p>
-                    <p className="text-sm text-sky-900 leading-relaxed">&quot;{ref.clientFeedback}&quot;</p>
-                  </div>
-                )}
-
-                {/* Script */}
-                {(isVideo || isText) && ref.script && ref.script.length > 0 && (
-                  editable && briefId ? (
-                    <EditableScript
-                      briefId={briefId}
-                      adId={ref.id}
-                      initialLines={ref.script}
-                      hadClientFeedback={ref.clientStatus === "changes_requested"}
-                    />
-                  ) : (
-                    <ReadOnlyScript lines={ref.script} />
-                  )
-                )}
-              </div>
             )}
+
+            <div className="min-w-0">
+              {hasScript ? (
+                canEdit ? (
+                  <EditableScript key={ref.id} briefId={briefId!} adId={ref.id} initialLines={ref.script!} hadClientFeedback={ref.clientStatus === "changes_requested"} compare={compare} />
+                ) : (
+                  <ReadOnlyScript key={ref.id} lines={ref.script!} compare={compare} />
+                )
+              ) : (
+                <p className="px-5 py-10 text-sm text-gray-400 text-center">{isVideo ? "Este video no tiene guion adaptado." : "Referencia visual — sin guion."}</p>
+              )}
+            </div>
           </div>
-        )
-      })}
+        </article>
       </div>
     </div>
   )
 }
 
-function ReadOnlyScript({ lines }: { lines: AdCloneLine[] }) {
-  // Scripts with no source to adapt from (Quick Create AI drafts, manual
-  // pastes) never populate `original` — showing an empty strikethrough
-  // column next to them just wastes space, so collapse to one column.
-  const hasOriginal = lines.some((l) => l.original?.trim())
+function StatusPill({ status, text }: { status: string; text?: string }) {
+  const st = CLIENT_STATUS_STYLE[status]
+  if (!st) return null
+  return (
+    <span className={cn("inline-flex items-center gap-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full", st.className)}>
+      <span className={cn("w-1.5 h-1.5 rounded-full", st.dot)} />{text ?? st.label}
+    </span>
+  )
+}
 
+// Una línea del guion. Modo normal: número + texto adaptado a todo lo
+// ancho. Comparar: original (gris, sin tachar para que se lea) | adaptado.
+function ScriptLine({ i, line, compare, children }: { i: number; line: AdCloneLine; compare: boolean; children: React.ReactNode }) {
+  return (
+    <div className={cn("grid gap-x-5 px-5 py-3", compare ? "md:grid-cols-2" : "grid-cols-[28px_1fr]")}>
+      {!compare && <span className="w-6 h-6 mt-0.5 rounded-full bg-gray-100 text-gray-500 text-[11px] font-bold flex items-center justify-center">{i + 1}</span>}
+      {compare && (
+        <div className="mb-2 md:mb-0">
+          <span className="text-[10px] font-bold text-gray-400 mr-1.5">{i + 1}</span>
+          {line.speaker && <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mr-1.5">{line.speaker}</span>}
+          <span className="text-sm text-gray-500 leading-relaxed">{line.original}</span>
+        </div>
+      )}
+      <div className="min-w-0">
+        {!compare && line.speaker && <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-0.5">{line.speaker}</p>}
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function ScriptHeader({ lines, compare, children }: { lines: AdCloneLine[]; compare: boolean; children?: React.ReactNode }) {
+  const hasOriginal = lines.some((l) => l.original?.trim())
+  const words = lines.reduce((n, l) => n + (l.adapted?.trim().split(/\s+/).filter(Boolean).length ?? 0), 0)
+  return (
+    <div className="px-5 py-2.5 bg-gray-50/80 border-b border-gray-100 flex items-center gap-3 flex-wrap md:sticky md:top-[73px] z-10">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-500">
+        {compare ? "Original → Tropicalizado" : hasOriginal ? "Guion tropicalizado" : "Guion"}
+      </p>
+      {/* ~2.5 palabras por segundo hablado */}
+      <span className="text-[11px] text-gray-400">{words} palabras · ~{Math.max(1, Math.round(words / 2.5))} s</span>
+      <div className="ml-auto flex items-center gap-2">{children}<CopyScriptButton lines={lines} brandName={null} /></div>
+    </div>
+  )
+}
+
+function ReadOnlyScript({ lines, compare }: { lines: AdCloneLine[]; compare: boolean }) {
   return (
     <div>
-      <div className="px-5 py-3 bg-gray-50/80 border-t border-b border-gray-100 flex items-center justify-between">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-500">
-          {hasOriginal ? "Guión tropicalizado" : "Guión"}
-        </p>
-        <CopyScriptButton lines={lines} brandName={null} />
-      </div>
+      <ScriptHeader lines={lines} compare={compare} />
       <div className="divide-y divide-gray-100">
         {lines.map((line, i) => (
-          <div key={i} className={cn("grid", hasOriginal && "sm:grid-cols-2")}>
-            {hasOriginal && (
-              <div className="px-5 py-3.5 sm:border-r border-gray-100">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-[10px] font-bold flex items-center justify-center flex-shrink-0">
-                    {i + 1}
-                  </span>
-                  {line.speaker && (
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-                      {line.speaker}
-                    </span>
-                  )}
-                </div>
-                <p className="text-sm text-gray-400 line-through leading-relaxed">
-                  {line.original}
-                </p>
-              </div>
-            )}
-            <div className="px-5 py-3.5 bg-indigo-50/30">
-              {!hasOriginal && (
-                <span className="w-5 h-5 rounded-full bg-white/60 text-gray-500 text-[10px] font-bold flex items-center justify-center flex-shrink-0 mb-1.5">
-                  {i + 1}
-                </span>
-              )}
-              <p className="text-sm text-gray-900 font-medium leading-relaxed whitespace-pre-wrap">
-                {line.adapted}
-              </p>
-            </div>
-          </div>
+          <ScriptLine key={i} i={i} line={line} compare={compare}>
+            <p className="text-[15px] text-gray-900 leading-relaxed whitespace-pre-wrap">{line.adapted}</p>
+          </ScriptLine>
         ))}
       </div>
     </div>
   )
 }
 
-function EditableScript({ briefId, adId, initialLines, hadClientFeedback }: { briefId: string; adId: string; initialLines: AdCloneLine[]; hadClientFeedback?: boolean }) {
+function EditableScript({ briefId, adId, initialLines, hadClientFeedback, compare }: { briefId: string; adId: string; initialLines: AdCloneLine[]; hadClientFeedback?: boolean; compare: boolean }) {
   const router = useRouter()
   const [lines, setLines] = useState<AdCloneLine[]>(initialLines)
   const [isPending, startTransition] = useTransition()
   const [saved, setSaved] = useState(false)
-
   const hasChanges = JSON.stringify(lines) !== JSON.stringify(initialLines)
-  const hasOriginal = lines.some((l) => l.original?.trim())
 
   function updateLine(index: number, adapted: string) {
-    setLines((prev) => {
-      const next = [...prev]
-      next[index] = { ...next[index], adapted }
-      return next
-    })
+    setLines((prev) => prev.map((l, i) => (i === index ? { ...l, adapted } : l)))
     setSaved(false)
   }
 
@@ -371,72 +298,32 @@ function EditableScript({ briefId, adId, initialLines, hadClientFeedback }: { br
     startTransition(async () => {
       await updateBriefScript(briefId, adId, lines)
       setSaved(true)
-      // Saving resets this script's client_status back to pending_review —
-      // refresh so the status badge above and the rest of the page reflect
-      // that immediately instead of still showing the old "cambios pedidos".
+      // Guardar regresa el guion a "pendiente" del cliente — refrescar para verlo.
       router.refresh()
     })
   }
 
   return (
     <div>
-      <div className="px-5 py-3 bg-gray-50/80 border-t border-b border-gray-100 flex items-center justify-between">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-500">
-          {hasOriginal ? "Guión tropicalizado" : "Guión"}
-        </p>
-        <div className="flex items-center gap-2">
-          <CopyScriptButton lines={lines} brandName={null} />
-          {saved && !hasChanges && (
-            <span className="text-[10px] font-medium text-emerald-600">
-              ✓ Guardado{hadClientFeedback ? " — vuelve a pendiente de aprobación del cliente" : ""}
-            </span>
-          )}
-          {hasChanges && (
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={isPending}
-              className="text-xs font-medium px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-            >
-              {isPending ? "Guardando…" : "Guardar cambios"}
-            </button>
-          )}
-        </div>
-      </div>
+      <ScriptHeader lines={lines} compare={compare}>
+        {saved && !hasChanges && <span className="text-[11px] font-medium text-emerald-600">✓ Guardado{hadClientFeedback ? " — vuelve a pendiente del cliente" : ""}</span>}
+        {hasChanges && (
+          <button type="button" onClick={handleSave} disabled={isPending}
+            className="text-xs font-medium px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
+            {isPending ? "Guardando…" : "Guardar cambios"}
+          </button>
+        )}
+      </ScriptHeader>
       <div className="divide-y divide-gray-100">
         {lines.map((line, i) => (
-          <div key={i} className={cn("grid", hasOriginal && "sm:grid-cols-2")}>
-            {hasOriginal && (
-              <div className="px-5 py-3.5 sm:border-r border-gray-100">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-[10px] font-bold flex items-center justify-center flex-shrink-0">
-                    {i + 1}
-                  </span>
-                  {line.speaker && (
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-                      {line.speaker}
-                    </span>
-                  )}
-                </div>
-                <p className="text-sm text-gray-400 line-through leading-relaxed">
-                  {line.original}
-                </p>
-              </div>
-            )}
-            <div className="px-5 py-3.5 bg-indigo-50/30">
-              {!hasOriginal && (
-                <span className="w-5 h-5 rounded-full bg-white/60 text-gray-500 text-[10px] font-bold flex items-center justify-center flex-shrink-0 mb-1.5">
-                  {i + 1}
-                </span>
-              )}
-              <AutoTextarea
-                value={line.adapted}
-                onChange={(e) => updateLine(i, e.target.value)}
-                rows={2}
-                className="w-full resize-none bg-transparent border border-transparent hover:border-indigo-200 focus:border-indigo-400 rounded-lg px-2 py-1 text-sm font-medium leading-relaxed text-gray-900 focus:outline-none transition-colors"
-              />
-            </div>
-          </div>
+          <ScriptLine key={i} i={i} line={line} compare={compare}>
+            <AutoTextarea
+              value={line.adapted}
+              onChange={(e) => updateLine(i, e.target.value)}
+              rows={1}
+              className="w-full resize-none bg-transparent border border-transparent hover:border-indigo-200 focus:border-indigo-400 rounded-lg -mx-2 px-2 py-0.5 text-[15px] leading-relaxed text-gray-900 focus:outline-none transition-colors"
+            />
+          </ScriptLine>
         ))}
       </div>
     </div>
