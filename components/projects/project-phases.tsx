@@ -1,12 +1,11 @@
 "use client"
 
 import { useState, useEffect, useTransition } from "react"
-import { useTranslations, useFormatter } from "next-intl"
+import { useTranslations } from "next-intl"
 import type { ProjectPhase, PhaseStatus } from "@/lib/types"
-import { updateProjectPhaseStatus, updateProjectPhaseNotes, deleteProjectPhase } from "@/lib/actions/projects"
+import { updateProjectPhaseStatus, deleteProjectPhase } from "@/lib/actions/projects"
 import { recalculatePhaseStatus } from "@/lib/actions/tasks"
 import { phaseColor } from "@/lib/phase-colors"
-import { AutoTextarea } from "@/components/ui/auto-textarea"
 
 interface TaskCount { done: number; total: number }
 
@@ -15,6 +14,8 @@ interface Props {
   initialPhases: ProjectPhase[]
   canEdit: boolean // admin or subadmin
   taskCountByPhaseId?: Record<string, TaskCount>
+  // Botones de agregar/aplicar fases, a la derecha de la fila.
+  actions?: React.ReactNode
 }
 
 const STATUS_STYLES: Record<PhaseStatus, { dot: string; badge: string }> = {
@@ -24,19 +25,16 @@ const STATUS_STYLES: Record<PhaseStatus, { dot: string; badge: string }> = {
   blocked:     { dot: "bg-destructive",         badge: "bg-destructive/10 text-destructive border-destructive/20" },
 }
 
-export function ProjectPhases({ projectId, initialPhases, canEdit, taskCountByPhaseId = {} }: Props) {
+// Fila compacta: solo la numeración. Al pasar el cursor por un círculo se
+// ve la fase (nombre, estado, tareas) y, con permiso, bloquear/eliminar.
+// Antes era una lista desplegable por fase (estado + notas) que ocupaba
+// mucho espacio: el estado ya se deriva de las tareas y las notas nadie
+// las usaba (la columna sigue en la base).
+export function ProjectPhases({ projectId, initialPhases, canEdit, taskCountByPhaseId = {}, actions }: Props) {
   const t = useTranslations("projects.phases")
   const tStatus = useTranslations("phaseStatus")
-  const format = useFormatter()
   const [phases, setPhases] = useState<ProjectPhase[]>(initialPhases)
-  const [expandedId, setExpandedId] = useState<string | null>(
-    initialPhases.find((p) => p.status === "in_progress")?.id ??
-    initialPhases.find((p) => p.status === "blocked")?.id ??
-    null
-  )
-  const [editingNotesId, setEditingNotesId] = useState<string | null>(null)
-  const [notesValue, setNotesValue] = useState("")
-  const [isPending, startTransition] = useTransition()
+  const [, startTransition] = useTransition()
 
   // Keep phases in sync with fresh data after a revalidation triggered by
   // task changes elsewhere (e.g. status/checklist updates auto-syncing phase status).
@@ -45,6 +43,7 @@ export function ProjectPhases({ projectId, initialPhases, canEdit, taskCountByPh
   }, [initialPhases])
 
   const done = phases.filter((p) => p.status === "completed").length
+  const current = phases.find((p) => p.status === "blocked") ?? phases.find((p) => p.status === "in_progress") ?? phases.find((p) => p.status === "pending")
 
   function handleStatusChange(phase: ProjectPhase, status: PhaseStatus) {
     setPhases((prev) => prev.map((p) => (p.id === phase.id ? { ...p, status } : p)))
@@ -53,33 +52,22 @@ export function ProjectPhases({ projectId, initialPhases, canEdit, taskCountByPh
     })
   }
 
-  // "blocked" is the only manual override now: pending/in_progress/completed
+  // "blocked" is the only manual override: pending/in_progress/completed
   // are derived automatically from the phase's task statuses. Unblocking
   // recomputes the natural status from the current tasks.
   function handleToggleBlocked(phase: ProjectPhase) {
     if (phase.status === "blocked") {
       startTransition(async () => {
         const status = await recalculatePhaseStatus(phase.id, projectId)
-        if (status) {
-          setPhases((prev) => prev.map((p) => (p.id === phase.id ? { ...p, status } : p)))
-        }
+        if (status) setPhases((prev) => prev.map((p) => (p.id === phase.id ? { ...p, status } : p)))
       })
     } else {
       handleStatusChange(phase, "blocked")
     }
   }
 
-  function handleSaveNotes(phaseId: string) {
-    setPhases((prev) => prev.map((p) => (p.id === phaseId ? { ...p, notes: notesValue } : p)))
-    setEditingNotesId(null)
-    startTransition(async () => {
-      await updateProjectPhaseNotes(phaseId, notesValue, projectId)
-    })
-  }
-
   function handleDeletePhase(phase: ProjectPhase) {
-    const tc = taskCountByPhaseId[phase.id]
-    const taskCount = tc?.total ?? 0
+    const taskCount = taskCountByPhaseId[phase.id]?.total ?? 0
     const msg = taskCount > 0
       ? `¿Eliminar la fase "${phase.name}" y sus ${taskCount} tarea${taskCount === 1 ? "" : "s"}? Esta acción no se puede deshacer.`
       : `¿Eliminar la fase "${phase.name}"? Esta acción no se puede deshacer.`
@@ -90,169 +78,74 @@ export function ProjectPhases({ projectId, initialPhases, canEdit, taskCountByPh
     })
   }
 
-  const tC = useTranslations("common")
-
-  if (phases.length === 0) {
-    return (
-      <div className="rounded-xl border border-dashed border-border bg-card p-6 text-center text-sm text-muted-foreground">
-        {t("noPhases")}
-      </div>
-    )
-  }
-
   return (
-    <div className="rounded-xl border border-border bg-card">
-      {/* Header with mini stepper */}
-      <div className="px-5 py-4 border-b border-border">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-semibold text-sm text-foreground">{t("title")}</h3>
-          <span className="text-xs text-muted-foreground">{t("completedOf", { done, total: phases.length })}</span>
-        </div>
-        {/* Stepper dots — border color is unique per phase, background reflects status */}
-        <div className="flex items-center gap-1">
+    <div className="rounded-xl border border-border bg-card px-4 py-3 flex items-center gap-4 flex-wrap">
+      <div className="flex-shrink-0">
+        <p className="text-xs font-semibold text-foreground">Fases <span className="font-normal text-muted-foreground">· {done}/{phases.length}</span></p>
+        {current && <p className="text-[11px] text-muted-foreground">Actual: <span className="text-foreground">{current.name}</span></p>}
+      </div>
+
+      {phases.length === 0 ? (
+        <p className="flex-1 text-xs text-muted-foreground">{t("noPhases")}</p>
+      ) : (
+        <div className="flex-1 min-w-[240px] flex items-center gap-1">
           {phases.map((phase, i) => {
             const pc = phaseColor(phase.phase_order)
+            const tc = taskCountByPhaseId[phase.id]
+            const st = STATUS_STYLES[phase.status]
             return (
-              <div key={phase.id} className="flex items-center flex-1">
-                <button
-                  title={phase.name}
-                  onClick={() => setExpandedId(expandedId === phase.id ? null : phase.id)}
-                  className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold border-2 transition-all ${pc.border} ${
-                    phase.status === "completed"
-                      ? `${pc.bg} text-white`
-                      : phase.status === "in_progress"
-                      ? `${pc.light} ${pc.text}`
-                      : phase.status === "blocked"
-                      ? "bg-destructive/10 text-destructive"
-                      : "bg-background text-muted-foreground"
-                  }`}
-                >
-                  {phase.status === "completed" ? "✓" : i + 1}
-                </button>
+              <div key={phase.id} className="flex items-center flex-1 last:flex-none">
+                <div className="relative group">
+                  <span
+                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold border-2 cursor-default transition-all ${pc.border} ${
+                      phase.status === "completed"
+                        ? `${pc.bg} text-white`
+                        : phase.status === "in_progress"
+                        ? `${pc.light} ${pc.text} ring-2 ring-offset-1 ring-current`
+                        : phase.status === "blocked"
+                        ? "bg-destructive/10 text-destructive"
+                        : "bg-background text-muted-foreground"
+                    }`}
+                  >
+                    {phase.status === "completed" ? "✓" : phase.status === "blocked" ? "!" : i + 1}
+                  </span>
+                  {/* Tarjeta al hacer hover; pt-2 = puente para poder llegar a los botones. */}
+                  <div className="absolute left-1/2 -translate-x-1/2 top-full pt-2 z-30 hidden group-hover:block">
+                    <div className="w-56 rounded-lg border border-border bg-popover text-popover-foreground shadow-lg p-3 space-y-2">
+                      <div>
+                        <p className="text-[10px] text-muted-foreground">Fase {i + 1}</p>
+                        <p className="text-sm font-semibold leading-tight">{phase.name}</p>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className={`px-1.5 py-0.5 rounded-full border text-[10px] font-medium ${st.badge}`}>{tStatus(phase.status)}</span>
+                        <span className="text-muted-foreground">{tc ? `${tc.done}/${tc.total} tareas` : "Sin tareas"}</span>
+                      </div>
+                      {tc && tc.total > 0 && (
+                        <div className="h-1 rounded-full bg-muted overflow-hidden">
+                          <div className={`h-full ${pc.bg}`} style={{ width: `${(tc.done / tc.total) * 100}%` }} />
+                        </div>
+                      )}
+                      {canEdit && (
+                        <div className="flex items-center gap-3 pt-1 border-t border-border text-[11px]">
+                          <button onClick={() => handleToggleBlocked(phase)} className="text-muted-foreground hover:text-foreground">
+                            {phase.status === "blocked" ? "Desbloquear" : "Marcar bloqueada"}
+                          </button>
+                          <button onClick={() => handleDeletePhase(phase)} className="ml-auto text-muted-foreground hover:text-destructive">Eliminar</button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
                 {i < phases.length - 1 && (
-                  <div className={`h-0.5 flex-1 mx-1 rounded-full transition-colors ${
-                    phases[i + 1]?.status !== "pending" || phase.status === "completed"
-                      ? `${phaseColor(i + 1).bg} opacity-30`
-                      : "bg-muted"
-                  }`} />
+                  <div className={`h-0.5 flex-1 mx-1 rounded-full ${phase.status === "completed" ? `${pc.bg} opacity-40` : "bg-muted"}`} />
                 )}
               </div>
             )
           })}
         </div>
-      </div>
+      )}
 
-      {/* Phase list */}
-      <div className="divide-y divide-border">
-        {phases.map((phase) => {
-          const isExpanded = expandedId === phase.id
-          const styles = STATUS_STYLES[phase.status]
-          const pc = phaseColor(phase.phase_order)
-
-          return (
-            <div key={phase.id} className={`transition-colors ${isExpanded && phase.status !== "pending" ? "bg-muted/20" : ""}`}>
-              {/* Phase row */}
-              <div
-                className="flex items-center gap-3 px-5 py-3 cursor-pointer"
-                onClick={() => setExpandedId(isExpanded ? null : phase.id)}
-              >
-                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border flex-shrink-0 ${styles.badge}`}>
-                  {tStatus(phase.status)}
-                </span>
-                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${pc.bg}`} />
-                <span className="flex-1 text-sm font-medium text-foreground">{phase.name}</span>
-                {taskCountByPhaseId[phase.id] && (
-                  <span className="text-xs text-muted-foreground flex-shrink-0">
-                    {taskCountByPhaseId[phase.id].done}/{taskCountByPhaseId[phase.id].total}
-                  </span>
-                )}
-                {phase.status === "in_progress" && phase.started_at && (
-                  <span className="text-xs text-muted-foreground hidden sm:block">
-                    {t("started", { date: format.dateTime(new Date(phase.started_at), { dateStyle: "short" }) })}
-                  </span>
-                )}
-                <span className={`text-muted-foreground text-xs transition-transform ${isExpanded ? "rotate-180" : ""}`}>▾</span>
-              </div>
-
-              {/* Phase detail */}
-              {isExpanded && (
-                <div className="px-5 pb-4 space-y-3">
-                  {/* Status controls — pending/in_progress/completed are derived
-                      automatically from the phase's tasks; "blocked" is the
-                      only manual override left. */}
-                  {canEdit && (
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        onClick={() => handleToggleBlocked(phase)}
-                        disabled={isPending}
-                        className={`px-3 py-1 rounded-md text-xs font-medium transition-colors disabled:opacity-50 ${
-                          phase.status === "blocked"
-                            ? "bg-destructive/10 text-destructive border border-destructive/20 hover:bg-destructive/20"
-                            : "bg-muted text-muted-foreground hover:bg-muted/80"
-                        }`}
-                      >
-                        {phase.status === "blocked" ? t("unblock") : t("markBlocked")}
-                      </button>
-                      <button
-                        onClick={() => handleDeletePhase(phase)}
-                        disabled={isPending}
-                        className="px-3 py-1 rounded-md text-xs font-medium text-destructive bg-muted hover:bg-destructive/10 transition-colors disabled:opacity-50 ml-auto"
-                      >
-                        Eliminar fase
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Notes */}
-                  {editingNotesId === phase.id ? (
-                    <div className="space-y-2">
-                      <AutoTextarea
-                        value={notesValue}
-                        onChange={(e) => setNotesValue(e.target.value)}
-                        rows={3}
-                        autoFocus
-                        placeholder={t("notesPlaceholder")}
-                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
-                      />
-                      <div className="flex gap-2 justify-end">
-                        <button onClick={() => setEditingNotesId(null)} className="text-sm text-muted-foreground hover:text-foreground transition-colors">{tC("cancel")}</button>
-                        <button onClick={() => handleSaveNotes(phase.id)} className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 transition-colors">{tC("save")}</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div>
-                      {phase.notes ? (
-                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{phase.notes}</p>
-                      ) : canEdit ? (
-                        <button
-                          onClick={() => { setEditingNotesId(phase.id); setNotesValue(phase.notes ?? "") }}
-                          className="text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors"
-                        >
-                          {t("addNotes")}
-                        </button>
-                      ) : null}
-                      {phase.notes && canEdit && (
-                        <button
-                          onClick={() => { setEditingNotesId(phase.id); setNotesValue(phase.notes ?? "") }}
-                          className="text-xs text-muted-foreground hover:text-foreground transition-colors mt-1 block"
-                        >
-                          {t("editNotes")}
-                        </button>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Dates */}
-                  <div className="flex gap-4 text-xs text-muted-foreground">
-                    {phase.started_at && <span>{t("startLabel", { date: format.dateTime(new Date(phase.started_at), { dateStyle: "short" }) })}</span>}
-                    {phase.completed_at && <span>{t("completedLabel", { date: format.dateTime(new Date(phase.completed_at), { dateStyle: "short" }) })}</span>}
-                  </div>
-                </div>
-              )}
-            </div>
-          )
-        })}
-      </div>
+      {actions && <div className="flex items-center gap-2 flex-shrink-0">{actions}</div>}
     </div>
   )
 }

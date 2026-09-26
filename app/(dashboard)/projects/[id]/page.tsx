@@ -42,7 +42,7 @@ import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { createClient } from "@/lib/supabase/server"
 import { ProjectContextBar } from "@/components/projects/project-context-bar"
-import { ArrowLeft, CalendarDays, Megaphone, Plus } from "lucide-react"
+import { ArrowLeft, CalendarDays, FolderKanban, Megaphone, Plus } from "lucide-react"
 import { formatDate, formatCurrency } from "@/lib/utils"
 import type { Customer, Profile, Project, Task, ProjectType, PaidMediaContext, PaidMediaCycle, WebProjectContext, ProjectLogEntry, ProjectPhase, Deliverable, Sop, CreativeConcept, CreativeAsset, ProjectIntegration } from "@/lib/types"
 import { can } from "@/lib/permissions"
@@ -246,13 +246,26 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           />
         )}
 
-        {/* ── Phases — full width, above tasks ───────────────────────── */}
+        {/* ── Hub Proyecto — fases + tareas, en su propio contenedor (gris
+            pizarra) igual que el Hub Paid Media. Sin overflow-hidden en el
+            cuerpo: las tarjetas de hover de las fases se salen del borde. ── */}
+        <section className="rounded-2xl border-2 border-slate-300 dark:border-slate-700 bg-slate-500/[0.05] dark:bg-slate-500/[0.08]">
+          <div className="flex items-center gap-3 px-5 py-4 rounded-t-[14px] bg-slate-800 text-white dark:bg-slate-900">
+            <FolderKanban className="w-5 h-5 flex-shrink-0" />
+            <div>
+              <h2 className="text-base font-semibold">Hub Proyecto</h2>
+              <p className="text-xs text-white/70">Fases y tareas del proyecto.</p>
+            </div>
+          </div>
+          <div className="p-5 space-y-6">
+
         {(hasPhases || (isAdminOrSubadmin && phaseSets.length > 0)) && (
-          <section>
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold">Fases del Proyecto</h2>
-              {isAdminOrSubadmin && phaseSets.length > 0 && (
-                <div className="flex items-center gap-2">
+            <ProjectPhases
+              projectId={project.id}
+              initialPhases={phases}
+              canEdit={isAdminOrSubadmin}
+              actions={isAdminOrSubadmin && phaseSets.length > 0 ? (
+                <>
                   <AddPhasesButton
                     projectId={project.id}
                     phaseSets={phaseSets as Parameters<typeof ApplyPhasesButton>[0]["phaseSets"]}
@@ -264,13 +277,8 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                     phaseSets={phaseSets as Parameters<typeof ApplyPhasesButton>[0]["phaseSets"]}
                     defaultPhaseSetId={(project.project_type as { default_phase_set_id?: string } | null)?.default_phase_set_id ?? null}
                   />
-                </div>
-              )}
-            </div>
-            <ProjectPhases
-              projectId={project.id}
-              initialPhases={phases}
-              canEdit={isAdminOrSubadmin}
+                </>
+              ) : undefined}
               taskCountByPhaseId={Object.fromEntries(
                 phases.map((ph) => {
                   const phaseTasks = tasks.filter((t) => t.phase_id === ph.id)
@@ -278,7 +286,6 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                 }).filter(([, v]) => (v as { total: number }).total > 0)
               )}
             />
-          </section>
         )}
 
         {/* ── Tasks — full width ──────────────────────────────────────── */}
@@ -312,6 +319,9 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             sops={sops as Sop[]}
             allowPersonalToggle={false}
           />
+        </section>
+
+          </div>
         </section>
 
         {/* ── Entregables ────────────────────────────────────────────── */}
