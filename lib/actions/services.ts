@@ -1,5 +1,6 @@
 "use server"
 
+import { offersToJson } from "@/lib/utils/offer-json"
 import { revalidatePath } from "next/cache"
 import Anthropic from "@anthropic-ai/sdk"
 import { createClient } from "@/lib/supabase/server"
@@ -129,20 +130,7 @@ interface PortableOffer {
 }
 
 export async function exportServiceOffers(): Promise<string> {
-  const offers = await getServiceOffers()
-  const portable: PortableOffer[] = offers.map((o) => ({
-    category: o.category,
-    name: o.name,
-    description: o.description,
-    is_base: o.is_base,
-    based_on_offer_name: o.based_on_offer?.name ?? null,
-    default_project_type_name: o.default_project_type?.name ?? null,
-    price: o.price,
-    currency: o.currency,
-    price_note: o.price_note,
-    deliverables: o.deliverables.map((d) => ({ text: d.text, control_text: d.control_text ?? null, cadence: d.cadence, quantity: d.quantity })),
-  }))
-  return JSON.stringify({ offers: portable }, null, 2)
+  return offersToJson(await getServiceOffers())
 }
 
 function parsePortableDeliverables(raw: unknown): ServiceDeliverable[] {

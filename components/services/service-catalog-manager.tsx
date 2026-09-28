@@ -1,5 +1,6 @@
 "use client"
 
+import { offersToJson } from "@/lib/utils/offer-json"
 import { useState, useEffect, useRef, useTransition } from "react"
 import type { ServiceOffer, ServiceAddon, Currency, ServiceDeliverable, DeliverableCadence } from "@/lib/types"
 import {
@@ -9,7 +10,7 @@ import {
 } from "@/lib/actions/services"
 import { getProjectTypeIcon } from "@/lib/project-type-icons"
 import { categoryColor } from "@/components/services/category-colors"
-import { Plus, Pencil, Trash2, Archive, ArchiveRestore, X, Tag, Layers, ChevronRight, ChevronDown, ChevronLeft, LayoutGrid, Sparkles, Upload, Download, Check, Loader2 } from "lucide-react"
+import { Plus, Pencil, Trash2, Archive, ArchiveRestore, X, Tag, Layers, ChevronRight, ChevronDown, ChevronLeft, LayoutGrid, Sparkles, Upload, Download, Check, Loader2, Braces } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const ALL_CATEGORIES_KEY = "__todas__"
@@ -557,6 +558,7 @@ function OfferCard({
   const [isPending, startTransition] = useTransition()
   const [archived, setArchived] = useState(offer.status === "archived")
   const [showAllDeliverables, setShowAllDeliverables] = useState(false)
+  const [copied, setCopied] = useState(false)
   const projectType = projectTypes.find((pt) => pt.id === offer.default_project_type_id)
   const ProjectIcon = projectType ? getProjectTypeIcon(projectType.icon) : null
   const attachedAddons = (offer.addons ?? []).map((a) => addons.find((x) => x.id === a.id) ?? a)
@@ -608,6 +610,13 @@ function OfferCard({
         </div>
 
         <div className="flex items-center gap-1 flex-shrink-0">
+          <button
+            onClick={() => { navigator.clipboard.writeText(offersToJson([offer])); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
+            className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            title="Copiar JSON de esta oferta (se puede pegar en Importar JSON)"
+          >
+            {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Braces className="w-3.5 h-3.5" />}
+          </button>
           <button onClick={onEdit} className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" title="Editar">
             <Pencil className="w-3.5 h-3.5" />
           </button>
