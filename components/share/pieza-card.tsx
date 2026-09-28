@@ -41,6 +41,7 @@ export function PiezaCard({
   const border = pendiente && !readonly ? "1.5px solid #fde68a" : "1px solid #e2e8f0"
   const mostrarAcciones = pendiente && !feedbackOpen && !readonly
   const [lightboxOpen, setLightboxOpen] = useState(false)
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
 
   return (
     <div className="bg-white rounded-[18px] overflow-hidden shadow-[0_1px_3px_rgba(15,23,42,0.05)]" style={{ border }}>
@@ -94,7 +95,18 @@ export function PiezaCard({
       )}
 
       {pieza.tipo === "imagen" && (
-        pieza.mediaUrl ? (
+        (pieza.carouselUrls?.length ?? 0) > 1 ? (
+          // Carrusel: todos los slides en una tira desplazable.
+          <div className="flex gap-1.5 overflow-x-auto bg-[#e8edf4] p-1.5">
+            {pieza.carouselUrls!.map((u, i) => (
+              <button key={i} onClick={() => setLightboxSrc(u)} className="relative shrink-0 cursor-zoom-in">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={u} alt={`${pieza.titulo} — slide ${i + 1}`} loading="lazy" className="h-[220px] w-auto rounded-md object-cover" />
+                <span className="absolute top-1 left-1 text-[9px] font-bold bg-black/60 text-white px-1.5 py-0.5 rounded">{i + 1}/{pieza.carouselUrls!.length}</span>
+              </button>
+            ))}
+          </div>
+        ) : pieza.mediaUrl ? (
           <button onClick={() => setLightboxOpen(true)} className="block w-full cursor-zoom-in">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -113,6 +125,9 @@ export function PiezaCard({
         )
       )}
 
+      {lightboxSrc && (
+        <MediaLightbox tipo="imagen" src={lightboxSrc} titulo={pieza.titulo} onClose={() => setLightboxSrc(null)} />
+      )}
       {lightboxOpen && pieza.mediaUrl && (pieza.tipo === "video" || pieza.tipo === "imagen") && (
         <MediaLightbox tipo={pieza.tipo} src={pieza.mediaUrl} titulo={pieza.titulo} onClose={() => setLightboxOpen(false)} />
       )}

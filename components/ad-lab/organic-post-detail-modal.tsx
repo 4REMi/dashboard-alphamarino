@@ -2,7 +2,8 @@
 
 import { useState } from "react"
 import type { SavedAd } from "@/lib/types"
-import { X, ChevronLeft, ChevronRight, Heart, MessageCircle, ExternalLink, Wand2 } from "lucide-react"
+import { X, ChevronLeft, ChevronRight, Heart, MessageCircle, ExternalLink, Wand2, Layers } from "lucide-react"
+import { CarouselCloneModal } from "@/components/ad-lab/carousel-clone-modal"
 import { ImageCloneModal } from "@/components/ad-lab/image-clone-modal"
 
 interface Props {
@@ -32,6 +33,7 @@ export function OrganicPostDetailModal({ post, onClose }: Props) {
   const isCarousel = slides.length > 1
   const [slideIndex, setSlideIndex] = useState(0)
   const [showClone, setShowClone] = useState(false)
+  const [showCarouselClone, setShowCarouselClone] = useState(false)
 
   const currentImageUrl = isCarousel
     ? slides[slideIndex]
@@ -40,6 +42,10 @@ export function OrganicPostDetailModal({ post, onClose }: Props) {
 
   function prev() { setSlideIndex((i) => (i - 1 + slides.length) % slides.length) }
   function next() { setSlideIndex((i) => (i + 1) % slides.length) }
+
+  if (showCarouselClone) {
+    return <CarouselCloneModal savedAdId={post.id} pageName={post.page_name} slides={slides} onClose={() => setShowCarouselClone(false)} />
+  }
 
   if (showClone) {
     return (
@@ -142,6 +148,15 @@ export function OrganicPostDetailModal({ post, onClose }: Props) {
               <Wand2 className="w-4 h-4" />
               {isCarousel ? `Clonar esta slide (${slideIndex + 1}/${slides.length})` : "Clonar imagen"}
             </button>
+            {isCarousel && (
+              <button
+                onClick={() => setShowCarouselClone(true)}
+                className="mt-2 w-full flex items-center justify-center gap-2 h-10 rounded-xl border border-primary/40 text-primary text-sm font-medium hover:bg-primary/5 transition-colors"
+              >
+                <Layers className="w-4 h-4" />
+                Clonar carrusel completo ({slides.length} slides)
+              </button>
+            )}
           </div>
         </div>
       </div>

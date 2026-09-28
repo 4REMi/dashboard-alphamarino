@@ -1680,3 +1680,212 @@ export async function getImageCloneByToken(token: string): Promise<ImageClone | 
     .single()
   return (data as ImageClone) ?? null
 }
+
+// ── Clonar carrusel completo ──────────────────────────────────
+//
+// Cada slide es un image_clone hijo (batch_id + slide_index +
+// source_image_url, migración 103), así se reutiliza todo el motor de un
+// clon de imagen: generación, sondeo y regenerar un slide suelto. Lo nuevo
+// es la adaptación CONJUNTA: Claude ve todos los slides en orden y adapta
+// la narrativa completa (gancho → desarrollo → cierre), no cada slide por
+// separado, y una sola dirección visual se comparte entre todos.
+
+export interface CarouselSlideState {
+  cloneId: string
+  slideIndex: number
+  sourceImageUrl: string
+  role: string | null
+  lines: ImageCloneLine[]
+  status: string
+  generatedUrls: string[]
+  errorMessage: string | null
+}
+
+export async function startCarouselClone(params: {
+  savedAdId: string
+  brandBrainId: string
+  conceptId?: string | null
+  angulo?: string
+  slideUrls: string[]
+}): Promise<{ batchId: string; slides: CarouselSlideState[]; narrative: string | null }> {
+  const { supabase, user } = await assertAuth()
+  if (params.slideUrls.length === 0) throw new Error("Elige al menos un slide")
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY no configurado")
+
+  const [{ data: brain }, { data: concept }] = await Promise.all([
+    supabase.from("brand_brains")
+      .select("id, name, industry, language, tone_of_voice, usps, key_benefits, pain_points, target_audience, ctas, brand_colors, logo_url, logo_square_url, logo_horizontal_url")
+      .eq("id", params.brandBrainId).single(),
+    params.conceptId
+      ? supabase.from("creative_concepts").select("name, angle_type, target_persona, pain_point, transformation, why_it_works, funnel_stage").eq("id", params.conceptId).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ])
+  if (!brain) throw new Error("Brand Brain no encontrado")
+  const b = brain as BrainContext
+
+  const batchId = crypto.randomUUID()
+  const rows = params.slideUrls.map((url, i) => ({
+    saved_ad_id: params.savedAdId,
+    brand_brain_id: params.brandBrainId,
+    concept_id: params.conceptId || null,
+    status: "extracting",
+    created_by: user.id,
+    batch_id: batchId,
+    slide_index: i,
+    source_image_url: url,
+  }))
+  const { data: created, error } = await supabase.from("image_clones").insert(rows).select("id, slide_index")
+  if (error) throw new Error(error.message)
+  const idByIndex = new Map((created ?? []).map((r) => [r.slide_index as number, r.id as string]))
+
+  const c = concept as { name: string | null; angle_type: string | null; target_persona: string | null; pain_point: string | null; transformation: string | null; why_it_works: string | null; funnel_stage: string | null } | null
+  const conceptBlock = c ? `
+CONCEPTO QUE DEBE CONTAR EL CARRUSEL (la narrativa adaptada tiene que servir a este concepto):
+- Nombre: ${c.name ?? "—"}
+- Ángulo: ${c.angle_type ?? "—"}
+- Persona: ${c.target_persona ?? "—"}
+- Dolor: ${c.pain_point ?? "—"}
+- Transformación: ${c.transformation ?? "—"}
+- Por qué funciona: ${c.why_it_works ?? "—"}
+- Funnel: ${c.funnel_stage ?? "—"}
+` : params.angulo?.trim() ? `\nÁNGULO: "${params.angulo.trim()}"\n` : ""
+
+  const langBlock = langInstruction(b.language)
+  const prompt = `Eres un experto en publicidad y copywriting de carruseles.
+${langBlock ? `\n${langBlock}\n` : ""}
+Recibes los ${params.slideUrls.length} slides de un carrusel, EN ORDEN (SLIDE 1 es el primero que se ve).
+
+PASO 1 — Entiende la NARRATIVA del carrusel completo: qué hace cada slide dentro de la secuencia (gancho, problema, desarrollo, prueba, oferta, CTA…) y cómo se conecta con el siguiente.
+PASO 2 — Por cada slide, EXTRAE todos sus textos visibles (headline, body, CTA, tags, precios…; omite decorativos o ilegibles).
+PASO 3 — ADAPTA el carrusel COMPLETO a la marca destino${c ? " y al concepto" : ""}: conserva la estructura narrativa y el rol de cada slide, y que la adaptación de cada slide continúe la del anterior (no adaptaciones sueltas). Cada elemento conserva su función (un headline sigue siendo headline).
+${conceptBlock}
+MARCA DESTINO:
+- Nombre: ${b.name}
+- Industria: ${b.industry ?? "—"}
+- Idioma: ${b.language ?? "español"}
+- Tono de voz: ${b.tone_of_voice ?? "—"}
+- USPs: ${(b.usps ?? []).join(", ") || "—"}
+- Beneficios: ${(b.key_benefits ?? []).join(", ") || "—"}
+- Dolores: ${(b.pain_points ?? []).join(", ") || "—"}
+- Audiencia: ${b.target_audience ?? "—"}
+- CTAs: ${(b.ctas ?? []).join(", ") || "—"}
+
+Responde ÚNICAMENTE con JSON válido (sin markdown):
+{"narrative": "<1-2 oraciones: cómo fluye el carrusel adaptado>", "slides": [{"slide": 1, "role": "<rol en la narrativa, ej. Gancho>", "lines": [{"element": "Headline", "original": "<texto exacto>", "adapted": "<texto adaptado>"}]}]}`
+
+  try {
+    const images = await Promise.all(params.slideUrls.map((u) => downloadImageAsClaudeBlock(u)))
+    const content: Anthropic.Messages.ContentBlockParam[] = []
+    images.forEach((img, i) => { content.push({ type: "text", text: `SLIDE ${i + 1}` }); content.push(img) })
+    content.push({ type: "text", text: prompt })
+
+    const client = new Anthropic({ apiKey })
+    const msg = await client.messages.create({ model: "claude-opus-4-7", max_tokens: 8192, messages: [{ role: "user", content }] })
+    const text = msg.content.filter((x) => x.type === "text").map((x) => (x as { text: string }).text).join("").trim()
+    if (msg.stop_reason === "max_tokens") throw new Error("La respuesta de la IA se cortó (carrusel muy largo). Intenta con menos slides.")
+    const cleaned = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")
+    const parsed = JSON.parse(cleaned.match(/\{[\s\S]*\}/)?.[0] ?? cleaned) as { narrative?: string; slides: { slide: number; role?: string; lines: ImageCloneLine[] }[] }
+
+    const slides: CarouselSlideState[] = []
+    for (let i = 0; i < params.slideUrls.length; i++) {
+      const s = parsed.slides.find((x) => x.slide === i + 1)
+      const lines = s?.lines ?? []
+      const id = idByIndex.get(i)!
+      await supabase.from("image_clones").update({
+        status: "ready",
+        original_lines: lines.map((l) => ({ element: l.element, original: l.original, adapted: "" })),
+        adapted_lines: lines,
+        // El rol del slide viaja en generation_input hasta que se genere.
+        generation_input: { carousel_role: s?.role ?? null, carousel_narrative: parsed.narrative ?? null },
+        updated_at: new Date().toISOString(),
+      }).eq("id", id)
+      slides.push({ cloneId: id, slideIndex: i, sourceImageUrl: params.slideUrls[i], role: s?.role ?? null, lines, status: "ready", generatedUrls: [], errorMessage: null })
+    }
+    return { batchId, slides, narrative: parsed.narrative ?? null }
+  } catch (err) {
+    await supabase.from("image_clones").update({ status: "error", error_message: String(err) }).eq("batch_id", batchId)
+    throw err instanceof Error ? err : new Error(String(err))
+  }
+}
+
+export async function getCarouselBatch(batchId: string): Promise<CarouselSlideState[]> {
+  const { supabase } = await assertAuth()
+  const { data, error } = await supabase.from("image_clones")
+    .select("id, slide_index, source_image_url, adapted_lines, status, generated_image_urls, accepted_image_urls, error_message, generation_input")
+    .eq("batch_id", batchId).order("slide_index")
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((r) => ({
+    cloneId: r.id,
+    slideIndex: r.slide_index ?? 0,
+    sourceImageUrl: r.source_image_url ?? "",
+    role: (r.generation_input as { carousel_role?: string } | null)?.carousel_role ?? null,
+    lines: (r.adapted_lines as ImageCloneLine[]) ?? [],
+    status: r.status,
+    generatedUrls: [...((r.accepted_image_urls as string[]) ?? []), ...((r.generated_image_urls as string[]) ?? [])],
+    errorMessage: r.error_message,
+  }))
+}
+
+// Una dirección visual para todo el set: se genera sobre el slide 1 y se
+// copia a los demás, para que todos compartan paleta, estilo y tipografía.
+export async function generateCarouselDirection(batchId: string, extraInstructions?: string): Promise<VisualDirection> {
+  const { supabase } = await assertAuth()
+  const { data: rows } = await supabase.from("image_clones").select("id, slide_index").eq("batch_id", batchId).order("slide_index")
+  if (!rows?.length) throw new Error("Carrusel no encontrado")
+  const direction = await generateVisualDirection(rows[0].id as string, [
+    "Esta dirección se aplicará a TODOS los slides de un carrusel: define un sistema visual consistente (misma paleta, tipografía, estilo y tratamiento de fondo) que funcione para cada slide.",
+    extraInstructions ?? "",
+  ].filter(Boolean).join("\n"))
+  await supabase.from("image_clones").update({ visual_direction: direction }).eq("batch_id", batchId)
+  return direction
+}
+
+// Genera (o regenera, si se pasan cloneIds) los slides. Una imagen por
+// slide, usando su slide original como referencia de composición.
+export async function generateCarouselSlides(batchId: string, config: {
+  aspectRatio: string
+  brandColor: string | null
+  additionalContext: string
+  provider?: "replicate" | "apimart"
+  cloneIds?: string[]
+}): Promise<{ started: number; errors: string[] }> {
+  const slides = await getCarouselBatch(batchId)
+  const targets = config.cloneIds?.length ? slides.filter((s) => config.cloneIds!.includes(s.cloneId)) : slides
+  const errors: string[] = []
+  // De 3 en 3 para no chocar con el rate limit del proveedor.
+  for (let i = 0; i < targets.length; i += 3) {
+    await Promise.all(targets.slice(i, i + 3).map(async (s) => {
+      try {
+        await generateImages(s.cloneId, {
+          adaptedLines: s.lines,
+          brandColor: config.brandColor,
+          aspectRatio: config.aspectRatio,
+          numImages: 1,
+          additionalContext: [
+            `This is slide ${s.slideIndex + 1} of ${slides.length} of a carousel${s.role ? ` (role: ${s.role})` : ""}. Keep the exact same visual system as the other slides.`,
+            config.additionalContext,
+          ].filter(Boolean).join("\n"),
+          sourceImageUrl: s.sourceImageUrl,
+          provider: config.provider,
+        })
+      } catch (e) {
+        errors.push(`Slide ${s.slideIndex + 1}: ${e instanceof Error ? e.message : String(e)}`)
+      }
+    }))
+  }
+  return { started: targets.length - errors.length, errors }
+}
+
+// Cierra el carrusel: cada slide se queda con su última imagen generada.
+export async function finalizeCarousel(batchId: string): Promise<string[]> {
+  const slides = await getCarouselBatch(batchId)
+  const urls: string[] = []
+  for (const s of slides) {
+    const last = s.generatedUrls[s.generatedUrls.length - 1]
+    if (!last) throw new Error(`El slide ${s.slideIndex + 1} todavía no tiene imagen`)
+    await finalizeImageClone(s.cloneId, [last])
+    urls.push(last)
+  }
+  return urls
+}

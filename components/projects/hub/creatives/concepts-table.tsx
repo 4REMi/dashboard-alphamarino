@@ -211,6 +211,11 @@ function AssetPieceCard({ piece, live, canManage, onOpen, onNewVersion }: {
             <Film className="w-3 h-3" /> Video
           </span>
         )}
+        {(a.carousel_urls?.length ?? 0) > 1 && (
+          <span className="absolute bottom-1.5 left-1.5 text-[10px] font-medium bg-black/60 text-white px-1.5 py-0.5 rounded">
+            Carrusel · {a.carousel_urls!.length}
+          </span>
+        )}
         {piece.versions.length > 1 && (
           <span className="absolute top-1.5 left-1.5 text-[10px] font-semibold bg-black/60 text-white px-1.5 py-0.5 rounded">
             v{piece.versions.length}
@@ -772,6 +777,17 @@ function ConceptDetailModal({
                           <source src={fileUrl} />
                         </video>
                       )
+                    ) : (a.carousel_urls?.length ?? 0) > 1 ? (
+                      // Carrusel: todos los slides, desplazables.
+                      <div className="w-full h-full flex gap-2 overflow-x-auto p-3 items-center">
+                        {a.carousel_urls!.map((u, i) => (
+                          <a key={i} href={u} target="_blank" rel="noopener noreferrer" className="relative shrink-0 h-full max-h-[70vh]">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={u} alt="" className="h-full max-h-[70vh] w-auto object-contain rounded" />
+                            <span className="absolute top-1.5 left-1.5 text-[10px] font-bold bg-black/60 text-white px-1.5 py-0.5 rounded">{i + 1}/{a.carousel_urls!.length}</span>
+                          </a>
+                        ))}
+                      </div>
                     ) : fileUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={fileUrl} alt="" className="max-w-full max-h-full object-contain" />

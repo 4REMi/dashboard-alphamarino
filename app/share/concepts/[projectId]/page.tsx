@@ -45,8 +45,8 @@ export default async function ShareConceptsPage({ params }: Props) {
       .order("created_at", { ascending: false }),
     supabase
       .from("creative_assets")
-      .select(`id, format, platform, asset_url, file_path, thumbnail_path, file_type, brief_id,
-               client_status, client_feedback, concept_id, created_at, revises_asset_id`)
+      // "*" para incluir carousel_urls sin romper si la migración 103 aún no corre.
+      .select("*")
       .eq("project_id", projectId)
       .eq("client_visible", true)
       .order("created_at", { ascending: false }),
@@ -188,6 +188,7 @@ export default async function ShareConceptsPage({ params }: Props) {
           // Antes "Video / Video": ahora el brief + número de pieza.
           titulo: `${(a.brief_id && briefTitle.get(a.brief_id)) || (isVideo ? "Video" : "Imagen")} · pieza ${conceptAssets.length - i}`,
           nuevaVersion: !!a.revises_asset_id,
+          carouselUrls: (a as { carousel_urls?: string[] | null }).carousel_urls ?? null,
           sub: meta || (isVideo ? "Video" : "Imagen estática"),
           mediaUrl: mediaUrl ?? null,
           thumbUrl: thumbUrl ?? null,

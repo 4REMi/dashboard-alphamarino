@@ -5,17 +5,20 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { getProjectOptions } from "@/lib/actions/projects"
-import { getProjectConceptOptions, sendGeneratedImageToProject } from "@/lib/actions/creatives"
+import { getProjectConceptOptions, sendGeneratedImageToProject, sendGeneratedCarouselToProject } from "@/lib/actions/creatives"
 import { Loader2 } from "lucide-react"
 
 const PLATFORMS = ["Meta Ads", "Google Ads", "TikTok Ads", "LinkedIn Ads", "Pinterest Ads"]
 
 interface Props {
   imageUrl: string
+  // Carrusel: se envía como UN asset con todas las imágenes en orden.
+  imageUrls?: string[]
   onClose: () => void
 }
 
-export function SendToProjectModal({ imageUrl, onClose }: Props) {
+export function SendToProjectModal({ imageUrl, imageUrls, onClose }: Props) {
+  const isCarousel = (imageUrls?.length ?? 0) > 1
   const [isPending, startTransition] = useTransition()
   const [projects, setProjects]       = useState<{ id: string; name: string }[]>([])
   const [loadingProjects, setLoadingProjects] = useState(true)
@@ -48,7 +51,8 @@ export function SendToProjectModal({ imageUrl, onClose }: Props) {
     setError(null)
     startTransition(async () => {
       try {
-        await sendGeneratedImageToProject(projectId, conceptId, imageUrl, platform)
+        if (isCarousel) await sendGeneratedCarouselToProject(projectId, conceptId, imageUrls!, platform)
+        else await sendGeneratedImageToProject(projectId, conceptId, imageUrl, platform)
         setDone(true)
       } catch (e) {
         setError(e instanceof Error ? e.message : "No se pudo enviar el estático")
@@ -65,16 +69,25 @@ export function SendToProjectModal({ imageUrl, onClose }: Props) {
 
         {done ? (
           <div className="py-6 text-center space-y-2">
-            <p className="text-sm font-medium">Estático agregado al ángulo creativo.</p>
+            <p className="text-sm font-medium">{isCarousel ? "Carrusel agregado al ángulo creativo." : "Estático agregado al ángulo creativo."}</p>
             <Button size="sm" onClick={onClose}>Listo</Button>
           </div>
         ) : (
           <>
             <div className="space-y-4 py-2">
-              <div className="rounded-lg overflow-hidden border border-border">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={imageUrl} alt="" className="w-full h-40 object-cover" />
-              </div>
+              {isCarousel ? (
+                <div className="flex gap-1.5 overflow-x-auto pb-1">
+                  {imageUrls!.map((u, i) => (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img key={i} src={u} alt="" className="h-32 rounded-md border border-border object-cover flex-shrink-0" />
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-lg overflow-hidden border border-border">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={imageUrl} alt="" className="w-full h-40 object-cover" />
+                </div>
+              )}
 
               <div className="space-y-1.5">
                 <Label>Proyecto</Label>

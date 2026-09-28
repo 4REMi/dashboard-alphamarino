@@ -924,6 +924,8 @@ export interface CreativeBrief {
 export interface CreativeAsset {
   id: string
   project_id: string
+  // Carrusel: imágenes en orden (asset_url = la primera). Migración 103.
+  carousel_urls?: string[] | null
   cycle_id: string | null
   concept_id: string | null
   brief_id: string | null

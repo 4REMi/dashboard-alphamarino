@@ -307,8 +307,13 @@ export async function createAsset(projectId: string, formData: FormData): Promis
   await assertCanManageAssets(projectId, role, userId)
 
   const revisesAssetId = (formData.get("revises_asset_id") as string) || null
+  // Carrusel: las imágenes en orden (asset_url = la primera). Solo se
+  // manda la columna si aplica, para no romper sin la migración 103.
+  const carouselJson = formData.get("carousel_urls_json") as string | null
+  const carouselUrls = carouselJson ? (JSON.parse(carouselJson) as string[]) : null
 
   const { error } = await supabase.from("creative_assets").insert({
+    ...(carouselUrls?.length ? { carousel_urls: carouselUrls } : {}),
     project_id:     projectId,
     cycle_id:       (formData.get("cycle_id") as string) || null,
     concept_id:     (formData.get("concept_id") as string) || null,
@@ -364,6 +369,28 @@ export async function sendGeneratedImageToProject(
   fd.set("asset_url", imageUrl)
   fd.set("file_type", "image")
   fd.set("format", "Imagen")
+  if (platform) fd.set("platform", platform)
+  await createAsset(projectId, fd)
+}
+
+// Carrusel generado (Clonar carrusel completo) → UN asset con todas sus
+// imágenes en orden, no un asset por slide.
+export async function sendGeneratedCarouselToProject(
+  projectId: string,
+  conceptId: string,
+  imageUrls: string[],
+  platform: string,
+): Promise<void> {
+  if (imageUrls.length === 0) throw new Error("El carrusel no tiene imágenes")
+  const supabase = await createClient()
+  const { data: concept } = await supabase.from("creative_concepts").select("cycle_id").eq("id", conceptId).maybeSingle()
+  const fd = new FormData()
+  fd.set("concept_id", conceptId)
+  if (concept?.cycle_id) fd.set("cycle_id", concept.cycle_id)
+  fd.set("asset_url", imageUrls[0])
+  fd.set("file_type", "image")
+  fd.set("format", `Carrusel · ${imageUrls.length} slides`)
+  fd.set("carousel_urls_json", JSON.stringify(imageUrls))
   if (platform) fd.set("platform", platform)
   await createAsset(projectId, fd)
 }

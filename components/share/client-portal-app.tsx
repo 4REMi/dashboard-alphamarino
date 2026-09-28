@@ -28,6 +28,8 @@ export interface Pieza {
   createdAt:       string
   // Reemplaza a una versión anterior (el cliente pidió cambios).
   nuevaVersion?:   boolean
+  // Carrusel: todas sus imágenes en orden.
+  carouselUrls?:   string[] | null
 }
 
 export interface Concepto {

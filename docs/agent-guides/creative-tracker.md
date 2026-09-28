@@ -43,6 +43,18 @@ Rediseño 2026-09-26 (`components/share/client-portal-app.tsx` + `portal-parts.t
   título. Aún no se muestra qué piezas están publicadas en Meta (pendiente de decidir).
 - Pendiente a futuro: vista del mapa de relaciones para el cliente.
 
+## Carruseles (Clonar carrusel completo → asset de carrusel)
+
+En Ad Lab, el visor de un carrusel guardado tiene "Clonar carrusel completo"
+(`components/ad-lab/carousel-clone-modal.tsx`): elegir slides → adaptar la
+**narrativa completa** con marca + concepto (una sola llamada que ve todos los
+slides en orden) → una dirección visual compartida → generar 1 imagen por slide
+(regenerar suelto) → guardar → "Enviar a proyecto" como **un solo asset**.
+Cada slide es un `image_clones` hijo (`batch_id`, `slide_index`,
+`source_image_url`); el asset guarda `creative_assets.carousel_urls` (migración 103;
+`asset_url` = la primera). El Creative Tracker y el portal del cliente muestran los
+slides en tira.
+
 ## Ver/editar guiones desde el concepto
 
 En el modal del concepto, las pastillas "Guión #n · estado" (y el feedback del
