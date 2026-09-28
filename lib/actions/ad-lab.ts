@@ -206,22 +206,46 @@ const IG_ACTOR = "apify~instagram-post-scraper"
  * scraper, this actor returns its full result set in one call) and
  * returns raw dataset items straight from Apify.
  */
+export interface OrganicSearchResult {
+  items: InstagramPostResult[]
+  fetchedAt: string
+  cached: boolean
+}
+
+const ORGANIC_CACHE_HOURS = 24
+
+// Caché por (perfil, cantidad, rango de fechas) de 24 h: abrir el mismo
+// feed otra vez no vuelve a pagar Apify; `force` lo actualiza. Si la tabla
+// aún no existe (migración 104), simplemente no hay caché.
 export async function searchOrganicPosts(params: {
   username: string
   limit?: number
-}): Promise<InstagramPostResult[]> {
-  await assertAuth()
+  sinceDays?: number // 0/undefined = sin límite
+  force?: boolean
+}): Promise<OrganicSearchResult> {
+  const { supabase } = await assertAuth()
   const token = process.env.APIFY_API_TOKEN
   if (!token) throw new Error("APIFY_API_TOKEN no configurado")
 
-  const handle = params.username.trim().replace(/^@/, "")
+  const handle = params.username.trim().replace(/^@/, "").toLowerCase()
   if (!handle) throw new Error("Falta el usuario de Instagram")
+  const limit = params.limit ?? 24
+  const sinceDays = params.sinceDays ?? 0
 
-  const input = {
-    username:      [handle],
-    resultsLimit:  params.limit ?? 24,
+  if (!params.force) {
+    const { data: hit } = await supabase.from("organic_search_cache").select("results, fetched_at")
+      .eq("handle", handle).eq("results_limit", limit).eq("since_days", sinceDays).maybeSingle()
+    if (hit && Date.now() - Date.parse(hit.fetched_at) < ORGANIC_CACHE_HOURS * 3_600_000) {
+      return { items: hit.results as InstagramPostResult[], fetchedAt: hit.fetched_at, cached: true }
+    }
+  }
+
+  const input: Record<string, unknown> = {
+    username:        [handle],
+    resultsLimit:    limit,
     dataDetailLevel: "detailedData",
   }
+  if (sinceDays > 0) input.onlyPostsNewerThan = `${sinceDays} days`
 
   const res = await fetch(
     `${APIFY_BASE}/acts/${IG_ACTOR}/run-sync-get-dataset-items?token=${token}`,
@@ -238,7 +262,58 @@ export async function searchOrganicPosts(params: {
     throw new Error(err?.error?.message ?? `Apify error ${res.status}`)
   }
   const data = await res.json()
-  return (Array.isArray(data) ? data : []) as InstagramPostResult[]
+  const items = (Array.isArray(data) ? data : []) as InstagramPostResult[]
+  const fetchedAt = new Date().toISOString()
+  await supabase.from("organic_search_cache")
+    .upsert({ handle, results_limit: limit, since_days: sinceDays, results: items, fetched_at: fetchedAt })
+    .then(() => {}, () => {})
+  return { items, fetchedAt, cached: false }
+}
+
+// ── Creadores guardados (Discovery orgánico) ──────────────────────
+export interface SavedCreator {
+  id: string
+  instagram_handle: string
+  display_name: string | null
+  avatar_url: string | null
+  tag: string | null
+  last_viewed_at: string | null
+}
+
+export async function getSavedCreators(): Promise<SavedCreator[]> {
+  const { supabase } = await assertAuth()
+  const { data, error } = await supabase.from("saved_creators").select("id, instagram_handle, display_name, avatar_url, tag, last_viewed_at")
+    .order("last_viewed_at", { ascending: false, nullsFirst: false })
+  if (error) return []
+  return (data ?? []) as SavedCreator[]
+}
+
+export async function saveCreator(input: { handle: string; displayName?: string | null; avatarUrl?: string | null; tag?: string | null }): Promise<SavedCreator> {
+  const { supabase, user } = await assertAuth()
+  const handle = input.handle.trim().replace(/^@/, "").toLowerCase()
+  if (!handle) throw new Error("Falta el usuario")
+  const { data, error } = await supabase.from("saved_creators").upsert({
+    instagram_handle: handle,
+    display_name: input.displayName ?? null,
+    avatar_url: input.avatarUrl ?? null,
+    tag: input.tag?.trim() || null,
+    created_by: user.id,
+    last_viewed_at: new Date().toISOString(),
+  }, { onConflict: "instagram_handle" }).select("id, instagram_handle, display_name, avatar_url, tag, last_viewed_at").single()
+  if (error) throw new Error(error.message.includes("saved_creators") ? "Falta correr la migración 104 en Supabase" : error.message)
+  return data as SavedCreator
+}
+
+export async function deleteCreator(id: string): Promise<void> {
+  const { supabase } = await assertAuth()
+  const { error } = await supabase.from("saved_creators").delete().eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
+export async function touchCreator(handle: string): Promise<void> {
+  const { supabase } = await assertAuth()
+  await supabase.from("saved_creators").update({ last_viewed_at: new Date().toISOString() })
+    .eq("instagram_handle", handle.trim().replace(/^@/, "").toLowerCase()).then(() => {}, () => {})
 }
 
 // ── Apify — live account typeahead (real accounts, not just saved ones) ──

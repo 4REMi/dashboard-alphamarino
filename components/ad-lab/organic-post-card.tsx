@@ -10,6 +10,8 @@ interface Props {
   savingId: string | null
   onSaveToBoard: (post: InstagramPostResult, boardId: string) => Promise<void>
   onOpenDetail: (post: InstagramPostResult) => void
+  // Insignias sobre la imagen (fijado, rendimiento vs. el perfil…).
+  badges?: React.ReactNode
 }
 
 function daysAgo(iso: string | null | undefined): string {
@@ -29,7 +31,7 @@ function formatCount(n: number | null | undefined): string {
   return String(n)
 }
 
-export function OrganicPostCard({ post, boards, savingId, onSaveToBoard, onOpenDetail }: Props) {
+export function OrganicPostCard({ post, boards, savingId, onSaveToBoard, onOpenDetail, badges }: Props) {
   const [showBoardPicker, setShowBoardPicker] = useState(false)
   const [savedBoards, setSavedBoards]         = useState<Set<string>>(new Set())
   const pickerRef = useRef<HTMLDivElement>(null)
@@ -73,6 +75,7 @@ export function OrganicPostCard({ post, boards, savingId, onSaveToBoard, onOpenD
         )}
 
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors z-10 pointer-events-none" />
+        {badges && <div className="absolute bottom-2 left-2 z-20 flex gap-1 pointer-events-none">{badges}</div>}
 
         {isVideo && (
           <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">

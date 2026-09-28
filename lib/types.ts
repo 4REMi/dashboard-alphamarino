@@ -1199,6 +1199,9 @@ export interface InstagramPostResult {
   ownerUsername?: string | null
   ownerId?: string | null
   ownerFullName?: string | null
+  isPinned?: boolean | null
+  videoViewCount?: number | null
+  videoPlayCount?: number | null
 }
 
 // Live typeahead suggestion for a real Facebook Page / Instagram account
