@@ -23,16 +23,33 @@ async function assertAdmin() {
   return supabase
 }
 
-export interface ReviewConcept {
-  concept: CreativeConcept
+// Lo que corrió de un concepto, por canal: Meta (sync) o una campaña
+// manual (TikTok, Pinterest…). Una campaña manual con assets de varios
+// conceptos NO se suma completa a cada uno: se marca como compartida.
+export interface ReviewChannel {
+  name: string
+  manual: boolean
   spend: number
   results: number
   running: boolean
+  // Campaña manual cuyo total se comparte con otros conceptos.
+  sharedWith: number
+}
+
+export interface ReviewConcept {
+  concept: CreativeConcept
+  // Solo lo atribuible a este concepto (Meta por anuncio + manuales exclusivas).
+  spend: number
+  results: number
+  running: boolean
+  channels: ReviewChannel[]
 }
 
 export interface ReviewAsset {
   asset: CreativeAsset
   running: boolean
+  // Canales donde corre (ej. ["Meta Ads", "TikTok Ads"]).
+  runningOn: string[]
 }
 
 export interface CycleReviewData {
@@ -63,38 +80,53 @@ export async function getCycleReviewData(projectId: string, cycleId: string): Pr
     getManualCampaigns(projectId, cycleId),
   ])
 
-  const spendByConcept = new Map<string, { spend: number; results: number; running: boolean }>()
-  const runningAssetIds = new Set<string>()
+  const channelsByConcept = new Map<string, ReviewChannel[]>()
+  const addChannel = (conceptId: string, ch: ReviewChannel) => {
+    const list = channelsByConcept.get(conceptId) ?? []
+    const same = list.find((x) => x.name === ch.name && x.manual === ch.manual && x.sharedWith === ch.sharedWith)
+    if (same) { same.spend += ch.spend; same.results += ch.results; same.running = same.running || ch.running }
+    else list.push({ ...ch })
+    channelsByConcept.set(conceptId, list)
+  }
+  const runningOnByAsset = new Map<string, Set<string>>()
+  const markAsset = (assetId: string, channel: string) => {
+    const set = runningOnByAsset.get(assetId) ?? new Set<string>()
+    set.add(channel)
+    runningOnByAsset.set(assetId, set)
+  }
   let syncedSpend = 0
   for (const ad of ads) {
     const spend = ad.metrics.spend.value ?? 0
     const results = ad.metrics.results.value ?? 0
     syncedSpend += spend
     const conceptIds = new Set(ad.linkedConcepts.map((l) => l.conceptId).filter(Boolean) as string[])
-    for (const id of conceptIds) {
-      const cur = spendByConcept.get(id) ?? { spend: 0, results: 0, running: false }
-      cur.spend += spend
-      cur.results += results
-      cur.running = cur.running || ad.status === "ACTIVE"
-      spendByConcept.set(id, cur)
-    }
-    if (ad.status === "ACTIVE") for (const l of ad.linkedConcepts) runningAssetIds.add(l.assetId)
+    for (const id of conceptIds) addChannel(id, { name: "Meta Ads", manual: false, spend, results, running: ad.status === "ACTIVE", sharedWith: 0 })
+    if (ad.status === "ACTIVE") for (const l of ad.linkedConcepts) markAsset(l.assetId, "Meta Ads")
   }
 
-  // Campañas manuales: lo del ciclo se reparte entre los conceptos de sus
-  // assets (igual que un ad de Meta), y cuentan como "corriendo" si siguen activas.
+  // Campañas manuales: si sus assets son de un solo concepto, el total es
+  // de ese concepto; si son de varios, se muestra como compartido (sin
+  // sumarlo completo a cada uno, que duplicaba el gasto).
   const conceptByAsset = new Map(assets.map((a) => [a.id, a.concept_id]))
   for (const m of manualCampaigns) {
     const running = m.status === "active"
-    const conceptIds = new Set(m.assetIds.map((id) => conceptByAsset.get(id)).filter(Boolean) as string[])
+    const conceptIds = [...new Set(m.assetIds.map((id) => conceptByAsset.get(id)).filter(Boolean) as string[])]
+    const shared = conceptIds.length > 1 ? conceptIds.length : 0
     for (const id of conceptIds) {
-      const cur = spendByConcept.get(id) ?? { spend: 0, results: 0, running: false }
-      cur.spend += m.cycleTotals?.spend ?? 0
-      cur.results += m.cycleTotals?.results ?? 0
-      cur.running = cur.running || running
-      spendByConcept.set(id, cur)
+      addChannel(id, { name: m.channel, manual: true, spend: m.cycleTotals?.spend ?? 0, results: m.cycleTotals?.results ?? 0, running, sharedWith: shared })
     }
-    if (running) for (const id of m.assetIds) runningAssetIds.add(id)
+    if (running) for (const id of m.assetIds) markAsset(id, m.channel)
+  }
+
+  const conceptSummary = (id: string) => {
+    const chans = channelsByConcept.get(id) ?? []
+    const own = chans.filter((c) => !c.sharedWith)
+    return {
+      channels: chans,
+      spend: own.reduce((n, c) => n + c.spend, 0),
+      results: own.reduce((n, c) => n + c.results, 0),
+      running: chans.some((c) => c.running),
+    }
   }
 
   const superseded = new Set(assets.map((a) => a.revises_asset_id).filter(Boolean) as string[])
@@ -120,8 +152,11 @@ export async function getCycleReviewData(projectId: string, cycleId: string): Pr
     otherActiveCycle: (otherActive as PaidMediaCycle | null) ?? null,
     manualCampaigns,
     cycle: cycle as PaidMediaCycle,
-    concepts: concepts.map((c) => ({ concept: c, ...(spendByConcept.get(c.id) ?? { spend: 0, results: 0, running: false }) })),
-    assets: assets.filter((a) => !superseded.has(a.id)).map((a) => ({ asset: a, running: runningAssetIds.has(a.id) })),
+    concepts: concepts.map((c) => ({ concept: c, ...conceptSummary(c.id) })),
+    assets: assets.filter((a) => !superseded.has(a.id)).map((a) => {
+      const on = [...(runningOnByAsset.get(a.id) ?? [])]
+      return { asset: a, running: on.length > 0, runningOn: on }
+    }),
     syncedSpend,
     nextCycle,
     nextConceptIds,

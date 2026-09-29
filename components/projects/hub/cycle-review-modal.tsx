@@ -288,13 +288,12 @@ export function CycleReviewModal({ projectId, cycleId, mode, onClose }: {
           {data && step === 2 && (
             <div className="space-y-2">
               <p className="text-sm text-muted-foreground">
-                Elige qué conceptos continúan al siguiente ciclo. Vienen sugeridos: continúa lo que corre en Meta o ya es Evergreen.
+                Elige qué conceptos continúan al siguiente ciclo. Vienen sugeridos: continúa lo que está corriendo (en Meta o en una campaña manual) o ya es Evergreen.
               </p>
               {data.concepts.length === 0 && <p className="text-sm text-muted-foreground italic">Este ciclo no tiene conceptos.</p>}
               {data.concepts.map((rc) => {
                 const d = decisions[rc.concept.id]
                 if (!d) return null
-                const cpr = rc.results > 0 ? rc.spend / rc.results : null
                 return (
                   <div
                     key={rc.concept.id}
@@ -310,20 +309,36 @@ export function CycleReviewModal({ projectId, cycleId, mode, onClose }: {
                         {rc.concept.brand_line && <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: rc.concept.brand_line.color }} title={rc.concept.brand_line.name} />}
                         <p className="text-sm font-medium truncate">{rc.concept.name || rc.concept.angle_type || "Concepto"}</p>
                       </div>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {rc.spend > 0
-                          ? `${fmt$(rc.spend)} · ${rc.results.toLocaleString("en-US")} resultados${cpr !== null ? ` · $${cpr.toFixed(2)} por resultado` : ""}`
-                          : "Sin anuncios vinculados este ciclo"}
-                      </p>
+                      {rc.channels.length === 0 ? (
+                        <p className="text-xs text-muted-foreground mt-0.5">Sin anuncios vinculados este ciclo</p>
+                      ) : (
+                        // Una línea por canal: Meta (sync) o campaña manual.
+                        <div className="mt-0.5 space-y-0.5">
+                          {rc.channels.map((ch) => {
+                            const chCpr = ch.results > 0 ? ch.spend / ch.results : null
+                            return (
+                              <p key={`${ch.name}-${ch.manual}-${ch.sharedWith}`} className="text-xs text-muted-foreground">
+                                <span className="font-medium text-foreground">{ch.name}{ch.manual ? " (manual)" : ""}</span>
+                                {" · "}{fmt$(ch.spend)} · {ch.results.toLocaleString("en-US")} resultados{chCpr !== null ? ` · $${chCpr.toFixed(2)} por resultado` : ""}
+                                {ch.sharedWith > 0 && <span className="text-amber-700 dark:text-amber-400"> · total de la campaña, compartido con {ch.sharedWith - 1} concepto{ch.sharedWith - 1 === 1 ? "" : "s"} más</span>}
+                              </p>
+                            )
+                          })}
+                        </div>
+                      )}
                       {d.continues === null && (
                         <span className="inline-flex mt-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
                           Sin decidir — no hay anuncios vinculados para sugerir
                         </span>
                       )}
-                      {rc.running && (
-                        <span className="inline-flex items-center gap-1 mt-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                          <Radio className="w-3 h-3" /> Corriendo en Meta
-                        </span>
+                      {rc.channels.some((ch) => ch.running) && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {[...new Set(rc.channels.filter((ch) => ch.running).map((ch) => ch.name))].map((name) => (
+                            <span key={name} className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                              <Radio className="w-3 h-3" /> Corriendo en {name}
+                            </span>
+                          ))}
+                        </div>
                       )}
                     </div>
                     <div className="flex items-center gap-2">
@@ -407,7 +422,7 @@ export function CycleReviewModal({ projectId, cycleId, mode, onClose }: {
                                   {selected && <Check className="w-3.5 h-3.5 text-primary-foreground" />}
                                 </span>
                                 {ra.running && (
-                                  <span className="absolute top-1.5 right-1.5 text-[9px] font-semibold bg-black/60 text-white px-1.5 py-0.5 rounded">En Meta</span>
+                                  <span className="absolute top-1.5 right-1.5 text-[9px] font-semibold bg-black/60 text-white px-1.5 py-0.5 rounded">En {ra.runningOn.map((c) => c.replace(" Ads", "")).join(" + ")}</span>
                                 )}
                               </div>
                               <div className="p-2 space-y-1">
