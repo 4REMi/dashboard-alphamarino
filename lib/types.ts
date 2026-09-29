@@ -825,6 +825,10 @@ export interface RecurringExpense {
   next_payment_date: string | null
   expense_date: string | null
   is_active: boolean
+  start_date?: string | null
+  // Fecha de baja (migración 105): el gasto deja de contar desde aquí,
+  // sin desaparecer de los meses en que sí aplicó.
+  ended_at?: string | null
   created_at: string
 }
 

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { formatCurrency, formatDate, cn } from "@/lib/utils"
 import { normalizeToMonthly } from "@/lib/types"
+import { recurringAppliesToMonth } from "@/lib/utils/recurring-in-month"
 import type { Income, ProjectExpense, RecurringExpense, ExpenseFrequency } from "@/lib/types"
 import { getExchangeRate } from "@/lib/actions/finances"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -16,6 +17,7 @@ interface ChartEntry {
   gastos: number
   margen: number
   gastosBreakdown: Record<string, number>
+  gastosProyectados?: number
 }
 
 interface MonthlyBreakdownProps {
@@ -103,10 +105,8 @@ export function MonthlyBreakdown({ data, income, projectExpenses, recurring }: M
   // Items para el modal de detalle completo
   const incomeItems = income.filter((i) => i.date.slice(0, 7) === selected.month)
   const projectExpenseItems = projectExpenses.filter((e) => e.date.slice(0, 7) === selected.month)
-  const recurringFixedItems = recurring.filter((e) => e.is_active && e.frequency !== "One-time")
-  const recurringOneTimeItems = recurring.filter(
-    (e) => e.frequency === "One-time" && e.expense_date?.slice(0, 7) === selected.month
-  )
+  const recurringFixedItems = recurring.filter((e) => e.frequency !== "One-time" && recurringAppliesToMonth(e, selected.month))
+  const recurringOneTimeItems = recurring.filter((e) => e.frequency === "One-time" && recurringAppliesToMonth(e, selected.month))
 
   const recurringFixedTotal = recurringFixedItems.reduce((s, e) => s + normalizeToMonthly(Number(e.amount), e.frequency), 0)
   const recurringOneTimeTotal = recurringOneTimeItems.reduce((s, e) => s + Number(e.amount), 0)
@@ -158,8 +158,11 @@ export function MonthlyBreakdown({ data, income, projectExpenses, recurring }: M
                 <div className="h-1.5 rounded-full bg-muted overflow-hidden">
                   <div className="h-full bg-green-500 rounded-full" style={{ width: `${(entry.ingresos / maxValue) * 100}%` }} />
                 </div>
-                <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                  <div className="h-full bg-red-400 rounded-full" style={{ width: `${(entry.gastos / maxValue) * 100}%` }} />
+                <div className="h-1.5 rounded-full bg-muted overflow-hidden flex" title={entry.gastosProyectados ? `Incluye ${formatCurrency(entry.gastosProyectados)} de fijos del mes que aún no ocurren` : undefined}>
+                  <div className="h-full bg-red-400" style={{ width: `${((entry.gastos - (entry.gastosProyectados ?? 0)) / maxValue) * 100}%` }} />
+                  {!!entry.gastosProyectados && (
+                    <div className="h-full bg-red-400/35 bg-[repeating-linear-gradient(45deg,transparent,transparent_2px,rgba(255,255,255,.5)_2px,rgba(255,255,255,.5)_4px)]" style={{ width: `${(entry.gastosProyectados / maxValue) * 100}%` }} />
+                  )}
                 </div>
               </div>
               <span className={cn("text-xs font-semibold w-20 text-right flex-shrink-0", isPositive ? "text-blue-600" : "text-red-600")}>
@@ -194,6 +197,7 @@ export function MonthlyBreakdown({ data, income, projectExpenses, recurring }: M
           <div className="space-y-0.5">
             <p className="text-muted-foreground">Gastos</p>
             <p className="font-semibold text-red-500 text-sm">{formatCurrency(selected.gastos)}</p>
+            {!!selected.gastosProyectados && <p className="text-[10px] text-muted-foreground">incluye {formatCurrency(selected.gastosProyectados)} proyectado (fijos del mes)</p>}
           </div>
           <div className="space-y-0.5">
             <p className="text-muted-foreground">Margen neto</p>

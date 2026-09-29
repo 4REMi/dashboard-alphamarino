@@ -25,6 +25,7 @@ import { Button } from "@/components/ui/button"
 import { deleteRecurringExpense, deleteIncome } from "@/lib/actions/finances"
 import { Trash2, AlertCircle } from "lucide-react"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { recurringAppliesToMonth } from "@/lib/utils/recurring-in-month"
 import { normalizeToMonthly } from "@/lib/types"
 import type { Income, RecurringExpense, ProjectExpense, Project, ExpenseFrequency } from "@/lib/types"
 import { can } from "@/lib/permissions"
@@ -91,7 +92,7 @@ export default async function FinancesPage() {
   }
 
   const monthlyRecurringTotal = (recurring as RecurringExpense[])
-    .filter((e) => e.is_active)
+    .filter((e) => recurringAppliesToMonth(e, currentMonthKey))
     .reduce((s, e) => s + monthlyAmount(e), 0)
 
   const upcomingExpenses = (recurring as RecurringExpense[]).filter((e) => {

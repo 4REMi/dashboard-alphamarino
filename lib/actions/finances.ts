@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { normalizeToMonthly } from "@/lib/types"
+import { recurringAppliesToMonth } from "@/lib/utils/recurring-in-month"
 import type { ExpenseFrequency, ExpenseCategory } from "@/lib/types"
 
 // ============================================================
@@ -37,18 +38,24 @@ export async function createRecurringExpense(formData: FormData) {
 
 export async function updateRecurringExpense(id: string, formData: FormData) {
   const supabase = await createClient()
-  const { error } = await supabase
-    .from("recurring_expenses")
-    .update({
-      name: formData.get("name") as string,
-      amount: Number(formData.get("amount")),
-      frequency: formData.get("frequency") as ExpenseFrequency,
-      category: formData.get("category") as ExpenseCategory,
-      next_payment_date: (formData.get("next_payment_date") as string) || null,
-      expense_date: (formData.get("expense_date") as string) || null,
-      is_active: formData.get("is_active") !== null,
-    })
-    .eq("id", id)
+  const active = formData.get("is_active") !== null
+  const base = {
+    name: formData.get("name") as string,
+    amount: Number(formData.get("amount")),
+    frequency: formData.get("frequency") as ExpenseFrequency,
+    category: formData.get("category") as ExpenseCategory,
+    next_payment_date: (formData.get("next_payment_date") as string) || null,
+    expense_date: (formData.get("expense_date") as string) || null,
+    is_active: active,
+  }
+  // Dar de baja guarda la fecha para no borrar el gasto de los meses en que
+  // sí aplicó (ver recurringAppliesToMonth). Solo se toca ended_at cuando
+  // cambia el estado, para no mover la fecha de una baja anterior.
+  const { data: prev } = await supabase.from("recurring_expenses").select("is_active").eq("id", id).maybeSingle()
+  const endedPatch = prev && prev.is_active !== active ? { ended_at: active ? null : new Date().toISOString().slice(0, 10) } : {}
+  let { error } = await supabase.from("recurring_expenses").update({ ...base, ...endedPatch }).eq("id", id)
+  // Sin la migración 105 todavía.
+  if (error && /ended_at/.test(error.message)) ({ error } = await supabase.from("recurring_expenses").update(base).eq("id", id))
   if (error) throw error
   revalidatePath("/finances/expenses")
   revalidatePath("/finances")
@@ -360,28 +367,24 @@ export async function getFinancialSummary() {
          prevIncomeRes, prevExpensesRes] = await Promise.all([
     supabase.from("income").select("amount").gte("date", firstDay).lte("date", lastDay),
     supabase.from("project_expenses").select("amount").gte("date", firstDay).lte("date", lastDay),
-    supabase.from("recurring_expenses").select("amount, frequency, expense_date").eq("is_active", true),
+    supabase.from("recurring_expenses").select("*"),
     supabase.from("projects").select("monthly_fee").eq("status", "Active").gt("monthly_fee", 0),
     supabase.from("income").select("amount").gte("date", prevFirst).lte("date", prevLast),
     supabase.from("project_expenses").select("amount").gte("date", prevFirst).lte("date", prevLast),
   ])
 
-  const fixedMonthly = (recurringRes.data ?? []).reduce(
-    (s, e) => s + normalizeToMonthly(Number(e.amount), e.frequency as ExpenseFrequency), 0
-  )
-
-  const oneTimeInRange = (start: string, end: string) =>
+  const recurringFor = (monthKey: string) =>
     (recurringRes.data ?? [])
-      .filter((e) => e.frequency === "One-time" && e.expense_date && e.expense_date >= start && e.expense_date <= end)
-      .reduce((s, e) => s + Number(e.amount), 0)
+      .filter((e) => recurringAppliesToMonth(e, monthKey))
+      .reduce((s, e) => s + (e.frequency === "One-time" ? Number(e.amount) : normalizeToMonthly(Number(e.amount), e.frequency as ExpenseFrequency)), 0)
 
-  const monthlyRecurring = fixedMonthly + oneTimeInRange(firstDay, lastDay)
+  const monthlyRecurring = recurringFor(firstDay.slice(0, 7))
 
   const monthlyIncome          = (incomeRes.data ?? []).reduce((s, i) => s + Number(i.amount), 0)
   const monthlyProjectExpenses = (projectExpensesRes.data ?? []).reduce((s, e) => s + Number(e.amount), 0)
   const mrr                    = (mrrRes.data ?? []).reduce((s, p) => s + Number(p.monthly_fee ?? 0), 0)
 
-  const prevRecurring = fixedMonthly + oneTimeInRange(prevFirst, prevLast)
+  const prevRecurring = recurringFor(prevFirst.slice(0, 7))
   const prevIncome   = (prevIncomeRes.data ?? []).reduce((s, i) => s + Number(i.amount), 0)
   const prevExpenses = (prevExpensesRes.data ?? []).reduce((s, e) => s + Number(e.amount), 0) + prevRecurring
 
@@ -418,22 +421,16 @@ export async function getMonthlyChartData() {
   const [incomeRes, expensesRes, recurringRes] = await Promise.all([
     supabase.from("income").select("amount, date").gte("date", startDate),
     supabase.from("project_expenses").select("amount, date").gte("date", startDate),
-    supabase.from("recurring_expenses").select("amount, frequency, category, expense_date").eq("is_active", true),
+    supabase.from("recurring_expenses").select("*"),
   ])
-
-  // Normalized monthly recurring cost (fixed, same every month), por categoría
-  const fixedByCategory: Record<string, number> = {}
-  for (const e of recurringRes.data ?? []) {
-    const monthly = normalizeToMonthly(Number(e.amount), e.frequency as ExpenseFrequency)
-    if (monthly === 0) continue
-    fixedByCategory[e.category] = (fixedByCategory[e.category] ?? 0) + monthly
-  }
-  const fixedMonthly = Object.values(fixedByCategory).reduce((s, v) => s + v, 0)
 
   const months: Record<string, {
     month: string; label: string; ingresos: number; gastos: number; margen: number
     gastosBreakdown: Record<string, number>
+    // Mes en curso: parte de los gastos que aún no ocurre (fijos del mes).
+    gastosProyectados: number
   }> = {}
+  const currentKey = new Date().toISOString().slice(0, 7)
 
   for (let i = 11; i >= 0; i--) {
     const d = new Date()
@@ -444,9 +441,18 @@ export async function getMonthlyChartData() {
       month: key,
       label: d.toLocaleDateString("es-MX", { month: "short", year: "2-digit" }),
       ingresos: 0,
-      gastos: fixedMonthly,  // base: recurring expenses normalized
+      gastos: 0,
       margen: 0,
-      gastosBreakdown: { ...fixedByCategory },
+      gastosBreakdown: {},
+      gastosProyectados: 0,
+    }
+    // Fijos solo en los meses en que aplican (desde su inicio, hasta su baja).
+    for (const e of recurringRes.data ?? []) {
+      if (e.frequency === "One-time" || !recurringAppliesToMonth(e, key)) continue
+      const monthly = normalizeToMonthly(Number(e.amount), e.frequency as ExpenseFrequency)
+      months[key].gastos += monthly
+      months[key].gastosBreakdown[e.category] = (months[key].gastosBreakdown[e.category] ?? 0) + monthly
+      if (key === currentKey) months[key].gastosProyectados += monthly
     }
   }
 
@@ -464,7 +470,7 @@ export async function getMonthlyChartData() {
   }
 
   for (const entry of recurringRes.data ?? []) {
-    if (entry.frequency !== "One-time" || !entry.expense_date) continue
+    if (entry.frequency !== "One-time" || !entry.expense_date || (!entry.is_active && !entry.ended_at)) continue
     const key = entry.expense_date.slice(0, 7)
     if (months[key]) {
       months[key].gastos += Number(entry.amount)
