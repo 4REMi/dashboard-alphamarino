@@ -43,14 +43,15 @@ import { Badge } from "@/components/ui/badge"
 import { createClient } from "@/lib/supabase/server"
 import { ProjectContextBar } from "@/components/projects/project-context-bar"
 import { ArrowLeft, CalendarDays, FolderKanban, Megaphone, Plus } from "lucide-react"
-import { formatDate, formatCurrency } from "@/lib/utils"
+import { formatDate, formatCurrency, formatCycleRange } from "@/lib/utils"
 import type { Customer, Profile, Project, Task, ProjectType, PaidMediaContext, PaidMediaCycle, WebProjectContext, ProjectLogEntry, ProjectPhase, Deliverable, Sop, CreativeConcept, CreativeAsset, ProjectIntegration } from "@/lib/types"
 import { can } from "@/lib/permissions"
 import { getProjectTypeIcon } from "@/lib/project-type-icons"
 
 
-export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ProjectDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ciclo?: string }> }) {
   const { id } = await params
+  const { ciclo } = await searchParams
 
   const supabase = await createClient()
 
@@ -113,17 +114,20 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const webContext       = unwrapSingle(project.web_project_context) as WebProjectContext | null
 
   const activeCycle   = (cycles as PaidMediaCycle[]).find((c) =>  c.is_active) ?? null
+  // Ciclo que se está viendo (?ciclo=…): el Creative Tracker, "Anuncios en
+  // Meta" y las campañas manuales siguen el mismo ciclo. Por default, el activo.
+  const viewCycle     = (cycles as PaidMediaCycle[]).find((c) => c.id === ciclo) ?? activeCycle
 
   // Fetch initial creatives + meta campaigns + integrations for active cycle
   const [initialConcepts, initialAssets, integrations, brandBrains, brandLines, importedMetaCreatives, initialCreativeCards] = isPaidMedia
     ? await Promise.all([
-        getCreativeConcepts(id, activeCycle?.id ?? null).catch(() => []),
-        getCreativeAssets(id, activeCycle?.id ?? null).catch(() => []),
+        getCreativeConcepts(id, viewCycle?.id ?? null).catch(() => []),
+        getCreativeAssets(id, viewCycle?.id ?? null).catch(() => []),
         getProjectIntegrations(id).catch(() => []),
         getBrandBrains().catch(() => []),
         project.brand_brain_id ? getBrandLines(project.brand_brain_id).catch(() => []) : Promise.resolve([]),
         getMetaImportedCreatives(id).catch(() => []),
-        activeCycle ? getCreativePerformance(id, activeCycle.id).catch(() => []) : Promise.resolve([]),
+        viewCycle ? getCreativePerformance(id, viewCycle.id).catch(() => []) : Promise.resolve([]),
       ])
     : [[], [], [], [], [], [], []]
 
@@ -384,6 +388,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               <CreativesHub
                 projectId={project.id}
                 cycles={cycles as PaidMediaCycle[]}
+                initialCycleId={viewCycle?.id ?? null}
                 initialConcepts={initialConcepts as CreativeConcept[]}
                 initialAssets={initialAssets as CreativeAsset[]}
                 isAdminOrSubadmin={isAdminOrSubadmin}
@@ -399,22 +404,34 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                   (lib/actions/meta.ts) siguen intactos. */}
             </div>
 
-            {activeCycle && (
+            {viewCycle && (
               <div className="space-y-3">
-                <h3 className="text-sm font-semibold">Anuncios en Meta</h3>
+                <div className="flex items-baseline gap-2 flex-wrap">
+                  <h3 className="text-sm font-semibold">Anuncios en Meta</h3>
+                  <span className="text-xs text-muted-foreground">{formatCycleRange(viewCycle.start_date, viewCycle.end_date)}{viewCycle.is_active ? " · activo" : ""}</span>
+                </div>
+                {!viewCycle.is_active && (
+                  // Ciclo pasado: lo que corrió en ese ciclo, con sus métricas
+                  // de esas fechas. Solo lectura (sin sincronizar ni vincular).
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30 px-3 py-2 text-xs text-amber-900 dark:text-amber-200 flex items-center gap-2 flex-wrap">
+                    Viendo un ciclo pasado: los anuncios que corrieron entonces, con sus métricas de ese ciclo. Solo lectura.
+                    {activeCycle && <a href={`?ciclo=${activeCycle.id}#creative-tracker`} className="ml-auto font-semibold hover:underline">Volver al ciclo activo</a>}
+                  </div>
+                )}
                 <div className="rounded-xl border border-border bg-card">
                   <CreativePerformanceGrid
+                    key={viewCycle.id}
                     projectId={project.id}
-                    cycleId={activeCycle.id}
+                    cycleId={viewCycle.id}
                     initialCards={initialCreativeCards}
                     displayMetrics={(paidMediaContext?.display_metrics ?? ["spend", "cost_per_result"]) as MetricKey[]}
                     savedCampaignIds={paidMediaContext?.synced_campaign_ids ?? null}
                     hasCredentials={!!(integrations as ProjectIntegration[]).find((i) => i.platform === "meta")}
                     currency={(integrations as ProjectIntegration[]).find((i) => i.platform === "meta")?.currency ?? null}
-                    canEdit={isAdminOrSubadmin}
+                    canEdit={isAdminOrSubadmin && viewCycle.is_active}
                   />
                 </div>
-                <ManualCampaignsPanel projectId={project.id} cycleId={activeCycle.id} />
+                <ManualCampaignsPanel key={`manual-${viewCycle.id}`} projectId={project.id} cycleId={viewCycle.id} />
               </div>
             )}
 

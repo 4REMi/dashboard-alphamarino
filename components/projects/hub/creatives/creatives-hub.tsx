@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useTransition } from "react"
+import { useRouter } from "next/navigation"
 import { ConceptsTable } from "./concepts-table"
 import { RelationshipMap } from "./relationship-map"
 import { LayoutGrid, Share2, X } from "lucide-react"
@@ -13,6 +14,8 @@ import { Loader2, ChevronDown } from "lucide-react"
 interface CreativesHubProps {
   projectId: string
   cycles: PaidMediaCycle[]
+  // Ciclo elegido en la URL (?ciclo=…); por default el activo.
+  initialCycleId?: string | null
   initialConcepts: CreativeConcept[]
   initialAssets: CreativeAsset[]
   isAdminOrSubadmin: boolean
@@ -25,6 +28,7 @@ interface CreativesHubProps {
 export function CreativesHub({
   projectId,
   cycles,
+  initialCycleId,
   initialConcepts,
   initialAssets,
   isAdminOrSubadmin,
@@ -34,7 +38,14 @@ export function CreativesHub({
   projectBrandBrainId,
 }: CreativesHubProps) {
   const activeCycle = cycles.find((c) => c.is_active) ?? cycles[0] ?? null
-  const [selectedCycleId, setSelectedCycleId] = useState<string | null>(activeCycle?.id ?? null)
+  const [selectedCycleId, setSelectedCycleId] = useState<string | null>(initialCycleId ?? activeCycle?.id ?? null)
+  const router = useRouter()
+  // Cambiar de ciclo actualiza la URL: la página vuelve a renderizar
+  // "Anuncios en Meta" y campañas manuales para ese mismo ciclo.
+  function selectCycle(id: string | null) {
+    setSelectedCycleId(id)
+    router.replace(id ? `?ciclo=${id}#creative-tracker` : "#creative-tracker", { scroll: false })
+  }
   const [concepts, setConcepts] = useState<CreativeConcept[]>(initialConcepts)
   const [assets, setAssets]     = useState<CreativeAsset[]>(initialAssets)
   const [briefs, setBriefs]     = useState<CreativeBrief[]>([])
@@ -89,7 +100,7 @@ export function CreativesHub({
     <div className="relative">
       <select
         value={selectedCycleId ?? ""}
-        onChange={(e) => setSelectedCycleId(e.target.value || null)}
+        onChange={(e) => selectCycle(e.target.value || null)}
         className="appearance-none text-sm border rounded-lg px-3 py-1.5 pr-8 bg-background focus:outline-none focus:ring-1 focus:ring-ring font-medium"
       >
         {cycles.map((cycle) => (
