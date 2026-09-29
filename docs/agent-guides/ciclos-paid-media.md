@@ -179,6 +179,28 @@ conectados. **Internas**: el portal del cliente no las lee. Nivel **campaña**
 - Código: migración 101, `lib/actions/manual-campaigns.ts`,
   `lib/utils/manual-campaign-calc.ts`, `components/projects/hub/manual-campaigns/`.
 
+## Reportes (bajo demanda)
+
+Tarjeta "Reportes" en el Hub Paid Media (`components/projects/hub/reports-card.tsx`):
+"Generar reporte" con cualquier rango (ciclo actual a la fecha, ciclo anterior,
+últimos 14 días o personalizado) + notas del equipo (lo que el dashboard no sabe:
+llamada con el cliente, inbox, calidad de leads).
+- **Datos** (`lib/actions/reports.ts` → `buildReportData`, guardados como snapshot en
+  `paid_media_reports.data`, migración 106): Meta por rango (gasto, impresiones,
+  alcance y frecuencia pedidos en vivo a Meta y deduplicados, CPM, clics, CTR, CPC,
+  resultados según objetivo y su costo, con delta vs. el período anterior de la misma
+  duración), campañas manuales por canal, consolidado si hay 2+ canales, tabla por
+  campaña, campañas sin gasto, top 6 creativos (miniatura del asset vinculado o de
+  Meta; el de más resultados es el ganador) y entregables del período.
+- **Narrativa**: borrador de IA con reglas propias del dashboard (solo cifras que
+  existan en los datos; lo cualitativo solo si viene en las notas). Se edita sección
+  por sección en `/projects/[id]/reportes/[reportId]`; "Reescribir narrativa" y
+  "Actualizar datos".
+- **Salidas**: DOCX con el diseño del script canónico (`lib/reports/docx.ts`,
+  `/api/reports/[id]/docx`) y PDF desde `/print/report/[id]` (mismo diseño, con
+  miniaturas). Estado Borrador / Entregado.
+- Pendiente: publicarlo en el portal del cliente (sección Reportes).
+
 ## Reparar ciclos mal capturados
 
 Botón **"Reparar ciclos"** en el Historial de Ciclos, visible para cualquier

@@ -1,6 +1,6 @@
 # Reportes estandarizados por ciclo de Paid Media
 
-**Estado:** idea
+**Estado:** implementado (2026-09-29) — ver docs/agent-guides/ciclos-paid-media.md § Reportes. Pendiente: sección Reportes en el portal del cliente.
 **Área:** Paid Media / Creative Tracker
 **Agregado:** 2026-09-10
 

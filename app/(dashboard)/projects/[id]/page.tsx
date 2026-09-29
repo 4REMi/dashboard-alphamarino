@@ -31,6 +31,7 @@ import { ProjectPhases } from "@/components/projects/project-phases"
 import { PaidMediaContextCard } from "@/components/projects/hub/paid-media-context-card"
 import { PaidMediaCycleCard } from "@/components/projects/hub/paid-media-cycle-card"
 import { CreativePerformanceGrid } from "@/components/projects/hub/creative-performance-grid"
+import { ReportsCard } from "@/components/projects/hub/reports-card"
 import { ManualCampaignsPanel } from "@/components/projects/hub/manual-campaigns/manual-campaigns-panel"
 import type { MetricKey } from "@/lib/constants/paid-media-metrics"
 import { PaidMediaCycleHistory } from "@/components/projects/hub/paid-media-cycle-history"
@@ -434,6 +435,8 @@ export default async function ProjectDetailPage({ params, searchParams }: { para
                 <ManualCampaignsPanel key={`manual-${viewCycle.id}`} projectId={project.id} cycleId={viewCycle.id} />
               </div>
             )}
+
+            <ReportsCard projectId={project.id} cycles={cycles as PaidMediaCycle[]} />
 
             {(cycles as PaidMediaCycle[]).length > 0 && (
               <PaidMediaCycleHistory projectId={project.id} cycles={cycles as PaidMediaCycle[]} canEdit={isAdminOrSubadmin} canRepair={isAdminOrSubadmin || memberProfiles.some((m) => m.id === user!.id)} />

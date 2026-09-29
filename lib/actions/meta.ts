@@ -1309,3 +1309,32 @@ export async function reimportMetaCreative(projectId: string, creativeId: string
 
   return errors.length > 0 ? { ok: false, error: errors[0] } : { ok: true }
 }
+
+
+// Alcance y frecuencia de la cuenta para un rango arbitrario (reportes),
+// deduplicados por Meta. No se pueden reconstruir sumando días. Se pide en
+// vivo; si falla, el reporte simplemente omite esas dos métricas.
+export async function getMetaRangeReach(projectId: string, since: string, until: string): Promise<{ reach: number; frequency: number } | null> {
+  const accessToken = process.env.META_SYSTEM_USER_TOKEN
+  if (!accessToken) return null
+  const supabase = await createClient()
+  const [{ data: integration }, { data: context }] = await Promise.all([
+    supabase.from("project_integrations").select("account_id").eq("project_id", projectId).eq("platform", "meta").maybeSingle(),
+    supabase.from("paid_media_context").select("synced_campaign_ids").eq("project_id", projectId).maybeSingle(),
+  ])
+  if (!integration?.account_id) return null
+  const url = new URL(`${META_BASE}/act_${integration.account_id}/insights`)
+  url.searchParams.set("fields", "reach,frequency")
+  url.searchParams.set("time_range", JSON.stringify({ since, until: until > new Date().toISOString().slice(0, 10) ? new Date().toISOString().slice(0, 10) : until }))
+  url.searchParams.set("access_token", accessToken)
+  const ids = (context?.synced_campaign_ids as string[] | null) ?? []
+  if (ids.length) url.searchParams.set("filtering", JSON.stringify([{ field: "campaign.id", operator: "IN", value: ids }]))
+  try {
+    const json = await (await fetch(url.toString(), { cache: "no-store" })).json()
+    const row = json?.data?.[0]
+    if (!row) return null
+    return { reach: Number(row.reach ?? 0), frequency: Number(row.frequency ?? 0) }
+  } catch {
+    return null
+  }
+}
