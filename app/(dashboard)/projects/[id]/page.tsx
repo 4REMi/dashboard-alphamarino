@@ -384,6 +384,9 @@ export default async function ProjectDetailPage({ params, searchParams }: { para
                 .sort((a, b) => (a.start_date < b.start_date ? 1 : -1))[0]?.id ?? null
             } />
 
+            {/* Reportes justo debajo del ciclo: es donde se buscan. */}
+            <ReportsCard projectId={project.id} cycles={cycles as PaidMediaCycle[]} />
+
             <div id="creative-tracker" className="space-y-3">
               <h3 className="text-sm font-semibold">Creative Tracker</h3>
               <CreativesHub
@@ -435,8 +438,6 @@ export default async function ProjectDetailPage({ params, searchParams }: { para
                 <ManualCampaignsPanel key={`manual-${viewCycle.id}`} projectId={project.id} cycleId={viewCycle.id} />
               </div>
             )}
-
-            <ReportsCard projectId={project.id} cycles={cycles as PaidMediaCycle[]} />
 
             {(cycles as PaidMediaCycle[]).length > 0 && (
               <PaidMediaCycleHistory projectId={project.id} cycles={cycles as PaidMediaCycle[]} canEdit={isAdminOrSubadmin} canRepair={isAdminOrSubadmin || memberProfiles.some((m) => m.id === user!.id)} />
