@@ -65,7 +65,8 @@ function addMonth(month: string, n: number) {
   const d = new Date(Date.UTC(y, m - 1 + n, 1))
   return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-01`
 }
-const migrationHint = (msg: string) => /payroll_items|compensation_|bonus_agreements/.test(msg) ? "Falta correr la migración 107 en Supabase" : msg
+// Solo si la tabla de verdad no existe (no cualquier error que la mencione).
+const migrationHint = (msg: string) => /(relation|table) .*(payroll_items|compensation_|bonus_agreements).*(does not exist|not find)/i.test(msg) || /Could not find the table/i.test(msg) ? "Falta correr la migración 107 en Supabase" : msg
 
 function revalidate(profileId?: string) {
   revalidatePath("/employees/nomina")
@@ -153,8 +154,8 @@ export async function getPayroll(month?: string): Promise<PayrollOverview> {
   const current = monthStart(today())
   await ensureSalaries(supabase, m > current ? m : current)
   const [items, overdue, people, comps, agreements, legacy] = await Promise.all([
-    supabase.from("payroll_items").select("*, profile:profiles(full_name), project:projects(name)").eq("period_month", m).order("due_date"),
-    supabase.from("payroll_items").select("*, profile:profiles(full_name), project:projects(name)").eq("status", "pending").lt("period_month", m).order("due_date"),
+    supabase.from("payroll_items").select("*, profile:profiles!payroll_items_profile_id_fkey(full_name), project:projects(name)").eq("period_month", m).order("due_date"),
+    supabase.from("payroll_items").select("*, profile:profiles!payroll_items_profile_id_fkey(full_name), project:projects(name)").eq("status", "pending").lt("period_month", m).order("due_date"),
     supabase.from("profiles").select("id, full_name").order("full_name"),
     supabase.from("compensation_profiles").select("*"),
     supabase.from("bonus_agreements").select("*"),
@@ -196,7 +197,7 @@ export async function addPayrollItem(input: {
 export async function markPaid(itemIds: string[], paidAt?: string): Promise<{ paid: number }> {
   const { supabase } = await admin()
   const date = paidAt ?? today()
-  const { data: items } = await supabase.from("payroll_items").select("*, profile:profiles(full_name)").in("id", itemIds).eq("status", "pending")
+  const { data: items } = await supabase.from("payroll_items").select("*, profile:profiles!payroll_items_profile_id_fkey(full_name)").in("id", itemIds).eq("status", "pending")
   let rate: number | null = null
   let paid = 0
   for (const it of (items ?? []) as PayrollItem[]) {
