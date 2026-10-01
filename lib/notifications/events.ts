@@ -147,6 +147,28 @@ export const NOTIFICATION_EVENTS = {
         ? `📁 Phases were applied on *${data.projectName}* — you got ${data.taskCount} task${data.taskCount === 1 ? "" : "s"}`
         : `📁 Se aplicaron fases en *${data.projectName}* — te tocaron ${data.taskCount} tarea${data.taskCount === 1 ? "" : "s"}`,
   },
+  // Nómina — reporte mensual de bonos (lib/actions/my-compensation.ts).
+  bonus_report_submitted: {
+    label: "Reporte de bonos enviado",
+    build: (data: { employeeName: string; month: string; count: number }, lang: NotificationLang) =>
+      lang === "en"
+        ? `🎯 *${data.employeeName}* submitted their bonus report for ${data.month} (${data.count} activit${data.count === 1 ? "y" : "ies"}) — review it in Payroll`
+        : `🎯 *${data.employeeName}* envió su reporte de bonos de ${data.month} (${data.count} actividad${data.count === 1 ? "" : "es"}) — revísalo en Nómina`,
+  },
+  bonus_report_reminder: {
+    label: "Recordatorio de reporte de bonos",
+    build: (data: { month: string; deadline: string }, lang: NotificationLang) =>
+      lang === "en"
+        ? `🗓️ Remember to send your bonus report for ${data.month} — deadline ${data.deadline}. Dashboard → My compensation`
+        : `🗓️ Recuerda enviar tu reporte de bonos de ${data.month} — fecha límite ${data.deadline}. Dashboard → Mi compensación`,
+  },
+  bonus_report_reviewed: {
+    label: "Reporte de bonos revisado",
+    build: (data: { month: string; approved: number; rejected: number }, lang: NotificationLang) =>
+      lang === "en"
+        ? `✅ Your bonus report for ${data.month} was reviewed: ${data.approved} approved, ${data.rejected} rejected`
+        : `✅ Se revisó tu reporte de bonos de ${data.month}: ${data.approved} aprobada${data.approved === 1 ? "" : "s"}, ${data.rejected} rechazada${data.rejected === 1 ? "" : "s"}`,
+  },
 } as const
 
 export type NotificationEventKey = keyof typeof NOTIFICATION_EVENTS

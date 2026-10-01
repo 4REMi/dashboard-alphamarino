@@ -29,7 +29,7 @@ export function CompensationCard({ profileId }: { profileId: string }) {
 
   return (
     <div className="space-y-5">
-      <p className="text-[11px] text-muted-foreground flex items-center gap-1.5"><Lock className="w-3 h-3" />Solo tú (admin) ves esta sección.</p>
+      <p className="text-[11px] text-muted-foreground flex items-center gap-1.5"><Lock className="w-3 h-3" />Solo tú (admin) editas esta sección; la persona ve la suya en "Mi compensación".</p>
       {!c || editing ? (
         <CompForm profileId={profileId} initial={c} onDone={() => { setEditing(false); load() }} onCancel={c ? () => setEditing(false) : undefined} />
       ) : (

@@ -8,6 +8,7 @@ import {
   type PayrollOverview, type PayrollItem, type Currency,
 } from "@/lib/actions/payroll"
 import { cn } from "@/lib/utils"
+import { BonusReportsReview } from "@/components/employees/bonus-reports-review"
 
 // Nómina del mes: qué hay que pagar, por persona y moneda. Salarios se
 // generan solos; bonos y comisiones se agregan a mano. "Pagado" crea el
@@ -89,6 +90,14 @@ export function PayrollView({ projects }: { projects: { id: string; name: string
           )}
         </div>
       </div>
+
+      {data && (
+        <BonusReportsReview
+          month={month}
+          agreementsById={new Map(data.people.flatMap((p) => p.agreements).map((a) => [a.id, { title: a.title, amount: Number(a.amount), currency: a.currency }]))}
+          onChanged={() => load()}
+        />
+      )}
 
       {data && data.overdue.length > 0 && (
         <div className="rounded-xl border border-red-200 dark:border-red-900 overflow-hidden">

@@ -1,7 +1,7 @@
 # Nómina — Guía para agentes
 
 **Ruta:** `/employees/nomina` (vista del mes) y `/employees/[id]` → tarjeta "Compensación"
-**Para quién:** solo admin (RLS `is_admin()` + chequeo en `lib/actions/payroll.ts`)
+**Para quién:** admin edita todo; cada empleado ve SOLO la suya en `/mi-compensacion` (RLS, migración 108)
 **Actualizado:** 2026-10-01
 
 ## Qué es
@@ -32,6 +32,24 @@ Control de salarios base, bonos y comisiones del equipo, ligado a Finanzas.
 - Finanzas muestra "Costo de equipo pagado este mes", % del ingreso y lo pendiente
   (solo admin).
 
+## Mi compensación y reporte de bonos (migración 108)
+- `/mi-compensacion` (menú "Mi compensación"): cada empleado con salario fijo activo
+  ve su contrato (salario, día de pago, esquema, notas), sus bonos pactados y sus
+  pagos. **Nunca la de otros**: lee con su propia sesión y las políticas RLS
+  `*_own_read` solo devuelven sus filas.
+- **Reporte mensual de bonos** (`bonus_reports` + `bonus_report_items`): agrega
+  actividades (bono pactado, descripción, proyecto, enlace de evidencia) y lo envía.
+  Se puede editar el mes actual y el anterior hasta el **día 3** del mes siguiente;
+  después se cierra (validado en el servidor).
+- Admin (en Nómina → "Reportes de bonos"): aprobar crea el bono pendiente en Nómina
+  (monto del acuerdo, ajustable); rechazar deja comentario; "Regresar" lo vuelve a
+  borrador; "Terminar revisión" avisa al empleado.
+- Telegram: aviso a los admins al enviar (`bonus_report_submitted`), recordatorio al
+  empleado el último día del mes y el día 2 (`bonus_report_reminder`, desde el cron
+  diario `check-cycles`), y resultado de la revisión (`bonus_report_reviewed`).
+
 ## Código
 `lib/actions/payroll.ts`, `components/employees/payroll-view.tsx`,
-`components/employees/compensation-card.tsx`, `app/(dashboard)/employees/nomina/page.tsx`.
+`components/employees/compensation-card.tsx`, `app/(dashboard)/employees/nomina/page.tsx`,
+`lib/actions/my-compensation.ts`, `components/employees/my-compensation.tsx`,
+`components/employees/bonus-reports-review.tsx`, `app/(dashboard)/mi-compensacion/page.tsx`.

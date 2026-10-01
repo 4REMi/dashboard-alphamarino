@@ -265,3 +265,95 @@ export async function getTeamCost(month: string): Promise<{ paidUsd: number; pen
   for (const p of pending ?? []) pendingByCurrency[p.currency as string] = (pendingByCurrency[p.currency as string] ?? 0) + Number(p.amount)
   return { paidUsd: (paid ?? []).reduce((s, r) => s + Number(r.amount_usd ?? 0), 0), pendingByCurrency }
 }
+
+
+// ── Reportes de bonos (revisión del admin) ───────────────────────────
+export interface AdminBonusReport {
+  id: string
+  profile_id: string
+  period_month: string
+  status: "draft" | "submitted" | "reviewed"
+  submitted_at: string | null
+  profile?: { full_name: string } | null
+  items: {
+    id: string; agreement_id: string | null; description: string; evidence_url: string | null
+    status: "pending" | "approved" | "rejected"; admin_comment: string | null; approved_amount: number | null
+    project?: { name: string } | null
+  }[]
+}
+
+// Reportes enviados de un mes (o en revisión) + quién con salario fijo no ha enviado.
+export async function getBonusReports(month: string): Promise<{ reports: AdminBonusReport[]; missing: { id: string; full_name: string }[] }> {
+  const { supabase } = await admin()
+  const m = monthStart(month)
+  const [{ data: reports, error }, { data: comps }] = await Promise.all([
+    supabase.from("bonus_reports").select("*, profile:profiles(full_name), items:bonus_report_items(*, project:projects(name))").eq("period_month", m).neq("status", "draft"),
+    supabase.from("compensation_profiles").select("profile_id, profile:profiles(full_name)").eq("active", true).not("base_salary", "is", null),
+  ])
+  if (error) return { reports: [], missing: [] }
+  const sent = new Set((reports ?? []).map((r) => r.profile_id as string))
+  return {
+    reports: (reports ?? []) as AdminBonusReport[],
+    missing: (comps ?? []).filter((c) => !sent.has(c.profile_id as string)).map((c) => ({ id: c.profile_id as string, full_name: (c.profile as unknown as { full_name: string } | null)?.full_name ?? "—" })),
+  }
+}
+
+// Aprobar crea el bono pendiente en Nómina (monto del acuerdo o el ajustado);
+// rechazar guarda el comentario que ve el empleado.
+export async function reviewBonusActivity(itemId: string, decision: "approved" | "rejected", opts: { amount?: number; currency?: Currency; comment?: string } = {}): Promise<void> {
+  const { supabase, userId } = await admin()
+  const { data: it } = await supabase.from("bonus_report_items")
+    .select("*, report:bonus_reports(profile_id, period_month), agreement:bonus_agreements(title, amount, currency)").eq("id", itemId).single()
+  if (!it) throw new Error("Actividad no encontrada")
+  if (it.payroll_item_id) {
+    const { data: pi } = await supabase.from("payroll_items").select("status").eq("id", it.payroll_item_id).maybeSingle()
+    if (pi?.status === "paid") throw new Error("Ese bono ya se pagó; deshaz el pago en Nómina primero")
+    await supabase.from("payroll_items").delete().eq("id", it.payroll_item_id)
+  }
+  const report = it.report as { profile_id: string; period_month: string }
+  const ag = it.agreement as { title: string; amount: number; currency: Currency } | null
+  let payrollItemId: string | null = null
+  let amount: number | null = null
+  if (decision === "approved") {
+    amount = opts.amount ?? (ag ? Number(ag.amount) : NaN)
+    if (!(amount > 0)) throw new Error("Indica el monto del bono (la actividad no tiene bono pactado)")
+    const { data: pi, error } = await supabase.from("payroll_items").insert({
+      profile_id: report.profile_id, kind: "bonus", amount, currency: opts.currency ?? ag?.currency ?? "USD",
+      period_month: report.period_month, due_date: today(), reason: ag?.title ?? it.description.slice(0, 80),
+      project_id: it.project_id, agreement_id: it.agreement_id, created_by: userId,
+    }).select("id").single()
+    if (error) throw new Error(error.message)
+    payrollItemId = pi.id
+  }
+  await supabase.from("bonus_report_items").update({
+    status: decision, admin_comment: opts.comment?.trim() || null, approved_amount: amount, payroll_item_id: payrollItemId,
+  }).eq("id", itemId)
+  revalidate(report.profile_id)
+  revalidatePath("/mi-compensacion")
+}
+
+// Cerrar la revisión: avisa al empleado con el resultado.
+export async function finishBonusReview(reportId: string): Promise<void> {
+  const { supabase } = await admin()
+  const { data: r } = await supabase.from("bonus_reports").select("profile_id, period_month, items:bonus_report_items(status)").eq("id", reportId).single()
+  if (!r) throw new Error("Reporte no encontrado")
+  const items = (r.items ?? []) as { status: string }[]
+  if (items.some((i) => i.status === "pending")) throw new Error("Aún hay actividades sin revisar")
+  await supabase.from("bonus_reports").update({ status: "reviewed" }).eq("id", reportId)
+  const { notify } = await import("@/lib/notifications/notify")
+  await notify(r.profile_id, "bonus_report_reviewed", {
+    month: new Date(r.period_month + "T00:00:00").toLocaleDateString("es-MX", { month: "long", year: "numeric" }),
+    approved: items.filter((i) => i.status === "approved").length,
+    rejected: items.filter((i) => i.status === "rejected").length,
+  })
+  revalidate(r.profile_id)
+  revalidatePath("/mi-compensacion")
+}
+
+// Reabrir un reporte enviado para que el empleado lo corrija.
+export async function reopenBonusReport(reportId: string): Promise<void> {
+  const { supabase } = await admin()
+  await supabase.from("bonus_reports").update({ status: "draft", submitted_at: null }).eq("id", reportId)
+  revalidate()
+  revalidatePath("/mi-compensacion")
+}

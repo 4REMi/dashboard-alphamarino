@@ -31,6 +31,7 @@ import {
   Moon,
   Sun,
   Puzzle,
+  Wallet,
 } from "lucide-react"
 import { useState } from "react"
 import Image from "next/image"
@@ -85,6 +86,7 @@ export function Sidebar({ profile, logoUrl, myPendingTaskCount = 0, mobileOpen =
     { href: "/finances", icon: DollarSign, label: t("finances"), permission: "view_global_finances" },
     { href: "/finances/domains", icon: Globe, label: t("domains"), permission: "view_domains" },
     { href: "/employees", icon: UserCircle, label: t("team") },
+    { href: "/mi-compensacion", icon: Wallet, label: "Mi compensación" },
     { href: "/sops", icon: BookOpen, label: "SOPs" },
     {
       href: "/ad-lab", icon: Tv2, label: "Ad Lab", permission: "access_ad_lab",
