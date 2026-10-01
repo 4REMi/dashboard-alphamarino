@@ -485,17 +485,91 @@ export async function reorderSetTaskChecklistItems(
 // IMPORT / EXPORT
 // ============================================================
 
+// Formato de plantilla (el mismo para exportar e importar, desde la UI o
+// desde MCP). Puestos y SOPs viajan por NOMBRE/TÍTULO, no por id.
 type ImportChecklistItem = { text: string; is_blocking?: boolean }
-type ImportTask = { title: string; description?: string | null; is_urgent?: boolean; requires_deliverable?: boolean; checklist?: ImportChecklistItem[] }
+type ImportTask = {
+  title: string
+  description?: string | null
+  is_urgent?: boolean
+  requires_deliverable?: boolean
+  deliverable_instructions?: string | null
+  default_position?: string | null   // puesto responsable (nombre)
+  ping_positions?: string[]          // puestos a notificar (nombres)
+  sop?: string | null                // título del SOP
+  checklist?: ImportChecklistItem[]
+}
 type ImportTaskSet = { name: string; tasks?: ImportTask[] }
 type ImportPhase = { name: string; description?: string | null; taskSet?: ImportTaskSet | null }
-type ImportTemplate = {
-  projectType: { name: string; description?: string | null }
+export type OperationsTemplate = {
+  projectType: { name: string; description?: string | null; color?: string | null; icon?: string | null }
   phaseSet?: { name: string; phases?: ImportPhase[] } | null
 }
+type ImportTemplate = OperationsTemplate
 
-export async function importOperationsTemplate(jsonStr: string, mode: "default" | "rename" | "overwrite" = "default") {
-  const supabase = await createClient()
+export interface TemplatePreview {
+  projectType: string
+  phaseSet: string | null
+  phases: number
+  taskSets: number
+  tasks: number
+  checklistItems: number
+  errors: string[]
+}
+
+type Client = Awaited<ReturnType<typeof createClient>>
+
+// Valida antes de escribir nada: estructura, nombres repetidos, y que los
+// puestos y SOPs referidos existan. Regresa además los mapas nombre → id.
+async function validateTemplate(template: ImportTemplate, supabase: Client) {
+  const errors: string[] = []
+  if (!template?.projectType?.name?.trim()) errors.push("Se requiere projectType.name")
+  const phases = template?.phaseSet?.phases ?? []
+  if (phases.length && !template.phaseSet?.name?.trim()) errors.push("phaseSet.name es obligatorio si hay fases")
+  const [{ data: positions }, { data: sops }] = await Promise.all([
+    supabase.from("positions").select("id, name"),
+    supabase.from("sops").select("id, title"),
+  ])
+  const posByName = new Map((positions ?? []).map((p) => [String(p.name).trim().toLowerCase(), p.id as string]))
+  const sopByTitle = new Map((sops ?? []).map((x) => [String(x.title).trim().toLowerCase(), x.id as string]))
+  const seenPhase = new Set<string>()
+  let tasks = 0, items = 0, taskSets = 0
+  phases.forEach((ph, i) => {
+    const where = `Fase ${i + 1}${ph?.name ? ` ("${ph.name}")` : ""}`
+    if (!ph?.name?.trim()) errors.push(`${where}: falta name`)
+    else if (seenPhase.has(ph.name.trim().toLowerCase())) errors.push(`${where}: nombre de fase repetido`)
+    else seenPhase.add(ph.name.trim().toLowerCase())
+    const ts = ph?.taskSet
+    if (!ts) return
+    if (!ts.name?.trim()) { errors.push(`${where}: taskSet sin name`); return }
+    taskSets++
+    ;(ts.tasks ?? []).forEach((t, j) => {
+      const tw = `${where} › tarea ${j + 1}${t?.title ? ` ("${t.title}")` : ""}`
+      if (!t?.title?.trim()) errors.push(`${tw}: falta title`)
+      tasks++
+      if (t?.default_position && !posByName.has(t.default_position.trim().toLowerCase())) errors.push(`${tw}: no existe el puesto "${t.default_position}"`)
+      for (const pp of t?.ping_positions ?? []) if (!posByName.has(pp.trim().toLowerCase())) errors.push(`${tw}: no existe el puesto a notificar "${pp}"`)
+      if (t?.sop && !sopByTitle.has(t.sop.trim().toLowerCase())) errors.push(`${tw}: no existe el SOP "${t.sop}"`)
+      ;(t?.checklist ?? []).forEach((c, k) => { if (!c?.text?.trim()) errors.push(`${tw} › checklist ${k + 1}: falta text`); items++ })
+    })
+  })
+  const preview: TemplatePreview = {
+    projectType: template?.projectType?.name?.trim() ?? "",
+    phaseSet: template?.phaseSet?.name?.trim() || null,
+    phases: phases.length, taskSets, tasks, checklistItems: items, errors,
+  }
+  return { preview, posByName, sopByTitle }
+}
+
+// dryRun: solo valida y describe lo que se crearía (no escribe nada).
+// Si una escritura falla a la mitad, se borra lo que ya se había creado.
+export async function importOperationsTemplate(
+  jsonStr: string,
+  mode: "default" | "rename" | "overwrite" = "default",
+  actingProfileId?: string,
+  dryRun = false,
+) {
+  const supabase = await opsClient(actingProfileId)
 
   let template: ImportTemplate
   try {
@@ -504,12 +578,14 @@ export async function importOperationsTemplate(jsonStr: string, mode: "default" 
     throw new Error("JSON inválido — verifica la sintaxis")
   }
 
-  if (!template?.projectType?.name?.trim()) {
-    throw new Error("Se requiere projectType.name")
+  const { preview, posByName, sopByTitle } = await validateTemplate(template, supabase)
+  if (dryRun) {
+    const { data: same } = await supabase.from("project_types").select("id").eq("name", preview.projectType).maybeSingle()
+    return { preview, nameTaken: !!same }
   }
+  if (preview.errors.length) throw new Error(`La plantilla tiene errores:\n- ${preview.errors.join("\n- ")}`)
 
   const baseName = template.projectType.name.trim()
-
   // ── Conflict detection ────────────────────────────────────────────────────
   const { data: existingPT } = await supabase
     .from("project_types")
@@ -574,7 +650,9 @@ export async function importOperationsTemplate(jsonStr: string, mode: "default" 
     }
   }
 
-  // ── Create task sets ──────────────────────────────────────────────────────
+  // ── Crear (con deshacer si algo falla a medias) ────────────────────────────
+  const created = { taskSets: [] as string[], phaseSet: null as string | null, projectType: null as string | null }
+  try {
   const tsIdByPhase: Record<number, string> = {}
   const createdTaskSets: Array<{ id: string; name: string; tasks: ImportTask[] }> = []
 
@@ -589,10 +667,12 @@ export async function importOperationsTemplate(jsonStr: string, mode: "default" 
       .select()
       .single()
     if (tsErr) throw new Error(`Error creando task set "${ts.name}": ${tsErr.message}`)
+    created.taskSets.push(tsRow.id)
 
     const tasks = ts.tasks ?? []
     for (let j = 0; j < tasks.length; j++) {
       const task = tasks[j]
+      const pingIds = (task.ping_positions ?? []).map((n) => posByName.get(n.trim().toLowerCase())!).filter(Boolean)
       const { data: taskRow, error: taskErr } = await supabase
         .from("task_set_tasks")
         .insert({
@@ -601,6 +681,11 @@ export async function importOperationsTemplate(jsonStr: string, mode: "default" 
           description: task.description ?? null,
           is_urgent: task.is_urgent ?? false,
           requires_deliverable: task.requires_deliverable ?? false,
+          deliverable_instructions: task.deliverable_instructions ?? null,
+          default_position_id: task.default_position ? posByName.get(task.default_position.trim().toLowerCase()) ?? null : null,
+          is_pinged: pingIds.length > 0,
+          ping_position_ids: pingIds.length ? pingIds : null,
+          sop_id: task.sop ? sopByTitle.get(task.sop.trim().toLowerCase()) ?? null : null,
           task_order: j,
         })
         .select("id")
@@ -609,7 +694,7 @@ export async function importOperationsTemplate(jsonStr: string, mode: "default" 
 
       const checklistItems = task.checklist ?? []
       if (checklistItems.length > 0 && taskRow) {
-        await supabase.from("task_set_checklist_items").insert(
+        const { error: ciErr } = await supabase.from("task_set_checklist_items").insert(
           checklistItems.map((item, k) => ({
             task_set_task_id: taskRow.id,
             text: item.text,
@@ -617,6 +702,7 @@ export async function importOperationsTemplate(jsonStr: string, mode: "default" 
             item_order: k,
           }))
         )
+        if (ciErr) throw new Error(`Error creando checklist de "${task.title}": ${ciErr.message}`)
       }
     }
 
@@ -636,6 +722,7 @@ export async function importOperationsTemplate(jsonStr: string, mode: "default" 
       .single()
     if (psErr) throw new Error(`Error creando phase set: ${psErr.message}`)
     phaseSetId = psRow.id
+    created.phaseSet = psRow.id
 
     for (let i = 0; i < phases.length; i++) {
       const phase = phases[i]
@@ -663,16 +750,20 @@ export async function importOperationsTemplate(jsonStr: string, mode: "default" 
     .insert({
       name: template.projectType.name.trim(),
       description: template.projectType.description ?? null,
+      color: template.projectType.color ?? null,
+      icon: template.projectType.icon ?? null,
       default_phase_set_id: phaseSetId,
     })
     .select()
     .single()
   if (ptErr) throw new Error(`Error creando tipo de proyecto: ${ptErr.message}`)
+  created.projectType = ptRow.id
 
   revalidatePath("/operations")
   revalidatePath("/projects")
 
   return {
+    preview,
     replacedName: mode === "overwrite" ? baseName : null,
     projectType: { ...ptRow, default_phase_set_id: phaseSetId },
     phaseSet: phaseSetId
@@ -680,6 +771,77 @@ export async function importOperationsTemplate(jsonStr: string, mode: "default" 
       : null,
     taskSets: createdTaskSets,
   }
+  } catch (err) {
+    // Deshacer: no dejar una plantilla a medias.
+    if (created.projectType) await supabase.from("project_types").delete().eq("id", created.projectType)
+    if (created.phaseSet) {
+      await supabase.from("phase_set_phases").delete().eq("phase_set_id", created.phaseSet)
+      await supabase.from("phase_sets").delete().eq("id", created.phaseSet)
+    }
+    if (created.taskSets.length) {
+      const { data: rows } = await supabase.from("task_set_tasks").select("id").in("task_set_id", created.taskSets)
+      const ids = (rows ?? []).map((r: { id: string }) => r.id)
+      if (ids.length) {
+        await supabase.from("task_set_checklist_items").delete().in("task_set_task_id", ids)
+        await supabase.from("task_set_tasks").delete().in("id", ids)
+      }
+      await supabase.from("task_sets").delete().in("id", created.taskSets)
+    }
+    throw err
+  }
+}
+
+// Exporta un tipo de proyecto completo en el mismo formato que importa.
+export async function exportOperationsTemplate(projectTypeId: string, actingProfileId?: string): Promise<OperationsTemplate> {
+  const supabase = await opsClient(actingProfileId)
+  const { data: pt } = await supabase.from("project_types").select("*").eq("id", projectTypeId).single()
+  if (!pt) throw new Error("Tipo de proyecto no encontrado")
+  const [{ data: positions }, { data: sops }] = await Promise.all([
+    supabase.from("positions").select("id, name"),
+    supabase.from("sops").select("id, title"),
+  ])
+  const posName = new Map((positions ?? []).map((p) => [p.id as string, p.name as string]))
+  const sopTitle = new Map((sops ?? []).map((x) => [x.id as string, x.title as string]))
+  const template: OperationsTemplate = { projectType: { name: pt.name, description: pt.description ?? null, color: pt.color ?? null, icon: pt.icon ?? null }, phaseSet: null }
+  if (!pt.default_phase_set_id) return template
+  const { data: ps } = await supabase.from("phase_sets").select("name, phases:phase_set_phases(name, description, phase_order, default_task_set_id)").eq("id", pt.default_phase_set_id).single()
+  if (!ps) return template
+  const phases = ((ps.phases ?? []) as { name: string; description: string | null; phase_order: number; default_task_set_id: string | null }[]).sort((a, b) => a.phase_order - b.phase_order)
+  const tsIds = phases.map((p) => p.default_task_set_id).filter(Boolean) as string[]
+  const { data: taskSets } = tsIds.length
+    ? await supabase.from("task_sets").select("id, name, tasks:task_set_tasks(*, checklist:task_set_checklist_items(text, is_blocking, item_order))").in("id", tsIds)
+    : { data: [] }
+  const tsById = new Map((taskSets ?? []).map((t) => [t.id as string, t]))
+  template.phaseSet = {
+    name: ps.name,
+    phases: phases.map((ph) => {
+      const ts = ph.default_task_set_id ? tsById.get(ph.default_task_set_id) : null
+      return {
+        name: ph.name,
+        description: ph.description ?? null,
+        taskSet: ts ? {
+          name: ts.name as string,
+          tasks: ((ts.tasks ?? []) as Record<string, unknown>[]).sort((a, b) => Number(a.task_order) - Number(b.task_order)).map((t) => {
+            const out: ImportTask = {
+              title: t.title as string,
+              description: (t.description as string | null) ?? null,
+              is_urgent: !!t.is_urgent,
+              requires_deliverable: !!t.requires_deliverable,
+            }
+            if (t.deliverable_instructions) out.deliverable_instructions = t.deliverable_instructions as string
+            if (t.default_position_id) out.default_position = posName.get(t.default_position_id as string) ?? null
+            const ping = ((t.ping_position_ids as string[] | null) ?? []).map((id) => posName.get(id)).filter(Boolean) as string[]
+            if (ping.length) out.ping_positions = ping
+            if (t.sop_id) out.sop = sopTitle.get(t.sop_id as string) ?? null
+            const cl = ((t.checklist ?? []) as { text: string; is_blocking: boolean; item_order: number }[]).sort((a, b) => a.item_order - b.item_order)
+            if (cl.length) out.checklist = cl.map((c) => ({ text: c.text, is_blocking: c.is_blocking }))
+            return out
+          }),
+        } : null,
+      }
+    }),
+  }
+  return template
 }
 
 // ============================================================

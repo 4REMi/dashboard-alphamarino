@@ -30,7 +30,7 @@ import {
   linkPhaseSetToProjectType, linkTaskSetToPhase, clonePhaseSet, clonePhaseIntoPhaseSet,
   createTaskSet, updateTaskSet, deleteTaskSet, addTaskToSet, updateTaskInSet, deleteTaskFromSet,
   reorderTasksInSet, reorderPhaseInSet,
-  importOperationsTemplate,
+  importOperationsTemplate, exportOperationsTemplate,
   addChecklistItemToSetTask, updateSetTaskChecklistItem, deleteSetTaskChecklistItem,
   reorderSetTaskChecklistItems, cloneTaskInTaskSet,
 } from "@/lib/actions/config"
@@ -204,6 +204,8 @@ function ImportModal({
                 title: "Reunión con cliente",
                 is_urgent: true,
                 requires_deliverable: false,
+                default_position: "Account Manager",
+                ping_positions: ["Director Creativo"],
                 checklist: [
                   { text: "Confirmar asistencia del cliente", is_blocking: false },
                   { text: "Compartir agenda previa", is_blocking: true },
@@ -1237,9 +1239,11 @@ export function OperationsLab({ projectTypes: init, phaseSets: initPS, taskSets:
     }
   }
 
-  function handleExportJson() {
+  // Mismo formato completo que importa (y que usa MCP): incluye puesto
+  // responsable, puestos a notificar, SOP e instrucciones de entregable.
+  async function handleExportJson() {
     if (!selectedType) return
-    const data = buildExportData()
+    const data = await exportOperationsTemplate(selectedType.id).catch(() => buildExportData())
     if (!data) return
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
     const url = URL.createObjectURL(blob)

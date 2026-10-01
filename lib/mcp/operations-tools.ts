@@ -9,6 +9,7 @@ import {
   addTaskToSet, updateTaskInSet, deleteTaskFromSet, reorderTasksInSet, cloneTaskInTaskSet,
   addChecklistItemToSetTask, updateSetTaskChecklistItem, deleteSetTaskChecklistItem, reorderSetTaskChecklistItems,
   createPosition, updatePosition, deletePosition,
+  importOperationsTemplate, exportOperationsTemplate,
 } from "@/lib/actions/config"
 
 // Herramientas MCP de Operations (solo PLANTILLAS): tipos de proyecto, sets
@@ -98,6 +99,53 @@ function moveTo(ids: string[], id: string, pos: number): string[] {
   return rest
 }
 const needConfirm = (what: string) => text(`⚠️ Esto va a borrar ${what}. No se puede deshacer. Si el usuario lo confirma, vuelve a llamar con confirmar: true.`)
+
+
+const GUIA = `MODELO DE PLANTILLAS (Operations) — cómo se relaciona y cómo se comporta en producción
+
+Jerarquía:
+  Tipo de proyecto ─(set de fases por default)→ Set de fases → Fases (ordenadas)
+  Cada fase ─(set de tareas por default)→ Set de tareas → Tareas plantilla (ordenadas)
+  Cada tarea plantilla → checklist (ordenado), puesto responsable, puestos a notificar, SOP, entregable.
+
+Qué pasa al crear un proyecto real con ese tipo:
+- Se copian sus fases (en orden) y, por cada fase, las tareas de su set de tareas con su checklist.
+- Asignación automática: cada tarea se asigna a la persona MIEMBRO DEL PROYECTO que tenga el puesto responsable. Si no hay nadie con ese puesto, o hay más de uno, la tarea queda sin asignar y marcada para revisión. Por eso el puesto importa más que una persona concreta.
+- Elementos de checklist "bloqueantes": la tarea no se puede marcar como terminada mientras alguno esté sin palomear. Úsalos solo para lo indispensable.
+- Puestos a notificar: reciben aviso (Telegram) de la tarea; úsalo para quien necesita enterarse, no para el responsable.
+- Entregable requerido: la tarea pide evidencia (archivo/enlace) al terminarla; instrucciones de entregable explican qué subir.
+- SOP: el procedimiento enlazado aparece en la tarea para quien la ejecuta.
+- El estado de cada fase se calcula de sus tareas (pendiente → en curso → completada); "bloqueada" es lo único manual.
+- Cambiar una plantilla NO modifica proyectos ya creados.
+
+Buenas prácticas de diseño:
+- Fases = etapas que el cliente reconocería (Onboarding, Diseño, QA, Lanzamiento…); 4-8 por tipo.
+- Tareas = acciones con un responsable claro (verbo + objeto); checklist = pasos verificables de esa tarea.
+- Reutiliza puestos y SOPs existentes (ops_ver_plantillas los lista); si falta un puesto, créalo antes con ops_puesto.
+
+Herramientas:
+- Crear una plantilla completa: ops_importar_plantilla con el JSON (primero vista previa).
+- Partir de una existente: ops_exportar_plantilla → modificar el JSON → ops_importar_plantilla.
+- Ajustes puntuales: ops_tipo_proyecto, ops_set_fases, ops_fase, ops_set_tareas, ops_tarea_plantilla, ops_checklist, ops_puesto.
+
+FORMATO JSON (el mismo para exportar e importar):
+{
+  "projectType": { "name": "Branding", "description": "…", "color": "#hex (opcional)", "icon": "(opcional)" },
+  "phaseSet": {
+    "name": "Fases Branding",
+    "phases": [
+      { "name": "Onboarding", "description": "…",
+        "taskSet": { "name": "Tareas Onboarding", "tasks": [
+          { "title": "Kickoff con el cliente", "description": "…", "is_urgent": false,
+            "requires_deliverable": true, "deliverable_instructions": "Subir minuta",
+            "default_position": "Account Manager", "ping_positions": ["Director Creativo"], "sop": "Kickoff de proyecto",
+            "checklist": [ { "text": "Enviar agenda", "is_blocking": false }, { "text": "Confirmar accesos", "is_blocking": true } ] }
+        ] } },
+      { "name": "Cierre", "taskSet": null }
+    ]
+  }
+}
+default_position, ping_positions y sop van por NOMBRE/TÍTULO y deben existir.`
 
 export function registerOperationsTools(server: McpServer) {
   // ── Lectura ────────────────────────────────────────────────────────
@@ -490,6 +538,59 @@ export function registerOperationsTools(server: McpServer) {
       if (!a.nuevo_nombre) throw new Error("Falta nuevo_nombre")
       await updatePosition(p.id, a.nuevo_nombre, me)
       return text(`Puesto renombrado a "${a.nuevo_nombre}".`)
+    },
+  )
+  // ── Guía, exportar e importar plantillas completas ─────────────────
+  server.registerTool(
+    "ops_guia",
+    {
+      title: "Guía del modelo de plantillas de Operations",
+      description: "Explica cómo se relacionan tipos de proyecto, fases, sets de tareas, tareas, checklist, puestos y SOPs, cómo se comportan al crear un proyecto real, y el formato JSON de plantilla. Consúltala ANTES de diseñar o crear una plantilla. Solo admin.",
+      inputSchema: z.object({}),
+    },
+    async (_a, ctx: ToolCtx) => { await requireAdmin(ctx); return text(GUIA) },
+  )
+
+  server.registerTool(
+    "ops_exportar_plantilla",
+    {
+      title: "Exportar una plantilla completa como JSON",
+      description: "Devuelve un tipo de proyecto completo (fases, sets de tareas, tareas con responsable, notificaciones, SOP, entregable y checklist) en el formato que acepta ops_importar_plantilla. Úsalo para partir de una plantilla existente. Solo admin.",
+      inputSchema: z.object({ tipo_proyecto: z.string().min(1) }),
+    },
+    async ({ tipo_proyecto }, ctx: ToolCtx) => {
+      const me = await requireAdmin(ctx)
+      const pt = await findProjectType(tipo_proyecto)
+      return text(JSON.stringify(await exportOperationsTemplate(pt.id, me), null, 2))
+    },
+  )
+
+  server.registerTool(
+    "ops_importar_plantilla",
+    {
+      title: "Crear una plantilla completa desde JSON",
+      description: "Crea en un paso un tipo de proyecto con su set de fases, fases, sets de tareas, tareas (responsable, notificaciones, SOP, entregable) y checklist. Formato: ver ops_guia. Por default solo hace VISTA PREVIA (valida y cuenta lo que se crearía, sin escribir); muéstrasela al usuario y vuelve a llamar con confirmar: true. Si ya existe un tipo con ese nombre, indica si_existe: renombrar (crea 'Nombre (2)') o sobrescribir (borra la plantilla anterior; requiere que el usuario lo pida). Si algo falla a la mitad, no queda nada a medias. Solo admin.",
+      inputSchema: z.object({
+        plantilla: z.union([z.string(), z.record(z.string(), z.unknown())]).describe("El JSON de la plantilla (objeto o texto)"),
+        confirmar: z.boolean().optional(),
+        si_existe: z.enum(["renombrar", "sobrescribir"]).optional(),
+      }),
+    },
+    async ({ plantilla, confirmar, si_existe }, ctx: ToolCtx) => {
+      const me = await requireAdmin(ctx)
+      const json = typeof plantilla === "string" ? plantilla : JSON.stringify(plantilla)
+      const dry = await importOperationsTemplate(json, "default", me, true) as { preview: { projectType: string; phaseSet: string | null; phases: number; taskSets: number; tasks: number; checklistItems: number; errors: string[] }; nameTaken?: boolean }
+      const pv = dry.preview
+      const summary = `Tipo de proyecto "${pv.projectType}"${pv.phaseSet ? ` con set de fases "${pv.phaseSet}"` : ""}: ${pv.phases} fases, ${pv.taskSets} sets de tareas, ${pv.tasks} tareas, ${pv.checklistItems} elementos de checklist.`
+      if (pv.errors.length) return text(`❌ La plantilla tiene errores, no se creó nada:\n- ${pv.errors.join("\n- ")}\n\n${summary}`)
+      if (!confirmar) {
+        return text(`Vista previa (no se ha creado nada):\n${summary}${dry.nameTaken ? `\n⚠️ Ya existe un tipo de proyecto "${pv.projectType}". Para crear, indica si_existe: "renombrar" o "sobrescribir".` : ""}\nSi el usuario está de acuerdo, vuelve a llamar con confirmar: true.`)
+      }
+      if (dry.nameTaken && !si_existe) return text(`Ya existe un tipo de proyecto "${pv.projectType}". Indica si_existe: "renombrar" o "sobrescribir".`)
+      const mode = dry.nameTaken ? (si_existe === "sobrescribir" ? "overwrite" : "rename") : "default"
+      const res = await importOperationsTemplate(json, mode, me) as { projectType?: { name: string }; conflict?: boolean; suggestedName?: string }
+      if (res.conflict) return text(`Ya existe "${pv.projectType}". Sugerido: "${res.suggestedName}". Indica si_existe.`)
+      return text(`✅ Plantilla creada: ${summary.replace(`"${pv.projectType}"`, `"${res.projectType?.name ?? pv.projectType}"`)}`)
     },
   )
 }

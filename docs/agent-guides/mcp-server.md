@@ -104,6 +104,22 @@ PLANTILLAS de `/operations` (los proyectos reales no se tocan desde aquí todav�
   `ops_checklist` (agregar uno o varios/editar texto o bloqueante/mover/borrar) y
   `ops_puesto` (crear/renombrar/borrar).
 
+Plantillas completas por JSON (recomendado para crear desde cero):
+- `ops_guia` — explica el modelo y cómo se comporta en producción (asignación por
+  puesto entre los miembros del proyecto, bloqueantes, notificaciones, entregable,
+  estado de fase) y el formato JSON. Claude debe consultarla antes de diseñar.
+- `ops_exportar_plantilla` — un tipo de proyecto completo como JSON.
+- `ops_importar_plantilla` — crea todo en un paso (`importOperationsTemplate`).
+  Por default es **vista previa** (valida y cuenta fases/tareas/checklist sin
+  escribir); con `confirmar: true` crea. Valida antes de escribir (puestos y SOPs
+  por nombre deben existir, nombres de fase únicos, títulos obligatorios) y si una
+  escritura falla a la mitad borra lo creado. Si el nombre ya existe pide
+  `si_existe: renombrar | sobrescribir`.
+- El formato JSON es el mismo que usa la UI de `/operations` (Importar / Exportar
+  JSON); ahora incluye `default_position`, `ping_positions`, `sop` y
+  `deliverable_instructions`. La exportación de la UI usa el servidor
+  (`exportOperationsTemplate`) para que el formato sea idéntico.
+
 Reglas propias:
 - **Solo admin**, igual que `/operations`. Antes el permiso vivía solo en las reglas
   de la base de datos; las acciones de `lib/actions/config.ts` ahora reciben
