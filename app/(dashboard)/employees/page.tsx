@@ -30,7 +30,12 @@ export default async function EmployeesPage() {
           <h1 className="text-2xl font-bold">{t("title")}</h1>
           <p className="text-muted-foreground text-sm mt-1">{employees.length} {t("title").toLowerCase()}</p>
         </div>
-        {isAdmin && <EmployeeForm positions={positions} />}
+        {isAdmin && (
+          <div className="flex items-center gap-2">
+            <Link href="/employees/nomina" className="h-9 px-3 rounded-md border border-border text-sm inline-flex items-center hover:bg-muted">Nómina</Link>
+            <EmployeeForm positions={positions} />
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

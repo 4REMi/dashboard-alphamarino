@@ -12,6 +12,7 @@ import { EmployeeEditActions } from "@/components/employees/employee-edit-action
 import { EmployeePermissions } from "@/components/employees/employee-permissions"
 import { TelegramLink } from "@/components/employees/telegram-link"
 import { McpApiKeys } from "@/components/employees/mcp-api-keys"
+import { CompensationCard } from "@/components/employees/compensation-card"
 import type { Profile, Position } from "@/lib/types"
 
 export default async function EmployeeDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -120,6 +121,18 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
           </CardHeader>
           <CardContent>
             <McpApiKeys profileId={profile.id} />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Compensación — solo admin */}
+      {isAdmin && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">Compensación</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CompensationCard profileId={profile.id} />
           </CardContent>
         </Card>
       )}

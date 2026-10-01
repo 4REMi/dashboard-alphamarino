@@ -86,5 +86,6 @@ grep-ear todo el repo desde cero.
 | [ad-lab-ad-nodes.md](./ad-lab-ad-nodes.md) | Ad Lab — Ad Nodes (`/ad-lab/nodes`) | 2026-09-15 |
 | [mcp-server.md](./mcp-server.md) | Servidor MCP (`/api/mcp`) — acciones de IA con permisos reales | 2026-09-18 |
 | [creative-tracker.md](./creative-tracker.md) | Creative Tracker — producción, revisión de cliente, pipeline | 2026-09-23 |
+| [nomina.md](./nomina.md) | Equipo — Nómina y compensación (solo admin) | 2026-10-01 |
 
 Actualiza esta tabla cada vez que agregues un archivo nuevo.

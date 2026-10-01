@@ -1,3 +1,4 @@
+import Link from "next/link"
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import {
@@ -15,6 +16,7 @@ import { YearChart } from "@/components/finances/year-chart"
 import { ExpenseDonut } from "@/components/finances/expense-donut"
 import { MonthlyBreakdown } from "@/components/finances/monthly-breakdown"
 import { KpiCards } from "@/components/finances/kpi-cards"
+import { getTeamCost } from "@/lib/actions/payroll"
 import { TopClients } from "@/components/finances/top-clients"
 import { IncomeForm } from "@/components/finances/income-form"
 import { ExpenseForm } from "@/components/finances/expense-form"
@@ -49,6 +51,9 @@ export default async function FinancesPage() {
   if (!can(profile, "view_global_finances")) {
     redirect("/")
   }
+
+  // Solo el admin ve nómina (si no, getTeamCost lanza y se oculta).
+  const teamCost = profile?.role === "admin" ? await getTeamCost(new Date().toISOString().slice(0, 7)).catch(() => null) : null
 
   const [summary, income, expenses, recurring, projects, chartData, topClients, pendingFees] = await Promise.all([
     getFinancialSummary(),
@@ -126,6 +131,29 @@ export default async function FinancesPage() {
         marginPct={summary.marginPct}
         labels={{ income: t("income"), expenses: t("expenses"), balance: t("balance"), mrr: t("mrr") }}
       />
+
+      {/* ── Costo de equipo (Nómina) — solo admin ──────────────────── */}
+      {teamCost && (
+        <Card>
+          <CardContent className="p-4 flex items-center gap-6 flex-wrap text-sm">
+            <div>
+              <p className="text-xs text-muted-foreground">Costo de equipo pagado este mes</p>
+              <p className="text-lg font-bold">{formatCurrency(teamCost.paidUsd)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">% del ingreso del mes</p>
+              <p className="text-lg font-bold">{summary.monthlyIncome > 0 ? `${((teamCost.paidUsd / summary.monthlyIncome) * 100).toFixed(0)}%` : "—"}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Por pagar este mes</p>
+              <p className="text-sm font-semibold text-amber-700">
+                {Object.keys(teamCost.pendingByCurrency).length ? Object.entries(teamCost.pendingByCurrency).map(([c, v]) => `$${v.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${c}`).join(" + ") : "Nada pendiente"}
+              </p>
+            </div>
+            <Link href="/employees/nomina" className="ml-auto text-xs text-primary hover:underline">Ver Nómina →</Link>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── Upcoming payments alert ───────────────────────────────── */}
       {upcomingExpenses.length > 0 && (
