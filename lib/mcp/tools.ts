@@ -5,6 +5,7 @@ import { createTask, updateTaskStatus } from "@/lib/actions/tasks"
 import { addLogEntry } from "@/lib/actions/projects"
 import { createServiceOffer, archiveServiceOffer } from "@/lib/actions/services"
 import { attachServiceOfferToProject } from "@/lib/actions/service-deliverables"
+import { registerOperationsTools } from "@/lib/mcp/operations-tools"
 
 // Minimal shape of what registerTool's handler actually receives —
 // typed loosely on purpose (see docs/agent-guides/mcp-server.md) instead
@@ -74,6 +75,9 @@ function todayIso(): string {
 // guía) reusando siempre acciones reales del dashboard, nunca lógica
 // duplicada ni un bypass de permisos como el que usa el bot.
 export function registerMcpTools(server: McpServer) {
+  // Plantillas de Operations (solo admin) — lib/mcp/operations-tools.ts
+  registerOperationsTools(server)
+
   server.registerTool(
     "crear_tarea",
     {

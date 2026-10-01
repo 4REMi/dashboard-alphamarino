@@ -89,8 +89,15 @@ export async function deleteSop(id: string): Promise<void> {
 }
 
 // Assign a SOP to a task_set_task (template level)
-export async function assignSopToTaskSetTask(taskSetTaskId: string, sopId: string | null): Promise<void> {
-  const supabase = await createClient()
+export async function assignSopToTaskSetTask(taskSetTaskId: string, sopId: string | null, actingProfileId?: string): Promise<void> {
+  let supabase = await createClient()
+  // Desde MCP (sin sesión): solo admin, igual que el resto de Operations.
+  if (actingProfileId) {
+    const admin = createAdminClient()
+    const { data: profile } = await admin.from("profiles").select("role").eq("id", actingProfileId).single()
+    if (profile?.role !== "admin") throw new Error("Solo un admin puede modificar las plantillas de Operations")
+    supabase = admin
+  }
   const { error } = await supabase
     .from("task_set_tasks")
     .update({ sop_id: sopId })

@@ -3,7 +3,7 @@
 **Ruta:** `/api/mcp` (endpoint, no una página) — la UI para generar keys vive en
 `/employees/[id]` (tu propio perfil, sección "API keys de IA (MCP)")
 **Para quién:** cualquier empleado con sesión — cada persona genera su propia key
-**Actualizado:** 2026-09-18
+**Actualizado:** 2026-10-01
 
 ## Qué es y para qué sirve
 
@@ -86,6 +86,37 @@ inmediato, cualquier cliente que la esté usando deja de poder llamar tools.
    el handler recibe `(args, ctx)`, y el profile que está llamando sale de
    `ctx.http?.authInfo?.extra?.profileId` (ver `requireProfileId` en el mismo
    archivo).
+
+## Operations — plantillas (solo admin)
+
+`lib/mcp/operations-tools.ts`, registradas desde `registerMcpTools`. Solo las
+PLANTILLAS de `/operations` (los proyectos reales no se tocan desde aquí todavía):
+
+- `ops_ver_plantillas` — sin parámetros: lista tipos de proyecto, sets de fases, sets
+  de tareas y puestos. Con `tipo_proyecto`/`set_fases`: árbol de fases y su set de
+  tareas. Con `set_tareas`: cada tarea con puesto responsable, puestos a notificar,
+  SOP, entregable y checklist numerado (🔒 = bloqueante).
+- `ops_tipo_proyecto` (crear/editar/borrar; vincular set de fases),
+  `ops_set_fases` (crear/renombrar/clonar/borrar), `ops_fase`
+  (agregar/editar/mover/clonar/borrar; vincular set de tareas), `ops_set_tareas`
+  (crear/editar/borrar), `ops_tarea_plantilla` (agregar/editar/mover/clonar/borrar;
+  título, descripción, urgente, entregable, puesto, notificar_puestos, SOP),
+  `ops_checklist` (agregar uno o varios/editar texto o bloqueante/mover/borrar) y
+  `ops_puesto` (crear/renombrar/borrar).
+
+Reglas propias:
+- **Solo admin**, igual que `/operations`. Antes el permiso vivía solo en las reglas
+  de la base de datos; las acciones de `lib/actions/config.ts` ahora reciben
+  `actingProfileId` y `opsClient()` exige rol admin explícito antes de usar el
+  cliente admin (y `assignSopToTaskSetTask` igual).
+- Fases, tareas y elementos del checklist se pueden referir por **número** (orden
+  actual, 1 = primero) o por nombre/texto.
+- **Borrar pide confirmación**: sin `confirmar: true` la tool solo describe qué se
+  borraría (cuántas fases/tareas/elementos) y no hace nada.
+- **Editar solo cambia lo que se manda**: `updateTaskInSet`/`updateProjectType`/
+  etc. reescriben el registro completo, así que la tool completa con los valores
+  actuales (no se pierde el SOP, el puesto o las notificaciones al editar otra cosa).
+- Cambiar una plantilla no modifica proyectos ya creados.
 
 ## Reglas y restricciones
 

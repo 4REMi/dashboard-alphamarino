@@ -2,6 +2,19 @@
 
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
+
+// Cliente para escribir plantillas de Operations. Desde la UI: la sesión
+// normal (las reglas de la base de datos ya limitan a admin). Desde MCP
+// (actingProfileId, sin sesión de navegador): cliente admin, pero SOLO si
+// esa persona es admin — chequeo explícito para no heredar un bypass.
+async function opsClient(actingProfileId?: string) {
+  if (!actingProfileId) return createClient()
+  const admin = createAdminClient()
+  const { data: profile } = await admin.from("profiles").select("role").eq("id", actingProfileId).single()
+  if (profile?.role !== "admin") throw new Error("Solo un admin puede modificar las plantillas de Operations")
+  return admin
+}
 
 // ============================================================
 // PROJECT TYPES
@@ -52,8 +65,8 @@ export async function getProjectTypeBadges(): Promise<{ id: string; name: string
   return data ?? []
 }
 
-export async function createProjectType(formData: FormData) {
-  const supabase = await createClient()
+export async function createProjectType(formData: FormData, actingProfileId?: string) {
+  const supabase = await opsClient(actingProfileId)
   const { data, error } = await supabase.from("project_types").insert({
     name: formData.get("name") as string,
     description: (formData.get("description") as string) || null,
@@ -67,8 +80,8 @@ export async function createProjectType(formData: FormData) {
   return data
 }
 
-export async function updateProjectType(id: string, formData: FormData) {
-  const supabase = await createClient()
+export async function updateProjectType(id: string, formData: FormData, actingProfileId?: string) {
+  const supabase = await opsClient(actingProfileId)
   const defaultPhaseSetId = formData.get("default_phase_set_id") as string
   const { data, error } = await supabase
     .from("project_types")
@@ -89,8 +102,8 @@ export async function updateProjectType(id: string, formData: FormData) {
   return data
 }
 
-export async function deleteProjectType(id: string) {
-  const supabase = await createClient()
+export async function deleteProjectType(id: string, actingProfileId?: string) {
+  const supabase = await opsClient(actingProfileId)
   const { error } = await supabase.from("project_types").delete().eq("id", id)
   if (error) throw error
   revalidatePath("/settings")
@@ -116,8 +129,8 @@ export async function getPhaseSets() {
   }))
 }
 
-export async function createPhaseSet(formData: FormData) {
-  const supabase = await createClient()
+export async function createPhaseSet(formData: FormData, actingProfileId?: string) {
+  const supabase = await opsClient(actingProfileId)
   const projectTypeId = formData.get("project_type_id") as string
   const { data, error } = await supabase.from("phase_sets").insert({
     name: formData.get("name") as string,
@@ -129,8 +142,8 @@ export async function createPhaseSet(formData: FormData) {
   return data
 }
 
-export async function updatePhaseSet(id: string, formData: FormData) {
-  const supabase = await createClient()
+export async function updatePhaseSet(id: string, formData: FormData, actingProfileId?: string) {
+  const supabase = await opsClient(actingProfileId)
   const projectTypeId = formData.get("project_type_id") as string
   const { error } = await supabase
     .from("phase_sets")
@@ -144,8 +157,8 @@ export async function updatePhaseSet(id: string, formData: FormData) {
   revalidatePath("/operations")
 }
 
-export async function deletePhaseSet(id: string) {
-  const supabase = await createClient()
+export async function deletePhaseSet(id: string, actingProfileId?: string) {
+  const supabase = await opsClient(actingProfileId)
   const { error } = await supabase.from("phase_sets").delete().eq("id", id)
   if (error) throw error
   revalidatePath("/settings")
@@ -156,8 +169,8 @@ export async function deletePhaseSet(id: string) {
 // PHASE SET PHASES
 // ============================================================
 
-export async function addPhaseToSet(phaseSetId: string, formData: FormData) {
-  const supabase = await createClient()
+export async function addPhaseToSet(phaseSetId: string, formData: FormData, actingProfileId?: string) {
+  const supabase = await opsClient(actingProfileId)
   // Get current max order
   const { data: existing } = await supabase
     .from("phase_set_phases")
@@ -179,8 +192,8 @@ export async function addPhaseToSet(phaseSetId: string, formData: FormData) {
   return data
 }
 
-export async function updatePhaseInSet(phaseId: string, formData: FormData) {
-  const supabase = await createClient()
+export async function updatePhaseInSet(phaseId: string, formData: FormData, actingProfileId?: string) {
+  const supabase = await opsClient(actingProfileId)
   const { error } = await supabase
     .from("phase_set_phases")
     .update({
@@ -193,16 +206,16 @@ export async function updatePhaseInSet(phaseId: string, formData: FormData) {
   revalidatePath("/operations")
 }
 
-export async function deletePhaseFromSet(phaseId: string) {
-  const supabase = await createClient()
+export async function deletePhaseFromSet(phaseId: string, actingProfileId?: string) {
+  const supabase = await opsClient(actingProfileId)
   const { error } = await supabase.from("phase_set_phases").delete().eq("id", phaseId)
   if (error) throw error
   revalidatePath("/settings")
   revalidatePath("/operations")
 }
 
-export async function reorderPhaseInSet(phaseSetId: string, orderedIds: string[]) {
-  const supabase = await createClient()
+export async function reorderPhaseInSet(phaseSetId: string, orderedIds: string[], actingProfileId?: string) {
+  const supabase = await opsClient(actingProfileId)
   const updates = orderedIds.map((id, i) =>
     supabase.from("phase_set_phases").update({ phase_order: i }).eq("id", id)
   )
@@ -211,8 +224,8 @@ export async function reorderPhaseInSet(phaseSetId: string, orderedIds: string[]
   revalidatePath("/operations")
 }
 
-export async function linkPhaseSetToProjectType(projectTypeId: string, phaseSetId: string | null) {
-  const supabase = await createClient()
+export async function linkPhaseSetToProjectType(projectTypeId: string, phaseSetId: string | null, actingProfileId?: string) {
+  const supabase = await opsClient(actingProfileId)
   const { error } = await supabase
     .from("project_types")
     .update({ default_phase_set_id: phaseSetId })
@@ -233,8 +246,8 @@ export async function getPositions() {
   return data ?? []
 }
 
-export async function createPosition(name: string) {
-  const supabase = await createClient()
+export async function createPosition(name: string, actingProfileId?: string) {
+  const supabase = await opsClient(actingProfileId)
   const { data, error } = await supabase.from("positions").insert({ name }).select().single()
   if (error) throw error
   revalidatePath("/settings")
@@ -243,8 +256,8 @@ export async function createPosition(name: string) {
   return data
 }
 
-export async function updatePosition(id: string, name: string) {
-  const supabase = await createClient()
+export async function updatePosition(id: string, name: string, actingProfileId?: string) {
+  const supabase = await opsClient(actingProfileId)
   const { error } = await supabase.from("positions").update({ name }).eq("id", id)
   if (error) throw error
   revalidatePath("/settings")
@@ -252,8 +265,8 @@ export async function updatePosition(id: string, name: string) {
   revalidatePath("/employees")
 }
 
-export async function deletePosition(id: string) {
-  const supabase = await createClient()
+export async function deletePosition(id: string, actingProfileId?: string) {
+  const supabase = await opsClient(actingProfileId)
   const { error } = await supabase.from("positions").delete().eq("id", id)
   if (error) throw error
   revalidatePath("/settings")
@@ -280,8 +293,8 @@ export async function getTaskSets() {
   }))
 }
 
-export async function createTaskSet(formData: FormData) {
-  const supabase = await createClient()
+export async function createTaskSet(formData: FormData, actingProfileId?: string) {
+  const supabase = await opsClient(actingProfileId)
   const { data, error } = await supabase.from("task_sets").insert({
     name: formData.get("name") as string,
     description: (formData.get("description") as string) || null,
@@ -292,8 +305,8 @@ export async function createTaskSet(formData: FormData) {
   return data
 }
 
-export async function updateTaskSet(id: string, formData: FormData) {
-  const supabase = await createClient()
+export async function updateTaskSet(id: string, formData: FormData, actingProfileId?: string) {
+  const supabase = await opsClient(actingProfileId)
   const { error } = await supabase.from("task_sets").update({
     name: formData.get("name") as string,
     description: (formData.get("description") as string) || null,
@@ -303,16 +316,16 @@ export async function updateTaskSet(id: string, formData: FormData) {
   revalidatePath("/operations")
 }
 
-export async function deleteTaskSet(id: string) {
-  const supabase = await createClient()
+export async function deleteTaskSet(id: string, actingProfileId?: string) {
+  const supabase = await opsClient(actingProfileId)
   const { error } = await supabase.from("task_sets").delete().eq("id", id)
   if (error) throw error
   revalidatePath("/settings")
   revalidatePath("/operations")
 }
 
-export async function addTaskToSet(taskSetId: string, formData: FormData) {
-  const supabase = await createClient()
+export async function addTaskToSet(taskSetId: string, formData: FormData, actingProfileId?: string) {
+  const supabase = await opsClient(actingProfileId)
   const { data: existing } = await supabase
     .from("task_set_tasks")
     .select("task_order")
@@ -341,8 +354,8 @@ export async function addTaskToSet(taskSetId: string, formData: FormData) {
   return data
 }
 
-export async function updateTaskInSet(taskId: string, formData: FormData) {
-  const supabase = await createClient()
+export async function updateTaskInSet(taskId: string, formData: FormData, actingProfileId?: string) {
+  const supabase = await opsClient(actingProfileId)
   const sopIdRaw = formData.get("sop_id") as string
   const positionIdRaw = formData.get("default_position_id") as string
   const pingPositionIds = formData.getAll("ping_position_ids") as string[]
@@ -368,16 +381,16 @@ export async function updateTaskInSet(taskId: string, formData: FormData) {
   return data
 }
 
-export async function deleteTaskFromSet(taskId: string) {
-  const supabase = await createClient()
+export async function deleteTaskFromSet(taskId: string, actingProfileId?: string) {
+  const supabase = await opsClient(actingProfileId)
   const { error } = await supabase.from("task_set_tasks").delete().eq("id", taskId)
   if (error) throw error
   revalidatePath("/settings")
   revalidatePath("/operations")
 }
 
-export async function reorderTasksInSet(taskSetId: string, orderedIds: string[]) {
-  const supabase = await createClient()
+export async function reorderTasksInSet(taskSetId: string, orderedIds: string[], actingProfileId?: string) {
+  const supabase = await opsClient(actingProfileId)
   const updates = orderedIds.map((id, i) =>
     supabase.from("task_set_tasks").update({ task_order: i }).eq("id", id)
   )
@@ -386,8 +399,8 @@ export async function reorderTasksInSet(taskSetId: string, orderedIds: string[])
   revalidatePath("/operations")
 }
 
-export async function linkTaskSetToPhase(phaseId: string, taskSetId: string | null) {
-  const supabase = await createClient()
+export async function linkTaskSetToPhase(phaseId: string, taskSetId: string | null, actingProfileId?: string) {
+  const supabase = await opsClient(actingProfileId)
   const { error } = await supabase
     .from("phase_set_phases")
     .update({ default_task_set_id: taskSetId })
@@ -404,9 +417,10 @@ export async function linkTaskSetToPhase(phaseId: string, taskSetId: string | nu
 export async function addChecklistItemToSetTask(
   taskSetTaskId: string,
   text: string,
-  isBlocking: boolean
+  isBlocking: boolean,
+  actingProfileId?: string
 ) {
-  const supabase = await createClient()
+  const supabase = await opsClient(actingProfileId)
   const { data: existing } = await supabase
     .from("task_set_checklist_items")
     .select("item_order")
@@ -428,9 +442,10 @@ export async function addChecklistItemToSetTask(
 
 export async function updateSetTaskChecklistItem(
   itemId: string,
-  fields: { text?: string; is_blocking?: boolean }
+  fields: { text?: string; is_blocking?: boolean },
+  actingProfileId?: string
 ) {
-  const supabase = await createClient()
+  const supabase = await opsClient(actingProfileId)
   const { error } = await supabase
     .from("task_set_checklist_items")
     .update(fields)
@@ -440,8 +455,8 @@ export async function updateSetTaskChecklistItem(
   revalidatePath("/operations")
 }
 
-export async function deleteSetTaskChecklistItem(itemId: string) {
-  const supabase = await createClient()
+export async function deleteSetTaskChecklistItem(itemId: string, actingProfileId?: string) {
+  const supabase = await opsClient(actingProfileId)
   const { error } = await supabase
     .from("task_set_checklist_items")
     .delete()
@@ -453,9 +468,10 @@ export async function deleteSetTaskChecklistItem(itemId: string) {
 
 export async function reorderSetTaskChecklistItems(
   taskSetTaskId: string,
-  orderedIds: string[]
+  orderedIds: string[],
+  actingProfileId?: string
 ) {
-  const supabase = await createClient()
+  const supabase = await opsClient(actingProfileId)
   await Promise.all(
     orderedIds.map((id, index) =>
       supabase.from("task_set_checklist_items").update({ item_order: index }).eq("id", id)
@@ -715,8 +731,8 @@ async function deepCloneTaskSet(
 
 /** Deep-copies a PhaseSet (all phases + task sets + tasks + checklist items).
  *  The copy is not linked to any ProjectType — link it manually afterward. */
-export async function clonePhaseSet(phaseSetId: string) {
-  const supabase = await createClient()
+export async function clonePhaseSet(phaseSetId: string, actingProfileId?: string) {
+  const supabase = await opsClient(actingProfileId)
 
   const { data: source } = await supabase
     .from("phase_sets")
@@ -756,8 +772,8 @@ export async function clonePhaseSet(phaseSetId: string) {
 }
 
 /** Deep-copies a single phase (+ its task set) into a target PhaseSet. */
-export async function clonePhaseIntoPhaseSet(phaseId: string, targetPhaseSetId: string, afterPhaseId?: string | null) {
-  const supabase = await createClient()
+export async function clonePhaseIntoPhaseSet(phaseId: string, targetPhaseSetId: string, afterPhaseId?: string | null, actingProfileId?: string) {
+  const supabase = await opsClient(actingProfileId)
 
   const { data: source } = await supabase
     .from("phase_set_phases").select("*").eq("id", phaseId).single()
@@ -822,8 +838,8 @@ export async function clonePhaseIntoPhaseSet(phaseId: string, targetPhaseSetId: 
 }
 
 /** Deep-copies a single task (+ its checklist) into a target TaskSet, optionally after a given task. */
-export async function cloneTaskInTaskSet(taskId: string, targetTaskSetId: string, afterTaskId?: string | null) {
-  const supabase = await createClient()
+export async function cloneTaskInTaskSet(taskId: string, targetTaskSetId: string, afterTaskId?: string | null, actingProfileId?: string) {
+  const supabase = await opsClient(actingProfileId)
 
   const { data: source } = await supabase
     .from("task_set_tasks")
