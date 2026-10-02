@@ -56,7 +56,8 @@ function parseDeliverables(formData: FormData): ServiceDeliverable[] {
         // ones loaded from before this field existed) — this is just a
         // server-side safety net in case one ever arrives missing.
         id: String(d?.id ?? "").trim() || crypto.randomUUID(),
-        text: String(d?.text ?? "").trim(),
+        // Si solo se escribió el control, ese texto sirve también como venta.
+        text: String(d?.text ?? "").trim() || String(d?.control_text ?? "").trim(),
         cadence: (CADENCES as string[]).includes(d?.cadence) ? d.cadence as DeliverableCadence : "once",
         quantity: Number.isFinite(Number(d?.quantity)) && d?.quantity !== "" && d?.quantity != null ? Number(d.quantity) : null,
         control_text: String(d?.control_text ?? "").trim() || null,

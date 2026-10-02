@@ -65,71 +65,94 @@ const CADENCE_LABEL: Record<DeliverableCadence, string> = {
 }
 const CADENCE_OPTIONS = Object.keys(CADENCE_LABEL) as DeliverableCadence[]
 
-// Structured entregables editor — one row per deliverable (text + cadence),
-// serialized to a hidden JSON field on submit instead of relying on the
-// user pressing Enter in a textarea to separate items.
+// Editor de entregables en pestañas: Arranque (una vez), Por periodo (se
+// repite cada periodo / cada 3 / cada 6) y Continuo (sin conteo). Cada
+// tarjeta muestra primero el texto de CONTROL (lo que se palomea en el
+// proyecto) y el texto de venta debajo, plegable. Cambiar la cadencia mueve
+// la línea a su pestaña. Se serializa en un campo oculto al guardar.
+type DelivTab = "once" | "periodic" | "continuous"
+const tabOf = (c: DeliverableCadence): DelivTab => (c === "once" ? "once" : c === "continuous" ? "continuous" : "periodic")
+const TAB_META: Record<DelivTab, { label: string; hint: string; defaultCadence: DeliverableCadence }> = {
+  once: { label: "Arranque", hint: "Se entregan una sola vez al iniciar (setup, auditoría, onboarding…).", defaultCadence: "once" },
+  periodic: { label: "Por periodo", hint: "Se repiten en cada periodo del proyecto (piezas, reportes, juntas…). El periodo lo define cada proyecto.", defaultCadence: "monthly" },
+  continuous: { label: "Continuo", hint: "Parte del servicio que no se entrega en unidades (gestión, optimización, soporte). Sin cantidad.", defaultCadence: "continuous" },
+}
+
 function DeliverablesEditor({ value, onChange }: { value: ServiceDeliverable[]; onChange: (v: ServiceDeliverable[]) => void }) {
-  function update(i: number, patch: Partial<ServiceDeliverable>) {
-    onChange(value.map((d, idx) => idx === i ? { ...d, ...patch } : d))
+  const [tab, setTab] = useState<DelivTab>(() => (value.some((d) => tabOf(d.cadence) === "periodic") && !value.some((d) => d.cadence === "once") ? "periodic" : "once"))
+  const [openSales, setOpenSales] = useState<Set<string>>(new Set())
+
+  function update(id: string, patch: Partial<ServiceDeliverable>) {
+    onChange(value.map((d) => (d.id === id ? { ...d, ...patch, ...(patch.cadence === "continuous" ? { quantity: null } : {}) } : d)))
   }
-  function remove(i: number) {
-    onChange(value.filter((_, idx) => idx !== i))
-  }
+  function remove(id: string) { onChange(value.filter((d) => d.id !== id)) }
   function add() {
-    onChange([...value, { id: crypto.randomUUID(), text: "", cadence: "once", quantity: null, added_at: new Date().toISOString().slice(0, 10) }])
+    const id = crypto.randomUUID()
+    onChange([...value, { id, text: "", control_text: "", cadence: TAB_META[tab].defaultCadence, quantity: null, added_at: new Date().toISOString().slice(0, 10) }])
+    setOpenSales((s) => new Set(s).add(id))
   }
+  const rows = value.filter((d) => tabOf(d.cadence) === tab)
+  const count = (t: DelivTab) => value.filter((d) => tabOf(d.cadence) === t).length
+  const field = "rounded-md border border-input bg-background px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
 
   return (
-    <div className="space-y-1.5">
+    <div className="rounded-lg border border-border">
       <input type="hidden" name="deliverables_json" value={JSON.stringify(value)} />
-      {value.map((d, i) => (
-        <div key={d.id} className="space-y-1 rounded-md border border-border/60 p-1.5">
-        <div className="flex items-center gap-1.5">
-          <input
-            value={d.text}
-            onChange={(e) => update(i, { text: e.target.value })}
-            placeholder="Texto de venta — ej. Reporte semanal de resultados (para que…)"
-            className="flex-1 min-w-0 rounded-md border border-input bg-background px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-          />
-          <input
-            type="number"
-            min="0"
-            value={d.quantity ?? ""}
-            onChange={(e) => update(i, { quantity: e.target.value === "" ? null : Number(e.target.value) })}
-            placeholder="Cant."
-            title="Cantidad esperada por periodo (ej. 4 videos/mes) — opcional"
-            className="w-16 flex-shrink-0 rounded-md border border-input bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-          />
-          <select
-            value={d.cadence}
-            onChange={(e) => update(i, { cadence: e.target.value as DeliverableCadence })}
-            className="flex-shrink-0 rounded-md border border-input bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-          >
-            {CADENCE_OPTIONS.map((c) => <option key={c} value={c}>{CADENCE_LABEL[c]}</option>)}
-          </select>
-          <button
-            type="button"
-            onClick={() => remove(i)}
-            className="flex-shrink-0 p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-          >
-            <X className="w-3.5 h-3.5" />
+      <div className="flex items-center gap-1 border-b border-border px-2 pt-2">
+        {(Object.keys(TAB_META) as DelivTab[]).map((t) => (
+          <button key={t} type="button" onClick={() => setTab(t)}
+            className={cn("px-3 py-1.5 text-sm font-medium rounded-t-md border-b-2 -mb-px transition-colors",
+              tab === t ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}>
+            {TAB_META[t].label} <span className="text-xs text-muted-foreground">{count(t)}</span>
           </button>
-        </div>
-        <input
-          value={d.control_text ?? ""}
-          onChange={(e) => update(i, { control_text: e.target.value })}
-          placeholder="Texto de control (corto, lo que se ve en el proyecto) — ej. Reporte PDF"
-          className="w-full rounded-md border border-input bg-muted/30 px-2.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-        />
-        </div>
-      ))}
-      <button
-        type="button"
-        onClick={add}
-        className="flex items-center gap-1 text-xs text-primary hover:underline"
-      >
-        <Plus className="w-3 h-3" /> Agregar entregable
-      </button>
+        ))}
+      </div>
+      <div className="p-2.5 space-y-2">
+        <p className="text-[11px] text-muted-foreground">{TAB_META[tab].hint}</p>
+        {rows.length === 0 && <p className="text-xs text-muted-foreground text-center py-3">Sin entregables en esta pestaña.</p>}
+        {rows.map((d, idx) => {
+          const salesOpen = openSales.has(d.id) || !d.text.trim()
+          return (
+            <div key={d.id} className="rounded-md border border-border/70 bg-background p-2 space-y-1.5">
+              <div className="flex items-center gap-1.5">
+                <span className="w-5 text-[11px] text-muted-foreground text-right">{idx + 1}</span>
+                <input value={d.control_text ?? ""} onChange={(e) => update(d.id, { control_text: e.target.value })}
+                  placeholder="Control — lo que se palomea en el proyecto (ej. 6 piezas visuales)"
+                  className={cn(field, "flex-1 min-w-0 font-medium", !d.control_text?.trim() && "border-amber-300 dark:border-amber-800")} />
+                {tab !== "continuous" && (
+                  <input type="number" min="0" value={d.quantity ?? ""} onChange={(e) => update(d.id, { quantity: e.target.value === "" ? null : Number(e.target.value) })}
+                    placeholder="Cant." title={tab === "periodic" ? "Unidades por periodo" : "Unidades"} className={cn(field, "w-16 text-xs")} />
+                )}
+                <select value={d.cadence} onChange={(e) => update(d.id, { cadence: e.target.value as DeliverableCadence })} className={cn(field, "text-xs")} title="Cambiar la cadencia la mueve a su pestaña">
+                  {tab === "periodic"
+                    ? (["monthly", "quarterly", "biannual"] as DeliverableCadence[]).map((c) => <option key={c} value={c}>{CADENCE_LABEL[c]}</option>)
+                    : <option value={d.cadence}>{CADENCE_LABEL[d.cadence]}</option>}
+                  <optgroup label="Mover a">
+                    {d.cadence !== "once" && <option value="once">Arranque</option>}
+                    {tab !== "periodic" && <option value="monthly">Por periodo</option>}
+                    {d.cadence !== "continuous" && <option value="continuous">Continuo</option>}
+                  </optgroup>
+                </select>
+                <button type="button" onClick={() => remove(d.id)} className="p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10"><X className="w-3.5 h-3.5" /></button>
+              </div>
+              <div className="pl-6">
+                {salesOpen ? (
+                  <textarea value={d.text} onChange={(e) => update(d.id, { text: e.target.value })} rows={2}
+                    placeholder="Texto de venta (para propuestas) — ej. Reporte por escrito cada 2 semanas (para que…)"
+                    className="w-full rounded-md border border-input bg-muted/30 px-2.5 py-1 text-xs resize-y focus:outline-none focus:ring-1 focus:ring-ring" />
+                ) : (
+                  <button type="button" onClick={() => setOpenSales((s) => new Set(s).add(d.id))} className="w-full text-left text-xs text-muted-foreground truncate hover:text-foreground" title={d.text}>
+                    Venta: {d.text}
+                  </button>
+                )}
+              </div>
+            </div>
+          )
+        })}
+        <button type="button" onClick={add} className="flex items-center gap-1 text-xs text-primary hover:underline">
+          <Plus className="w-3 h-3" /> Agregar entregable de {TAB_META[tab].label.toLowerCase()}
+        </button>
+      </div>
     </div>
   )
 }
