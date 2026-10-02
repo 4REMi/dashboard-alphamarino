@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { offersToJson } from "@/lib/utils/offer-json"
 import { useState, useEffect, useRef, useTransition } from "react"
 import type { ServiceOffer, ServiceAddon, Currency, ServiceDeliverable, DeliverableCadence } from "@/lib/types"
@@ -601,6 +602,16 @@ function OfferCard({
               {archived && (
                 <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">Archivada</span>
               )}
+              {totalDeliverables > 0 && (() => {
+                const withControl = offer.deliverables.filter((d) => d.control_text?.trim()).length
+                const full = withControl === totalDeliverables
+                return (
+                  <span title="Entregables con texto de control (lo que se ve en los proyectos)" className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded-full",
+                    full ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" : withControl ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300" : "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300")}>
+                    Control {withControl}/{totalDeliverables}
+                  </span>
+                )
+              })()}
             </div>
             {offer.description && <p className="text-xs text-muted-foreground mt-1">{offer.description}</p>}
             {offer.based_on_offer && (
@@ -915,6 +926,13 @@ export function ServiceCatalogManager({ initialOffers, initialAddons, projectTyp
         )}
         {tab === "offers" && (
           <div className="ml-auto flex items-center gap-2">
+            <Link
+              href="/services/control"
+              title="Revisar el texto de control de los entregables con sugerencias de IA"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-sm font-medium text-muted-foreground hover:bg-muted/50 transition-colors"
+            >
+              <Sparkles className="w-3.5 h-3.5" /> Revisión de control
+            </Link>
             <button
               onClick={() => setShowImport(true)}
               title="Importar ofertas desde JSON — pensado para generarlas con una IA externa sin gastar tokens de este proyecto"

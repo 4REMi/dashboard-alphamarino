@@ -40,6 +40,13 @@ nunca se expone fuera del dashboard. Es control interno del equipo, punto.
   se ve en el proyecto. `text` queda como texto de venta (solo en hover). Viaja en
   el JSON de exportar/importar ofertas, lo propone el autollenado con IA y lo
   muestra la herramienta MCP de detalle de oferta.
+- **Revisión de control** (`/services/control`, botón en Servicios, admin/subadmin):
+  lista de ofertas con su cobertura (control X/Y, también como insignia en cada
+  tarjeta) y, por oferta, la IA propone texto de control (2-6 palabras,
+  verificable), cadencia y cantidad por línea (`lib/actions/offer-control.ts`). Si el
+  mismo texto de venta ya tiene control aprobado en otra oferta, se reutiliza (las
+  ofertas de Paid Media comparten casi todo). Nada se guarda sin "Aplicar y seguir";
+  solo cambia control_text/cadencia/cantidad, nunca el texto de venta.
 - **Historial**: fila de puntos arriba, uno por periodo (máx. 12) desde que la línea
   entró al proyecto. Verde = completo, ámbar = parcial (≥50%), rojo = menos, contorno
   azul = periodo actual. Hover = qué faltó; click = ver/corregir ese periodo. Los
