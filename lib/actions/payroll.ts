@@ -137,7 +137,19 @@ async function ensureSalaries(supabase: Awaited<ReturnType<typeof createClient>>
       rows.push({ profile_id: c.profile_id, kind: "salary", amount: c.base_salary, currency: c.currency, period_month: m, due_date: dueDate(m, c.pay_day), reason: "Salario base" })
     }
   }
-  if (rows.length) await supabase.from("payroll_items").upsert(rows, { onConflict: "profile_id,period_month", ignoreDuplicates: true })
+  if (!rows.length) return
+  // Se insertan solo los que faltan (no upsert: el índice único es parcial
+  // —solo salarios— y ON CONFLICT no puede usarlo). El índice sigue
+  // protegiendo contra duplicados si dos personas abren Nómina a la vez.
+  const { data: existing, error: exErr } = await supabase.from("payroll_items").select("profile_id, period_month")
+    .eq("kind", "salary").in("profile_id", [...new Set(rows.map((r) => r.profile_id as string))])
+  if (exErr) throw new Error(migrationHint(exErr.message))
+  const have = new Set((existing ?? []).map((e) => `${e.profile_id}|${e.period_month}`))
+  const missing = rows.filter((r) => !have.has(`${r.profile_id}|${r.period_month}`))
+  for (const r of missing) {
+    const { error } = await supabase.from("payroll_items").insert(r)
+    if (error && error.code !== "23505") throw new Error(`No se pudo generar el salario: ${error.message}`)
+  }
 }
 
 export interface PayrollOverview {
