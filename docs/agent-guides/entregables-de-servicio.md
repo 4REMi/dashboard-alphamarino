@@ -48,6 +48,11 @@ nunca se expone fuera del dashboard. Es control interno del equipo, punto.
   que se hubieran creado ahí se limpian solas). Una línea **quitada** deja de
   generarse pero sus periodos pasados se conservan en el historial con la etiqueta
   "ya no está en la oferta" (los hitos únicos solo si se entregaron).
+- **Edición manual explícita** (migración 109): el lápiz marca `text_overridden` /
+  `quantity_overridden` en ese periodo. Sin la marca, la fila muestra siempre el
+  texto de control actual de la oferta, y el periodo en curso (y los hitos únicos)
+  toman la cantidad actual de la oferta mientras no se haya entregado nada. Antes se
+  adivinaba comparando textos y un cambio en la oferta se confundía con una edición.
 - **Revisión de control** (`/services/control`, botón en Servicios, admin/subadmin):
   lista de ofertas con su cobertura (control X/Y, también como insignia en cada
   tarjeta) y, por oferta, la IA propone texto de control (2-6 palabras,

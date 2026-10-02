@@ -1463,6 +1463,9 @@ export interface ProjectDeliverablePeriod {
   period_end?: string | null
   // Marcado cuando el periodo ya había terminado.
   marked_late?: boolean
+  // Editado a mano con el lápiz (migración 109): si no, sigue a la oferta.
+  text_overridden?: boolean
+  quantity_overridden?: boolean
   fulfilled_at?: string | null
   notes: string | null
   created_at: string

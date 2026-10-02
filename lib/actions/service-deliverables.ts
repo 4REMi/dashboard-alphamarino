@@ -348,6 +348,21 @@ export async function getScopeOverview(projectId: string): Promise<ScopeOverview
   }
   if (stale.length) await admin.from("project_deliverable_periods").delete().in("id", stale)
 
+  // El periodo en curso (y los hitos únicos) siguen a la oferta mientras no
+  // se haya entregado nada ni se haya editado a mano: si cambia la cantidad
+  // en la oferta, se actualiza aquí. Los periodos pasados no se tocan.
+  for (const r of rows) {
+    const line = lines.find((l) => l.key === r.deliverable_key)
+    if (!line || line.removed) continue
+    const isCurrent = line.cadence === "once" || r.period_start >= currentStart
+    const target = line.quantity ?? 1
+    const manual = (r as { quantity_overridden?: boolean }).quantity_overridden
+    if (isCurrent && !manual && r.fulfilled_quantity === 0 && r.expected_quantity !== target) {
+      await admin.from("project_deliverable_periods").update({ expected_quantity: target }).eq("id", r.id)
+      r.expected_quantity = target
+    }
+  }
+
   return {
     rule,
     ruleIsDefault: isDefault,
@@ -413,10 +428,12 @@ export async function updatePeriodText(periodId: string, text: string, projectId
   if (!trimmed) throw new Error("El texto no puede quedar vacío")
 
   const admin = createAdminClient()
-  const { error } = await admin
+  let { error } = await admin
     .from("project_deliverable_periods")
-    .update({ deliverable_text: trimmed, updated_at: new Date().toISOString() })
+    .update({ deliverable_text: trimmed, text_overridden: true, updated_at: new Date().toISOString() })
     .eq("id", periodId)
+  // Sin la migración 109 todavía.
+  if (error && /text_overridden/.test(error.message)) ({ error } = await admin.from("project_deliverable_periods").update({ deliverable_text: trimmed, updated_at: new Date().toISOString() }).eq("id", periodId))
   if (error) throw error
   revalidateProject(projectId)
 }
@@ -427,10 +444,12 @@ export async function updatePeriodExpectedQuantity(periodId: string, expectedQua
   if (expectedQuantity < 0) throw new Error("La cantidad no puede ser negativa")
 
   const admin = createAdminClient()
-  const { error } = await admin
+  let { error } = await admin
     .from("project_deliverable_periods")
-    .update({ expected_quantity: expectedQuantity, updated_at: new Date().toISOString() })
+    .update({ expected_quantity: expectedQuantity, quantity_overridden: true, updated_at: new Date().toISOString() })
     .eq("id", periodId)
+  // Sin la migración 109 todavía.
+  if (error && /quantity_overridden/.test(error.message)) ({ error } = await admin.from("project_deliverable_periods").update({ expected_quantity: expectedQuantity, updated_at: new Date().toISOString() }).eq("id", periodId))
   if (error) throw error
   revalidateProject(projectId)
 }

@@ -341,20 +341,22 @@ function Row({ row, lineByKey, offerColor, showOffer, canMark, canManage, projec
 }) {
   const line = lineByKey.get(row.deliverable_key)
   const [editing, setEditing] = useState(false)
-  const [text, setText] = useState(row.deliverable_text)
+  const [text, setText] = useState(row.text_overridden ? row.deliverable_text : (line?.text ?? row.deliverable_text))
   const [qty, setQty] = useState(String(row.expected_quantity))
   const [, startTransition] = useTransition()
   const over = row.fulfilled_quantity - row.expected_quantity
   const label = line?.text ?? row.deliverable_text
-  // El texto editado por periodo manda; si no, el texto de control.
-  const shown = row.deliverable_text !== line?.fullText && row.deliverable_text !== line?.text ? row.deliverable_text : label
+  // Solo un texto editado a mano en este periodo manda; si no, siempre el
+  // texto de control actual de la oferta (antes se adivinaba comparando
+  // textos y un cambio en la oferta se confundía con una edición manual).
+  const shown = row.text_overridden || line?.removed ? row.deliverable_text : label
 
   function save() {
     const n = Number(qty)
     setEditing(false)
     if (!text.trim() || !Number.isFinite(n) || n < 0) return
     startTransition(async () => {
-      if (text.trim() !== row.deliverable_text) await updatePeriodText(row.id, text.trim(), projectId)
+      if (text.trim() !== shown) await updatePeriodText(row.id, text.trim(), projectId)
       if (n !== row.expected_quantity) await updatePeriodExpectedQuantity(row.id, n, projectId)
       onChanged()
     })
