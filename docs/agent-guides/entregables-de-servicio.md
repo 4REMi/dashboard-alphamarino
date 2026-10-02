@@ -40,6 +40,14 @@ nunca se expone fuera del dashboard. Es control interno del equipo, punto.
   se ve en el proyecto. `text` queda como texto de venta (solo en hover). Viaja en
   el JSON de exportar/importar ofertas, lo propone el autollenado con IA y lo
   muestra la herramienta MCP de detalle de oferta.
+- **Cambios a una oferta ya adjunta**: cada línea tiene id fijo, así que editar
+  texto/cantidad/cadencia nunca duplica filas. Cantidad: el periodo en curso queda
+  congelado (se edita con el lápiz); los siguientes usan la nueva. Una línea
+  **nueva** cuenta desde su `added_at` (fecha en que se agregó a la oferta), no
+  desde que se adjuntó la oferta → no aparece en periodos pasados (y las filas en 0
+  que se hubieran creado ahí se limpian solas). Una línea **quitada** deja de
+  generarse pero sus periodos pasados se conservan en el historial con la etiqueta
+  "ya no está en la oferta" (los hitos únicos solo si se entregaron).
 - **Revisión de control** (`/services/control`, botón en Servicios, admin/subadmin):
   lista de ofertas con su cobertura (control X/Y, también como insignia en cada
   tarjeta) y, por oferta, la IA propone texto de control (2-6 palabras,

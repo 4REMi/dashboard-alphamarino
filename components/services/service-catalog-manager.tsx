@@ -76,7 +76,7 @@ function DeliverablesEditor({ value, onChange }: { value: ServiceDeliverable[]; 
     onChange(value.filter((_, idx) => idx !== i))
   }
   function add() {
-    onChange([...value, { id: crypto.randomUUID(), text: "", cadence: "once", quantity: null }])
+    onChange([...value, { id: crypto.randomUUID(), text: "", cadence: "once", quantity: null, added_at: new Date().toISOString().slice(0, 10) }])
   }
 
   return (
@@ -167,6 +167,7 @@ function OfferForm({
       cadence: d.cadence,
       quantity: d.quantity ?? null,
       control_text: d.control_text ?? null,
+      added_at: d.added_at ?? null,
     }))
   )
   const [projectTypeId, setProjectTypeId] = useState(initial?.default_project_type_id ?? "")

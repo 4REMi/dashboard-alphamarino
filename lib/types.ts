@@ -1389,6 +1389,9 @@ export interface ServiceDeliverable {
   // Texto corto para operar (lo que se ve en el proyecto). `text` queda
   // como texto de venta del catálogo. Vacío = se usa `text`.
   control_text?: string | null
+  // Fecha (YYYY-MM-DD) en que la línea se agregó a la oferta. En proyectos
+  // que ya tenían la oferta, la línea cuenta desde ese periodo, no antes.
+  added_at?: string | null
 }
 
 export interface ServiceAddon {

@@ -82,7 +82,7 @@ export function ServiceDeliverablesCard({ projectId, canManage, canMark }: Props
   const viewingPast = !!period && !!current && period.start !== current.start
 
   const lineByKey = useMemo(() => new Map((data?.lines ?? []).map((l) => [l.key, l])), [data])
-  const offerIds = useMemo(() => [...new Set((data?.lines ?? []).map((l) => l.offerId).filter(Boolean) as string[])], [data])
+  const offerIds = useMemo(() => [...new Set((data?.lines ?? []).filter((l) => !l.removed).map((l) => l.offerId).filter(Boolean) as string[])], [data])
   const offerColor = (id: string | null) => (id ? OFFER_COLORS[offerIds.indexOf(id) % OFFER_COLORS.length] : "bg-fuchsia-500")
 
   const periodRows = (start: string) => (data?.rows ?? []).filter((r) => r.period_start === start && lineByKey.get(r.deliverable_key)?.cadence !== "once")
@@ -371,6 +371,7 @@ function Row({ row, lineByKey, offerColor, showOffer, canMark, canManage, projec
         )}
         {showOffer && line && <span title={line.offerName ?? "Personalizado"} className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", offerColor(line.offerId))} />}
         {row.marked_late && <span className="text-[10px] text-amber-700 dark:text-amber-400 flex-shrink-0">marcado después</span>}
+        {line?.removed && <span title="Esta línea se quitó de la oferta; se conserva en el historial" className="text-[10px] text-muted-foreground flex-shrink-0">ya no está en la oferta</span>}
       </div>
 
       <div className="flex items-center gap-1 flex-shrink-0">

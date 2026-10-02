@@ -177,6 +177,8 @@ export interface ScopeLine {
   offerId: string | null
   offerName: string | null
   customId: string | null
+  // La línea ya no está en la oferta: solo se muestra en periodos pasados.
+  removed?: boolean
   // Texto de control (corto) y el de venta completo (solo para hover).
   text: string
   fullText: string
@@ -250,7 +252,10 @@ export async function getScopeOverview(projectId: string): Promise<ScopeOverview
         key: d.id, offerId: offer.id, offerName: offer.name, customId: null,
         text: d.control_text?.trim() || d.text, fullText: d.text, cadence: d.cadence, quantity: d.quantity,
       })
-      since.set(d.id, attachedAt.get(offer.id) ?? todayIso())
+      // Desde que se adjuntó la oferta o desde que se agregó la línea (lo
+      // más reciente): una línea nueva no aparece en periodos pasados.
+      const attached = attachedAt.get(offer.id) ?? todayIso()
+      since.set(d.id, d.added_at && d.added_at > attached ? d.added_at : attached)
     }
   }
   for (const d of customDeliverables) {
@@ -312,14 +317,31 @@ export async function getScopeOverview(projectId: string): Promise<ScopeOverview
     if (error) throw error
   }
 
-  const keys = lines.filter((l) => l.cadence !== "continuous").map((l) => l.key)
-  const { data } = keys.length
-    ? await supabase.from("project_deliverable_periods").select("*").eq("project_id", projectId).in("deliverable_key", keys)
-    : { data: [] }
+  // Todas las filas del proyecto: las de líneas que ya no están en la oferta
+  // se conservan en los periodos pasados (el historial no "olvida" lo que sí
+  // se entregó), pero no se generan más.
+  const { data } = await supabase.from("project_deliverable_periods").select("*").eq("project_id", projectId)
+  const currentStart = allPeriods[lastIdx]?.start ?? today
+  for (const r of (data ?? []) as ProjectDeliverablePeriod[]) {
+    if (lines.some((l) => l.key === r.deliverable_key)) continue
+    const isOnce = r.period_label === "Único"
+    // Solo historial: periodos pasados, y hitos únicos que sí se entregaron.
+    if (isOnce ? r.fulfilled_quantity === 0 : r.period_start >= currentStart) continue
+    if (!lines.some((l) => l.key === r.deliverable_key && l.removed)) {
+      lines.push({ key: r.deliverable_key, offerId: r.service_offer_id, offerName: null, customId: null, removed: true,
+        text: r.deliverable_text, fullText: r.deliverable_text, cadence: isOnce ? "once" : "monthly", quantity: r.expected_quantity })
+    }
+  }
   const rows: ProjectDeliverablePeriod[] = []
   const stale: string[] = []
   for (const r of (data ?? []) as ProjectDeliverablePeriod[]) {
-    const line = lines.find((l) => l.key === r.deliverable_key)!
+    const line = lines.find((l) => l.key === r.deliverable_key)
+    if (!line) continue
+    if (line.removed) {
+      const isOnce = r.period_label === "Único"
+      if (isOnce ? r.fulfilled_quantity > 0 : r.period_start < currentStart) rows.push(r)
+      continue
+    }
     if (line.cadence === "once") { rows.push(r); continue }
     if (validStarts.get(r.deliverable_key)?.has(r.period_start)) rows.push(r)
     else if (r.fulfilled_quantity === 0) stale.push(r.id)

@@ -60,6 +60,9 @@ function parseDeliverables(formData: FormData): ServiceDeliverable[] {
         cadence: (CADENCES as string[]).includes(d?.cadence) ? d.cadence as DeliverableCadence : "once",
         quantity: Number.isFinite(Number(d?.quantity)) && d?.quantity !== "" && d?.quantity != null ? Number(d.quantity) : null,
         control_text: String(d?.control_text ?? "").trim() || null,
+        // El editor pone la fecha al agregar una línea; las existentes
+        // conservan la suya (null = cuenta desde que se adjuntó la oferta).
+        added_at: typeof d?.added_at === "string" ? d.added_at : null,
       }))
       .filter((d) => d.text)
   } catch {
