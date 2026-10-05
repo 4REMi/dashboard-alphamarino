@@ -2,7 +2,10 @@
 
 import { useRef, useEffect } from "react"
 
-type AutoTextareaProps = React.TextareaHTMLAttributes<HTMLTextAreaElement>
+type AutoTextareaProps = React.TextareaHTMLAttributes<HTMLTextAreaElement> & {
+  // Acceso opcional al <textarea> (ej. para insertar formato en la selección).
+  textareaRef?: React.RefObject<HTMLTextAreaElement | null>
+}
 
 /**
  * Textarea that grows automatically with its content.
@@ -10,8 +13,9 @@ type AutoTextareaProps = React.TextareaHTMLAttributes<HTMLTextAreaElement>
  * Handles both uncontrolled (defaultValue) and controlled (value) usage,
  * including external updates like AI-generated content.
  */
-export function AutoTextarea({ rows, style, onInput, value, ...props }: AutoTextareaProps) {
-  const ref = useRef<HTMLTextAreaElement>(null)
+export function AutoTextarea({ rows, style, onInput, value, textareaRef, ...props }: AutoTextareaProps) {
+  const innerRef = useRef<HTMLTextAreaElement>(null)
+  const ref = textareaRef ?? innerRef
 
   function resize() {
     const el = ref.current

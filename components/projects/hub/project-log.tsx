@@ -1,12 +1,21 @@
 "use client"
 
-import { useState, useTransition } from "react"
-import { Bell, Calendar, Pencil, X, Check } from "lucide-react"
+import { Fragment, useMemo, useRef, useState, useTransition } from "react"
+import { Bell, Calendar, Pencil, X, Check, Pin, PinOff, ImagePlus, Bold, List, Link2, Search, Loader2, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { ProjectLogEntry, ProjectLogCategory } from "@/lib/types"
-import { addLogEntry, updateLogEntry, deleteLogEntry } from "@/lib/actions/projects"
+import { addLogEntry, updateLogEntry, deleteLogEntry, setLogEntryPinned } from "@/lib/actions/projects"
+import { createClient } from "@/lib/supabase/client"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
 import { PingRecipientsPicker } from "@/components/tasks/ping-recipients-picker"
+import { RichText } from "@/components/projects/hub/rich-text"
+
+// Bitácora del proyecto — "contexto vivo":
+//  - Contexto fijo (notas fijadas: acuerdos, con quién se habla, reglas)
+//    siempre a la vista; cualquier miembro del proyecto fija o edita.
+//  - Línea de tiempo agrupada por semana, con filtro por categoría y búsqueda.
+//  - Editor con formato básico (negritas, listas, enlaces) e imágenes:
+//    Ctrl+V, arrastrar o botón. Las imágenes van a un bucket privado.
 
 interface Props {
   projectId: string
@@ -16,18 +25,18 @@ interface Props {
   compact?: boolean
 }
 
-const CATEGORIES: ProjectLogCategory[] = ["Decisión", "Bloqueo", "Cliente", "Interno"]
+type Attachment = NonNullable<ProjectLogEntry["attachments"]>[number] & { uploading?: boolean }
 
+const CATEGORIES: ProjectLogCategory[] = ["Decisión", "Bloqueo", "Cliente", "Interno"]
 const CATEGORY_STYLE: Record<ProjectLogCategory, string> = {
-  "Decisión": "bg-violet-100 text-violet-700 border-violet-200",
-  "Bloqueo":  "bg-rose-100 text-rose-700 border-rose-200",
-  "Cliente":  "bg-sky-100 text-sky-700 border-sky-200",
-  "Interno":  "bg-slate-100 text-slate-600 border-slate-200",
+  "Decisión": "bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-950 dark:text-violet-300 dark:border-violet-900",
+  "Bloqueo":  "bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-950 dark:text-rose-300 dark:border-rose-900",
+  "Cliente":  "bg-sky-100 text-sky-700 border-sky-200 dark:bg-sky-950 dark:text-sky-300 dark:border-sky-900",
+  "Interno":  "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700",
 }
 
 function timeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime()
-  const minutes = Math.floor(diff / 60000)
+  const minutes = Math.floor((Date.now() - new Date(iso).getTime()) / 60000)
   if (minutes < 1) return "ahora"
   if (minutes < 60) return `hace ${minutes}m`
   const hours = Math.floor(minutes / 60)
@@ -36,288 +45,356 @@ function timeAgo(iso: string): string {
   if (days < 30) return `hace ${days}d`
   return new Date(iso).toLocaleDateString("es-MX", { day: "numeric", month: "short" })
 }
-
 function formatEventDate(dateStr: string): string {
-  // event_date es DATE puro (YYYY-MM-DD) — parsear con new Date directo lo
-  // corre un día atrás por timezone, así que se construye en local.
   const [y, m, d] = dateStr.split("-").map(Number)
   return new Date(y, m - 1, d).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" })
 }
-
 function todayStr(): string {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`
+  const n = new Date()
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`
+}
+const entryDate = (e: ProjectLogEntry) => (e.event_date ? new Date(e.event_date + "T12:00:00") : new Date(e.created_at))
+function weekLabel(d: Date): string {
+  const monday = new Date(d); monday.setHours(0, 0, 0, 0); monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7))
+  const now = new Date(); now.setHours(0, 0, 0, 0); now.setDate(now.getDate() - ((now.getDay() + 6) % 7))
+  const diff = Math.round((now.getTime() - monday.getTime()) / (7 * 86_400_000))
+  if (diff === 0) return "Esta semana"
+  if (diff === 1) return "Semana pasada"
+  return `Semana del ${monday.toLocaleDateString("es-MX", { day: "numeric", month: "short", year: monday.getFullYear() !== now.getFullYear() ? "numeric" : undefined })}`
 }
 
 function CategoryPicker({ value, onChange }: { value: ProjectLogCategory | null; onChange: (v: ProjectLogCategory | null) => void }) {
   return (
     <div className="flex items-center gap-1 flex-wrap">
-      <button
-        type="button"
-        onClick={() => onChange(null)}
-        className={cn(
-          "text-[11px] font-medium px-2 py-0.5 rounded-full border transition-colors",
-          value === null ? "bg-muted border-border" : "border-transparent text-muted-foreground hover:bg-muted/60"
-        )}
-      >
-        Sin categoría
-      </button>
+      <button type="button" onClick={() => onChange(null)} className={cn("text-[11px] font-medium px-2 py-0.5 rounded-full border", value === null ? "bg-muted border-border" : "border-transparent text-muted-foreground hover:bg-muted/60")}>Sin categoría</button>
       {CATEGORIES.map((c) => (
-        <button
-          key={c}
-          type="button"
-          onClick={() => onChange(c)}
-          className={cn(
-            "text-[11px] font-medium px-2 py-0.5 rounded-full border transition-colors",
-            value === c ? CATEGORY_STYLE[c] : "border-transparent text-muted-foreground hover:bg-muted/60"
-          )}
-        >
-          {c}
+        <button key={c} type="button" onClick={() => onChange(c)} className={cn("text-[11px] font-medium px-2 py-0.5 rounded-full border", value === c ? CATEGORY_STYLE[c] : "border-transparent text-muted-foreground hover:bg-muted/60")}>{c}</button>
+      ))}
+    </div>
+  )
+}
+
+// ── Editor con formato e imágenes (Ctrl+V / arrastrar / botón) ──────
+function useImageUploads(projectId: string) {
+  const [items, setItems] = useState<Attachment[]>([])
+  const [error, setError] = useState<string | null>(null)
+  async function addFiles(files: File[]) {
+    const images = files.filter((f) => f.type.startsWith("image/"))
+    if (!images.length) return
+    setError(null)
+    const supabase = createClient()
+    for (const file of images) {
+      const ext = (file.type.split("/")[1] ?? "png").replace("jpeg", "jpg").slice(0, 4)
+      const path = `${projectId}/${crypto.randomUUID()}.${ext}`
+      const preview = URL.createObjectURL(file)
+      const dims = await new Promise<{ w: number; h: number }>((res) => { const im = new Image(); im.onload = () => res({ w: im.naturalWidth, h: im.naturalHeight }); im.onerror = () => res({ w: 0, h: 0 }); im.src = preview })
+      setItems((s) => [...s, { path, name: file.name || "imagen", url: preview, width: dims.w, height: dims.h, uploading: true }])
+      const { error: upErr } = await supabase.storage.from("project-log").upload(path, file, { contentType: file.type, upsert: false })
+      if (upErr) {
+        setError(upErr.message.includes("Bucket not found") ? "Falta correr la migración 110 en Supabase" : `No se pudo subir la imagen: ${upErr.message}`)
+        setItems((s) => s.filter((a) => a.path !== path))
+      } else {
+        setItems((s) => s.map((a) => (a.path === path ? { ...a, uploading: false } : a)))
+      }
+    }
+  }
+  return { items, setItems, addFiles, error, uploading: items.some((a) => a.uploading) }
+}
+
+function Composer({ value, onChange, onSubmit, uploads, placeholder, autoFocus, minRows = 3 }: {
+  value: string
+  onChange: (v: string) => void
+  onSubmit: () => void
+  uploads: ReturnType<typeof useImageUploads>
+  placeholder: string
+  autoFocus?: boolean
+  minRows?: number
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [dragging, setDragging] = useState(false)
+
+  function wrap(before: string, after = before, fallback = "texto") {
+    const el = ref.current
+    if (!el) return
+    const { selectionStart: a, selectionEnd: b } = el
+    const sel = value.slice(a, b) || fallback
+    onChange(value.slice(0, a) + before + sel + after + value.slice(b))
+    requestAnimationFrame(() => { el.focus(); el.setSelectionRange(a + before.length, a + before.length + sel.length) })
+  }
+  function listify() {
+    const el = ref.current
+    if (!el) return
+    const a = value.lastIndexOf("\n", el.selectionStart - 1) + 1
+    onChange(value.slice(0, a) + "- " + value.slice(a))
+    requestAnimationFrame(() => el.focus())
+  }
+
+  return (
+    <div
+      onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDragging(true) } }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={(e) => { e.preventDefault(); setDragging(false); uploads.addFiles([...e.dataTransfer.files]) }}
+      className={cn("rounded-lg border bg-background focus-within:ring-2 focus-within:ring-ring", dragging ? "border-primary border-dashed bg-primary/5" : "border-input")}
+    >
+      <AutoTextarea
+        textareaRef={ref}
+        value={value}
+        autoFocus={autoFocus}
+        onChange={(e) => onChange(e.target.value)}
+        onPaste={(e) => {
+          const files = [...e.clipboardData.files]
+          if (files.some((f) => f.type.startsWith("image/"))) { e.preventDefault(); uploads.addFiles(files) }
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); onSubmit() }
+          if (e.key === "b" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); wrap("**") }
+        }}
+        placeholder={placeholder}
+        rows={minRows}
+        className="w-full bg-transparent px-3 py-2.5 text-sm resize-none focus:outline-none"
+      />
+      {uploads.items.length > 0 && (
+        <div className="px-3 pb-2 flex flex-wrap gap-2">
+          {uploads.items.map((a) => (
+            <div key={a.path} className="relative w-20 h-20 rounded-md overflow-hidden border border-border bg-muted">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              {a.url && <img src={a.url} alt="" className="w-full h-full object-cover" />}
+              {a.uploading && <div className="absolute inset-0 bg-background/60 flex items-center justify-center"><Loader2 className="w-4 h-4 animate-spin" /></div>}
+              <button type="button" onClick={() => uploads.setItems((s) => s.filter((x) => x.path !== a.path))} className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center"><X className="w-3 h-3" /></button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="flex items-center gap-0.5 px-2 py-1 border-t border-border/60 text-muted-foreground">
+        <button type="button" title="Negritas (Ctrl+B)" onClick={() => wrap("**")} className="p-1.5 rounded hover:bg-muted hover:text-foreground"><Bold className="w-3.5 h-3.5" /></button>
+        <button type="button" title="Lista" onClick={listify} className="p-1.5 rounded hover:bg-muted hover:text-foreground"><List className="w-3.5 h-3.5" /></button>
+        <button type="button" title="Enlace" onClick={() => wrap("[", "](https://)", "texto del enlace")} className="p-1.5 rounded hover:bg-muted hover:text-foreground"><Link2 className="w-3.5 h-3.5" /></button>
+        <button type="button" title="Agregar imagen (también Ctrl+V o arrastrar)" onClick={() => fileRef.current?.click()} className="p-1.5 rounded hover:bg-muted hover:text-foreground"><ImagePlus className="w-3.5 h-3.5" /></button>
+        <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(e) => { uploads.addFiles([...(e.target.files ?? [])]); e.target.value = "" }} />
+        <span className="ml-auto text-[10px]">Ctrl+V para pegar imágenes · Ctrl+Enter para publicar</span>
+      </div>
+      {uploads.error && <p className="px-3 pb-2 text-xs text-red-600">{uploads.error}</p>}
+    </div>
+  )
+}
+
+function Gallery({ items, onOpen }: { items: Attachment[]; onOpen: (url: string) => void }) {
+  if (!items.length) return null
+  return (
+    <div className={cn("mt-2 grid gap-1.5", items.length === 1 ? "grid-cols-1 max-w-md" : "grid-cols-2 sm:grid-cols-3 max-w-xl")}>
+      {items.map((a) => (
+        <button key={a.path} type="button" onClick={() => a.url && onOpen(a.url)} className="block rounded-md overflow-hidden border border-border bg-muted hover:opacity-90">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {a.url ? <img src={a.url} alt={a.name} className={cn("w-full object-cover", items.length === 1 ? "max-h-72 object-contain bg-black/5" : "h-28")} /> : <span className="block h-28 text-xs text-muted-foreground p-2">{a.name}</span>}
         </button>
       ))}
     </div>
   )
 }
 
-export function ProjectLog({ projectId, initialEntries, currentUserId, isAdmin, compact }: Props) {
+export function ProjectLog({ projectId, initialEntries, currentUserId, isAdmin }: Props) {
   const [entries, setEntries] = useState<ProjectLogEntry[]>(initialEntries)
   const [body, setBody] = useState("")
-  const [eventDate, setEventDate] = useState("") // vacío = hoy (created_at manda)
+  const [eventDate, setEventDate] = useState("")
   const [category, setCategory] = useState<ProjectLogCategory | null>(null)
-  // Avisar por Telegram es opt-in, apagado por default — la mayoría de
-  // las notas son solo constancia interna, no le importan a todo el
-  // equipo. Mismo componente/mecánica que Ping en tareas.
+  const [pinNew, setPinNew] = useState(false)
   const [notify, setNotify] = useState(false)
   const [notifyRecipientIds, setNotifyRecipientIds] = useState<string[]>([])
   const [showDetails, setShowDetails] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  // Una nota fijada sale en ambas columnas: se edita solo donde se pidió.
+  const [editingWhere, setEditingWhere] = useState<"timeline" | "pinned">("timeline")
   const [editBody, setEditBody] = useState("")
   const [editDate, setEditDate] = useState("")
   const [editCategory, setEditCategory] = useState<ProjectLogCategory | null>(null)
+  const [filter, setFilter] = useState<ProjectLogCategory | null>(null)
+  const [query, setQuery] = useState("")
+  const [lightbox, setLightbox] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+  const uploads = useImageUploads(projectId)
+  const editUploads = useImageUploads(projectId)
 
-  function handleAdd(e: React.FormEvent) {
-    e.preventDefault()
-    if (!body.trim()) return
-    const captured = body.trim()
-    const capturedDate = eventDate || null
-    const capturedCategory = category
+  const run = (fn: () => Promise<void>) => startTransition(async () => { try { setError(null); await fn() } catch (e) { setError(e instanceof Error ? e.message : String(e)) } })
+
+  function handleAdd() {
+    if ((!body.trim() && !uploads.items.length) || uploads.uploading) return
+    const atts = uploads.items.map(({ uploading: _u, ...a }) => { void _u; return a })
     const optimistic: ProjectLogEntry = {
-      id: crypto.randomUUID(),
-      project_id: projectId,
-      author_id: currentUserId,
-      body: captured,
-      created_at: new Date().toISOString(),
-      event_date: capturedDate,
-      category: capturedCategory,
+      id: crypto.randomUUID(), project_id: projectId, author_id: currentUserId, body: body.trim(),
+      created_at: new Date().toISOString(), event_date: eventDate || null, category, pinned: pinNew, attachments: atts,
     }
     setEntries((prev) => [optimistic, ...prev])
-    setBody("")
-    setEventDate("")
-    setCategory(null)
-    setShowDetails(false)
-    const shouldNotify = notify
-    const recipients = [...notifyRecipientIds]
-    setNotify(false)
-    setNotifyRecipientIds([])
-    startTransition(async () => {
-      await addLogEntry(
-        projectId, captured, undefined,
-        shouldNotify ? { team: recipients.length === 0, recipientIds: recipients.length > 0 ? recipients : undefined } : undefined,
-        { eventDate: capturedDate, category: capturedCategory },
-      )
-    })
+    const captured = { body: body.trim() || "(imagen)", eventDate: eventDate || null, category, atts, pinned: pinNew, notify, recipients: [...notifyRecipientIds] }
+    setBody(""); setEventDate(""); setCategory(null); setShowDetails(false); setPinNew(false); setNotify(false); setNotifyRecipientIds([]); uploads.setItems([])
+    run(() => addLogEntry(
+      projectId, captured.body, undefined,
+      captured.notify ? { team: captured.recipients.length === 0, recipientIds: captured.recipients.length ? captured.recipients : undefined } : undefined,
+      { eventDate: captured.eventDate, category: captured.category, attachments: captured.atts, pinned: captured.pinned },
+    ))
   }
 
-  function startEdit(entry: ProjectLogEntry) {
-    setEditingId(entry.id)
-    setEditBody(entry.body)
-    setEditDate(entry.event_date ?? "")
-    setEditCategory(entry.category)
+  function startEdit(entry: ProjectLogEntry, where: "timeline" | "pinned" = "timeline") {
+    setEditingWhere(where)
+    setEditingId(entry.id); setEditBody(entry.body); setEditDate(entry.event_date ?? ""); setEditCategory(entry.category)
+    editUploads.setItems((entry.attachments ?? []).map((a) => ({ ...a })))
   }
-
   function saveEdit() {
-    if (!editingId || !editBody.trim()) return
+    if (!editingId || editUploads.uploading) return
     const id = editingId
-    const newBody = editBody.trim()
-    const newDate = editDate || null
-    const newCategory = editCategory
-    setEntries((prev) => prev.map((e) => e.id === id ? { ...e, body: newBody, event_date: newDate, category: newCategory } : e))
+    const atts = editUploads.items.map(({ uploading: _u, ...a }) => { void _u; return a })
+    setEntries((prev) => prev.map((e) => (e.id === id ? { ...e, body: editBody.trim(), event_date: editDate || null, category: editCategory, attachments: atts } : e)))
     setEditingId(null)
-    startTransition(async () => {
-      await updateLogEntry(id, projectId, { body: newBody, eventDate: newDate, category: newCategory })
-    })
+    run(() => updateLogEntry(id, projectId, { body: editBody.trim() || "(imagen)", eventDate: editDate || null, category: editCategory, attachments: atts }))
+  }
+  function togglePin(entry: ProjectLogEntry) {
+    setEntries((prev) => prev.map((e) => (e.id === entry.id ? { ...e, pinned: !e.pinned } : e)))
+    run(() => setLogEntryPinned(entry.id, projectId, !entry.pinned))
+  }
+
+  const pinned = entries.filter((e) => e.pinned)
+  const timeline = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    const list = entries.filter((e) => (!filter || e.category === filter) && (!q || e.body.toLowerCase().includes(q) || (e.author?.full_name ?? "").toLowerCase().includes(q)))
+      .sort((a, b) => entryDate(b).getTime() - entryDate(a).getTime())
+    const groups: { label: string; items: ProjectLogEntry[] }[] = []
+    for (const e of list) {
+      const label = weekLabel(entryDate(e))
+      const g = groups[groups.length - 1]
+      if (g && g.label === label) g.items.push(e); else groups.push({ label, items: [e] })
+    }
+    return groups
+  }, [entries, filter, query])
+
+  // Función de render (no componente): declarada aquí como componente se
+  // re-montaría en cada tecla y el editor perdería el foco.
+  function renderEntry(entry: ProjectLogEntry, variant: "timeline" | "pinned") {
+    const canEdit = isAdmin || entry.author_id === currentUserId || !!entry.pinned
+    const authorName = entry.author?.full_name ?? "—"
+    const long = entry.body.length > 420 || entry.body.split("\n").length > 10
+    const isOpen = expanded.has(entry.id) || !long
+
+    if (editingId === entry.id && editingWhere === variant) {
+      return (
+        <div className="rounded-xl border border-primary/40 bg-card p-3 space-y-2">
+          <Composer value={editBody} onChange={setEditBody} onSubmit={saveEdit} uploads={editUploads} placeholder="Edita la nota…" autoFocus minRows={4} />
+          <div className="flex items-center gap-2 flex-wrap">
+            <input type="date" value={editDate} max={todayStr()} onChange={(e) => setEditDate(e.target.value)} className="h-7 rounded-md border border-input bg-background px-2 text-xs" />
+            <CategoryPicker value={editCategory} onChange={setEditCategory} />
+            <div className="ml-auto flex gap-1.5">
+              <button onClick={() => setEditingId(null)} className="px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:bg-muted">Cancelar</button>
+              <button onClick={saveEdit} disabled={editUploads.uploading} className="px-3 py-1 rounded-md bg-primary text-primary-foreground text-xs font-medium inline-flex items-center gap-1 disabled:opacity-50"><Check className="w-3 h-3" />Guardar</button>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <div className={cn("group rounded-xl border bg-card p-3.5", variant === "pinned" ? "border-amber-300/70 dark:border-amber-900" : "border-border")}>
+        <div className="flex items-center gap-2 mb-1.5">
+          <div className="w-6 h-6 rounded-full bg-primary/15 flex items-center justify-center text-xs font-bold text-primary overflow-hidden shrink-0">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            {entry.author?.avatar_url ? <img src={entry.author.avatar_url} alt="" className="w-full h-full object-cover" /> : authorName[0]?.toUpperCase()}
+          </div>
+          <span className="text-xs font-medium">{authorName}</span>
+          <span className="text-xs text-muted-foreground">{entry.event_date ? formatEventDate(entry.event_date) : timeAgo(entry.created_at)}</span>
+          {entry.updated_at && <span className="text-[10px] text-muted-foreground">· editada</span>}
+          {entry.category && <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded-full border", CATEGORY_STYLE[entry.category])}>{entry.category}</span>}
+          <div className="ml-auto flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button onClick={() => togglePin(entry)} title={entry.pinned ? "Quitar del contexto fijo" : "Fijar en el contexto del proyecto"} className="p-1 rounded text-muted-foreground hover:text-amber-600">
+              {entry.pinned ? <PinOff className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />}
+            </button>
+            {canEdit && <button onClick={() => startEdit(entry, variant)} title="Editar" className="p-1 rounded text-muted-foreground hover:text-foreground"><Pencil className="w-3.5 h-3.5" /></button>}
+            {(isAdmin || entry.author_id === currentUserId) && (
+              <button onClick={() => { if (!confirm("¿Borrar esta nota?")) return; setEntries((p) => p.filter((e) => e.id !== entry.id)); run(() => deleteLogEntry(entry.id, projectId)) }} title="Borrar" className="p-1 rounded text-muted-foreground hover:text-destructive"><Trash2 className="w-3.5 h-3.5" /></button>
+            )}
+          </div>
+        </div>
+        <div className={cn("text-sm leading-relaxed", !isOpen && "max-h-48 overflow-hidden [mask-image:linear-gradient(to_bottom,black_70%,transparent)]")}>
+          <RichText text={entry.body} className="space-y-1" />
+        </div>
+        {long && <button onClick={() => setExpanded((s) => { const n = new Set(s); if (n.has(entry.id)) n.delete(entry.id); else n.add(entry.id); return n })} className="mt-1 text-xs font-medium text-primary hover:underline">{isOpen ? "Ver menos" : "Ver completo"}</button>}
+        <Gallery items={entry.attachments ?? []} onOpen={setLightbox} />
+      </div>
+    )
   }
 
   return (
-    <div className="rounded-xl border border-border bg-card flex flex-col overflow-hidden">
-      <div className="px-4 py-3 border-b border-border flex-shrink-0">
-        <h3 className="font-semibold text-sm">Bitácora</h3>
-      </div>
-
-      {/* Input */}
-      <form onSubmit={handleAdd} className="px-4 py-3 border-b border-border flex-shrink-0 space-y-2">
-        <div className="flex gap-2">
-          <AutoTextarea
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleAdd(e)
-            }}
-            placeholder={compact ? "Nueva nota… (Ctrl+Enter)" : "Escribe una actualización… (Ctrl+Enter)"}
-            rows={compact ? 2 : 2}
-            className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
-          />
-          <button
-            type="button"
-            onClick={() => setShowDetails((v) => !v)}
-            title="Fecha del evento y categoría"
-            className={cn(
-              "self-end p-2 rounded-md border transition-colors flex-shrink-0",
-              (eventDate || category || showDetails) ? "border-foreground/30 bg-muted text-foreground" : "border-input bg-background text-muted-foreground hover:bg-muted/60"
-            )}
-          >
-            <Calendar className="w-4 h-4" />
+    <div className="flex flex-col gap-4 min-h-0">
+      {/* Nueva nota */}
+      <div className="space-y-2">
+        <Composer value={body} onChange={setBody} onSubmit={handleAdd} uploads={uploads} placeholder="Escribe una actualización, un acuerdo o pega una captura… (Ctrl+V)" />
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <button type="button" onClick={() => setShowDetails((v) => !v)} className={cn("h-8 px-2.5 rounded-md border text-xs inline-flex items-center gap-1.5", (eventDate || category || showDetails) ? "border-foreground/30 bg-muted" : "border-input text-muted-foreground hover:bg-muted/60")}>
+            <Calendar className="w-3.5 h-3.5" />{eventDate ? formatEventDate(eventDate) : "Fecha"}{category ? ` · ${category}` : ""}
           </button>
-          <button
-            type="button"
-            onClick={() => setNotify((v) => !v)}
-            title={notify ? "Avisar por Telegram" : "Nota silenciosa (no avisa a nadie)"}
-            className={cn(
-              "self-end p-2 rounded-md border transition-colors flex-shrink-0",
-              notify ? "border-sky-400 bg-sky-50 text-sky-600" : "border-input bg-background text-muted-foreground hover:bg-muted/60"
-            )}
-          >
-            <Bell className={cn("w-4 h-4", notify && "fill-current")} />
+          <button type="button" onClick={() => setPinNew((v) => !v)} title="Fijarla en el contexto del proyecto" className={cn("h-8 px-2.5 rounded-md border text-xs inline-flex items-center gap-1.5", pinNew ? "border-amber-400 bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300" : "border-input text-muted-foreground hover:bg-muted/60")}>
+            <Pin className="w-3.5 h-3.5" />{pinNew ? "Se fijará" : "Fijar"}
           </button>
-          <button
-            type="submit"
-            disabled={isPending || !body.trim()}
-            className="self-end px-3 py-2 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors flex-shrink-0"
-          >
-            +
+          <button type="button" onClick={() => setNotify((v) => !v)} title={notify ? "Avisar por Telegram" : "Nota silenciosa"} className={cn("h-8 px-2.5 rounded-md border text-xs inline-flex items-center gap-1.5", notify ? "border-sky-400 bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300" : "border-input text-muted-foreground hover:bg-muted/60")}>
+            <Bell className={cn("w-3.5 h-3.5", notify && "fill-current")} />{notify ? "Avisar" : "Silenciosa"}
           </button>
+          {isPending && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+          <button type="button" onClick={handleAdd} disabled={(!body.trim() && !uploads.items.length) || uploads.uploading}
+            className="ml-auto h-8 px-4 rounded-md bg-primary text-primary-foreground text-xs font-medium disabled:opacity-50">{uploads.uploading ? "Subiendo…" : "Publicar"}</button>
         </div>
-
         {showDetails && (
           <div className="flex items-center gap-2 flex-wrap">
-            <input
-              type="date"
-              value={eventDate}
-              max={todayStr()}
-              onChange={(e) => setEventDate(e.target.value)}
-              className="h-7 rounded-md border border-input bg-background px-2 text-xs"
-            />
-            {eventDate && (
-              <button type="button" onClick={() => setEventDate("")} className="text-[11px] text-muted-foreground hover:text-foreground">
-                Usar hoy
-              </button>
-            )}
+            <input type="date" value={eventDate} max={todayStr()} onChange={(e) => setEventDate(e.target.value)} className="h-7 rounded-md border border-input bg-background px-2 text-xs" />
+            {eventDate && <button type="button" onClick={() => setEventDate("")} className="text-[11px] text-muted-foreground hover:text-foreground">Usar hoy</button>}
             <div className="w-px h-4 bg-border" />
             <CategoryPicker value={category} onChange={setCategory} />
           </div>
         )}
-
-        {notify && (
-          <PingRecipientsPicker
-            projectId={projectId}
-            selectedIds={notifyRecipientIds}
-            onChange={setNotifyRecipientIds}
-          />
-        )}
-      </form>
-
-      {/* Entries */}
-      <div className={compact ? "overflow-y-auto max-h-64 divide-y divide-border" : "divide-y divide-border"}>
-        {entries.length === 0 && (
-          <p className="px-4 py-5 text-sm text-muted-foreground text-center">Sin entradas todavía.</p>
-        )}
-        {entries.map((entry) => {
-          const canEdit = isAdmin || entry.author_id === currentUserId
-          const authorName = entry.author?.full_name ?? "—"
-          const isEditing = editingId === entry.id
-
-          if (isEditing) {
-            return (
-              <div key={entry.id} className="px-4 py-3 space-y-2 bg-muted/30">
-                <AutoTextarea
-                  value={editBody}
-                  onChange={(e) => setEditBody(e.target.value)}
-                  rows={2}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
-                  autoFocus
-                />
-                <div className="flex items-center gap-2 flex-wrap">
-                  <input
-                    type="date"
-                    value={editDate}
-                    max={todayStr()}
-                    onChange={(e) => setEditDate(e.target.value)}
-                    className="h-7 rounded-md border border-input bg-background px-2 text-xs"
-                  />
-                  <div className="w-px h-4 bg-border" />
-                  <CategoryPicker value={editCategory} onChange={setEditCategory} />
-                </div>
-                <div className="flex items-center justify-end gap-1.5">
-                  <button onClick={() => setEditingId(null)} className="p-1.5 rounded-md text-muted-foreground hover:bg-muted transition-colors">
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                  <button onClick={saveEdit} disabled={!editBody.trim()} className="p-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
-                    <Check className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            )
-          }
-
-          return (
-            <div key={entry.id} className="px-4 py-3 group">
-              <div className="flex items-start gap-2">
-                <div className="w-6 h-6 rounded-full bg-primary/15 flex items-center justify-center flex-shrink-0 text-xs font-bold text-primary overflow-hidden">
-                  {entry.author?.avatar_url ? (
-                    <img src={entry.author.avatar_url} alt={authorName} className="w-full h-full object-cover" />
-                  ) : (
-                    authorName[0]?.toUpperCase() ?? "?"
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-baseline gap-1.5 mb-0.5 flex-wrap">
-                    <span className="text-xs font-medium">{authorName}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {entry.event_date ? formatEventDate(entry.event_date) : timeAgo(entry.created_at)}
-                    </span>
-                    {entry.category && (
-                      <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded-full border", CATEGORY_STYLE[entry.category])}>
-                        {entry.category}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-sm whitespace-pre-wrap">{entry.body}</p>
-                </div>
-                {canEdit && (
-                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                    <button
-                      onClick={() => startEdit(entry)}
-                      className="p-0.5 rounded text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      <Pencil className="w-3 h-3" />
-                    </button>
-                    <button
-                      onClick={() => {
-                        setEntries((prev) => prev.filter((e) => e.id !== entry.id))
-                        startTransition(async () => { await deleteLogEntry(entry.id, projectId) })
-                      }}
-                      className="p-0.5 rounded text-muted-foreground hover:text-destructive transition-colors"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          )
-        })}
+        {notify && <PingRecipientsPicker projectId={projectId} selectedIds={notifyRecipientIds} onChange={setNotifyRecipientIds} />}
+        {error && <p className="text-xs text-red-600">{error}</p>}
       </div>
+
+      <div className="grid lg:grid-cols-[minmax(0,1fr)_380px] gap-5 items-start min-h-0">
+        {/* Línea de tiempo */}
+        <section className="min-w-0 space-y-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="relative flex-1 min-w-[180px]">
+              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar en la bitácora…" className="w-full h-8 rounded-md border border-input bg-background pl-8 pr-3 text-xs" />
+            </div>
+            <div className="flex items-center gap-1">
+              <button onClick={() => setFilter(null)} className={cn("text-[11px] px-2 py-0.5 rounded-full border", !filter ? "bg-foreground text-background border-foreground" : "border-border text-muted-foreground")}>Todas</button>
+              {CATEGORIES.map((c) => <button key={c} onClick={() => setFilter(filter === c ? null : c)} className={cn("text-[11px] px-2 py-0.5 rounded-full border", filter === c ? CATEGORY_STYLE[c] : "border-border text-muted-foreground")}>{c}</button>)}
+            </div>
+          </div>
+          {timeline.length === 0 && <p className="text-sm text-muted-foreground text-center py-10">{entries.length ? "Nada coincide con el filtro." : "Sin entradas todavía."}</p>}
+          {timeline.map((g) => (
+            <div key={g.label} className="space-y-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sticky top-0 bg-background/95 py-1 z-10">{g.label}</p>
+              {g.items.map((e) => <Fragment key={e.id}>{renderEntry(e, "timeline")}</Fragment>)}
+            </div>
+          ))}
+        </section>
+
+        {/* Contexto fijo */}
+        <aside className="lg:sticky lg:top-0 space-y-2 order-first lg:order-none">
+          <div className="flex items-center gap-1.5">
+            <Pin className="w-3.5 h-3.5 text-amber-600" />
+            <p className="text-xs font-semibold uppercase tracking-wide">Contexto fijo</p>
+            <span className="text-[11px] text-muted-foreground">{pinned.length}</span>
+          </div>
+          {pinned.length === 0 ? (
+            <p className="text-xs text-muted-foreground rounded-xl border border-dashed border-border p-4">Fija aquí lo que define cómo funciona el proyecto hoy: acuerdos, con quién se habla, reglas, accesos. Cualquier miembro puede fijar y editar estas notas.</p>
+          ) : pinned.map((e) => <Fragment key={e.id}>{renderEntry(e, "pinned")}</Fragment>)}
+        </aside>
+      </div>
+
+      {lightbox && (
+        <div className="fixed inset-0 z-[70] bg-black/85 flex items-center justify-center p-6" onClick={() => setLightbox(null)}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={lightbox} alt="" className="max-w-full max-h-full rounded-lg object-contain" />
+          <button className="absolute top-4 right-4 text-white/80 hover:text-white"><X className="w-6 h-6" /></button>
+        </div>
+      )}
     </div>
   )
 }

@@ -1350,14 +1350,64 @@ export async function getProjectLog(projectId: string) {
   try {
     const { data, error } = await admin
       .from("project_log_entries")
-      .select("*, author:profiles(id, full_name, avatar_url)")
+      .select("*, author:profiles!project_log_entries_author_id_fkey(id, full_name, avatar_url)")
       .eq("project_id", projectId)
       .order("created_at", { ascending: false })
-    if (error) return []
-    return data ?? []
+    if (error) {
+      // Sin la migración 110 (updated_by) la relación no es ambigua.
+      const retry = await admin.from("project_log_entries").select("*, author:profiles(id, full_name, avatar_url)").eq("project_id", projectId).order("created_at", { ascending: false })
+      return retry.data ?? []
+    }
+    return await withSignedAttachments(admin, data ?? [])
   } catch {
     return []
   }
+}
+
+export interface LogAttachment { path: string; name: string; width?: number | null; height?: number | null; url?: string }
+
+// Las imágenes de la bitácora viven en un bucket PRIVADO: se firman por 7
+// días al leer (solo quien tiene sesión ve la bitácora).
+async function withSignedAttachments<T extends { attachments?: LogAttachment[] | null }>(admin: ReturnType<typeof createAdminClient>, entries: T[]): Promise<T[]> {
+  const paths = entries.flatMap((e) => (e.attachments ?? []).map((a) => a.path))
+  if (!paths.length) return entries
+  const { data } = await admin.storage.from("project-log").createSignedUrls(paths, 60 * 60 * 24 * 7)
+  const urlByPath = new Map((data ?? []).map((d) => [d.path, d.signedUrl]))
+  return entries.map((e) => ({ ...e, attachments: (e.attachments ?? []).map((a) => ({ ...a, url: urlByPath.get(a.path) })) }))
+}
+
+// Quién puede tocar una nota: su autor y admin siempre; las notas FIJADAS
+// (contexto fijo) cualquier miembro del proyecto o subadmin.
+async function canEditLogEntry(entryId: string): Promise<{ ok: boolean; userId: string; projectId: string; pinned: boolean }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error("Not authenticated")
+  const admin = createAdminClient()
+  const [{ data: entry }, { data: profile }] = await Promise.all([
+    admin.from("project_log_entries").select("author_id, project_id, pinned").eq("id", entryId).single(),
+    admin.from("profiles").select("role").eq("id", user.id).single(),
+  ])
+  if (!entry) throw new Error("Nota no encontrada")
+  if (entry.author_id === user.id || profile?.role === "admin") return { ok: true, userId: user.id, projectId: entry.project_id, pinned: !!entry.pinned }
+  const { data: member } = await admin.from("project_members").select("profile_id").eq("project_id", entry.project_id).eq("profile_id", user.id).maybeSingle()
+  const ok = !!entry.pinned && (!!member || profile?.role === "subadmin")
+  return { ok, userId: user.id, projectId: entry.project_id, pinned: !!entry.pinned }
+}
+
+// Fijar / desfijar como "contexto fijo": cualquier miembro del proyecto.
+export async function setLogEntryPinned(entryId: string, projectId: string, pinned: boolean) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error("Not authenticated")
+  const admin = createAdminClient()
+  const [{ data: profile }, { data: member }] = await Promise.all([
+    admin.from("profiles").select("role").eq("id", user.id).single(),
+    admin.from("project_members").select("profile_id").eq("project_id", projectId).eq("profile_id", user.id).maybeSingle(),
+  ])
+  if (!member && profile?.role !== "admin" && profile?.role !== "subadmin") throw new Error("Solo miembros del proyecto pueden fijar notas")
+  const { error } = await admin.from("project_log_entries").update({ pinned, updated_at: new Date().toISOString(), updated_by: user.id }).eq("id", entryId).eq("project_id", projectId)
+  if (error) throw new Error(error.message.includes("pinned") ? "Falta correr la migración 110 en Supabase" : error.message)
+  revalidatePath(`/projects/${projectId}`)
 }
 
 // Avisar por Telegram de una nota es opt-in, nunca automático — la
@@ -1405,8 +1455,12 @@ export async function addLogEntry(
   body: string,
   actingProfileId?: string,
   notifyOptions?: { team?: boolean; recipientIds?: string[] },
-  details?: { eventDate?: string | null; category?: ProjectLogCategory | null },
+  details?: { eventDate?: string | null; category?: ProjectLogCategory | null; attachments?: LogAttachment[]; pinned?: boolean },
 ) {
+  // Solo se mandan las columnas nuevas si se usan (sin migración 110 sigue funcionando).
+  const extra: Record<string, unknown> = {}
+  if (details?.attachments?.length) extra.attachments = details.attachments.map(({ url: _u, ...a }) => { void _u; return a })
+  if (details?.pinned) extra.pinned = true
   const notifyTeam = notifyOptions?.team ?? false
   const recipientIds = notifyOptions?.recipientIds?.length ? notifyOptions.recipientIds : null
   const eventDate = details?.eventDate ?? null
@@ -1418,7 +1472,7 @@ export async function addLogEntry(
     if (!profile) throw new Error("Not authenticated")
     const { error } = await admin
       .from("project_log_entries")
-      .insert({ project_id: projectId, author_id: profile.id, body, notify_team: notifyTeam, notify_recipient_ids: recipientIds, event_date: eventDate, category })
+      .insert({ project_id: projectId, author_id: profile.id, body, notify_team: notifyTeam, notify_recipient_ids: recipientIds, event_date: eventDate, category, ...extra })
     if (error) throw error
     revalidatePath(`/projects/${projectId}`)
     if (notifyTeam || recipientIds) await notifyProjectNote(admin, projectId, profile.id, body, notifyTeam, recipientIds)
@@ -1431,7 +1485,7 @@ export async function addLogEntry(
 
   const { error } = await supabase
     .from("project_log_entries")
-    .insert({ project_id: projectId, author_id: user.id, body, notify_team: notifyTeam, notify_recipient_ids: recipientIds, event_date: eventDate, category })
+    .insert({ project_id: projectId, author_id: user.id, body, notify_team: notifyTeam, notify_recipient_ids: recipientIds, event_date: eventDate, category, ...extra })
 
   if (error) throw error
   revalidatePath(`/projects/${projectId}`)
@@ -1444,18 +1498,18 @@ export async function addLogEntry(
 export async function updateLogEntry(
   entryId: string,
   projectId: string,
-  patch: { body?: string; eventDate?: string | null; category?: ProjectLogCategory | null },
+  patch: { body?: string; eventDate?: string | null; category?: ProjectLogCategory | null; attachments?: LogAttachment[] },
 ) {
-  const supabase = await createClient()
+  const perm = await canEditLogEntry(entryId)
+  if (!perm.ok) throw new Error("Solo el autor puede editar esta nota (las notas fijadas las edita cualquier miembro)")
   const update: Record<string, unknown> = {}
   if (patch.body !== undefined) update.body = patch.body
   if (patch.eventDate !== undefined) update.event_date = patch.eventDate
   if (patch.category !== undefined) update.category = patch.category
-
-  const { error } = await supabase
-    .from("project_log_entries")
-    .update(update)
-    .eq("id", entryId)
+  if (patch.attachments !== undefined) update.attachments = patch.attachments.map(({ url: _u, ...a }) => { void _u; return a })
+  const admin = createAdminClient()
+  let { error } = await admin.from("project_log_entries").update({ ...update, updated_at: new Date().toISOString(), updated_by: perm.userId }).eq("id", entryId)
+  if (error && /updated_at|updated_by/.test(error.message)) ({ error } = await admin.from("project_log_entries").update(update).eq("id", entryId))
   if (error) throw error
   revalidatePath(`/projects/${projectId}`)
 }

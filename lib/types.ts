@@ -778,6 +778,10 @@ export interface ProjectLogEntry {
   // cuando se registra algo que ya pasó. null = se asume created_at.
   event_date: string | null
   category: ProjectLogCategory | null
+  // Migración 110: contexto fijo e imágenes (url firmada al leer).
+  pinned?: boolean
+  attachments?: { path: string; name: string; width?: number | null; height?: number | null; url?: string }[]
+  updated_at?: string | null
   author?: Profile | null
 }
 

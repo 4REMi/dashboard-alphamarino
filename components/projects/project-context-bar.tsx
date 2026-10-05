@@ -94,9 +94,10 @@ export function ProjectContextBar({
               )}
             </button>
           </DialogTrigger>
-          <DialogContent className="max-w-xl max-h-[80vh] overflow-y-auto">
+          <DialogContent className="max-w-[min(1200px,96vw)] w-[96vw] h-[92vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Bitácora del proyecto</DialogTitle>
+              <p className="text-xs text-muted-foreground">El contexto vivo del proyecto: lo fijado arriba, la historia por semana. Solo el equipo la ve.</p>
             </DialogHeader>
             <ProjectLog
               projectId={projectId}
