@@ -49,6 +49,10 @@ function formatEventDate(dateStr: string): string {
   const [y, m, d] = dateStr.split("-").map(Number)
   return new Date(y, m - 1, d).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" })
 }
+// "1 oct 2026, 14:32" — fecha y hora exactas en hora local.
+function exactDateTime(iso: string): string {
+  return new Date(iso).toLocaleString("es-MX", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
+}
 function todayStr(): string {
   const n = new Date()
   return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`
@@ -300,7 +304,13 @@ export function ProjectLog({ projectId, initialEntries, currentUserId, isAdmin }
             {entry.author?.avatar_url ? <img src={entry.author.avatar_url} alt="" className="w-full h-full object-cover" /> : authorName[0]?.toUpperCase()}
           </div>
           <span className="text-xs font-medium">{authorName}</span>
-          <span className="text-xs text-muted-foreground">{entry.event_date ? formatEventDate(entry.event_date) : timeAgo(entry.created_at)}</span>
+          {/* Fecha exacta siempre visible; lo relativo queda como apoyo. */}
+          <span className="text-xs text-foreground/80" title={`Registrada el ${exactDateTime(entry.created_at)}`}>
+            {entry.event_date ? formatEventDate(entry.event_date) : exactDateTime(entry.created_at)}
+          </span>
+          <span className="text-[11px] text-muted-foreground">
+            {entry.event_date ? `· registrada ${exactDateTime(entry.created_at)}` : `· ${timeAgo(entry.created_at)}`}
+          </span>
           {entry.updated_at && <span className="text-[10px] text-muted-foreground">· editada</span>}
           {entry.category && <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded-full border", CATEGORY_STYLE[entry.category])}>{entry.category}</span>}
           <div className="ml-auto flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
