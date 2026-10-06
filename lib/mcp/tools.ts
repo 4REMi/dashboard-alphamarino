@@ -6,6 +6,7 @@ import { addLogEntry } from "@/lib/actions/projects"
 import { createServiceOffer, archiveServiceOffer } from "@/lib/actions/services"
 import { attachServiceOfferToProject } from "@/lib/actions/service-deliverables"
 import { registerOperationsTools } from "@/lib/mcp/operations-tools"
+import { getProjectContext } from "@/lib/project-context"
 
 // Minimal shape of what registerTool's handler actually receives —
 // typed loosely on purpose (see docs/agent-guides/mcp-server.md) instead
@@ -312,7 +313,7 @@ export function registerMcpTools(server: McpServer) {
     "bitacora_proyecto",
     {
       title: "Bitácora de un proyecto",
-      description: "Las notas más recientes de la bitácora (log) de un proyecto.",
+      description: "Contexto fijo del proyecto (acuerdos, con quién se habla, reglas) y las notas más recientes de su bitácora. Consúltalo antes de proponer o ejecutar algo sobre un proyecto.",
       inputSchema: z.object({
         proyecto: z.string().min(1),
         limite: z.number().int().min(1).max(30).optional().describe("Default 10, tope 30."),
@@ -325,16 +326,18 @@ export function registerMcpTools(server: McpServer) {
 
       const { data } = await admin
         .from("project_log_entries")
-        .select("body, created_at, pinned, author:profiles(full_name)")
+        .select("body, created_at, pinned, author:profiles!project_log_entries_author_id_fkey(full_name)")
         .eq("project_id", projectId)
         .order("created_at", { ascending: false })
         .limit(limite ?? 10)
-      if (!data || data.length === 0) return textResult("Este proyecto no tiene notas en su bitácora todavía.")
+      const ctx = await getProjectContext(projectId)
+      if ((!data || data.length === 0) && !ctx.pinned.length) return textResult("Este proyecto no tiene notas en su bitácora todavía.")
 
-      const lines = data.map((e) => {
+      const lines = (data ?? []).filter((e) => !e.pinned).map((e) => {
         const author = e.author && "full_name" in e.author ? (e.author as { full_name: string }).full_name : "alguien"
-        return `- [${formatDate(e.created_at)}]${e.pinned ? " 📌" : ""} ${author}: ${e.body}`
+        return `- [${formatDate(e.created_at)}] ${author}: ${e.body}`
       })
+      if (ctx.pinned.length) lines.unshift(`📌 CONTEXTO FIJO (cómo funciona el proyecto hoy):\n${ctx.pinned.map((p) => `- ${p}`).join("\n")}\n\nNotas:`)
       return textResult(`Bitácora (más reciente primero):\n${lines.join("\n")}`)
     },
   )

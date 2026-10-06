@@ -1,10 +1,10 @@
 "use client"
 
-import { Fragment, useMemo, useRef, useState, useTransition } from "react"
+import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { Bell, Calendar, Pencil, X, Check, Pin, PinOff, ImagePlus, Bold, List, Link2, Search, Loader2, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { ProjectLogEntry, ProjectLogCategory } from "@/lib/types"
-import { addLogEntry, updateLogEntry, deleteLogEntry, setLogEntryPinned } from "@/lib/actions/projects"
+import { addLogEntry, updateLogEntry, deleteLogEntry, setLogEntryPinned, getProjectMembers } from "@/lib/actions/projects"
 import { createClient } from "@/lib/supabase/client"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
 import { PingRecipientsPicker } from "@/components/tasks/ping-recipients-picker"
@@ -105,7 +105,10 @@ function useImageUploads(projectId: string) {
   return { items, setItems, addFiles, error, uploading: items.some((a) => a.uploading) }
 }
 
-function Composer({ value, onChange, onSubmit, uploads, placeholder, autoFocus, minRows = 3 }: {
+type Member = { id: string; name: string }
+
+function Composer({ value, onChange, onSubmit, uploads, placeholder, autoFocus, minRows = 3, members = [] }: {
+  members?: Member[]
   value: string
   onChange: (v: string) => void
   onSubmit: () => void
@@ -117,6 +120,25 @@ function Composer({ value, onChange, onSubmit, uploads, placeholder, autoFocus, 
   const ref = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
+  // Autocompletar @menciones: texto después de "@" hasta el cursor.
+  const [mention, setMention] = useState<{ start: number; q: string } | null>(null)
+  const [mIdx, setMIdx] = useState(0)
+  const matches = mention ? members.filter((m) => m.name.toLowerCase().split(" ").some((w) => w.startsWith(mention.q.toLowerCase())) || m.name.toLowerCase().startsWith(mention.q.toLowerCase())).slice(0, 6) : []
+
+  function detectMention(text: string, caret: number) {
+    const before = text.slice(0, caret)
+    const m = before.match(/(?:^|\s)@([\p{L}\p{N}]*(?: [\p{L}\p{N}]*)?)$/u)
+    if (m && members.length) { setMention({ start: caret - m[1].length - 1, q: m[1] }); setMIdx(0) } else setMention(null)
+  }
+  function pickMention(mem: Member) {
+    const el = ref.current
+    if (!el || !mention) return
+    const caret = el.selectionStart
+    const ins = `@${mem.name} `
+    onChange(value.slice(0, mention.start) + ins + value.slice(caret))
+    setMention(null)
+    requestAnimationFrame(() => { el.focus(); const p = mention.start + ins.length; el.setSelectionRange(p, p) })
+  }
 
   function wrap(before: string, after = before, fallback = "texto") {
     const el = ref.current
@@ -145,12 +167,19 @@ function Composer({ value, onChange, onSubmit, uploads, placeholder, autoFocus, 
         textareaRef={ref}
         value={value}
         autoFocus={autoFocus}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => { onChange(e.target.value); detectMention(e.target.value, e.target.selectionStart) }}
+        onBlur={() => setTimeout(() => setMention(null), 150)}
         onPaste={(e) => {
           const files = [...e.clipboardData.files]
           if (files.some((f) => f.type.startsWith("image/"))) { e.preventDefault(); uploads.addFiles(files) }
         }}
         onKeyDown={(e) => {
+          if (mention && matches.length) {
+            if (e.key === "ArrowDown") { e.preventDefault(); setMIdx((i) => (i + 1) % matches.length); return }
+            if (e.key === "ArrowUp") { e.preventDefault(); setMIdx((i) => (i - 1 + matches.length) % matches.length); return }
+            if ((e.key === "Enter" && !e.metaKey && !e.ctrlKey) || e.key === "Tab") { e.preventDefault(); pickMention(matches[mIdx] ?? matches[0]); return }
+            if (e.key === "Escape") { e.preventDefault(); setMention(null); return }
+          }
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); onSubmit() }
           if (e.key === "b" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); wrap("**") }
         }}
@@ -158,6 +187,14 @@ function Composer({ value, onChange, onSubmit, uploads, placeholder, autoFocus, 
         rows={minRows}
         className="w-full bg-transparent px-3 py-2.5 text-sm resize-none focus:outline-none"
       />
+      {mention && matches.length > 0 && (
+        <div className="mx-3 mb-2 rounded-md border border-border bg-popover shadow-md overflow-hidden max-w-xs">
+          {matches.map((m, i) => (
+            <button key={m.id} type="button" onMouseDown={(e) => { e.preventDefault(); pickMention(m) }}
+              className={cn("w-full text-left px-3 py-1.5 text-sm", i === mIdx ? "bg-muted" : "hover:bg-muted/60")}>@{m.name}</button>
+          ))}
+        </div>
+      )}
       {uploads.items.length > 0 && (
         <div className="px-3 pb-2 flex flex-wrap gap-2">
           {uploads.items.map((a) => (
@@ -176,7 +213,7 @@ function Composer({ value, onChange, onSubmit, uploads, placeholder, autoFocus, 
         <button type="button" title="Enlace" onClick={() => wrap("[", "](https://)", "texto del enlace")} className="p-1.5 rounded hover:bg-muted hover:text-foreground"><Link2 className="w-3.5 h-3.5" /></button>
         <button type="button" title="Agregar imagen (también Ctrl+V o arrastrar)" onClick={() => fileRef.current?.click()} className="p-1.5 rounded hover:bg-muted hover:text-foreground"><ImagePlus className="w-3.5 h-3.5" /></button>
         <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(e) => { uploads.addFiles([...(e.target.files ?? [])]); e.target.value = "" }} />
-        <span className="ml-auto text-[10px]">Ctrl+V para pegar imágenes · Ctrl+Enter para publicar</span>
+        <span className="ml-auto text-[10px]">@ para mencionar · Ctrl+V pega imágenes · Ctrl+Enter publica</span>
       </div>
       {uploads.error && <p className="px-3 pb-2 text-xs text-red-600">{uploads.error}</p>}
     </div>
@@ -199,6 +236,11 @@ function Gallery({ items, onOpen }: { items: Attachment[]; onOpen: (url: string)
 
 export function ProjectLog({ projectId, initialEntries, currentUserId, isAdmin }: Props) {
   const [entries, setEntries] = useState<ProjectLogEntry[]>(initialEntries)
+  const [members, setMembers] = useState<Member[]>([])
+  useEffect(() => {
+    getProjectMembers(projectId).then((ps) => setMembers(ps.map((p) => ({ id: String(p.id), name: String(p.full_name) })))).catch(() => {})
+  }, [projectId])
+  const memberNames = members.map((m) => m.name)
   const [body, setBody] = useState("")
   const [eventDate, setEventDate] = useState("")
   const [category, setCategory] = useState<ProjectLogCategory | null>(null)
@@ -283,7 +325,7 @@ export function ProjectLog({ projectId, initialEntries, currentUserId, isAdmin }
     if (editingId === entry.id && editingWhere === variant) {
       return (
         <div className="rounded-xl border border-primary/40 bg-card p-3 space-y-2">
-          <Composer value={editBody} onChange={setEditBody} onSubmit={saveEdit} uploads={editUploads} placeholder="Edita la nota…" autoFocus minRows={4} />
+          <Composer value={editBody} onChange={setEditBody} onSubmit={saveEdit} uploads={editUploads} members={members} placeholder="Edita la nota…" autoFocus minRows={4} />
           <div className="flex items-center gap-2 flex-wrap">
             <input type="date" value={editDate} max={todayStr()} onChange={(e) => setEditDate(e.target.value)} className="h-7 rounded-md border border-input bg-background px-2 text-xs" />
             <CategoryPicker value={editCategory} onChange={setEditCategory} />
@@ -324,7 +366,7 @@ export function ProjectLog({ projectId, initialEntries, currentUserId, isAdmin }
           </div>
         </div>
         <div className={cn("text-sm leading-relaxed", !isOpen && "max-h-48 overflow-hidden [mask-image:linear-gradient(to_bottom,black_70%,transparent)]")}>
-          <RichText text={entry.body} className="space-y-1" />
+          <RichText text={entry.body} mentions={memberNames} className="space-y-1" />
         </div>
         {long && <button onClick={() => setExpanded((s) => { const n = new Set(s); if (n.has(entry.id)) n.delete(entry.id); else n.add(entry.id); return n })} className="mt-1 text-xs font-medium text-primary hover:underline">{isOpen ? "Ver menos" : "Ver completo"}</button>}
         <Gallery items={entry.attachments ?? []} onOpen={setLightbox} />
@@ -336,7 +378,7 @@ export function ProjectLog({ projectId, initialEntries, currentUserId, isAdmin }
     <div className="flex flex-col gap-4 min-h-0">
       {/* Nueva nota */}
       <div className="space-y-2">
-        <Composer value={body} onChange={setBody} onSubmit={handleAdd} uploads={uploads} placeholder="Escribe una actualización, un acuerdo o pega una captura… (Ctrl+V)" />
+        <Composer value={body} onChange={setBody} onSubmit={handleAdd} uploads={uploads} members={members} placeholder="Escribe una actualización, un acuerdo o pega una captura… (Ctrl+V)" />
         <div className="flex items-center gap-1.5 flex-wrap">
           <button type="button" onClick={() => setShowDetails((v) => !v)} className={cn("h-8 px-2.5 rounded-md border text-xs inline-flex items-center gap-1.5", (eventDate || category || showDetails) ? "border-foreground/30 bg-muted" : "border-input text-muted-foreground hover:bg-muted/60")}>
             <Calendar className="w-3.5 h-3.5" />{eventDate ? formatEventDate(eventDate) : "Fecha"}{category ? ` · ${category}` : ""}

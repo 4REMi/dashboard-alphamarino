@@ -37,6 +37,17 @@ más estricto desde el inicio, no una copia de cómo funciona Telegram.
   vía el cliente admin. Cuando se omite (la UI normal, Captura rápida), la
   función se comporta exactamente igual que antes — es un parámetro aditivo, no
   un cambio de comportamiento para nadie más.
+- **@menciones**: si el texto de una nota incluye `@Nombre Completo` de un
+  miembro del proyecto, a esa persona le llega aviso por Telegram (además de
+  `avisar_a`). Se resuelve en `notifyNewNote`/`resolveMentions`
+  (`lib/actions/projects.ts`) contra `project_members`; editar una nota NO
+  vuelve a avisar.
+- **Contexto fijo para la IA**: `bitacora_proyecto` devuelve primero las notas
+  FIJADAS ("Contexto fijo") y luego las recientes. El mismo contexto
+  (`getProjectContext`/`contextBlock` en `lib/project-context.ts`) se inyecta
+  en la redacción de reportes (notas del rango del reporte) y en los briefs
+  creativos. Para que la IA "sepa" algo de un proyecto de forma permanente,
+  fíjalo en la bitácora.
 - **Avisar por Telegram de una nota de bitácora — opt-in, nunca automático**:
   `agregar_nota_proyecto` tiene un parámetro opcional `avisar_a` ("todos"/
   "equipo" para avisarle a todo el proyecto, o un nombre para avisarle a esa

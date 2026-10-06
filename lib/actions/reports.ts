@@ -1,5 +1,6 @@
 "use server"
 
+import { getProjectContext, contextBlock } from "@/lib/project-context"
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { getMetaRangeReach } from "@/lib/actions/meta"
@@ -219,7 +220,7 @@ export async function buildReportData(projectId: string, start: string, end: str
 // Las reglas salen de lo que el dashboard sí sabe: cada cifra citada tiene
 // que existir en los datos; lo cualitativo (inbox, llamadas) solo si viene
 // en las notas del equipo.
-async function draftSections(data: ReportData, notes: string): Promise<ReportSections> {
+async function draftSections(data: ReportData, notes: string, projectCtx = ""): Promise<ReportSections> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY no configurado")
   const Anthropic = (await import("@anthropic-ai/sdk")).default
@@ -247,7 +248,7 @@ Responde ÚNICAMENTE con JSON: {"resumen": "", "que_funciono": [""], "que_no_fun
     model: "claude-sonnet-4-6",
     max_tokens: 4096,
     system,
-    messages: [{ role: "user", content: `DATOS:\n${JSON.stringify({ ...data, creativos: data.creativos.map(({ thumbUrl: _t, ...c }) => { void _t; return c }) }, null, 1)}\n\nNOTAS DEL EQUIPO:\n${notes.trim() || "(sin notas)"}` }],
+    messages: [{ role: "user", content: `DATOS:\n${JSON.stringify({ ...data, creativos: data.creativos.map(({ thumbUrl: _t, ...c }) => { void _t; return c }) }, null, 1)}\n\nNOTAS DEL EQUIPO:\n${notes.trim() || "(sin notas)"}${projectCtx ? `\n\n${projectCtx}` : ""}` }],
   })
   const s = parseAiJson<Partial<ReportSections>>(msg, "draftReportSections")
   return {
@@ -266,7 +267,7 @@ export async function createReport(projectId: string, input: { start: string; en
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.start) || !/^\d{4}-\d{2}-\d{2}$/.test(input.end) || input.end < input.start) throw new Error("Rango de fechas inválido")
   const data = await buildReportData(projectId, input.start, input.end)
   if (!data.canales.length) throw new Error("No hay gasto registrado en ese rango (Meta ni campañas manuales).")
-  const sections = await draftSections(data, input.notes)
+  const sections = await draftSections(data, input.notes, contextBlock(await getProjectContext(projectId, { since: input.start, until: input.end })))
   const { data: row, error } = await supabase.from("paid_media_reports").insert({
     project_id: projectId, cycle_id: input.cycleId ?? null, start_date: input.start, end_date: input.end,
     title: `Reporte ${data.periodo.label}`, notes: input.notes.trim() || null, data, sections, created_by: userId,
@@ -302,7 +303,7 @@ export async function regenerateReport(id: string, notes: string, refreshData: b
   const current = await getReport(id)
   if (!current) throw new Error("Reporte no encontrado")
   const data = refreshData ? await buildReportData(current.project_id, current.start_date, current.end_date) : current.data
-  const sections = await draftSections(data, notes)
+  const sections = await draftSections(data, notes, contextBlock(await getProjectContext(current.project_id, { since: current.start_date, until: current.end_date })))
   const { data: row, error } = await supabase.from("paid_media_reports")
     .update({ data, sections, notes: notes.trim() || null, updated_at: new Date().toISOString() }).eq("id", id).select("*").single()
   if (error) throw new Error(error.message)

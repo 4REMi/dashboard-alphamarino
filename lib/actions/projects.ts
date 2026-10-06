@@ -1446,6 +1446,26 @@ async function notifyProjectNote(
   )
 }
 
+// @menciones: "@Nombre Completo" de un miembro del proyecto dentro del texto.
+// Se resuelven contra project_members (sin ids en el texto, así se lee igual
+// en la bitácora, en Telegram y para la IA).
+async function resolveMentions(admin: ReturnType<typeof createAdminClient>, projectId: string, body: string): Promise<string[]> {
+  if (!body.includes("@")) return []
+  const { data } = await admin.from("project_members").select("profile:profiles(id, full_name)").eq("project_id", projectId)
+  const text = body.toLowerCase()
+  return ((data ?? []) as unknown as { profile: { id: string; full_name: string | null } | null }[])
+    .map((m) => m.profile)
+    .filter((p): p is { id: string; full_name: string } => !!p?.full_name && text.includes("@" + p.full_name.toLowerCase()))
+    .map((p) => p.id)
+}
+
+// Aviso de una nota nueva: equipo completo, o destinatarios elegidos + mencionados.
+async function notifyNewNote(admin: ReturnType<typeof createAdminClient>, projectId: string, authorId: string, body: string, notifyTeam: boolean, recipientIds: string[] | null) {
+  if (notifyTeam) return notifyProjectNote(admin, projectId, authorId, body, true, null)
+  const ids = [...new Set([...(recipientIds ?? []), ...(await resolveMentions(admin, projectId, body))])]
+  if (ids.length) await notifyProjectNote(admin, projectId, authorId, body, false, ids)
+}
+
 // actingProfileId is set only by the MCP server (no cookies/session
 // there) — same pattern as tasks.ts's requireTaskPermission. This action
 // never had a role-based permission check beyond "logged in", so the MCP
@@ -1475,7 +1495,7 @@ export async function addLogEntry(
       .insert({ project_id: projectId, author_id: profile.id, body, notify_team: notifyTeam, notify_recipient_ids: recipientIds, event_date: eventDate, category, ...extra })
     if (error) throw error
     revalidatePath(`/projects/${projectId}`)
-    if (notifyTeam || recipientIds) await notifyProjectNote(admin, projectId, profile.id, body, notifyTeam, recipientIds)
+    await notifyNewNote(admin, projectId, profile.id, body, notifyTeam, recipientIds)
     return
   }
 
@@ -1489,7 +1509,7 @@ export async function addLogEntry(
 
   if (error) throw error
   revalidatePath(`/projects/${projectId}`)
-  if (notifyTeam || recipientIds) await notifyProjectNote(createAdminClient(), projectId, user.id, body, notifyTeam, recipientIds)
+  await notifyNewNote(createAdminClient(), projectId, user.id, body, notifyTeam, recipientIds)
 }
 
 // Editar una nota propia — solo body/fecha/categoría; el autor y

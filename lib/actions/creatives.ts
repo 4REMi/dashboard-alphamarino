@@ -1,5 +1,6 @@
 "use server"
 
+import { getProjectContext, contextBlock } from "@/lib/project-context"
 import { parseAiJson } from "@/lib/utils/ai-json"
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
@@ -911,6 +912,9 @@ El brief debe enfocarse en este producto/servicio específico.`
     const benefits = (brain.key_benefits ?? []).join(", ") || "—"
     const pains = (brain.pain_points ?? []).join(", ") || "—"
     const ctas = (brain.ctas ?? []).join(", ") || "—"
+    // Contexto fijo del proyecto (bitácora): acuerdos y restricciones vigentes.
+    const projCtx = brief.project_id ? await getProjectContext(brief.project_id, { recentDays: 21, maxRecent: 5 }).catch(() => null) : null
+    const projectBlock = projCtx ? contextBlock(projCtx) : ""
 
     const message = await client.messages.create({
       model: "claude-sonnet-4-6",
@@ -956,7 +960,7 @@ BRAND BRAIN:
 - Audiencia objetivo: ${brain.target_audience ?? "—"}
 - CTAs: ${ctas}
 - Descripción: ${brain.description ?? "—"}
-${brandLineBlock}${referenceSummary}
+${brandLineBlock}${referenceSummary}${projectBlock ? `\n\n${projectBlock}\nRespeta las restricciones y acuerdos de este contexto.` : ""}
 
 El brief debe ser accionable: un editor o diseñador que lo lea debe poder empezar a producir sin preguntar nada.`,
       }],
