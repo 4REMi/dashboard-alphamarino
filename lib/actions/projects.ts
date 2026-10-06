@@ -929,7 +929,8 @@ export async function upsertPaidMediaContext(projectId: string, formData: FormDa
       project_id: projectId,
       platforms,
       main_objective: mainObjective && mainObjective !== "none" ? mainObjective : null,
-      account_notes: (formData.get("account_notes") as string) || null,
+      // Notas de cuenta: reemplazadas por el contexto fijo de la bitácora; no se tocan.
+      ...(formData.has("account_notes") ? { account_notes: (formData.get("account_notes") as string) || null } : {}),
       display_metrics: displayMetrics.length > 0 ? displayMetrics : ["spend", "cost_per_result"],
       trend_window: trendWindow,
     },

@@ -5,7 +5,6 @@ import type { PaidMediaContext, MainObjective } from "@/lib/types"
 import { PAID_MEDIA_PLATFORMS, MAIN_OBJECTIVES } from "@/lib/types"
 import { METRIC_DEFS, TREND_WINDOW_LABELS, type MetricKey } from "@/lib/constants/paid-media-metrics"
 import { upsertPaidMediaContext } from "@/lib/actions/projects"
-import { AutoTextarea } from "@/components/ui/auto-textarea"
 
 interface Props {
   projectId: string
@@ -84,12 +83,6 @@ export function PaidMediaContextCard({ projectId, context, canEdit }: Props) {
           </span>
         </div>
 
-        {context?.account_notes && (
-          <div className="border-t border-border pt-3">
-            <p className="text-xs font-medium text-muted-foreground mb-1">Notas de cuenta</p>
-            <p className="text-sm text-foreground whitespace-pre-wrap">{context.account_notes}</p>
-          </div>
-        )}
       </div>
     )
   }
@@ -168,18 +161,6 @@ export function PaidMediaContextCard({ projectId, context, canEdit }: Props) {
         </div>
       </div>
 
-      <div>
-        <label className="text-xs font-medium text-muted-foreground mb-1 block">
-          Notas de cuenta <span className="text-muted-foreground/60">(briefing, buyer persona, restricciones, decisiones)</span>
-        </label>
-        <AutoTextarea
-          name="account_notes"
-          rows={4}
-          defaultValue={context?.account_notes ?? ""}
-          placeholder="El 'cerebro' de la cuenta…"
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
-        />
-      </div>
 
       <div className="flex justify-end gap-2">
         {context && (
