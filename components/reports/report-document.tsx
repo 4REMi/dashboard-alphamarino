@@ -34,7 +34,17 @@ function H2({ children }: { children: React.ReactNode }) {
   return <h3 className="text-[13.5px] font-bold mt-5 mb-2 break-after-avoid" style={{ ...T, color: ACCENT }}>{children}</h3>
 }
 
-export function ReportDocument({ data, sections }: { data: ReportData; sections: ReportSections }) {
+// En el editor: clic en un texto de la narrativa → onPick(campo) para
+// saltar a su caja de texto; `active` resalta el campo que se está editando.
+// Campos: "resumen" | "contexto" | "nota_cierre" | "<lista>:<índice>".
+export function ReportDocument({ data, sections, onPick, active }: { data: ReportData; sections: ReportSections; onPick?: (field: string) => void; active?: string | null }) {
+  const pick = (field: string) => onPick ? {
+    "data-field": field,
+    onClick: () => onPick(field),
+    title: "Clic para editar",
+    className: "cursor-pointer rounded-sm transition-colors hover:bg-[#EBF2FB] hover:outline hover:outline-1 hover:outline-[#1565C0]/40" + (active === field ? " bg-[#EBF2FB] outline outline-2 outline-[#1565C0]" : ""),
+  } : {}
+  const items = (k: "que_funciono" | "que_no_funciono" | "siguientes_pasos") => sections[k].map((t, i) => ({ t, i })).filter((x) => x.t)
   const fmt = (v: number) => `$${v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${data.moneda}`
   return (
     <article className="bg-white text-[#3D3D3D] leading-relaxed text-[14px] px-12 py-12 max-w-[816px] mx-auto" style={{ fontFamily: "'Poppins', sans-serif" }}>
@@ -55,7 +65,7 @@ export function ReportDocument({ data, sections }: { data: ReportData; sections:
       </header>
 
       <H1>Resumen ejecutivo</H1>
-      <p className="whitespace-pre-wrap">{sections.resumen}</p>
+      <div {...pick("resumen")}><p className="whitespace-pre-wrap">{sections.resumen}</p></div>
 
       <H1>Inversión y resultados por canal</H1>
       {data.canales.map((c) => (
@@ -111,9 +121,9 @@ export function ReportDocument({ data, sections }: { data: ReportData; sections:
 
       <H1>Análisis del período</H1>
       <H2>Lo que funcionó</H2>
-      <ul className="list-none space-y-1.5">{sections.que_funciono.filter(Boolean).map((t, i) => <li key={i} className="pl-5 -indent-4">–&nbsp;&nbsp;{t}</li>)}</ul>
+      <ul className="list-none space-y-1.5">{items("que_funciono").map(({ t, i }) => <li key={i} {...pick(`que_funciono:${i}`)}><span className="block pl-5 -indent-4">–&nbsp;&nbsp;{t}</span></li>)}</ul>
       <H2>Oportunidades de mejora</H2>
-      <ul className="list-none space-y-1.5">{sections.que_no_funciono.filter(Boolean).map((t, i) => <li key={i} className="pl-5 -indent-4">–&nbsp;&nbsp;{t}</li>)}</ul>
+      <ul className="list-none space-y-1.5">{items("que_no_funciono").map(({ t, i }) => <li key={i} {...pick(`que_no_funciono:${i}`)}><span className="block pl-5 -indent-4">–&nbsp;&nbsp;{t}</span></li>)}</ul>
 
       {data.entregables.length > 0 && (
         <>
@@ -132,12 +142,12 @@ export function ReportDocument({ data, sections }: { data: ReportData; sections:
       )}
 
       <H1>Contexto del período</H1>
-      <p className="whitespace-pre-wrap">{sections.contexto}</p>
+      <div {...pick("contexto")}><p className="whitespace-pre-wrap">{sections.contexto}</p></div>
 
       <H1>Siguientes pasos</H1>
-      <ol className="list-none space-y-1.5">{sections.siguientes_pasos.filter(Boolean).map((t, i) => <li key={i} className="pl-5 -indent-4">{i + 1}.&nbsp;&nbsp;{t}</li>)}</ol>
+      <ol className="list-none space-y-1.5">{items("siguientes_pasos").map(({ t, i }, n) => <li key={i} {...pick(`siguientes_pasos:${i}`)}><span className="block pl-5 -indent-4">{n + 1}.&nbsp;&nbsp;{t}</span></li>)}</ol>
 
-      {sections.nota_cierre.trim() && (<><div className="h-px bg-[#DEDEDE] mt-8 mb-4" /><p className="italic text-[#7A7A7A] whitespace-pre-wrap">{sections.nota_cierre}</p></>)}
+      {sections.nota_cierre.trim() && (<><div className="h-px bg-[#DEDEDE] mt-8 mb-4" /><div {...pick("nota_cierre")}><p className="italic text-[#7A7A7A] whitespace-pre-wrap">{sections.nota_cierre}</p></div></>)}
 
       <footer className="mt-10 pt-2 border-t-2 text-[11px] italic text-[#7A7A7A]" style={{ borderColor: ACCENT }}>
         Alpha Marino · Reporte {data.periodo.label} · {data.cliente} · Confidencial

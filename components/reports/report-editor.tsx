@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useRef, useState, useTransition } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, Download, Printer, RefreshCw, Sparkles, Check, Plus, X, Loader2, Trash2 } from "lucide-react"
@@ -26,6 +26,27 @@ export function ReportEditor({ initial }: { initial: PaidMediaReport }) {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [, startTransition] = useTransition()
+  // Campo enlazado entre editor y vista previa (ver ReportDocument).
+  const [active, setActive] = useState<string | null>(null)
+  const asideRef = useRef<HTMLElement>(null)
+  const previewRef = useRef<HTMLDivElement>(null)
+
+  // Clic en la vista previa → lleva a su caja de texto y la enfoca.
+  function jumpToField(field: string) {
+    setActive(field)
+    const el = asideRef.current?.querySelector<HTMLTextAreaElement>(`textarea[data-field="${field}"]`)
+    if (!el) return
+    el.scrollIntoView({ behavior: "smooth", block: "center" })
+    el.focus({ preventScroll: true })
+    el.classList.add("ring-2", "ring-primary")
+    setTimeout(() => el.classList.remove("ring-2", "ring-primary"), 1200)
+  }
+  // Al enfocar una caja de texto → resalta y muestra su parte en la vista previa.
+  function focusField(field: string) {
+    setActive(field)
+    previewRef.current?.querySelector(`[data-field="${field}"]`)?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+  }
+  const bind = (field: string) => ({ "data-field": field, onFocus: () => focusField(field) })
 
   const set = (patch: Partial<ReportSections>) => { setSections((s) => ({ ...s, ...patch })); setDirty(true) }
   const setItem = (k: ListKey, i: number, v: string) => set({ [k]: sections[k].map((x, j) => (j === i ? v : x)) } as Partial<ReportSections>)
@@ -67,7 +88,7 @@ export function ReportEditor({ initial }: { initial: PaidMediaReport }) {
         {sections[k].map((t, i) => (
           <div key={i} className="flex gap-1.5 items-start">
             <span className="text-xs text-muted-foreground mt-2 w-4 shrink-0">{numbered ? `${i + 1}.` : "–"}</span>
-            <AutoTextarea value={t} onChange={(e) => setItem(k, i, e.target.value)} rows={1} className={input} />
+            <AutoTextarea {...bind(`${k}:${i}`)} value={t} onChange={(e) => setItem(k, i, e.target.value)} rows={1} className={input} />
             <button onClick={() => removeItem(k, i)} className="mt-1.5 text-muted-foreground hover:text-destructive"><X className="w-3.5 h-3.5" /></button>
           </div>
         ))}
@@ -97,7 +118,7 @@ export function ReportEditor({ initial }: { initial: PaidMediaReport }) {
       {error && <p className="px-6 py-2 text-sm text-red-600 bg-red-50 dark:bg-red-950/30">{error}</p>}
 
       <div className="flex-1 min-h-0 grid lg:grid-cols-[420px_1fr]">
-        <aside className="border-r border-border overflow-y-auto p-5 space-y-5 bg-muted/20">
+        <aside ref={asideRef} className="border-r border-border overflow-y-auto p-5 space-y-5 bg-muted/20">
           <section className="rounded-lg border border-border bg-background p-3 space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Notas del equipo</p>
             <p className="text-[11px] text-muted-foreground">Lo que el dashboard no sabe: qué dijo el cliente, calidad de leads, sentimiento del inbox, decisiones. La IA las integra en la narrativa.</p>
@@ -110,25 +131,26 @@ export function ReportEditor({ initial }: { initial: PaidMediaReport }) {
 
           <section>
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Resumen ejecutivo</p>
-            <AutoTextarea value={sections.resumen} onChange={(e) => set({ resumen: e.target.value })} rows={4} className={input} />
+            <AutoTextarea {...bind("resumen")} value={sections.resumen} onChange={(e) => set({ resumen: e.target.value })} rows={4} className={input} />
           </section>
           {List({ k: "que_funciono", label: "Lo que funcionó" })}
           {List({ k: "que_no_funciono", label: "Oportunidades de mejora" })}
           <section>
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Contexto del período</p>
-            <AutoTextarea value={sections.contexto} onChange={(e) => set({ contexto: e.target.value })} rows={4} className={input} />
+            <AutoTextarea {...bind("contexto")} value={sections.contexto} onChange={(e) => set({ contexto: e.target.value })} rows={4} className={input} />
           </section>
           {List({ k: "siguientes_pasos", label: "Siguientes pasos", numbered: true })}
           <section>
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Nota de cierre (opcional)</p>
-            <AutoTextarea value={sections.nota_cierre} onChange={(e) => set({ nota_cierre: e.target.value })} rows={2} className={input} />
+            <AutoTextarea {...bind("nota_cierre")} value={sections.nota_cierre} onChange={(e) => set({ nota_cierre: e.target.value })} rows={2} className={input} />
           </section>
           <p className="text-[11px] text-muted-foreground">Las tablas, campañas, creativos y entregables salen del dashboard. Para corregir un número, corrígelo en su origen y usa &quot;Actualizar datos&quot;.</p>
         </aside>
 
-        <div className="overflow-y-auto bg-neutral-200 dark:bg-neutral-800 py-6">
+        <div ref={previewRef} className="overflow-y-auto bg-neutral-200 dark:bg-neutral-800 py-6">
+          <p className="text-center text-[11px] text-muted-foreground mb-2">Haz clic en cualquier texto del reporte para editarlo</p>
           <div className="shadow-lg max-w-[816px] mx-auto">
-            <ReportDocument data={report.data} sections={sections} />
+            <ReportDocument data={report.data} sections={sections} onPick={jumpToField} active={active} />
           </div>
         </div>
       </div>
