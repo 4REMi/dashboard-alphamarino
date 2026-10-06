@@ -1702,3 +1702,49 @@ Genera el concepto creativo basado en esta idea.`
     throw new Error("AI returned invalid JSON")
   }
 }
+
+// Genera (transcribe + tropicaliza) el guion de UN video de referencia de un
+// brief ya creado — para los que se marcaron "sin transcribir" o fallaron.
+export async function generateReferenceScript(briefId: string, adId: string): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const { role } = await getRole()
+  if (!isAdminOrSubadmin(role)) return { error: "Sin permiso" }
+  const { data: brief } = await supabase.from("creative_briefs")
+    .select("*, concept:creative_concepts!concept_id(*)").eq("id", briefId).single()
+  if (!brief) return { error: "Brief no encontrado" }
+  const { data: brain } = await supabase.from("brand_brains")
+    .select("name, industry, language, tone_of_voice, usps, key_benefits, pain_points, target_audience, ctas, description")
+    .eq("id", brief.brand_brain_id).single()
+  if (!brain) return { error: "Brand Brain no encontrado" }
+  const lineData = brief.brand_line_id
+    ? (await supabase.from("brand_lines").select("name, description, usps, pain_points, keywords").eq("id", brief.brand_line_id).single()).data
+    : null
+  const { data: ad } = await supabase.from("saved_ads").select("id, video_url, cached_video_url").eq("id", adId).single()
+  const videoUrl = ad?.cached_video_url || ad?.video_url
+  if (!videoUrl) return { error: "El video no tiene URL disponible" }
+
+  try {
+    const t = await aaiPost("/transcript", { audio_url: videoUrl, language_detection: true })
+    let result: { status: string; text?: string } = { status: "queued" }
+    for (let n = 0; result.status !== "completed" && result.status !== "error"; n++) {
+      if (n >= 60) return { error: "La transcripción tardó demasiado; intenta de nuevo." }
+      await new Promise((r) => setTimeout(r, 3000))
+      result = await aaiGet(`/transcript/${t.id}`)
+    }
+    if (result.status === "error" || !result.text?.trim()) return { error: "No se pudo transcribir el video (¿no tiene voz?)." }
+    const lines = await adaptWithClaude(result.text, brain as any, lineData, brief.concept as any)
+
+    // Releer para no pisar guiones generados en paralelo.
+    const { data: fresh } = await supabase.from("creative_briefs").select("adapted_script, no_transcribe_ad_ids").eq("id", briefId).single()
+    const { error } = await supabase.from("creative_briefs").update({
+      adapted_script: { ...((fresh?.adapted_script as Record<string, unknown>) ?? {}), [adId]: lines },
+      no_transcribe_ad_ids: ((fresh?.no_transcribe_ad_ids as string[] | null) ?? []).filter((id) => id !== adId),
+      updated_at: new Date().toISOString(),
+    }).eq("id", briefId)
+    if (error) return { error: error.message }
+    revalidateProject(brief.project_id)
+    return {}
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) }
+  }
+}

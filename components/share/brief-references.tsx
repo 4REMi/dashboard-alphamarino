@@ -2,10 +2,10 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { updateBriefScript, updateScriptTitle, deleteBriefReference, autoApproveBriefScripts } from "@/lib/actions/creatives"
+import { updateBriefScript, updateScriptTitle, deleteBriefReference, autoApproveBriefScripts, generateReferenceScript } from "@/lib/actions/creatives"
 import { CopyScriptButton } from "@/components/share/copy-script-button"
 import { cn } from "@/lib/utils"
-import { Pencil, Check, X, Trash2, BadgeCheck, ChevronLeft, ChevronRight } from "lucide-react"
+import { Pencil, Check, X, Trash2, BadgeCheck, ChevronLeft, ChevronRight, Sparkles, Loader2, CopyCheck } from "lucide-react"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
 import type { AdCloneLine } from "@/lib/types"
 
@@ -211,7 +211,10 @@ export function BriefReferences({ references, briefId, projectId, editable = fal
                   <ReadOnlyScript key={ref.id} lines={ref.script!} compare={compare} />
                 )
               ) : (
-                <p className="px-5 py-10 text-sm text-gray-400 text-center">{isVideo ? "Este video no tiene guion adaptado." : "Referencia visual — sin guion."}</p>
+                <div className="px-5 py-10 text-center space-y-3">
+                  <p className="text-sm text-gray-400">{isVideo ? "Este video no tiene guion adaptado." : "Referencia visual — sin guion."}</p>
+                  {isVideo && canEdit && <GenerateScriptButton key={ref.id} briefId={briefId!} adId={ref.id} />}
+                </div>
               )}
             </div>
           </div>
@@ -233,7 +236,7 @@ function StatusPill({ status, text }: { status: string; text?: string }) {
 
 // Una línea del guion. Modo normal: número + texto adaptado a todo lo
 // ancho. Comparar: original (gris, sin tachar para que se lea) | adaptado.
-function ScriptLine({ i, line, compare, children }: { i: number; line: AdCloneLine; compare: boolean; children: React.ReactNode }) {
+function ScriptLine({ i, line, compare, children, onUseOriginal }: { i: number; line: AdCloneLine; compare: boolean; children: React.ReactNode; onUseOriginal?: () => void }) {
   return (
     <div className={cn("grid gap-x-5 px-5 py-3", compare ? "md:grid-cols-2" : "grid-cols-[28px_1fr]")}>
       {!compare && <span className="w-6 h-6 mt-0.5 rounded-full bg-gray-100 text-gray-500 text-[11px] font-bold flex items-center justify-center">{i + 1}</span>}
@@ -242,6 +245,12 @@ function ScriptLine({ i, line, compare, children }: { i: number; line: AdCloneLi
           <span className="text-[10px] font-bold text-gray-400 mr-1.5">{i + 1}</span>
           {line.speaker && <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mr-1.5">{line.speaker}</span>}
           <span className="text-sm text-gray-500 leading-relaxed">{line.original}</span>
+          {onUseOriginal && line.original?.trim() && line.original !== line.adapted && (
+            <button type="button" onClick={onUseOriginal} title="Usar la línea original tal cual"
+              className="ml-2 inline-flex items-center gap-1 align-middle text-[10px] font-medium px-1.5 py-0.5 rounded border border-gray-200 text-gray-500 hover:text-indigo-700 hover:border-indigo-300 hover:bg-indigo-50">
+              <CopyCheck className="w-3 h-3" />Usar original
+            </button>
+          )}
         </div>
       )}
       <div className="min-w-0">
@@ -316,7 +325,7 @@ function EditableScript({ briefId, adId, initialLines, hadClientFeedback, compar
       </ScriptHeader>
       <div className="divide-y divide-gray-100">
         {lines.map((line, i) => (
-          <ScriptLine key={i} i={i} line={line} compare={compare}>
+          <ScriptLine key={i} i={i} line={line} compare={compare} onUseOriginal={() => updateLine(i, line.original ?? "")}>
             <AutoTextarea
               value={line.adapted}
               onChange={(e) => updateLine(i, e.target.value)}
@@ -364,6 +373,25 @@ function RenameField({ initial, isPending, onSave, onCancel }: {
       >
         <X className="w-3.5 h-3.5" />
       </button>
+    </div>
+  )
+}
+
+// Para videos que se crearon "sin transcribir" (o cuya transcripción falló):
+// transcribe y tropicaliza solo este video.
+function GenerateScriptButton({ briefId, adId }: { briefId: string; adId: string }) {
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+  const [error, setError] = useState<string | null>(null)
+  return (
+    <div className="space-y-2">
+      <button type="button" disabled={isPending}
+        onClick={() => { setError(null); startTransition(async () => { const r = await generateReferenceScript(briefId, adId); if (r.error) setError(r.error); else router.refresh() }) }}
+        className="inline-flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60">
+        {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+        {isPending ? "Transcribiendo y adaptando… (1-2 min)" : "Generar guion de este video"}
+      </button>
+      {error && <p className="text-xs text-red-600">{error}</p>}
     </div>
   )
 }
