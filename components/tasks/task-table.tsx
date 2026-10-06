@@ -1169,7 +1169,7 @@ function TaskRow({ task, projectId, employees, isAdmin, deliverable, onDeliverab
       <td className="px-4 py-2.5">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <p className={cn("font-medium text-sm truncate", task.status === "Done" && "line-through text-muted-foreground")}>
+            <p className={cn("font-medium text-sm line-clamp-2 break-words", task.status === "Done" && "line-through text-muted-foreground")}>
               {task.title}
             </p>
             {task.requires_deliverable && (
@@ -1220,7 +1220,7 @@ function TaskRow({ task, projectId, employees, isAdmin, deliverable, onDeliverab
               </span>
             )}
             {task.description && (
-              <p className="text-xs text-muted-foreground truncate max-w-xs">{task.description}</p>
+              <p className="text-xs text-muted-foreground line-clamp-1 break-words">{task.description}</p>
             )}
           </div>
         </div>
