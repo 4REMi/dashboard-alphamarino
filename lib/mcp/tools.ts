@@ -6,6 +6,7 @@ import { addLogEntry } from "@/lib/actions/projects"
 import { createServiceOffer, archiveServiceOffer } from "@/lib/actions/services"
 import { attachServiceOfferToProject } from "@/lib/actions/service-deliverables"
 import { registerOperationsTools } from "@/lib/mcp/operations-tools"
+import { registerFinanceTools } from "@/lib/mcp/finance-tools"
 import { getProjectContext } from "@/lib/project-context"
 
 // Minimal shape of what registerTool's handler actually receives —
@@ -78,6 +79,7 @@ function todayIso(): string {
 export function registerMcpTools(server: McpServer) {
   // Plantillas de Operations (solo admin) — lib/mcp/operations-tools.ts
   registerOperationsTools(server)
+  registerFinanceTools(server)
 
   server.registerTool(
     "crear_tarea",

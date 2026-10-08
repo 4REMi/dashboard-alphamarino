@@ -37,6 +37,11 @@ más estricto desde el inicio, no una copia de cómo funciona Telegram.
   vía el cliente admin. Cuando se omite (la UI normal, Captura rápida), la
   función se comporta exactamente igual que antes — es un parámetro aditivo, no
   un cambio de comportamiento para nadie más.
+- **Finanzas** (`lib/mcp/finance-tools.ts`): `registrar_gasto`, `listar_gastos`,
+  `resumen_finanzas`. Permiso `view_global_finances` (igual que /finances).
+  Mismo modelo que el bot de Telegram: montos en USD (MXN se convierte con el
+  tipo de cambio de la fecha); con proyecto → `project_expenses`, sin
+  proyecto → `recurring_expenses` "One-time". Nómina no se registra por aquí.
 - **@menciones**: si el texto de una nota incluye `@Nombre Completo` de un
   miembro del proyecto, a esa persona le llega aviso por Telegram (además de
   `avisar_a`). Se resuelve en `notifyNewNote`/`resolveMentions`
