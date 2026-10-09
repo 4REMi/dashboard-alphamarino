@@ -82,7 +82,7 @@ export function StrategyDialog({ projectId, open, onOpenChange, onSaved }: { pro
                 <span className={label}>Presupuesto</span>
                 <div className="flex items-baseline gap-1.5 border-b-2 border-border focus-within:border-primary">
                   <input inputMode="decimal" value={budget} onChange={(e) => setBudget(e.target.value.replace(/[^\d.]/g, ""))} placeholder="0"
-                    className="w-32 bg-transparent text-2xl font-semibold tabular-nums focus:outline-none py-0.5" />
+                    className="w-24 bg-transparent text-2xl font-semibold tabular-nums focus:outline-none py-0.5" />
                   <span className="text-sm text-muted-foreground">{cur}</span>
                 </div>
               </label>
@@ -104,8 +104,8 @@ export function StrategyDialog({ projectId, open, onOpenChange, onSaved }: { pro
                   const on = isOn(o.id)
                   return (
                     <button key={o.id || "general"} type="button" onClick={() => toggleLine(o)}
-                      className={cn("h-8 px-3 rounded-full border text-sm inline-flex items-center gap-1.5 transition-colors", on ? "border-foreground bg-foreground text-background" : "border-border hover:border-foreground/40")}>
-                      <span className="w-2 h-2 rounded-full" style={{ background: o.color ?? "currentColor", opacity: o.color ? 1 : 0.4 }} />{o.name}
+                      title={o.name} className={cn("h-8 px-3 max-w-[220px] rounded-full border text-sm inline-flex items-center gap-1.5 transition-colors", on ? "border-foreground bg-foreground text-background" : "border-border hover:border-foreground/40")}>
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: o.color ?? "currentColor", opacity: o.color ? 1 : 0.4 }} /><span className="truncate">{o.name}</span>
                     </button>
                   )
                 })}
@@ -172,7 +172,7 @@ export function StrategyDialog({ projectId, open, onOpenChange, onSaved }: { pro
         {error && <p className="px-6 pb-2 text-sm text-red-600 flex items-center gap-1.5"><X className="w-3.5 h-3.5" />{error}</p>}
         {draft?.cycle && (
           <div className="px-6 py-3 border-t flex items-center gap-3 bg-muted/30">
-            <span className="text-[11px] text-muted-foreground flex-1">Se fija en la bitácora con tu nombre.</span>
+            <span className="text-[11px] text-muted-foreground flex-1">{ready ? "Se fija en la bitácora con tu nombre." : !(Number(budget) > 0) ? "Falta el presupuesto." : !lines.length ? "Elige qué se empuja." : "Falta la apuesta del ciclo."}</span>
             <button type="button" onClick={() => onOpenChange(false)} className="h-9 px-3 text-sm text-muted-foreground hover:text-foreground">Cancelar</button>
             <button type="button" onClick={save} disabled={isPending || !ready} className="h-9 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center gap-1.5 disabled:opacity-40">
               {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}Confirmar
