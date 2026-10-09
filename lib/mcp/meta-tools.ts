@@ -97,10 +97,16 @@ type Obj = { id: string; name: string; status: string; effective_status?: string
 
 // Lee el objeto y verifica que sea de la cuenta del cliente.
 export async function own(c: Client, id: string): Promise<Obj> {
-  const o = await get<Record<string, string>>(id, { fields: "id,name,status,effective_status,account_id,daily_budget,lifetime_budget,campaign_id,adset_id", metadata: "1" })
+  const o = await get<Record<string, string>>(id, { fields: "id,name,status,effective_status,account_id", metadata: "1" })
   if (String(o.account_id) !== c.account) throw new Error(`${id} no pertenece a la cuenta de Meta de ${c.name}.`)
   const type = (o as unknown as { metadata?: { type?: string } }).metadata?.type
   const kind = type === "campaign" ? "campaña" : type === "adset" ? "conjunto" : "anuncio"
+  // Cada tipo tiene sus campos: pedir uno que no existe (p. ej. campaign_id
+  // a una campaña, o presupuesto a un anuncio) hace fallar toda la llamada.
+  if (kind !== "anuncio") {
+    const b = await get<Record<string, string>>(id, { fields: "daily_budget,lifetime_budget" })
+    Object.assign(o, { daily_budget: b.daily_budget, lifetime_budget: b.lifetime_budget })
+  }
   return { ...(o as unknown as Obj), kind }
 }
 
