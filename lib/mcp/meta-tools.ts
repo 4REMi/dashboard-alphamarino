@@ -268,30 +268,88 @@ export function registerMetaTools(server: McpServer) {
     "meta_duplicar",
     {
       title: "Meta: duplicar",
-      description: "Duplica un anuncio a otro conjunto, o un conjunto (con sus anuncios) a otra campaña — p. ej. graduar un ganador de prueba a escala. La copia se crea PAUSADA para revisarla. Sin confirmar: true solo muestra qué haría.",
+      description: "Duplica una campaña completa (con conjuntos y anuncios), un conjunto (con sus anuncios) o un anuncio (con su creativo). Sin destino_id se copia en el mismo lugar; con destino_id un anuncio va a otro conjunto y un conjunto a otra campaña (p. ej. graduar de prueba a escala). La copia queda PAUSADA. Sin confirmar: true solo muestra qué haría.",
       inputSchema: z.object({
         proyecto: z.string(),
-        id: z.string().describe("Anuncio o conjunto a copiar"),
-        destino_id: z.string().describe("Conjunto destino (si copias un anuncio) o campaña destino (si copias un conjunto)"),
+        id: z.string().describe("Campaña, conjunto o anuncio a copiar"),
+        destino_id: z.string().optional().describe("Conjunto destino (anuncio) o campaña destino (conjunto). No aplica a campañas"),
+        nuevo_nombre: z.string().optional(),
         confirmar: z.boolean().default(false),
       }),
     },
-    async ({ proyecto, id, destino_id, confirmar }, ctx: ToolCtx) => {
+    async ({ proyecto, id, destino_id, nuevo_nombre, confirmar }, ctx: ToolCtx) => {
       const profileId = await requireEditor(ctx)
       const c = await client(proyecto)
-      const [o, dest] = await Promise.all([own(c, id), own(c, destino_id)])
-      if (o.kind === "campaña") throw new Error("Para copiar una campaña completa hazlo en Ads Manager; aquí se copian anuncios o conjuntos.")
-      if (o.kind === "anuncio" && dest.kind !== "conjunto") throw new Error("Un anuncio se copia a un CONJUNTO destino.")
-      if (o.kind === "conjunto" && dest.kind !== "campaña") throw new Error("Un conjunto se copia a una CAMPAÑA destino.")
-      const desc = `${o.kind} "${o.name}" → ${dest.kind} "${dest.name}" (la copia queda pausada)`
+      const o = await own(c, id)
+      const dest = destino_id ? await own(c, destino_id) : null
+      if (o.kind === "campaña" && dest) throw new Error("Una campaña se duplica en la misma cuenta; no lleva destino_id.")
+      if (o.kind === "anuncio" && dest && dest.kind !== "conjunto") throw new Error("Un anuncio se copia a un CONJUNTO destino.")
+      if (o.kind === "conjunto" && dest && dest.kind !== "campaña") throw new Error("Un conjunto se copia a una CAMPAÑA destino.")
+      const desc = `${o.kind} "${o.name}"${dest ? ` → ${dest.kind} "${dest.name}"` : " (en el mismo lugar)"}${o.kind !== "anuncio" ? " con todo su contenido" : ""}${nuevo_nombre ? ` como "${nuevo_nombre}"` : ""} · la copia queda pausada`
       if (!confirmar) return text(`Duplicaría en ${c.name}:\n- ${desc}${confirmHint}`)
-      const body: Record<string, string> = o.kind === "anuncio"
-        ? { adset_id: dest.id, status_option: "PAUSED" }
-        : { campaign_id: dest.id, deep_copy: "true", status_option: "PAUSED" }
+      const body: Record<string, string> = { status_option: "PAUSED" }
+      if (o.kind !== "anuncio") body.deep_copy = "true"
+      if (o.kind === "anuncio" && dest) body.adset_id = dest.id
+      if (o.kind === "conjunto" && dest) body.campaign_id = dest.id
+      if (!nuevo_nombre) body.rename_options = JSON.stringify({ rename_suffix: " - Copia" })
       const r = await post(`${o.id}/copies`, body)
-      const newId = (r.copied_ad_id ?? r.copied_adset_id ?? "") as string
+      const newId = (r.copied_campaign_id ?? r.copied_adset_id ?? r.copied_ad_id ?? r.ad_object_ids?.toString() ?? "") as string
+      if (nuevo_nombre && newId) await post(newId, { name: nuevo_nombre }).catch(() => null)
       await log(c, profileId, `Duplicado: ${desc}${newId ? ` · nuevo id ${newId}` : ""}.`)
-      return text(`✅ Copia creada en Meta (pausada)${newId ? `: ${newId}` : ""}. Actívala con meta_cambiar_estado cuando la revises.`)
+      return text(`✅ Copia creada en Meta (pausada)${newId ? ` [${newId}]` : ""}. Revísala y actívala con meta_cambiar_estado.`)
+    },
+  )
+
+  server.registerTool(
+    "meta_contenido_anuncio",
+    {
+      title: "Meta: contenido de anuncios",
+      description: "Qué dice un anuncio (activo o pasado): texto, título y CTA; si es VIDEO, la transcripción de lo que se habla; si es IMAGEN, regresa la imagen para leer su texto y describirla. Máx. 5 anuncios por llamada (ids de meta_estado_cliente).",
+      inputSchema: z.object({ proyecto: z.string(), ad_ids: z.array(z.string()).min(1).max(5) }),
+    },
+    async ({ proyecto, ad_ids }, ctx: ToolCtx) => {
+      await requireEditor(ctx)
+      const c = await client(proyecto)
+      const out: ({ type: "text"; text: string } | { type: "image"; data: string; mimeType: string })[] = []
+      for (const id of ad_ids) {
+        const o = await own(c, id)
+        if (o.kind !== "anuncio") { out.push({ type: "text", text: `${id}: no es un anuncio.` }); continue }
+        const ad = await get<{ creative?: Record<string, any> }>(id, { fields: "creative{body,title,call_to_action_type,image_url,thumbnail_url,video_id,object_story_spec,asset_feed_spec}" })
+        const cr = ad.creative ?? {}
+        const story = cr.object_story_spec ?? {}, link = story.link_data ?? {}, vd = story.video_data ?? {}, feed = cr.asset_feed_spec ?? {}
+        const body = cr.body ?? link.message ?? vd.message ?? feed.bodies?.[0]?.text ?? null
+        const title = cr.title ?? link.name ?? vd.title ?? feed.titles?.[0]?.text ?? null
+        const videoId = cr.video_id || vd.video_id || feed.videos?.[0]?.video_id || null
+        const lines = [`■ ${o.name} [${id}] · ${o.effective_status ?? o.status}`, body ? `Texto: ${body}` : "Texto: —", title ? `Título: ${title}` : "", cr.call_to_action_type ? `CTA: ${cr.call_to_action_type}` : ""].filter(Boolean)
+        if (videoId) {
+          // Fuente: la copia guardada por el dashboard (estable) o la de Meta.
+          const { data: dim } = await createAdminClient().from("meta_ads").select("video_url").eq("project_id", c.projectId).eq("ad_id", id).maybeSingle()
+          let src = (dim?.video_url as string | null) ?? null
+          if (!src) src = (await get<{ source?: string }>(videoId, { fields: "source" }).catch(() => ({ source: undefined }))).source ?? null
+          if (!src) lines.push("Video: Meta no comparte el archivo (cuenta de socio); no se pudo transcribir.")
+          else {
+            try {
+              const { aaiPost, aaiGet } = await import("@/lib/actions/ad-clone")
+              const t = await aaiPost("/transcript", { audio_url: src, language_detection: true })
+              let r: { status: string; text?: string } = { status: "queued" }
+              for (let i = 0; i < 30 && r.status !== "completed" && r.status !== "error"; i++) { await new Promise((x) => setTimeout(x, 3000)); r = await aaiGet(`/transcript/${t.id}`) }
+              lines.push(r.status === "completed" ? `Transcripción: ${r.text?.trim() || "(sin voz)"}` : "Transcripción: tardó demasiado; vuelve a pedirla en un minuto.")
+            } catch (e) { lines.push(`Transcripción falló: ${e instanceof Error ? e.message : e}`) }
+          }
+          out.push({ type: "text", text: lines.join("\n") })
+        } else {
+          const img = cr.image_url ?? link.picture ?? feed.images?.[0]?.url ?? cr.thumbnail_url ?? null
+          out.push({ type: "text", text: lines.join("\n") + (img ? "\nImagen adjunta abajo (lee el texto que trae y descríbela)." : "\nSin imagen disponible.") })
+          if (img) {
+            try {
+              const res = await fetch(img)
+              const buf = Buffer.from(await res.arrayBuffer())
+              if (buf.length < 4_500_000) out.push({ type: "image", data: buf.toString("base64"), mimeType: res.headers.get("content-type")?.split(";")[0] || "image/jpeg" })
+            } catch { /* sin imagen */ }
+          }
+        }
+      }
+      return { content: out }
     },
   )
 }

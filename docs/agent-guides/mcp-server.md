@@ -40,7 +40,7 @@ más estricto desde el inicio, no una copia de cómo funciona Telegram.
 - **Meta Ads** (`lib/mcp/meta-tools.ts`): `meta_estado_cliente` (lee en vivo
   campañas → conjuntos → anuncios con ids, presupuesto CBO/ABO y rendimiento
   del ciclo), `meta_cambiar_estado`, `meta_presupuesto`, `meta_renombrar`,
-  `meta_duplicar`. Solo admin/subadmin. Escrituras en dos pasos: sin
+  `meta_duplicar` (campaña completa, conjunto o anuncio; mismo lugar u otro destino), `meta_contenido_anuncio` (texto/título/CTA; video → transcripción con AssemblyAI; imagen → se regresa la imagen para que Claude lea su texto). Solo admin/subadmin. Escrituras en dos pasos: sin
   `confirmar: true` solo describen el cambio. Cada id se verifica contra la
   cuenta de Meta del proyecto. Presupuesto con tope ±50% salvo
   `permitir_cambio_grande`. Copias se crean pausadas. Todo cambio queda en la
