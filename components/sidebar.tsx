@@ -32,7 +32,6 @@ import {
   Sun,
   Puzzle,
   Wallet,
-  Radar,
 } from "lucide-react"
 import { useState } from "react"
 import Image from "next/image"
@@ -83,7 +82,6 @@ export function Sidebar({ profile, logoUrl, myPendingTaskCount = 0, mobileOpen =
     { href: "/customers", icon: Users, label: t("clients") },
     { href: "/services", icon: Tag, label: "Ofertas", adminOnly: true },
     { href: "/projects", icon: FolderKanban, label: t("projects") },
-    { href: "/radar", icon: Radar, label: "Radar" },
     { href: "/tasks", icon: CheckSquare, label: t("tasks"), badge: myPendingTaskCount },
     { href: "/finances", icon: DollarSign, label: t("finances"), permission: "view_global_finances" },
     { href: "/finances/domains", icon: Globe, label: t("domains"), permission: "view_domains" },

@@ -32,7 +32,6 @@ import { PaidMediaContextCard } from "@/components/projects/hub/paid-media-conte
 import { PaidMediaCycleCard } from "@/components/projects/hub/paid-media-cycle-card"
 import { CreativePerformanceGrid } from "@/components/projects/hub/creative-performance-grid"
 import { ReportsCard } from "@/components/projects/hub/reports-card"
-import { ProjectRadar } from "@/components/radar/project-radar"
 import { ManualCampaignsPanel } from "@/components/projects/hub/manual-campaigns/manual-campaigns-panel"
 import type { MetricKey } from "@/lib/constants/paid-media-metrics"
 import { PaidMediaCycleHistory } from "@/components/projects/hub/paid-media-cycle-history"
@@ -384,13 +383,6 @@ export default async function ProjectDetailPage({ params, searchParams }: { para
                 .filter((c) => !c.is_active && c.review_pending && !c.next_cycle_id)
                 .sort((a, b) => (a.start_date < b.start_date ? 1 : -1))[0]?.id ?? null
             } />
-
-            {/* Radar: lo que se salió de la estrategia del ciclo. */}
-            {activeCycle && (
-              <div id="radar" className="rounded-xl border border-border bg-background/60 p-4 scroll-mt-4">
-                <ProjectRadar projectId={project.id} embedded />
-              </div>
-            )}
 
             {/* Reportes justo debajo del ciclo: es donde se buscan. */}
             <ReportsCard projectId={project.id} cycles={cycles as PaidMediaCycle[]} />

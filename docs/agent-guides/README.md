@@ -87,6 +87,5 @@ grep-ear todo el repo desde cero.
 | [mcp-server.md](./mcp-server.md) | Servidor MCP (`/api/mcp`) — acciones de IA con permisos reales | 2026-09-18 |
 | [creative-tracker.md](./creative-tracker.md) | Creative Tracker — producción, revisión de cliente, pipeline | 2026-09-23 |
 | [nomina.md](./nomina.md) | Equipo — Nómina y compensación (solo admin) | 2026-10-01 |
-| [radar.md](./radar.md) | Radar Paid Media (`/radar` + Hub Paid Media) — estrategia del ciclo, alertas y acciones en Meta | 2026-10-09 |
 
 Actualiza esta tabla cada vez que agregues un archivo nuevo.

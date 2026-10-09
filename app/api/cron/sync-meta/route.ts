@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { timingSafeEqual } from "crypto"
 import { runScheduledMetaSync } from "@/lib/actions/meta"
-import { runRadarBudgetGuard } from "@/lib/actions/radar"
 
 // Sincroniza Meta en todos los ciclos activos, 3 veces al día (ver
 // vercel.json). Mismo esquema de auth que /api/cron/check-cycles.
@@ -22,7 +21,5 @@ export async function GET(req: NextRequest) {
   if (!isAuthorized(req, secret)) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 })
 
   const result = await runScheduledMetaSync(secret)
-  // Con datos frescos: avisos 80/90% y pausa automática al 100% (Radar).
-  const radar = await runRadarBudgetGuard(secret).catch((e) => ({ error: String(e) }))
-  return NextResponse.json({ ok: true, ...result, radar })
+  return NextResponse.json({ ok: true, ...result })
 }
