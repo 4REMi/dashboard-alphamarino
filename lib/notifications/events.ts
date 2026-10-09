@@ -136,6 +136,21 @@ export const NOTIFICATION_EVENTS = {
         ? `🔒 The cycle for *${data.projectName}* (ended ${data.endDate}) was closed automatically — this project has auto-close on`
         : `🔒 El ciclo de *${data.projectName}* (terminó el ${data.endDate}) se cerró automáticamente — este proyecto tiene el auto-cierre activado`,
   },
+  // Radar Paid Media — freno de presupuesto (lib/actions/radar.ts).
+  radar_budget_threshold: {
+    label: "Radar: presupuesto al 80/90%",
+    build: (data: { projectName: string; pct: number; amount: string }, lang: NotificationLang) =>
+      lang === "en"
+        ? `🟠 *${data.projectName}* reached ${data.pct}% of the cycle budget (${data.amount})`
+        : `🟠 *${data.projectName}* llegó al ${data.pct}% del presupuesto del ciclo (${data.amount})`,
+  },
+  radar_budget_paused: {
+    label: "Radar: campañas pausadas por presupuesto",
+    build: (data: { projectName: string; amount: string; campaigns: number }, lang: NotificationLang) =>
+      lang === "en"
+        ? `🛑 *${data.projectName}* hit the agreed budget (${data.amount}). ${data.campaigns} campaign(s) paused in Meta — reactivate from the Radar if the client approves more.`
+        : `🛑 *${data.projectName}* llegó al presupuesto pactado (${data.amount}). Se pausaron ${data.campaigns} campaña(s) en Meta — reactívalas desde Meta si el cliente autoriza más.`,
+  },
   // One of these per person, per batch — not one "task_assigned" per task.
   // Applying a phase set (at project creation, or later via "Agregar
   // fases"/"Aplicar phase set") can auto-assign many tasks by position in a
