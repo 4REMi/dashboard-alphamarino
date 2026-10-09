@@ -50,7 +50,101 @@ export function describeTargeting(t: Record<string, any>): string {
   return [parts.join(" · ") + ex || "sin ubicación", age + gender + adv, interests.length ? `intereses: ${interests.slice(0, 8).join(", ")}${interests.length > 8 ? "…" : ""}` : "", custom.length ? `públicos: ${custom.join(", ")}` : ""].filter(Boolean).join(" · ")
 }
 
+// ── Mensaje de bienvenida de anuncios de mensajes ───────────────────────
+// Vive en el creativo como page_welcome_message (JSON en texto, mismo
+// formato que arma Ads Manager). Meta no deja editar un creativo: para
+// cambiarlo se crea uno nuevo igual y se asigna al anuncio (vuelve a revisión).
+type Pregunta = { pregunta: string; respuesta?: string }
+
+function parseWelcome(raw: unknown): { saludo: string | null; preguntas: Pregunta[]; raw: Record<string, any> | null } {
+  if (!raw) return { saludo: null, preguntas: [], raw: null }
+  let j: Record<string, any>
+  try { j = typeof raw === "string" ? JSON.parse(raw) : (raw as Record<string, any>) } catch { return { saludo: String(raw), preguntas: [], raw: null } }
+  const msg = j.text_format?.message ?? j.message ?? {}
+  const ib = (msg.ice_breakers ?? j.ice_breakers ?? []) as { title?: string; question?: string; response?: string }[]
+  return { saludo: msg.text ?? j.text ?? null, preguntas: ib.map((x) => ({ pregunta: x.title ?? x.question ?? "", respuesta: x.response })).filter((x) => x.pregunta), raw: j }
+}
+
+function welcomeJson(prev: Record<string, any> | null, saludo?: string, preguntas?: Pregunta[]): string {
+  const base = prev ?? { type: "VISUAL_EDITOR", version: 2, landing_screen_type: "welcome_message", media_type: "text", text_format: { customer_action_type: "ice_breakers", message: {} }, user_edit: true, surface: "visual_editor_new" }
+  const j = JSON.parse(JSON.stringify(base))
+  j.text_format = j.text_format ?? { customer_action_type: "ice_breakers", message: {} }
+  j.text_format.message = j.text_format.message ?? {}
+  if (saludo != null) j.text_format.message.text = saludo
+  if (preguntas) {
+    j.text_format.customer_action_type = preguntas.length ? "ice_breakers" : "none"
+    j.text_format.message.ice_breakers = preguntas.map((p) => ({ title: p.pregunta, ...(p.respuesta ? { response: p.respuesta } : {}) }))
+  }
+  return JSON.stringify(j)
+}
+
+const describeWelcome = (w: { saludo: string | null; preguntas: Pregunta[] }) =>
+  `  Saludo: ${w.saludo ?? "(genérico de Meta)"}\n${w.preguntas.length ? w.preguntas.map((p, i) => `  ${i + 1}. ${p.pregunta}${p.respuesta ? ` → responde: ${p.respuesta}` : ""}`).join("\n") : "  (sin preguntas propias)"}`
+
+async function adWelcome(adId: string) {
+  const ad = await get<{ creative?: { id: string } }>(adId, { fields: "creative{id}" })
+  if (!ad.creative?.id) throw new Error("El anuncio no tiene creativo.")
+  const cr = await get<{ id: string; name?: string; object_story_spec?: Record<string, any>; asset_feed_spec?: unknown }>(ad.creative.id, { fields: "id,name,object_story_spec,asset_feed_spec" })
+  const spec = cr.object_story_spec ?? {}
+  const key = spec.video_data ? "video_data" : spec.link_data ? "link_data" : null
+  return { creative: cr, spec, key, welcome: parseWelcome(key ? spec[key].page_welcome_message : null) }
+}
+
 export function registerMetaCreateTools(server: McpServer) {
+  server.registerTool(
+    "meta_bienvenida_leer",
+    {
+      title: "Meta: mensaje de bienvenida",
+      description: "Lee el mensaje de bienvenida de anuncios de mensajes (WhatsApp/Messenger/Instagram): el saludo y las opciones que la persona puede tocar, con su respuesta automática.",
+      inputSchema: z.object({ proyecto: z.string(), ad_ids: z.array(z.string()).min(1).max(10) }),
+    },
+    async ({ proyecto, ad_ids }, ctx: ToolCtx) => {
+      await requireEditor(ctx)
+      const c = await client(proyecto)
+      const out: string[] = []
+      for (const id of ad_ids) {
+        const o = await own(c, id)
+        if (o.kind !== "anuncio") { out.push(`- ${id}: no es un anuncio`); continue }
+        const w = await adWelcome(id)
+        out.push(`- "${o.name}" [${id}]${w.key ? "" : " · sin datos de mensaje"}\n${describeWelcome(w.welcome)}`)
+      }
+      return text(out.join("\n"))
+    },
+  )
+
+  server.registerTool(
+    "meta_bienvenida_cambiar",
+    {
+      title: "Meta: cambiar mensaje de bienvenida",
+      description: "Cambia el saludo y/o las opciones (máx. 4, con respuesta automática opcional) del mensaje de bienvenida de un anuncio de mensajes. Escríbelos a partir de lo que el usuario quiere lograr (calificar, agendar, resolver una objeción), nunca genéricos. Crea un creativo nuevo igual con el mensaje cambiado y lo asigna al anuncio: Meta lo vuelve a revisar. Sin confirmar: true solo muestra antes → después.",
+      inputSchema: z.object({
+        proyecto: z.string(),
+        ad_id: z.string(),
+        saludo: z.string().max(300).optional(),
+        preguntas: z.array(z.object({ pregunta: z.string().max(80), respuesta: z.string().max(300).optional() })).max(4).optional(),
+        confirmar: z.boolean().default(false),
+      }),
+    },
+    async ({ proyecto, ad_id, saludo, preguntas, confirmar }, ctx: ToolCtx) => {
+      const profileId = await requireEditor(ctx)
+      const c = await client(proyecto)
+      const o = await own(c, ad_id)
+      if (o.kind !== "anuncio") throw new Error("ad_id no es un anuncio.")
+      if (saludo == null && !preguntas) throw new Error("Indica saludo y/o preguntas.")
+      const w = await adWelcome(ad_id)
+      if (!w.key) throw new Error("Este anuncio no usa un creativo de imagen/video editable (p. ej. dinámico o publicación existente).")
+      const next = parseWelcome(welcomeJson(w.welcome.raw, saludo, preguntas))
+      const desc = `"${o.name}"\nAntes:\n${describeWelcome(w.welcome)}\nDespués:\n${describeWelcome(next)}`
+      if (!confirmar) return text(`Cambiaría en ${c.name}:\n${desc}\n\nEl anuncio volverá a revisión de Meta.${confirmHint}`)
+      const spec = JSON.parse(JSON.stringify(w.spec))
+      spec[w.key].page_welcome_message = welcomeJson(w.welcome.raw, saludo, preguntas)
+      const creative = await post(`act_${c.account}/adcreatives`, { name: `${w.creative.name ?? o.name} · bienvenida ${new Date().toISOString().slice(0, 10)}`, object_story_spec: JSON.stringify(spec) }) as { id: string }
+      await post(ad_id, { creative: JSON.stringify({ creative_id: creative.id }) })
+      await log(c, profileId, `Mensaje de bienvenida cambiado: ${desc}`)
+      return text(`✅ Mensaje de bienvenida actualizado en "${o.name}" (creativo nuevo ${creative.id}). Meta lo revisa de nuevo antes de volver a entregar.`)
+    },
+  )
+
   server.registerTool(
     "meta_segmentacion",
     {
@@ -262,6 +356,8 @@ export function registerMetaCreateTools(server: McpServer) {
         cta: z.enum(CTAS).default("LEARN_MORE"),
         url: z.string().url().optional().describe("Destino (sitio). Requerido salvo formulario o mensajes"),
         form_id: z.string().optional().describe("Formulario instantáneo (leads)"),
+        saludo: z.string().max(300).optional().describe("Anuncios de mensajes: primer mensaje que ve la persona"),
+        preguntas: z.array(z.object({ pregunta: z.string().max(80), respuesta: z.string().max(300).optional() })).max(4).optional().describe("Anuncios de mensajes: opciones que puede tocar (máx. 4) y respuesta automática opcional"),
         confirmar: z.boolean().default(false),
       }),
     },
@@ -308,9 +404,11 @@ export function registerMetaCreateTools(server: McpServer) {
         if (thumbUrl) video_data.image_hash = await imageHash(thumbUrl)
         else if (picture) video_data.image_url = picture
         else throw new Error("El video sigue procesándose en Meta; intenta de nuevo en un minuto.")
+        if (a.saludo || a.preguntas?.length) video_data.page_welcome_message = welcomeJson(null, a.saludo, a.preguntas)
         spec.video_data = video_data
       } else {
-        spec.link_data = { image_hash: await imageHash(fileUrl), message: a.texto, ...(a.titulo ? { name: a.titulo } : {}), link: a.url ?? `https://facebook.com/${a.page_id}`, call_to_action: cta }
+        spec.link_data = { image_hash: await imageHash(fileUrl), message: a.texto, ...(a.titulo ? { name: a.titulo } : {}), link: a.url ?? `https://facebook.com/${a.page_id}`, call_to_action: cta,
+          ...(a.saludo || a.preguntas?.length ? { page_welcome_message: welcomeJson(null, a.saludo, a.preguntas) } : {}) }
       }
       const creative = await post(`${act}/adcreatives`, { name: a.nombre, object_story_spec: JSON.stringify(spec) }) as { id: string }
       const ad = await post(`${act}/ads`, { name: a.nombre, adset_id: set.id, creative: JSON.stringify({ creative_id: creative.id }), status: "PAUSED" }) as { id: string }

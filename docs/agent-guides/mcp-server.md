@@ -56,6 +56,11 @@ más estricto desde el inicio, no una copia de cómo funciona Telegram.
   pasados), `meta_buscar_ubicacion` (nombre → key de ciudad/estado/CP), y en
   `meta_crear_conjunto` `ubicacion_pin` (radio alrededor de lat/lng) o
   `copiar_segmentacion_de` (segmentación completa de otro conjunto).
+  Mensaje de bienvenida de anuncios de mensajes: `meta_bienvenida_leer` y
+  `meta_bienvenida_cambiar` (saludo + hasta 4 opciones con respuesta; Claude
+  los redacta desde el objetivo que describe el usuario). Meta no edita
+  creativos: se crea uno igual con el mensaje nuevo y se asigna al anuncio
+  (vuelve a revisión). `meta_crear_anuncio` acepta `saludo` y `preguntas`.
 - **Finanzas** (`lib/mcp/finance-tools.ts`): `registrar_gasto`, `listar_gastos`,
   `resumen_finanzas`. Permiso `view_global_finances` (igual que /finances).
   Mismo modelo que el bot de Telegram: montos en USD (MXN se convierte con el
