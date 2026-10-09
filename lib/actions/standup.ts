@@ -56,3 +56,19 @@ export async function processStandup(text: string): Promise<StandupItem[]> {
     }
   })
 }
+
+// Datos para abrir Captura rápida desde cualquier página (botón global):
+// mismo criterio que /tasks — proyectos activos; empleados solo los suyos.
+export async function getQuickCaptureData() {
+  const { getEmployees } = await import("@/lib/actions/employees")
+  const { getProjects } = await import("@/lib/actions/projects")
+  const { getSops } = await import("@/lib/actions/sops")
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error("No autenticado")
+  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
+  const [employees, rawProjects, sops] = await Promise.all([getEmployees(), getProjects().catch(() => []), getSops().catch(() => [])])
+  const active = (rawProjects as { id: string; name: string; status: string; members?: { id: string }[] }[]).filter((p) => p.status === "Active")
+  const visible = profile?.role === "admin" ? active : active.filter((p) => (p.members ?? []).some((m) => m.id === user.id))
+  return { currentUserId: user.id, employees, sops, projects: visible.map((p) => ({ id: p.id, name: p.name })) }
+}

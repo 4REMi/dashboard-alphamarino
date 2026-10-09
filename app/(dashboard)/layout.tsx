@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic"
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import { MobileShell } from "@/components/mobile-shell"
+import { GlobalQuickCapture } from "@/components/tasks/global-quick-capture"
 import { getWorkspaceSettings } from "@/lib/actions/workspace"
 import { getMyPendingTaskCount } from "@/lib/actions/tasks"
 import type { Profile } from "@/lib/types"
@@ -32,6 +33,7 @@ export default async function DashboardLayout({
   return (
     <MobileShell profile={profile} logoUrl={workspaceSettings.logo_url} myPendingTaskCount={myPendingTaskCount}>
       {children}
+      <GlobalQuickCapture />
     </MobileShell>
   )
 }

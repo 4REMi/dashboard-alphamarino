@@ -41,6 +41,11 @@ navegar a cada proyecto uno por uno.
   rápida, cada tarea con proyecto muestra explícitamente su alcance (equivalente al
   toggle `is_personal`) — nunca es un default silencioso, siempre hay que verlo y
   confirmarlo.
+- **Captura rápida desde cualquier página**: botón flotante morado abajo a la
+  derecha + atajo Ctrl/⌘+J en todo el dashboard (`components/tasks/global-quick-capture.tsx`,
+  montado en `app/(dashboard)/layout.tsx`). Abre el mismo modal; los datos se
+  cargan al abrirlo (`getQuickCaptureData`, mismos proyectos visibles que /tasks).
+  En /tasks no aparece (ya está el botón de la página).
 - **"Más detalles" en Captura rápida**: cada tarjeta de tipo tarea trae, colapsado
   por default, un desplegable con descripción, SOP, checklist, y Ping — los mismos
   campos que ya existen en una tarea normal, pero que la IA de clasificación nunca
