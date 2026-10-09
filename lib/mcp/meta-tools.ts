@@ -16,17 +16,17 @@ import { createAdminClient } from "@/lib/supabase/admin"
 // - Todo cambio ejecutado queda como nota en la bitácora del proyecto.
 
 const META = "https://graph.facebook.com/v21.0"
-interface ToolCtx { http?: { authInfo?: AuthInfo } }
-const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] })
+export interface ToolCtx { http?: { authInfo?: AuthInfo } }
+export const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] })
 const db = () => createAdminClient()
 
-function token() {
+export function token() {
   const t = process.env.META_SYSTEM_USER_TOKEN
   if (!t) throw new Error("META_SYSTEM_USER_TOKEN no está configurado en el servidor")
   return t
 }
 
-async function requireEditor(ctx: ToolCtx): Promise<string> {
+export async function requireEditor(ctx: ToolCtx): Promise<string> {
   const profileId = ctx.http?.authInfo?.extra?.profileId
   if (typeof profileId !== "string") throw new Error("No se pudo identificar quién está llamando esta herramienta")
   const { data } = await db().from("profiles").select("role").eq("id", profileId).single()
@@ -38,7 +38,7 @@ interface Client { projectId: string; name: string; account: string; currency: s
 
 type Periodo = { periodo?: "ciclo_activo" | "ciclo_anterior"; desde?: string; hasta?: string }
 
-async function client(name: string, range: Periodo = {}): Promise<Client & { label: string }> {
+export async function client(name: string, range: Periodo = {}): Promise<Client & { label: string }> {
   const { data } = await db().from("projects").select("id, name, status")
   const rows = (data ?? []).filter((p) => p.status === "Active")
   const q = name.trim().toLowerCase()
@@ -67,7 +67,7 @@ async function client(name: string, range: Periodo = {}): Promise<Client & { lab
   return { projectId: p.id, name: p.name, account: String(integ.account_id).replace(/^act_/, ""), currency: (integ.currency as string) || "USD", since, until, label }
 }
 
-async function get<T>(path: string, params: Record<string, string> = {}): Promise<T> {
+export async function get<T>(path: string, params: Record<string, string> = {}): Promise<T> {
   const u = new URL(`${META}/${path}`)
   for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v)
   u.searchParams.set("access_token", token())
@@ -86,7 +86,7 @@ async function all<T>(path: string, params: Record<string, string>): Promise<T[]
   }
   return out
 }
-async function post(id: string, body: Record<string, string>): Promise<Record<string, unknown>> {
+export async function post(id: string, body: Record<string, string>): Promise<Record<string, unknown>> {
   const res = await fetch(`${META}/${id}`, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ ...body, access_token: token() }) })
   const json = await res.json()
   if (json.error) throw new Error(`Meta: ${json.error.error_user_msg || json.error.message}`)
@@ -96,7 +96,7 @@ async function post(id: string, body: Record<string, string>): Promise<Record<st
 type Obj = { id: string; name: string; status: string; effective_status?: string; daily_budget?: string; lifetime_budget?: string; account_id: string; kind: "campaña" | "conjunto" | "anuncio" }
 
 // Lee el objeto y verifica que sea de la cuenta del cliente.
-async function own(c: Client, id: string): Promise<Obj> {
+export async function own(c: Client, id: string): Promise<Obj> {
   const o = await get<Record<string, string>>(id, { fields: "id,name,status,effective_status,account_id,daily_budget,lifetime_budget,campaign_id,adset_id", metadata: "1" })
   if (String(o.account_id) !== c.account) throw new Error(`${id} no pertenece a la cuenta de Meta de ${c.name}.`)
   const type = (o as unknown as { metadata?: { type?: string } }).metadata?.type
@@ -106,11 +106,11 @@ async function own(c: Client, id: string): Promise<Obj> {
 
 const money = (minor: string | number | undefined, cur: string) => minor == null ? "—" : new Intl.NumberFormat("es-MX", { style: "currency", currency: cur }).format(Number(minor) / 100)
 
-async function log(c: Client, profileId: string, body: string) {
+export async function log(c: Client, profileId: string, body: string) {
   await db().from("project_log_entries").insert({ project_id: c.projectId, author_id: profileId, body: `**Meta (vía Claude):** ${body}`, category: "Decisión" })
 }
 
-const confirmHint = "\n\nNo se cambió nada. Si es correcto, vuelve a llamar con confirmar: true."
+export const confirmHint = "\n\nNo se cambió nada. Si es correcto, vuelve a llamar con confirmar: true."
 
 export function registerMetaTools(server: McpServer) {
   server.registerTool(

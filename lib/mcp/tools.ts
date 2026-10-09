@@ -8,6 +8,7 @@ import { attachServiceOfferToProject } from "@/lib/actions/service-deliverables"
 import { registerOperationsTools } from "@/lib/mcp/operations-tools"
 import { registerFinanceTools } from "@/lib/mcp/finance-tools"
 import { registerMetaTools } from "@/lib/mcp/meta-tools"
+import { registerMetaCreateTools } from "@/lib/mcp/meta-create-tools"
 import { getProjectContext } from "@/lib/project-context"
 
 // Minimal shape of what registerTool's handler actually receives —
@@ -82,6 +83,7 @@ export function registerMcpTools(server: McpServer) {
   registerOperationsTools(server)
   registerFinanceTools(server)
   registerMetaTools(server)
+  registerMetaCreateTools(server)
 
   server.registerTool(
     "crear_tarea",

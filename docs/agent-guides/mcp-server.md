@@ -45,6 +45,13 @@ más estricto desde el inicio, no una copia de cómo funciona Telegram.
   cuenta de Meta del proyecto. Presupuesto con tope ±50% salvo
   `permitir_cambio_grande`. Copias se crean pausadas. Todo cambio queda en la
   bitácora como "Meta (vía Claude)".
+- **Crear en Meta** (`lib/mcp/meta-create-tools.ts`): `meta_activos_cuenta`
+  (páginas+Instagram, pixeles, formularios), `creativos_listos` (assets del
+  Creative Tracker con asset_id), `meta_crear_campana` (CBO/ABO, categoría
+  especial para vivienda/empleo/crédito), `meta_crear_conjunto` (optimización
+  según objetivo y destino; audiencia amplia), `meta_crear_anuncio` (sube la
+  imagen/video del asset, arma el creativo y vincula el anuncio al asset).
+  Todo se crea PAUSADO y con confirmación en dos pasos.
 - **Finanzas** (`lib/mcp/finance-tools.ts`): `registrar_gasto`, `listar_gastos`,
   `resumen_finanzas`. Permiso `view_global_finances` (igual que /finances).
   Mismo modelo que el bot de Telegram: montos en USD (MXN se convierte con el
