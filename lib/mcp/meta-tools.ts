@@ -36,7 +36,9 @@ async function requireEditor(ctx: ToolCtx): Promise<string> {
 
 interface Client { projectId: string; name: string; account: string; currency: string; since: string; until: string }
 
-async function client(name: string): Promise<Client> {
+type Periodo = { periodo?: "ciclo_activo" | "ciclo_anterior"; desde?: string; hasta?: string }
+
+async function client(name: string, range: Periodo = {}): Promise<Client & { label: string }> {
   const { data } = await db().from("projects").select("id, name, status")
   const rows = (data ?? []).filter((p) => p.status === "Active")
   const q = name.trim().toLowerCase()
@@ -51,9 +53,18 @@ async function client(name: string): Promise<Client> {
   ])
   if (!integ?.account_id) throw new Error(`${p.name} no tiene cuenta de Meta conectada.`)
   const today = new Date().toISOString().slice(0, 10)
-  const since = cycle?.start_date ?? new Date(Date.now() - 29 * 86_400_000).toISOString().slice(0, 10)
-  const until = cycle?.end_date && cycle.end_date < today ? cycle.end_date : today
-  return { projectId: p.id, name: p.name, account: String(integ.account_id).replace(/^act_/, ""), currency: (integ.currency as string) || "USD", since, until }
+  let since = cycle?.start_date ?? new Date(Date.now() - 29 * 86_400_000).toISOString().slice(0, 10)
+  let until = cycle?.end_date && cycle.end_date < today ? cycle.end_date : today
+  let label = cycle ? "ciclo activo" : "últimos 30 días"
+  if (range.desde || range.hasta) {
+    since = range.desde ?? since; until = range.hasta && range.hasta < today ? range.hasta : today; label = "rango pedido"
+  } else if (range.periodo === "ciclo_anterior") {
+    const { data: prev } = await db().from("paid_media_cycles").select("start_date, end_date").eq("project_id", p.id).eq("is_active", false)
+      .lt("start_date", cycle?.start_date ?? today).order("start_date", { ascending: false }).limit(1).maybeSingle()
+    if (!prev) throw new Error(`${p.name} no tiene un ciclo anterior registrado; usa desde/hasta.`)
+    since = prev.start_date; until = prev.end_date < today ? prev.end_date : today; label = "ciclo anterior"
+  }
+  return { projectId: p.id, name: p.name, account: String(integ.account_id).replace(/^act_/, ""), currency: (integ.currency as string) || "USD", since, until, label }
 }
 
 async function get<T>(path: string, params: Record<string, string> = {}): Promise<T> {
@@ -106,15 +117,22 @@ export function registerMetaTools(server: McpServer) {
     "meta_estado_cliente",
     {
       title: "Meta: estado del cliente",
-      description: "Lee EN VIVO la cuenta de Meta de un proyecto: campañas → conjuntos → anuncios con id, estado, presupuesto (y dónde vive: campaña=CBO o conjunto=ABO), gasto, resultados y costo por resultado del ciclo activo (o últimos 30 días). Úsalo antes de cualquier cambio para obtener los ids. Solo admin/subadmin.",
+      description: "Lee EN VIVO la cuenta de Meta de un proyecto: campañas → conjuntos → anuncios con id, estado, presupuesto (y dónde vive: campaña=CBO o conjunto=ABO), gasto, resultados y costo por resultado. Periodo: ciclo activo (por defecto), ciclo_anterior, o desde/hasta; en periodos pasados lista solo lo que gastó en ese rango aunque hoy esté pausado. Úsalo antes de cualquier cambio para obtener los ids. Solo admin/subadmin.",
       inputSchema: z.object({
         proyecto: z.string(),
         incluir_inactivos: z.boolean().default(false).describe("Incluir lo pausado/archivado"),
+        periodo: z.enum(["ciclo_activo", "ciclo_anterior"]).optional().describe("Por defecto el ciclo activo"),
+        desde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("Rango libre YYYY-MM-DD (tiene prioridad sobre periodo)"),
+        hasta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
       }),
     },
-    async ({ proyecto, incluir_inactivos }, ctx: ToolCtx) => {
+    async ({ proyecto, incluir_inactivos: inc, periodo, desde, hasta }, ctx: ToolCtx) => {
       await requireEditor(ctx)
-      const c = await client(proyecto)
+      const c = await client(proyecto, { periodo, desde, hasta })
+      // Periodo pasado: lo que corrió entonces suele estar pausado hoy → se
+      // listan todos los objetos y se dejan solo los que gastaron en el rango.
+      const past = c.label !== "ciclo activo" && c.label !== "últimos 30 días"
+      const incluir_inactivos = inc || past
       const act = `act_${c.account}`
       const filter: Record<string, string> = incluir_inactivos ? {} : { effective_status: JSON.stringify(["ACTIVE", "IN_PROCESS", "WITH_ISSUES", "CAMPAIGN_PAUSED", "ADSET_PAUSED"]) }
       const [campaigns, adsets, ads, insights] = await Promise.all([
@@ -133,14 +151,16 @@ export function registerMetaTools(server: McpServer) {
       const perf = (s: { spend: number; results: number }) => `gasto ${m(s.spend)} · ${s.results} res.${s.results ? ` · ${m(s.spend / s.results)} c/u` : ""}`
       const budget = (o: Obj) => o.daily_budget ? `${money(o.daily_budget, c.currency)}/día` : o.lifetime_budget ? `${money(o.lifetime_budget, c.currency)} total` : null
 
-      const lines: string[] = [`${c.name} · cuenta act_${c.account} · ${c.currency} · datos ${c.since} → ${c.until}`]
+      const lines: string[] = [`${c.name} · cuenta act_${c.account} · ${c.currency} · ${c.label}: ${c.since} → ${c.until}`]
       const campIds = new Set(campaigns.map((x) => x.id))
+      const spent = (id: string) => (ins.get(id)?.spend ?? 0) > 0
       for (const camp of campaigns) {
-        const sets = adsets.filter((s) => s.campaign_id === camp.id)
-        const campAds = ads.filter((a) => sets.some((s) => s.id === a.adset_id))
+        const sets = adsets.filter((s) => s.campaign_id === camp.id && (!past || ads.some((a) => a.adset_id === s.id && spent(a.id))))
+        const campAds = ads.filter((a) => sets.some((s) => s.id === a.adset_id) && (!past || spent(a.id)))
+        if (past && !campAds.length) continue
         lines.push(`\n■ CAMPAÑA ${camp.name} [${camp.id}] · ${camp.effective_status}${budget(camp) ? ` · presupuesto ${budget(camp)} (CBO)` : ""} · ${camp.objective ?? ""}\n  ${perf(sum(campAds.map((a) => a.id)))}`)
         for (const set of sets) {
-          const setAds = ads.filter((a) => a.adset_id === set.id)
+          const setAds = ads.filter((a) => a.adset_id === set.id && (!past || spent(a.id)))
           lines.push(`  ▸ CONJUNTO ${set.name} [${set.id}] · ${set.effective_status}${budget(set) ? ` · presupuesto ${budget(set)} (ABO)` : ""} · ${perf(sum(setAds.map((a) => a.id)))}`)
           for (const ad of setAds) {
             const x = ins.get(ad.id)
