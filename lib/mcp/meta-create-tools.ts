@@ -32,7 +32,63 @@ async function postRetry(path: string, body: Record<string, string>) {
   }
 }
 
+// Resumen legible de un targeting de Meta.
+export function describeTargeting(t: Record<string, any>): string {
+  const g = t.geo_locations ?? {}
+  const parts: string[] = []
+  for (const x of g.custom_locations ?? []) parts.push(`${x.radius ?? "?"} ${x.distance_unit === "mile" ? "mi" : "km"} alrededor de ${x.name ?? x.address_string ?? `${x.latitude},${x.longitude}`}`)
+  for (const x of g.cities ?? []) parts.push(`${x.name ?? x.key}${x.region ? `, ${x.region}` : ""}${x.radius ? ` +${x.radius} ${x.distance_unit === "mile" ? "mi" : "km"}` : ""}`)
+  for (const x of g.regions ?? []) parts.push(x.name ?? x.key)
+  for (const x of g.zips ?? []) parts.push(`CP ${x.name ?? x.key}`)
+  if (g.countries?.length) parts.push(g.countries.join(", "))
+  const ex = t.excluded_geo_locations ? " (con exclusiones)" : ""
+  const age = `${t.age_min ?? 18}-${t.age_max ?? 65} años`
+  const gender = t.genders?.length === 1 ? (t.genders[0] === 1 ? " · hombres" : " · mujeres") : ""
+  const interests = (t.flexible_spec ?? []).flatMap((f: any) => [...(f.interests ?? []), ...(f.behaviors ?? [])].map((i: any) => i.name)).filter(Boolean)
+  const adv = t.targeting_automation?.advantage_audience === 1 ? " · Advantage+" : ""
+  const custom = (t.custom_audiences ?? []).map((x: any) => x.name).filter(Boolean)
+  return [parts.join(" · ") + ex || "sin ubicación", age + gender + adv, interests.length ? `intereses: ${interests.slice(0, 8).join(", ")}${interests.length > 8 ? "…" : ""}` : "", custom.length ? `públicos: ${custom.join(", ")}` : ""].filter(Boolean).join(" · ")
+}
+
 export function registerMetaCreateTools(server: McpServer) {
+  server.registerTool(
+    "meta_segmentacion",
+    {
+      title: "Meta: segmentación de conjuntos",
+      description: "Lee la segmentación de uno o varios conjuntos (activos o pasados): ubicación (ciudades, radio, pin), edad, género, intereses, públicos, Advantage+, optimización y destino. Ids de meta_estado_cliente (incluir_inactivos para los pasados).",
+      inputSchema: z.object({ proyecto: z.string(), adset_ids: z.array(z.string()).min(1).max(20) }),
+    },
+    async ({ proyecto, adset_ids }, ctx: ToolCtx) => {
+      await requireEditor(ctx)
+      const c = await client(proyecto)
+      const out: string[] = []
+      for (const id of adset_ids) {
+        const o = await own(c, id)
+        if (o.kind !== "conjunto") { out.push(`- ${id}: no es un conjunto`); continue }
+        const d = await get<{ targeting?: Record<string, unknown>; optimization_goal?: string; destination_type?: string; promoted_object?: Record<string, unknown> }>(id, { fields: "targeting,optimization_goal,destination_type,promoted_object" })
+        out.push(`- "${o.name}" [${id}] · ${o.effective_status}\n  ${d.targeting ? describeTargeting(d.targeting) : "sin segmentación"}\n  optimiza ${d.optimization_goal ?? "?"}${d.destination_type ? ` · destino ${d.destination_type}` : ""}${d.promoted_object ? ` · ${JSON.stringify(d.promoted_object)}` : ""}`)
+      }
+      return text(`${c.name}\n${out.join("\n")}`)
+    },
+  )
+
+  server.registerTool(
+    "meta_buscar_ubicacion",
+    {
+      title: "Meta: buscar ubicación",
+      description: "Busca ciudades, estados o códigos postales por nombre y regresa la clave (key) que Meta usa, para meta_crear_conjunto.ciudades.",
+      inputSchema: z.object({ q: z.string().min(2), tipo: z.enum(["ciudad", "estado", "codigo_postal", "pais"]).default("ciudad"), pais: z.string().length(2).optional().describe("Filtrar por país, ej. US, MX") }),
+    },
+    async ({ q, tipo, pais }, ctx: ToolCtx) => {
+      await requireEditor(ctx)
+      const lt = { ciudad: "city", estado: "region", codigo_postal: "zip", pais: "country" }[tipo]
+      const r = await get<{ data: { key: string; name: string; type: string; region?: string; country_code?: string; country_name?: string }[] }>("search", { type: "adgeolocation", location_types: JSON.stringify([lt]), q, limit: "10" })
+      const rows = r.data.filter((x) => !pais || x.country_code === pais.toUpperCase())
+      if (!rows.length) return text(`Sin resultados para "${q}".`)
+      return text(rows.map((x) => `- ${x.name}${x.region ? `, ${x.region}` : ""}${x.country_code ? ` (${x.country_code})` : ""} · ${x.type} · key ${x.key}`).join("\n"))
+    },
+  )
+
   server.registerTool(
     "meta_activos_cuenta",
     {
@@ -120,7 +176,9 @@ export function registerMetaCreateTools(server: McpServer) {
         nombre: z.string().min(3),
         presupuesto_diario: z.number().positive().optional().describe("Solo si la campaña es ABO"),
         paises: z.array(z.string().length(2)).default(["MX"]).describe("Códigos ISO, ej. MX, US"),
-        ciudades: z.array(z.object({ key: z.string(), radio_km: z.number().optional() })).optional().describe("Claves de ciudad de Meta (si las conoces); reemplaza a paises"),
+        ciudades: z.array(z.object({ key: z.string(), radio_km: z.number().optional() })).optional().describe("Claves de ciudad (de meta_buscar_ubicacion); reemplaza a paises"),
+        ubicacion_pin: z.object({ lat: z.number(), lng: z.number(), radio_km: z.number().min(1).max(80), nombre: z.string().optional() }).optional().describe("Radio alrededor de un punto (p. ej. el club); reemplaza a paises/ciudades"),
+        copiar_segmentacion_de: z.string().optional().describe("adset_id de otro conjunto de la cuenta: copia su segmentación completa (ubicación, edad, intereses) e ignora paises/ciudades/pin/edad"),
         edad_min: z.number().min(18).max(65).default(18),
         edad_max: z.number().min(18).max(65).default(65),
         destino: z.enum(["formulario", "sitio", "whatsapp", "messenger", "instagram"]).optional().describe("Para leads: formulario|sitio. Para mensajes: whatsapp|messenger|instagram"),
@@ -161,13 +219,25 @@ export function registerMetaCreateTools(server: McpServer) {
       else if (objective === "OUTCOME_AWARENESS") { opt = "REACH" }
       else { opt = "POST_ENGAGEMENT" }
       body.optimization_goal = opt
-      const geo = a.ciudades?.length
+      const geo = a.ubicacion_pin
+        ? { custom_locations: [{ latitude: a.ubicacion_pin.lat, longitude: a.ubicacion_pin.lng, radius: a.ubicacion_pin.radio_km, distance_unit: "kilometer", ...(a.ubicacion_pin.nombre ? { name: a.ubicacion_pin.nombre } : {}) }] }
+        : a.ciudades?.length
         ? { cities: a.ciudades.map((x) => ({ key: x.key, radius: x.radio_km ?? 25, distance_unit: "kilometer" })) }
         : { countries: a.paises }
-      body.targeting = JSON.stringify({ geo_locations: geo, age_min: a.edad_min, age_max: a.edad_max, targeting_automation: { advantage_audience: 1 } })
+      let whereLabel = a.ubicacion_pin ? `${a.ubicacion_pin.radio_km} km alrededor de ${a.ubicacion_pin.nombre ?? `${a.ubicacion_pin.lat},${a.ubicacion_pin.lng}`}` : a.ciudades?.length ? `${a.ciudades.length} ciudad(es)` : a.paises.join(", ")
+      let ageLabel = `${a.edad_min}-${a.edad_max} años · audiencia Advantage+`
+      if (a.copiar_segmentacion_de) {
+        const src = await own(c, a.copiar_segmentacion_de)
+        if (src.kind !== "conjunto") throw new Error("copiar_segmentacion_de debe ser un conjunto.")
+        const { targeting } = await get<{ targeting: Record<string, unknown> }>(src.id, { fields: "targeting" })
+        body.targeting = JSON.stringify(targeting)
+        whereLabel = `segmentación copiada de "${src.name}" (${describeTargeting(targeting)})`; ageLabel = ""
+      } else {
+        body.targeting = JSON.stringify({ geo_locations: geo, age_min: a.edad_min, age_max: a.edad_max, targeting_automation: { advantage_audience: 1 } })
+      }
       if (a.presupuesto_diario) { body.daily_budget = toMinor(a.presupuesto_diario); body.bid_strategy = "LOWEST_COST_WITHOUT_CAP" }
 
-      const desc = `Conjunto "${a.nombre}" en "${camp.name}" · optimiza ${opt}${a.destino ? ` (${a.destino})` : ""} · ${a.ciudades?.length ? `${a.ciudades.length} ciudad(es)` : a.paises.join(", ")} · ${a.edad_min}-${a.edad_max} años · audiencia Advantage+ · ${a.presupuesto_diario ? `${a.presupuesto_diario} ${c.currency}/día` : "presupuesto de la campaña (CBO)"} · PAUSADO`
+      const desc = `Conjunto "${a.nombre}" en "${camp.name}" · optimiza ${opt}${a.destino ? ` (${a.destino})` : ""} · ${whereLabel}${ageLabel ? ` · ${ageLabel}` : ""} · ${a.presupuesto_diario ? `${a.presupuesto_diario} ${c.currency}/día` : "presupuesto de la campaña (CBO)"} · PAUSADO`
       if (!a.confirmar) return text(`Crearía en ${c.name}:\n- ${desc}${confirmHint}`)
       const r = await post(`act_${c.account}/adsets`, body)
       await log(c, profileId, `Conjunto creado (pausado): ${desc} · id ${r.id}`)

@@ -52,6 +52,10 @@ más estricto desde el inicio, no una copia de cómo funciona Telegram.
   según objetivo y destino; audiencia amplia), `meta_crear_anuncio` (sube la
   imagen/video del asset, arma el creativo y vincula el anuncio al asset).
   Todo se crea PAUSADO y con confirmación en dos pasos.
+  Ubicación: `meta_segmentacion` (lee la segmentación de conjuntos activos o
+  pasados), `meta_buscar_ubicacion` (nombre → key de ciudad/estado/CP), y en
+  `meta_crear_conjunto` `ubicacion_pin` (radio alrededor de lat/lng) o
+  `copiar_segmentacion_de` (segmentación completa de otro conjunto).
 - **Finanzas** (`lib/mcp/finance-tools.ts`): `registrar_gasto`, `listar_gastos`,
   `resumen_finanzas`. Permiso `view_global_finances` (igual que /finances).
   Mismo modelo que el bot de Telegram: montos en USD (MXN se convierte con el
