@@ -15,7 +15,7 @@ import type { AssetMetaLinkStatus } from "@/lib/actions/paid-media-performance"
 import { BriefCreator } from "./brief-creator"
 import { AssetCopyBank } from "./asset-copy-bank"
 import { QuickScriptModal } from "./quick-script-modal"
-import { Plus, Sparkles, Check, X, Loader2, Star, ArrowUpRight, Pencil, Trash2, Link2, FileText, Upload, ChevronDown, Film, ImageIcon, Eye, EyeOff, MessageSquare, Clock, Radio, AlertTriangle } from "lucide-react"
+import { Plus, Sparkles, Check, X, Loader2, Star, ArrowUpRight, Pencil, Trash2, Link2, FileText, Upload, ChevronDown, Film, ImageIcon, Eye, EyeOff, MessageSquare, Clock, Radio, AlertTriangle, ArrowRightLeft } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 function fmt$(v: number) {
@@ -298,6 +298,8 @@ function ConceptDetailModal({
   const [activeTab, setActiveTab] = useState<"id" | "angle" | "mech">("id")
   const [lightboxAsset, setLightboxAsset] = useState<CreativeAsset | null>(null)
   const [lightboxVideoError, setLightboxVideoError] = useState(false)
+  const [moveOpen, setMoveOpen] = useState(false)
+  const [moveQuery, setMoveQuery] = useState("")
   const [editingBriefId, setEditingBriefId] = useState<string | null>(null)
   const [briefTitleDraft, setBriefTitleDraft] = useState("")
   const angleEntry  = ANGLE_GUIDE.find((a) => a.name === concept.angle_type)
@@ -723,35 +725,6 @@ function ConceptDetailModal({
                       )}
                     </div>
 
-                    {canManageAssets && allConcepts.length > 1 && (
-                      <div className="px-5 pb-4 -mt-1 border-b">
-                        <label className="block text-xs">
-                          <span className="text-muted-foreground">Mover a otro concepto</span>
-                          <select
-                            value=""
-                            disabled={isPending}
-                            onChange={(e) => {
-                              const target = allConcepts.find((c) => c.id === e.target.value)
-                              if (!target) return
-                              const ids = piece ? piece.versions.map((v) => v.id) : [a.id]
-                              if (!confirm(`¿Mover este creativo${ids.length > 1 ? ` (${ids.length} versiones)` : ""} a "${target.name ?? "otro concepto"}"? No se vuelve a subir el archivo.`)) return
-                              startTransition(async () => {
-                                await moveAssetsToConcept(ids, projectId, target.id)
-                                for (const id of ids) onUpdateAsset(id, { concept_id: target.id })
-                                setLightboxAsset(null)
-                                onRefresh()
-                              })
-                            }}
-                            className="mt-0.5 w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm"
-                          >
-                            <option value="">{isPending ? "Moviendo…" : "Elegir concepto…"}</option>
-                            {allConcepts.filter((c) => c.id !== concept.id).map((c) => <option key={c.id} value={c.id}>{c.name ?? c.angle_type ?? "Concepto"}</option>)}
-                          </select>
-                        </label>
-                        <p className="mt-1 text-[11px] text-muted-foreground">Se mueven todas sus versiones. Si su brief es de este concepto, queda sin brief.</p>
-                      </div>
-                    )}
-
                     {piece && piece.versions.length > 1 && (
                       <div className="px-5 py-4 border-b">
                         <p className="text-xs font-semibold mb-2">Versiones</p>
@@ -775,12 +748,45 @@ function ConceptDetailModal({
 
                     <AssetCopyBank key={a.id} assetId={a.id} projectId={projectId} hasConcept={!!a.concept_id} canManage={canManageAssets} embedded />
 
+                    {canManageAssets && moveOpen && (
+                      <div className="mx-5 mt-3 rounded-lg border bg-background shadow-sm">
+                        <div className="px-3 pt-3 pb-2">
+                          <p className="text-xs font-semibold">Mover a otro concepto</p>
+                          <p className="text-[11px] text-muted-foreground">Se mueven todas sus versiones{a.brief_id ? "; quedará sin brief" : ""}. El archivo no se vuelve a subir.</p>
+                          <input autoFocus value={moveQuery} onChange={(e) => setMoveQuery(e.target.value)} placeholder="Buscar concepto…"
+                            className="mt-2 w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm" />
+                        </div>
+                        <div className="max-h-48 overflow-y-auto border-t">
+                          {allConcepts.filter((c) => c.id !== concept.id && (c.name ?? c.angle_type ?? "").toLowerCase().includes(moveQuery.toLowerCase())).map((c) => (
+                            <button key={c.id} type="button" disabled={isPending}
+                              onClick={() => {
+                                const ids = piece ? piece.versions.map((v) => v.id) : [a.id]
+                                startTransition(async () => {
+                                  await moveAssetsToConcept(ids, projectId, c.id)
+                                  for (const id of ids) onUpdateAsset(id, { concept_id: c.id })
+                                  setMoveOpen(false); setLightboxAsset(null); onRefresh()
+                                })
+                              }}
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-muted disabled:opacity-50">
+                              {c.name ?? c.angle_type ?? "Concepto"}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     {canManageAssets && (
-                      <div className="px-5 py-4 border-t flex items-center justify-between gap-2">
+                      <div className="px-5 py-4 border-t flex items-center gap-2 mt-3">
                         <Button type="button" size="sm" variant="outline" onClick={() => { setLightboxAsset(null); onNewAsset({ briefId: a.brief_id, revisesAssetId: piece?.current.id ?? a.id }) }}>
                           <Plus className="w-3.5 h-3.5 mr-1" />
                           Subir nueva versión
                         </Button>
+                        <span className="flex-1" />
+                        {allConcepts.length > 1 && (
+                          <Button type="button" size="sm" variant="ghost" disabled={isPending} onClick={() => { setMoveOpen((v) => !v); setMoveQuery("") }} title="Mover a otro concepto">
+                            {isPending && moveOpen ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <ArrowRightLeft className="w-3.5 h-3.5 mr-1" />}
+                            Mover
+                          </Button>
+                        )}
                         <Button
                           type="button"
                           variant="ghost"

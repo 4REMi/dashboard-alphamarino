@@ -182,7 +182,7 @@ vinculada).
 - `lib/actions/creatives.ts` — `createAsset`, `updateAsset`, `toggleClientVisible`,
   `assertCanManageAssets`, `moveAssetsToConcept` (mover un creativo con todas
   sus versiones a otro concepto sin re-subir; el brief solo se conserva si es
-  del concepto destino). UI: "Mover a otro concepto" en el visor del creativo.
+  del concepto destino). UI: botón "Mover" en el pie del visor del creativo (junto a Eliminar).
 - `lib/actions/client-review.ts` — `submitClientReview`,
   `submitBriefClientReview`, `notifyClientReview`.
 - `lib/notifications/events.ts` — `creative_client_approved`,
