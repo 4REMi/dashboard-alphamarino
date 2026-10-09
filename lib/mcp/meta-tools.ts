@@ -97,17 +97,23 @@ type Obj = { id: string; name: string; status: string; effective_status?: string
 
 // Lee el objeto y verifica que sea de la cuenta del cliente.
 export async function own(c: Client, id: string): Promise<Obj> {
-  const o = await get<Record<string, string>>(id, { fields: "id,name,status,effective_status,account_id", metadata: "1" })
-  if (String(o.account_id) !== c.account) throw new Error(`${id} no pertenece a la cuenta de Meta de ${c.name}.`)
-  const type = (o as unknown as { metadata?: { type?: string } }).metadata?.type
-  const kind = type === "campaign" ? "campaña" : type === "adset" ? "conjunto" : "anuncio"
-  // Cada tipo tiene sus campos: pedir uno que no existe (p. ej. campaign_id
-  // a una campaña, o presupuesto a un anuncio) hace fallar toda la llamada.
-  if (kind !== "anuncio") {
-    const b = await get<Record<string, string>>(id, { fields: "daily_budget,lifetime_budget" })
-    Object.assign(o, { daily_budget: b.daily_budget, lifetime_budget: b.lifetime_budget })
+  // El tipo se detecta probando un campo que SOLO tiene cada tipo (Meta no
+  // regresa metadata.type cuando se piden campos explícitos, y pedir un campo
+  // que el objeto no tiene hace fallar la llamada).
+  const base = "id,name,status,effective_status,account_id"
+  const probes: [Obj["kind"], string][] = [["campaña", "objective,daily_budget,lifetime_budget"], ["conjunto", "optimization_goal,daily_budget,lifetime_budget"], ["anuncio", "creative"]]
+  let lastErr: unknown = null
+  for (const [kind, extra] of probes) {
+    try {
+      const o = await get<Record<string, string>>(id, { fields: `${base},${extra}` })
+      if (String(o.account_id) !== c.account) throw new Error(`${id} no pertenece a la cuenta de Meta de ${c.name}.`)
+      return { ...(o as unknown as Obj), kind }
+    } catch (e) {
+      if (e instanceof Error && e.message.includes("no pertenece")) throw e
+      lastErr = e
+    }
   }
-  return { ...(o as unknown as Obj), kind }
+  throw new Error(`No pude leer ${id} en Meta: ${lastErr instanceof Error ? lastErr.message : lastErr}`)
 }
 
 const money = (minor: string | number | undefined, cur: string) => minor == null ? "—" : new Intl.NumberFormat("es-MX", { style: "currency", currency: cur }).format(Number(minor) / 100)
