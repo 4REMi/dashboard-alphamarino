@@ -37,6 +37,14 @@ más estricto desde el inicio, no una copia de cómo funciona Telegram.
   vía el cliente admin. Cuando se omite (la UI normal, Captura rápida), la
   función se comporta exactamente igual que antes — es un parámetro aditivo, no
   un cambio de comportamiento para nadie más.
+- **Meta Ads** (`lib/mcp/meta-tools.ts`): `meta_estado_cliente` (lee en vivo
+  campañas → conjuntos → anuncios con ids, presupuesto CBO/ABO y rendimiento
+  del ciclo), `meta_cambiar_estado`, `meta_presupuesto`, `meta_renombrar`,
+  `meta_duplicar`. Solo admin/subadmin. Escrituras en dos pasos: sin
+  `confirmar: true` solo describen el cambio. Cada id se verifica contra la
+  cuenta de Meta del proyecto. Presupuesto con tope ±50% salvo
+  `permitir_cambio_grande`. Copias se crean pausadas. Todo cambio queda en la
+  bitácora como "Meta (vía Claude)".
 - **Finanzas** (`lib/mcp/finance-tools.ts`): `registrar_gasto`, `listar_gastos`,
   `resumen_finanzas`. Permiso `view_global_finances` (igual que /finances).
   Mismo modelo que el bot de Telegram: montos en USD (MXN se convierte con el
