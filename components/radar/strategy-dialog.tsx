@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState, useTransition } from "react"
-import { Loader2, Check, Search, X, ShieldAlert } from "lucide-react"
+import { Loader2, Check, Search, X, ShieldAlert, Play } from "lucide-react"
 import { getStrategyDraft, saveStrategy, type StrategyDraft } from "@/lib/actions/radar"
 import type { StrategyLine } from "@/lib/radar/types"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
@@ -65,7 +65,7 @@ export function StrategyDialog({ projectId, open, onOpenChange, onSaved }: { pro
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[min(620px,96vw)] w-[96vw] max-h-[92vh] overflow-y-auto p-0 gap-0">
+      <DialogContent className="max-w-[min(720px,96vw)] w-[96vw] max-h-[92vh] overflow-y-auto p-0 gap-0">
         <div className="px-6 pt-5 pb-3">
           <DialogTitle className="text-lg">Estrategia del ciclo</DialogTitle>
           {draft?.cycle && <p className="text-xs text-muted-foreground">{draft.cycle.start} → {draft.cycle.end}</p>}
@@ -133,31 +133,8 @@ export function StrategyDialog({ projectId, open, onOpenChange, onSaved }: { pro
             </div>
 
             {/* A prueba */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <p className={cn(label, "flex-1")}>A prueba · {testing.length}/{MAX_TESTS}</p>
-                <div className="relative">
-                  <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                  <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar concepto" className="h-7 w-40 pl-7 pr-2 rounded-md border border-input bg-background text-xs focus:outline-none focus:ring-1 focus:ring-ring" />
-                </div>
-              </div>
-              <div className="rounded-lg border border-border max-h-[188px] overflow-y-auto divide-y divide-border">
-                {concepts.length === 0 && <p className="px-3 py-3 text-xs text-muted-foreground">{draft.concepts.length ? "Sin conceptos para esas líneas." : "Aún no hay conceptos en el Creative Tracker."}</p>}
-                {concepts.map((c) => {
-                  const on = testing.includes(c.id)
-                  const full = !on && testing.length >= MAX_TESTS
-                  return (
-                    <button key={c.id} type="button" disabled={full} onClick={() => setTesting((t) => (on ? t.filter((x) => x !== c.id) : [...t, c.id]))}
-                      className={cn("w-full flex items-center gap-2.5 px-2.5 py-1.5 text-left text-sm", on ? "bg-primary/5" : "hover:bg-muted/50", full && "opacity-40")}>
-                      <span className={cn("w-4 h-4 rounded border flex items-center justify-center shrink-0", on ? "bg-primary border-primary text-primary-foreground" : "border-input")}>{on && <Check className="w-3 h-3" />}</span>
-                      <ConceptThumb src={c.thumb} name={c.name} color={colorOf(c.brand_line_id)} />
-                      <span className="flex-1 min-w-0 truncate">{c.name}</span>
-                      {colorOf(c.brand_line_id) && <span className="w-2 h-2 rounded-full shrink-0" style={{ background: colorOf(c.brand_line_id)! }} />}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
+            <ConceptPicker concepts={concepts} total={draft.concepts} testing={testing} setTesting={setTesting} q={q} setQ={setQ}
+              colorOf={colorOf} lineName={(id) => options.find((o) => (o.id || null) === id)?.name ?? null} currency={cur} />
 
             {/* Apuesta */}
             <div className="space-y-1.5">
@@ -184,16 +161,94 @@ export function StrategyDialog({ projectId, open, onOpenChange, onSaved }: { pro
   )
 }
 
-// Miniatura chica; sin imagen (o si falla) muestra la inicial con el color de su línea.
-function ConceptThumb({ src, name, color }: { src: string | null; name: string; color: string | null }) {
-  const [broken, setBroken] = useState(false)
-  if (src && !broken) {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img src={src} alt="" onError={() => setBroken(true)} className="w-7 h-7 rounded object-cover shrink-0" />
-  }
+type Concept = StrategyDraft["concepts"][number]
+const STATE: Record<Concept["state"], { title: string; hint: string }> = {
+  ready: { title: "Listos para probar", hint: "Tienen creativos y aún no corren en Meta." },
+  running: { title: "Corriendo este ciclo", hint: "Ya tienen gasto en el ciclo activo." },
+  tested: { title: "Ya probados", hint: "Corrieron en ciclos anteriores." },
+  empty: { title: "Sin creativos", hint: "" },
+}
+
+// Elegir qué probar: lo listo arriba (con sus creativos a la vista), lo que
+// corre o ya corrió con sus números, y sin creativos solo como conteo.
+function ConceptPicker({ concepts, total, testing, setTesting, q, setQ, colorOf, lineName, currency }: {
+  concepts: Concept[]; total: Concept[]; testing: string[]; setTesting: (f: (t: string[]) => string[]) => void
+  q: string; setQ: (v: string) => void; colorOf: (id: string | null) => string | null; lineName: (id: string | null) => string | null; currency: string
+}) {
+  const [showTested, setShowTested] = useState(false)
+  const groups = (["ready", "running", "tested"] as const).map((st) => ({ st, items: concepts.filter((c) => c.state === st) }))
+  const empty = concepts.filter((c) => c.state === "empty").length
+  const money = (n: number) => new Intl.NumberFormat("es-MX", { style: "currency", currency, maximumFractionDigits: n < 100 ? 2 : 0 }).format(n)
+
   return (
-    <span className="w-7 h-7 rounded shrink-0 flex items-center justify-center text-[11px] font-bold text-white" style={{ background: color ?? "#94a3b8" }}>
-      {name.trim().charAt(0).toUpperCase()}
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex-1">Conceptos a probar · {testing.length}/{MAX_TESTS}</p>
+        <div className="relative">
+          <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar" className="h-7 w-36 pl-7 pr-2 rounded-md border border-input bg-background text-xs focus:outline-none focus:ring-1 focus:ring-ring" />
+        </div>
+      </div>
+      {total.length === 0 && <p className="text-xs text-muted-foreground">Aún no hay conceptos en el Creative Tracker.</p>}
+      <div className="space-y-3 max-h-[340px] overflow-y-auto pr-1">
+        {groups.map(({ st, items }) => {
+          if (!items.length) return null
+          const collapsed = st === "tested" && !showTested && !q
+          return (
+            <div key={st} className="space-y-1.5">
+              <button type="button" disabled={st !== "tested"} onClick={() => setShowTested((v) => !v)} className="text-xs font-medium flex items-center gap-1.5 disabled:cursor-default">
+                <span className={cn("w-1.5 h-1.5 rounded-full", st === "ready" ? "bg-emerald-500" : st === "running" ? "bg-sky-500" : "bg-muted-foreground/50")} />
+                {STATE[st].title} <span className="text-muted-foreground">{items.length}</span>
+                {st === "tested" && <span className="text-muted-foreground">· {collapsed ? "ver" : "ocultar"}</span>}
+              </button>
+              {!collapsed && items.map((c) => {
+                const on = testing.includes(c.id)
+                const full = !on && testing.length >= MAX_TESTS
+                const color = colorOf(c.brand_line_id)
+                const cpr = c.results > 0 ? c.spend / c.results : null
+                return (
+                  <button key={c.id} type="button" disabled={full} onClick={() => setTesting((t) => (on ? t.filter((x) => x !== c.id) : [...t, c.id]))}
+                    className={cn("w-full flex items-center gap-3 rounded-lg border p-2 text-left transition-colors", on ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border hover:border-foreground/30", full && "opacity-40")}>
+                    <div className="flex -space-x-3 shrink-0">
+                      {c.thumbs.slice(0, 3).map((t, i) => <Thumb key={i} url={t.url} video={t.video} color={color} name={c.name} />)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium leading-snug line-clamp-1">{c.name}</p>
+                      <p className="text-[11px] text-muted-foreground line-clamp-1">
+                        {lineName(c.brand_line_id) && <span className="inline-flex items-center gap-1 mr-1.5"><span className="w-1.5 h-1.5 rounded-full" style={{ background: color ?? "#94a3b8" }} />{lineName(c.brand_line_id)}</span>}
+                        {c.angle}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0 text-[11px] leading-tight">
+                      {c.state === "ready" ? (
+                        <><p className="font-medium">{c.assets} creativo{c.assets === 1 ? "" : "s"}</p><p className={c.approved ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}>{c.approved ? `${c.approved} aprobado${c.approved === 1 ? "" : "s"}` : "sin aprobar"}</p></>
+                      ) : (
+                        <><p className="font-medium tabular-nums">{money(c.spend)}</p><p className="text-muted-foreground tabular-nums">{cpr ? `${money(cpr)} c/u · ${c.results}` : "sin resultados"}</p></>
+                      )}
+                    </div>
+                    <span className={cn("w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0", on ? "bg-primary border-primary text-primary-foreground" : "border-input")}>{on && <Check className="w-3 h-3" />}</span>
+                  </button>
+                )
+              })}
+            </div>
+          )
+        })}
+        {empty > 0 && <p className="text-[11px] text-muted-foreground">{empty} concepto{empty === 1 ? "" : "s"} sin creativos todavía (no se pueden probar).</p>}
+      </div>
+    </div>
+  )
+}
+
+// Creativo en formato vertical; video marcado; sin imagen → inicial con color de la línea.
+function Thumb({ url, video, color, name }: { url: string | null; video: boolean; color: string | null; name: string }) {
+  const [broken, setBroken] = useState(false)
+  return (
+    <span className="relative w-9 h-12 rounded-md overflow-hidden border-2 border-background bg-muted shrink-0 shadow-sm">
+      {url && !broken
+        // eslint-disable-next-line @next/next/no-img-element
+        ? <img src={url} alt="" onError={() => setBroken(true)} className="w-full h-full object-cover" />
+        : <span className="absolute inset-0 flex items-center justify-center text-[11px] font-bold text-white" style={{ background: color ?? "#94a3b8" }}>{name.trim().charAt(0).toUpperCase()}</span>}
+      {video && <span className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 rounded-full bg-black/60 flex items-center justify-center"><Play className="w-2 h-2 text-white fill-white" /></span>}
     </span>
   )
 }

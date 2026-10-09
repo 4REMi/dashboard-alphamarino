@@ -53,6 +53,21 @@ export async function getAgencyRadar(): Promise<RadarSnapshot[]> {
 
 // ── Estrategia ──────────────────────────────────────────────────────────
 
+// Lo que hace falta para decidir qué probar: si tiene creativos listos,
+// si ya corrió y cómo le fue (todas las fechas, vía los anuncios vinculados).
+export interface StrategyConcept {
+  id: string
+  name: string
+  angle: string | null
+  brand_line_id: string | null
+  thumbs: { url: string | null; video: boolean }[]   // versiones vigentes, máx. 4
+  assets: number
+  approved: number
+  state: "ready" | "running" | "tested" | "empty"
+  spend: number
+  results: number
+}
+
 export interface StrategyDraft {
   cycle: { id: string; start: string; end: string } | null
   currency: string
@@ -60,7 +75,7 @@ export interface StrategyDraft {
   budgetHint: string | null
   lines: StrategyLine[]
   brandLines: { id: string; name: string; color: string | null }[]
-  concepts: { id: string; name: string; brand_line_id: string | null; thumb: string | null }[]
+  concepts: StrategyConcept[]
   testing_concept_ids: string[]
   bet: string
   budget_guard: "warn" | "auto_pause"
@@ -85,7 +100,7 @@ export async function getStrategyDraft(projectId: string): Promise<StrategyDraft
     active ? db.from("radar_strategies").select("*").eq("project_id", projectId).eq("cycle_id", active.id).maybeSingle() : Promise.resolve({ data: null }),
     db.from("radar_strategies").select("*").eq("project_id", projectId).order("confirmed_at", { ascending: false }).limit(1).maybeSingle(),
     project?.brand_brain_id ? db.from("brand_lines").select("id, name, color").eq("brand_brain_id", project.brand_brain_id).order("position") : Promise.resolve({ data: [] }),
-    db.from("creative_concepts").select("id, name, brand_line_id, status, assets:creative_assets(thumbnail_path, file_path, asset_url)").eq("project_id", projectId).order("created_at", { ascending: false }).limit(80),
+    db.from("creative_concepts").select("id, name, angle_type, brand_line_id, status, created_at, assets:creative_assets(id, file_type, thumbnail_path, file_path, asset_url, client_status, revises_asset_id)").eq("project_id", projectId).order("created_at", { ascending: false }).limit(80),
   ])
 
   // Gasto/costo reales del ciclo anterior (Meta) para proponer.
@@ -96,14 +111,7 @@ export async function getStrategyDraft(projectId: string): Promise<StrategyDraft
     const sp = (st ?? []).reduce((s, r) => s + Number(r.spend ?? 0), 0), rs = (st ?? []).reduce((s, r) => s + Number(r.results ?? 0), 0)
     if (sp > 0) { prevSpend = sp; prevCpr = rs > 0 ? sp / rs : null }
   }
-  const base = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/creative-assets/`
-  const conceptList = ((concepts ?? []) as unknown as { id: string; name: string | null; brand_line_id: string | null; status: string | null; assets: { thumbnail_path: string | null; file_path: string | null; asset_url: string | null }[] }[])
-    .filter((c) => c.status !== "archived")
-    .map((c) => {
-      const isVid = (u: string | null) => !!u && /\.(mp4|mov|webm|m4v)(\?|$)/i.test(u)
-      const a = c.assets?.find((x) => x.thumbnail_path || (x.file_path && !isVid(x.file_path)) || (x.asset_url && !isVid(x.asset_url)))
-      return { id: c.id, name: c.name ?? "Concepto", brand_line_id: c.brand_line_id, thumb: a ? (a.thumbnail_path ? base + a.thumbnail_path : a.file_path && !isVid(a.file_path) ? base + a.file_path : isVid(a.asset_url) ? null : a.asset_url) : null }
-    })
+  const conceptList = await buildConceptList(db, projectId, active?.id ?? null, (concepts ?? []) as unknown as RawConcept[])
 
   const src = saved ?? null
   const carry = !src && prevStrat ? prevStrat : null
@@ -126,6 +134,51 @@ export async function getStrategyDraft(projectId: string): Promise<StrategyDraft
     previousBet: carry?.bet ?? null,
     suggestedCpr: prevCpr ? Math.round(prevCpr * 100) / 100 : null,
   }
+}
+
+type RawConcept = { id: string; name: string | null; angle_type: string | null; brand_line_id: string | null; status: string | null
+  assets: { id: string; file_type: string | null; thumbnail_path: string | null; file_path: string | null; asset_url: string | null; client_status: string | null; revises_asset_id: string | null }[] }
+
+async function buildConceptList(db: ReturnType<typeof createAdminClient>, projectId: string, activeCycleId: string | null, raw: RawConcept[]): Promise<StrategyConcept[]> {
+  const base = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/creative-assets/`
+  const isVid = (u: string | null) => !!u && /\.(mp4|mov|webm|m4v)(\?|$)/i.test(u)
+  // Anuncio de Meta → asset, y su gasto/resultados en todos los ciclos.
+  const { data: links } = await db.from("creative_asset_meta_ads").select("creative_asset_id, meta_ad_id").eq("project_id", projectId)
+  const adIds = [...new Set((links ?? []).map((l) => l.meta_ad_id as string))]
+  const perAd = new Map<string, { spend: number; results: number; active: number }>()
+  const metaThumb = new Map<string, string>()
+  for (let i = 0; i < adIds.length; i += 200) {
+    const chunk = adIds.slice(i, i + 200)
+    const [{ data: st }, { data: ads }] = await Promise.all([
+      db.from("meta_ad_daily_stats").select("ad_id, cycle_id, spend, results").eq("project_id", projectId).in("ad_id", chunk),
+      db.from("meta_ads").select("ad_id, thumbnail_url, image_url").eq("project_id", projectId).in("ad_id", chunk),
+    ])
+    for (const r of st ?? []) {
+      const a = perAd.get(r.ad_id) ?? { spend: 0, results: 0, active: 0 }
+      a.spend += Number(r.spend ?? 0); a.results += Number(r.results ?? 0)
+      if (r.cycle_id === activeCycleId) a.active += Number(r.spend ?? 0)
+      perAd.set(r.ad_id, a)
+    }
+    for (const a of ads ?? []) if (a.thumbnail_url || a.image_url) metaThumb.set(a.ad_id, (a.thumbnail_url || a.image_url) as string)
+  }
+  const adsByAsset = new Map<string, string[]>()
+  for (const l of links ?? []) adsByAsset.set(l.creative_asset_id, [...(adsByAsset.get(l.creative_asset_id) ?? []), l.meta_ad_id])
+
+  return raw.filter((c) => c.status !== "archived").map((c) => {
+    const all = c.assets ?? []
+    const replaced = new Set(all.map((a) => a.revises_asset_id).filter(Boolean))
+    const current = all.filter((a) => !replaced.has(a.id))     // solo la versión vigente de cada pieza
+    let spend = 0, results = 0, active = 0
+    for (const a of all) for (const ad of adsByAsset.get(a.id) ?? []) { const p = perAd.get(ad); if (p) { spend += p.spend; results += p.results; active += p.active } }
+    const thumbs = current.slice(0, 4).map((a) => {
+      const video = a.file_type === "video" || isVid(a.file_path) || isVid(a.asset_url)
+      const fromMeta = (adsByAsset.get(a.id) ?? []).map((ad) => metaThumb.get(ad)).find(Boolean) ?? null
+      const url = a.thumbnail_path ? base + a.thumbnail_path : !video && a.file_path ? base + a.file_path : !video && a.asset_url ? a.asset_url : fromMeta
+      return { url, video }
+    })
+    const state: StrategyConcept["state"] = !current.length ? "empty" : active > 0 ? "running" : spend > 0 ? "tested" : "ready"
+    return { id: c.id, name: c.name ?? "Concepto", angle: c.angle_type, brand_line_id: c.brand_line_id, thumbs, assets: current.length, approved: current.filter((a) => a.client_status === "approved").length, state, spend, results }
+  })
 }
 
 export async function saveStrategy(projectId: string, input: { budget: number; budget_guard: "warn" | "auto_pause"; lines: StrategyLine[]; testing_concept_ids: string[]; bet: string }): Promise<void> {
