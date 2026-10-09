@@ -201,7 +201,7 @@ export function registerMcpTools(server: McpServer) {
     "estado_proyecto",
     {
       title: "Estado de un proyecto",
-      description: "Status, fechas, cliente, conteo de tareas por estado y ciclo activo (si es paid media) de un proyecto.",
+      description: "Status, fechas, cliente, conteo de tareas por estado y ciclo activo (si es paid media) de un proyecto. No trae métricas de anuncios: para gasto/resultados de Meta usa meta_estado_cliente.",
       inputSchema: z.object({ proyecto: z.string().min(1) }),
     },
     async ({ proyecto }) => {
@@ -230,14 +230,14 @@ export function registerMcpTools(server: McpServer) {
       if (project.project_type === "paid_media") {
         const { data: cycle } = await admin
           .from("paid_media_cycles")
-          .select("start_date, end_date, status")
+          .select("start_date, end_date")
           .eq("project_id", projectId)
-          .eq("status", "active")
-          .order("start_date", { ascending: false })
+          .eq("is_active", true)
           .maybeSingle()
         if (cycle) {
           const overdue = cycle.end_date < todayIso()
           lines.push(`Ciclo activo: ${formatDate(cycle.start_date)} → ${formatDate(cycle.end_date)}${overdue ? " — ⚠️ VENCIDO, no se ha cerrado" : ""}`)
+          lines.push("Métricas de Meta (gasto, resultados, por anuncio): usa meta_estado_cliente.")
         } else {
           lines.push("Ciclo de paid media: no tiene un ciclo activo en este momento.")
         }
