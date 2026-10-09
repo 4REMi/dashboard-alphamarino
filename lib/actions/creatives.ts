@@ -1748,3 +1748,25 @@ export async function generateReferenceScript(briefId: string, adId: string): Pr
     return { error: e instanceof Error ? e.message : String(e) }
   }
 }
+
+// Mover un creativo (con todas sus versiones) a otro concepto sin volver a
+// subir el archivo. El brief se conserva solo si pertenece al concepto
+// destino; si no, queda sin brief.
+export async function moveAssetsToConcept(assetIds: string[], projectId: string, conceptId: string): Promise<void> {
+  const supabase = await createClient()
+  const { role, userId } = await getRole()
+  await assertCanManageAssets(projectId, role, userId)
+  const { data: concept } = await supabase.from("creative_concepts").select("id, project_id").eq("id", conceptId).single()
+  if (!concept || concept.project_id !== projectId) throw new Error("Concepto no válido para este proyecto")
+  const { data: assets } = await supabase.from("creative_assets").select("id, brief_id, project_id").in("id", assetIds)
+  const briefIds = [...new Set((assets ?? []).map((a) => a.brief_id).filter(Boolean))] as string[]
+  const { data: briefs } = briefIds.length ? await supabase.from("creative_briefs").select("id, concept_id").in("id", briefIds) : { data: [] }
+  const keep = new Set((briefs ?? []).filter((b) => b.concept_id === conceptId).map((b) => b.id))
+  for (const a of assets ?? []) {
+    if (a.project_id !== projectId) continue
+    const { error } = await supabase.from("creative_assets")
+      .update({ concept_id: conceptId, brief_id: a.brief_id && keep.has(a.brief_id) ? a.brief_id : null }).eq("id", a.id)
+    if (error) throw error
+  }
+  revalidateProject(projectId)
+}

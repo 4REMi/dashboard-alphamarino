@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ConceptModal } from "./concept-modal"
 import { AssetModal } from "./asset-modal"
-import { generateCreativeConcepts, confirmAIDrafts, deleteConcept, bulkDeleteConcepts, deleteBrief, deleteAsset, toggleClientVisible, updateBriefTitle, setAssetBrief } from "@/lib/actions/creatives"
+import { generateCreativeConcepts, confirmAIDrafts, deleteConcept, bulkDeleteConcepts, deleteBrief, deleteAsset, toggleClientVisible, updateBriefTitle, setAssetBrief, moveAssetsToConcept } from "@/lib/actions/creatives"
 import { CONCEPT_STATUS_COLORS, AWARENESS_LABELS, ANGLE_GUIDE, PRODUCTION_STATUS_COLORS, VERDICT_COLORS } from "@/lib/constants/creatives"
 import type { CreativeConcept, CreativeAsset, CreativeBrief, BrandLine, AdCloneLine } from "@/lib/types"
 import type { AIDraftConcept } from "@/lib/actions/creatives"
@@ -274,7 +274,9 @@ function ConceptDetailModal({
   onRefresh,
   onUpdateAsset,
   assetLinkStatus,
+  allConcepts = [],
 }: {
+  allConcepts?: CreativeConcept[]
   concept: CreativeConcept
   conceptAssets: CreativeAsset[]
   conceptBriefs: CreativeBrief[]
@@ -720,6 +722,35 @@ function ConceptDetailModal({
                         </label>
                       )}
                     </div>
+
+                    {canManageAssets && allConcepts.length > 1 && (
+                      <div className="px-5 pb-4 -mt-1 border-b">
+                        <label className="block text-xs">
+                          <span className="text-muted-foreground">Mover a otro concepto</span>
+                          <select
+                            value=""
+                            disabled={isPending}
+                            onChange={(e) => {
+                              const target = allConcepts.find((c) => c.id === e.target.value)
+                              if (!target) return
+                              const ids = piece ? piece.versions.map((v) => v.id) : [a.id]
+                              if (!confirm(`¿Mover este creativo${ids.length > 1 ? ` (${ids.length} versiones)` : ""} a "${target.name ?? "otro concepto"}"? No se vuelve a subir el archivo.`)) return
+                              startTransition(async () => {
+                                await moveAssetsToConcept(ids, projectId, target.id)
+                                for (const id of ids) onUpdateAsset(id, { concept_id: target.id })
+                                setLightboxAsset(null)
+                                onRefresh()
+                              })
+                            }}
+                            className="mt-0.5 w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm"
+                          >
+                            <option value="">{isPending ? "Moviendo…" : "Elegir concepto…"}</option>
+                            {allConcepts.filter((c) => c.id !== concept.id).map((c) => <option key={c.id} value={c.id}>{c.name ?? c.angle_type ?? "Concepto"}</option>)}
+                          </select>
+                        </label>
+                        <p className="mt-1 text-[11px] text-muted-foreground">Se mueven todas sus versiones. Si su brief es de este concepto, queda sin brief.</p>
+                      </div>
+                    )}
 
                     {piece && piece.versions.length > 1 && (
                       <div className="px-5 py-4 border-b">
@@ -1538,6 +1569,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
           onRefresh={onRefresh}
           onUpdateAsset={onUpdateAsset}
           assetLinkStatus={assetLinkStatus}
+          allConcepts={concepts}
         />
       )}
 

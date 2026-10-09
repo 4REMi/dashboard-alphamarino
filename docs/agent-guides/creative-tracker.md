@@ -180,7 +180,9 @@ vinculada).
   `conceptLiveRollup`, el badge en el grid de assets, y el ícono/banner de
   "archivado pero sigue corriendo".
 - `lib/actions/creatives.ts` — `createAsset`, `updateAsset`, `toggleClientVisible`,
-  `assertCanManageAssets`.
+  `assertCanManageAssets`, `moveAssetsToConcept` (mover un creativo con todas
+  sus versiones a otro concepto sin re-subir; el brief solo se conserva si es
+  del concepto destino). UI: "Mover a otro concepto" en el visor del creativo.
 - `lib/actions/client-review.ts` — `submitClientReview`,
   `submitBriefClientReview`, `notifyClientReview`.
 - `lib/notifications/events.ts` — `creative_client_approved`,
