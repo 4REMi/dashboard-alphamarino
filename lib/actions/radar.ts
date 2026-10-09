@@ -65,6 +65,7 @@ export interface StrategyDraft {
   bet: string
   budget_guard: "warn" | "auto_pause"
   previousBet: string | null
+  suggestedCpr: number | null
 }
 
 // Valores para el formulario: lo guardado, o una PROPUESTA a partir del
@@ -99,14 +100,15 @@ export async function getStrategyDraft(projectId: string): Promise<StrategyDraft
   const conceptList = ((concepts ?? []) as unknown as { id: string; name: string | null; brand_line_id: string | null; status: string | null; assets: { thumbnail_path: string | null; file_path: string | null; asset_url: string | null }[] }[])
     .filter((c) => c.status !== "archived")
     .map((c) => {
-      const a = c.assets?.find((x) => x.thumbnail_path || (x.file_path && !/\.(mp4|mov|webm)$/i.test(x.file_path)) || x.asset_url)
-      return { id: c.id, name: c.name ?? "Concepto", brand_line_id: c.brand_line_id, thumb: a ? (a.thumbnail_path ? base + a.thumbnail_path : a.file_path && !/\.(mp4|mov|webm)$/i.test(a.file_path) ? base + a.file_path : a.asset_url) : null }
+      const isVid = (u: string | null) => !!u && /\.(mp4|mov|webm|m4v)(\?|$)/i.test(u)
+      const a = c.assets?.find((x) => x.thumbnail_path || (x.file_path && !isVid(x.file_path)) || (x.asset_url && !isVid(x.asset_url)))
+      return { id: c.id, name: c.name ?? "Concepto", brand_line_id: c.brand_line_id, thumb: a ? (a.thumbnail_path ? base + a.thumbnail_path : a.file_path && !isVid(a.file_path) ? base + a.file_path : isVid(a.asset_url) ? null : a.asset_url) : null }
     })
 
   const src = saved ?? null
   const carry = !src && prevStrat ? prevStrat : null
   const suggestedLines: StrategyLine[] = (brandLines ?? []).length
-    ? (brandLines ?? []).map((l) => ({ key: l.id, name: l.name, brand_line_id: l.id, channel: "Meta Ads", conversion: "Leads", budget: null, target_cpr: prevCpr ? Math.round(prevCpr * 100) / 100 : null }))
+    ? (brandLines ?? []).map((l) => ({ key: l.id, name: l.name, brand_line_id: l.id, channel: "Meta Ads", conversion: "Leads", budget: null, target_cpr: null }))
     : [{ key: "general", name: "General", brand_line_id: null, channel: "Meta Ads", conversion: "Leads", budget: null, target_cpr: prevCpr ? Math.round(prevCpr * 100) / 100 : null }]
 
   return {
@@ -114,13 +116,15 @@ export async function getStrategyDraft(projectId: string): Promise<StrategyDraft
     currency: (integration?.currency as string | null) || "USD",
     budget: src ? Number(src.budget) : carry ? Number(carry.budget) : prevSpend ? Math.round(prevSpend) : null,
     budgetHint: !src && prevSpend ? `Propuesta: lo invertido el ciclo anterior${prevCpr ? ` (costo por resultado ${prevCpr.toFixed(2)})` : ""}.` : null,
-    lines: (src?.lines as StrategyLine[] | undefined) ?? (carry?.lines as StrategyLine[] | undefined) ?? suggestedLines,
+    // Sin pre-seleccionar todas las líneas: la persona elige qué se empuja.
+    lines: (src?.lines as StrategyLine[] | undefined) ?? (carry?.lines as StrategyLine[] | undefined) ?? (suggestedLines.length === 1 ? suggestedLines : []),
     brandLines: (brandLines ?? []) as { id: string; name: string; color: string | null }[],
     concepts: conceptList,
     testing_concept_ids: (src?.testing_concept_ids as string[] | undefined) ?? [],
     bet: src?.bet ?? "",
     budget_guard: (src?.budget_guard ?? carry?.budget_guard ?? "warn") as "warn" | "auto_pause",
     previousBet: carry?.bet ?? null,
+    suggestedCpr: prevCpr ? Math.round(prevCpr * 100) / 100 : null,
   }
 }
 

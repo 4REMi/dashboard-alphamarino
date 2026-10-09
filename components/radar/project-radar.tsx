@@ -5,7 +5,7 @@ import { Loader2, Radar, Target, Pencil, Quote, History, ChevronDown, RefreshCw,
 import { getProjectRadar, getRadarHistory } from "@/lib/actions/radar"
 import type { RadarSnapshot } from "@/lib/radar/types"
 import { StrategyDialog } from "@/components/radar/strategy-dialog"
-import { PacingBar, RecCard, SeverityCounts, AdThumb, money, SEV_STYLE } from "@/components/radar/radar-ui"
+import { PacingBar, RecCard, SeverityCounts, money, SEV_STYLE, RULE_META } from "@/components/radar/radar-ui"
 import { cn } from "@/lib/utils"
 
 // Radar de UN proyecto: estrategia del ciclo arriba (la apuesta, en grande),
@@ -35,6 +35,48 @@ export function ProjectRadar({ projectId, initial, embedded = false, onChanged, 
   if (!snap) return <div className="p-6 text-sm text-muted-foreground flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" />Leyendo la cuenta…</div>
 
   const S = snap.strategy
+
+  // Dentro del proyecto: una franja corta (no repite lo que el Hub ya muestra).
+  if (embedded) {
+    const href = `/radar?p=${projectId}`
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <Radar className="w-4 h-4 text-primary" />
+          <h3 className="text-sm font-semibold">Radar</h3>
+          {S ? <SeverityCounts counts={snap.counts} size="sm" /> : <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-primary/10 text-primary">Sin estrategia</span>}
+          {S && <p className="text-xs text-muted-foreground italic truncate min-w-0 flex-1">“{S.bet}”</p>}
+          <div className="ml-auto flex items-center gap-2">
+            {snap.canEdit && snap.cycle && (
+              <button onClick={() => setStrategyOpen(true)} className={cn("h-7 px-2.5 rounded-md text-xs font-medium", S ? "border border-border hover:bg-muted" : "bg-primary text-primary-foreground")}>{S ? "Estrategia" : "Definir estrategia"}</button>
+            )}
+            <a href={href} className="h-7 px-2.5 rounded-md border border-border text-xs inline-flex items-center gap-1 hover:bg-muted">Abrir Radar<ArrowUpRight className="w-3 h-3" /></a>
+          </div>
+        </div>
+        {snap.pacing && snap.cycle && <PacingBar pacing={snap.pacing} currency={snap.currency} day={snap.cycle.day} days={snap.cycle.days} />}
+        {S && (
+          snap.recs.length === 0 ? <p className="text-xs text-emerald-600 dark:text-emerald-400">Todo en orden según la estrategia.</p> : (
+            <ul className="divide-y divide-border rounded-lg border border-border bg-card">
+              {snap.recs.slice(0, 3).map((r) => {
+                const { Icon } = RULE_META[r.rule]
+                return (
+                  <li key={r.key}>
+                    <a href={href} className="flex items-center gap-2.5 px-3 py-2 text-sm hover:bg-muted/40">
+                      <span className={cn("w-1.5 h-5 rounded-full shrink-0", SEV_STYLE[r.severity].stripe)} />
+                      <Icon className={cn("w-3.5 h-3.5 shrink-0", SEV_STYLE[r.severity].text)} />
+                      <span className="flex-1 min-w-0 truncate">{r.title}</span>
+                    </a>
+                  </li>
+                )
+              })}
+              {snap.recs.length > 3 && <li><a href={href} className="block px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground">+{snap.recs.length - 3} más en el Radar</a></li>}
+            </ul>
+          )
+        )}
+        <StrategyDialog projectId={projectId} open={strategyOpen} onOpenChange={setStrategyOpen} onSaved={changed} />
+      </div>
+    )
+  }
   const visible = showAll ? snap.recs : snap.recs.slice(0, MAX_VISIBLE)
   const top = snap.recs[0]?.severity
 
@@ -131,21 +173,6 @@ export function ProjectRadar({ projectId, initial, embedded = false, onChanged, 
           </button>
         )}
       </div>
-
-      {/* Lo que más gasta (miniaturas) */}
-      {snap.topAds.length > 0 && (
-        <div className="space-y-1.5">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Lo que más invierte este ciclo</p>
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {snap.topAds.map((ad) => (
-              <div key={ad.adId} className="w-[92px] shrink-0">
-                <AdThumb ad={ad} size={92} />
-                <p className="text-[10px] mt-1 line-clamp-2 leading-tight">{ad.conceptName ?? <span className="text-amber-600">Sin concepto</span>}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Historial */}
       <div>

@@ -128,6 +128,8 @@ export function RecCard({ rec, projectId, currency, canEdit, onStrategy, onChang
   }
 
   const resolved = state === "done" || state === "dismissed"
+  // Miniatura solo cuando la alerta es sobre UN anuncio concreto.
+  const showAds = ["kill", "fatigue", "graduate"].includes(rec.rule) ? rec.ads.slice(0, 1) : []
   return (
     <article className={cn("relative rounded-xl border border-border bg-card overflow-hidden transition-opacity", resolved && "opacity-60")}>
       <span className={cn("absolute inset-y-0 left-0 w-1", sev.stripe)} />
@@ -201,16 +203,8 @@ export function RecCard({ rec, projectId, currency, canEdit, onStrategy, onChang
           </div>
         </div>
 
-        {rec.ads.length > 0 && (
-          <div className="hidden sm:flex shrink-0 gap-1.5 items-start">
-            {rec.ads.slice(0, 3).map((ad) => <AdThumb key={ad.adId} ad={ad} size={rec.ads.length === 1 ? 72 : 52} />)}
-            {rec.ads.length > 3 && <span className="text-[11px] text-muted-foreground self-center">+{rec.ads.length - 3}</span>}
-          </div>
-        )}
+        {showAds.map((ad) => <AdThumb key={ad.adId} ad={ad} size={64} />)}
       </div>
-      {rec.ads.length > 0 && (
-        <div className="sm:hidden flex gap-1.5 px-4 pb-3">{rec.ads.slice(0, 4).map((ad) => <AdThumb key={ad.adId} ad={ad} size={44} />)}</div>
-      )}
     </article>
   )
 }

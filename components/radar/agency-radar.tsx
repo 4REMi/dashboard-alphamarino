@@ -5,15 +5,15 @@ import { useRouter } from "next/navigation"
 import { Target, Radar as RadarIcon } from "lucide-react"
 import type { RadarSnapshot } from "@/lib/radar/types"
 import { ProjectRadar } from "@/components/radar/project-radar"
-import { PacingBar, SeverityCounts, AdThumb, SEV_STYLE } from "@/components/radar/radar-ui"
+import { PacingBar, SeverityCounts, SEV_STYLE } from "@/components/radar/radar-ui"
 import { cn } from "@/lib/utils"
 
 // Vista de agencia: "¿a quién atiendo hoy?". Izquierda, clientes por
 // urgencia (color, ritmo de gasto, miniaturas); derecha, su Radar completo.
 
-export function AgencyRadar({ initial }: { initial: RadarSnapshot[] }) {
+export function AgencyRadar({ initial, initialSelected }: { initial: RadarSnapshot[]; initialSelected?: string | null }) {
   const router = useRouter()
-  const [selected, setSelected] = useState<string | null>(initial[0]?.projectId ?? null)
+  const [selected, setSelected] = useState<string | null>(initial.find((s) => s.projectId === initialSelected)?.projectId ?? initial[0]?.projectId ?? null)
   const snap = initial.find((s) => s.projectId === selected) ?? null
   const totals = initial.reduce((t, s) => ({ crit: t.crit + s.counts.crit, warn: t.warn + s.counts.warn, good: t.good + s.counts.good, missing: t.missing + (s.cycle && !s.strategy ? 1 : 0) }), { crit: 0, warn: 0, good: 0, missing: 0 })
 
@@ -55,9 +55,6 @@ export function AgencyRadar({ initial }: { initial: RadarSnapshot[] }) {
                     </div>
                     {s.pacing && s.cycle && <PacingBar pacing={s.pacing} currency={s.currency} day={s.cycle.day} days={s.cycle.days} compact />}
                     {top && !missing && <p className={cn("text-xs leading-snug line-clamp-2", sev.text)}>{top.title}</p>}
-                    {s.topAds.length > 0 && (
-                      <div className="flex gap-1">{s.topAds.slice(0, 5).map((ad) => <AdThumb key={ad.adId} ad={ad} size={30} />)}</div>
-                    )}
                   </div>
                 </button>
               )
