@@ -52,7 +52,7 @@ export function registerFinanceTools(server: McpServer) {
     "registrar_gasto",
     {
       title: "Registrar gasto",
-      description: "Registra un gasto en Finanzas. Con `proyecto` queda como gasto de ese proyecto; sin proyecto, como gasto general de la agencia (único, no recurrente). Monto en MXN o USD (MXN se convierte a USD con el tipo de cambio de la fecha). Requiere acceso a Finanzas.",
+      description: "Registra un gasto en Finanzas. Con `proyecto` queda como gasto de ese proyecto; sin proyecto, como gasto general de la agencia: único por defecto, o recurrente con `frecuencia` (mensual, semanal, semestral, anual; cuenta desde el mes en que se registra hasta que se dé de baja en Finanzas). Monto en MXN o USD (MXN se convierte a USD con el tipo de cambio de la fecha). Requiere acceso a Finanzas.",
       inputSchema: z.object({
         monto: z.number().positive(),
         moneda: z.enum(["MXN", "USD"]).default("MXN"),
@@ -60,10 +60,12 @@ export function registerFinanceTools(server: McpServer) {
         categoria: z.enum(CATS).default("Other").describe("Software, Rent (renta), Services (servicios), Other, Payroll"),
         fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("YYYY-MM-DD; por defecto hoy"),
         proyecto: z.string().optional(),
+        frecuencia: z.enum(["unico", "mensual", "semanal", "semestral", "anual"]).default("unico").describe("Recurrente solo para gastos generales (sin proyecto)"),
       }),
     },
-    async ({ monto, moneda, descripcion, categoria, fecha, proyecto }, ctx: ToolCtx) => {
+    async ({ monto, moneda, descripcion, categoria, fecha, proyecto, frecuencia }, ctx: ToolCtx) => {
       await requireFinance(ctx)
+      if (proyecto && frecuencia !== "unico") throw new Error("Los gastos recurrentes son generales de la agencia; quita el proyecto o regístralo como único.")
       const date = fecha ?? today()
       let amountUsd = monto
       let rateNote = ""
@@ -79,6 +81,12 @@ export function registerFinanceTools(server: McpServer) {
         const { error } = await db().from("project_expenses").insert({ project_id: p.id, amount: amountUsd, date, description: descripcion, category: categoria })
         if (error) throw new Error(error.message)
         return text(`✅ Gasto de proyecto registrado: ${shown}${rateNote} · ${p.name} · ${CAT_LABEL[categoria]}\n${descripcion}\n📅 ${date}`)
+      }
+      if (frecuencia !== "unico") {
+        const freq = { mensual: "Monthly", semanal: "Weekly", semestral: "Semestral", anual: "Annual" }[frecuencia]
+        const { error } = await db().from("recurring_expenses").insert({ name: descripcion, amount: amountUsd, frequency: freq, category: categoria, is_active: true })
+        if (error) throw new Error(error.message)
+        return text(`✅ Gasto recurrente ${frecuencia} registrado: ${shown}${rateNote} · ${CAT_LABEL[categoria]}\n${descripcion}\n📅 cuenta desde este mes (se da de baja en Finanzas)${moneda === "MXN" ? "\nSe guardó en USD con el tipo de cambio de hoy." : ""}`)
       }
       const { error } = await db().from("recurring_expenses").insert({ name: descripcion, amount: amountUsd, frequency: "One-time", category: categoria, expense_date: date, is_active: true })
       if (error) throw new Error(error.message)

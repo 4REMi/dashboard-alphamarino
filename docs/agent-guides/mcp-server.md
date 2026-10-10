@@ -62,7 +62,7 @@ más estricto desde el inicio, no una copia de cómo funciona Telegram.
   creativos: se crea uno igual con el mensaje nuevo y se asigna al anuncio
   (vuelve a revisión). `meta_crear_anuncio` acepta `saludo` y `preguntas`.
 - **Finanzas** (`lib/mcp/finance-tools.ts`): `registrar_gasto`, `listar_gastos`,
-  `resumen_finanzas`. Permiso `view_global_finances` (igual que /finances).
+  `resumen_finanzas`; `registrar_gasto` también da de alta recurrentes generales (`frecuencia`). Permiso `view_global_finances` (igual que /finances).
   Mismo modelo que el bot de Telegram: montos en USD (MXN se convierte con el
   tipo de cambio de la fecha); con proyecto → `project_expenses`, sin
   proyecto → `recurring_expenses` "One-time". Nómina no se registra por aquí.
