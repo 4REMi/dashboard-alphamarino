@@ -316,7 +316,7 @@ export function registerMetaTools(server: McpServer) {
     "meta_contenido_anuncio",
     {
       title: "Meta: contenido de anuncios",
-      description: "Qué dice un anuncio (activo o pasado): texto, título y CTA; si es VIDEO, la transcripción de lo que se habla; si es IMAGEN, regresa la imagen para leer su texto y describirla. Máx. 5 anuncios por llamada (ids de meta_estado_cliente).",
+      description: "Qué dice un anuncio (activo o pasado): texto, título, CTA y destino (URL con sus parámetros, formulario o mensajes); si es VIDEO, la transcripción de lo que se habla; si es IMAGEN, regresa la imagen para leer su texto y describirla. Máx. 5 anuncios por llamada (ids de meta_estado_cliente).",
       inputSchema: z.object({ proyecto: z.string(), ad_ids: z.array(z.string()).min(1).max(5) }),
     },
     async ({ proyecto, ad_ids }, ctx: ToolCtx) => {
@@ -326,13 +326,21 @@ export function registerMetaTools(server: McpServer) {
       for (const id of ad_ids) {
         const o = await own(c, id)
         if (o.kind !== "anuncio") { out.push({ type: "text", text: `${id}: no es un anuncio.` }); continue }
-        const ad = await get<{ creative?: Record<string, any> }>(id, { fields: "creative{body,title,call_to_action_type,image_url,thumbnail_url,video_id,object_story_spec,asset_feed_spec}" })
+        const ad = await get<{ creative?: Record<string, any> }>(id, { fields: "creative{body,title,call_to_action_type,image_url,thumbnail_url,video_id,object_story_spec,asset_feed_spec,object_url,link_url,url_tags}" })
         const cr = ad.creative ?? {}
         const story = cr.object_story_spec ?? {}, link = story.link_data ?? {}, vd = story.video_data ?? {}, feed = cr.asset_feed_spec ?? {}
         const body = cr.body ?? link.message ?? vd.message ?? feed.bodies?.[0]?.text ?? null
         const title = cr.title ?? link.name ?? vd.title ?? feed.titles?.[0]?.text ?? null
         const videoId = cr.video_id || vd.video_id || feed.videos?.[0]?.video_id || null
-        const lines = [`■ ${o.name} [${id}] · ${o.effective_status ?? o.status}`, body ? `Texto: ${body}` : "Texto: —", title ? `Título: ${title}` : "", cr.call_to_action_type ? `CTA: ${cr.call_to_action_type}` : ""].filter(Boolean)
+        const lines = [`■ ${o.name} [${id}] · ${o.effective_status ?? o.status}`, body ? `Texto: ${body}` : "Texto: —", title ? `Título: ${title}` : "", cr.call_to_action_type ? `CTA: ${cr.call_to_action_type}` : "",
+          // Destino: puede vivir en varios lugares según cómo se armó el anuncio.
+          (() => {
+            const urls = [link.link, link.call_to_action?.value?.link, vd.call_to_action?.value?.link, cr.link_url, cr.object_url, ...(feed.link_urls ?? []).map((u: any) => u.website_url)].filter((u): u is string => typeof u === "string" && /^https?:/.test(u))
+            const form = link.call_to_action?.value?.lead_gen_form_id ?? vd.call_to_action?.value?.lead_gen_form_id
+            const app = link.call_to_action?.value?.app_destination ?? vd.call_to_action?.value?.app_destination
+            const dest = [...new Set(urls)].join(" · ") || (form ? `formulario instantáneo ${form}` : app ? `mensajes (${app})` : "—")
+            return `Destino: ${dest}${cr.url_tags ? ` · parámetros: ${cr.url_tags}` : ""}`
+          })()].filter(Boolean)
         if (videoId) {
           // Fuente: la copia guardada por el dashboard (estable) o la de Meta.
           const { data: dim } = await createAdminClient().from("meta_ads").select("video_url").eq("project_id", c.projectId).eq("ad_id", id).maybeSingle()
