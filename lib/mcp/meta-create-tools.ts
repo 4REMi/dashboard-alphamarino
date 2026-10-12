@@ -1,7 +1,7 @@
 import { z } from "zod"
 import type { McpServer } from "@modelcontextprotocol/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { client, get, post, own, log, text, requireEditor, confirmHint, type ToolCtx } from "@/lib/mcp/meta-tools"
+import { client, get, post, own, log, text, requireEditor, confirmHint, applyPlacements, describePlacements, PLACEMENT_KEYS, type ToolCtx } from "@/lib/mcp/meta-tools"
 
 // Crear desde cero en Meta: campaña → conjunto → anuncio (con un creativo
 // del Creative Tracker). Mismas reglas que meta-tools.ts: solo admin/
@@ -46,8 +46,9 @@ export function describeTargeting(t: Record<string, any>): string {
   const gender = t.genders?.length === 1 ? (t.genders[0] === 1 ? " · hombres" : " · mujeres") : ""
   const interests = (t.flexible_spec ?? []).flatMap((f: any) => [...(f.interests ?? []), ...(f.behaviors ?? [])].map((i: any) => i.name)).filter(Boolean)
   const adv = t.targeting_automation?.advantage_audience === 1 ? " · Advantage+" : ""
-  const custom = (t.custom_audiences ?? []).map((x: any) => x.name).filter(Boolean)
-  return [parts.join(" · ") + ex || "sin ubicación", age + gender + adv, interests.length ? `intereses: ${interests.slice(0, 8).join(", ")}${interests.length > 8 ? "…" : ""}` : "", custom.length ? `públicos: ${custom.join(", ")}` : ""].filter(Boolean).join(" · ")
+  const custom = (t.custom_audiences ?? []).map((x: any) => x.name ?? x.id).filter(Boolean)
+  const excluded = (t.excluded_custom_audiences ?? []).map((x: any) => x.name ?? x.id).filter(Boolean)
+  return [parts.join(" · ") + ex || "sin ubicación", age + gender + adv, interests.length ? `intereses: ${interests.slice(0, 8).join(", ")}${interests.length > 8 ? "…" : ""}` : "", custom.length ? `públicos: ${custom.join(", ")}` : "", excluded.length ? `excluye: ${excluded.join(", ")}` : "", describePlacements(t)].filter(Boolean).join(" · ")
 }
 
 // ── Mensaje de bienvenida de anuncios de mensajes ───────────────────────
@@ -170,7 +171,7 @@ export function registerMetaCreateTools(server: McpServer) {
     "meta_editar_segmentacion",
     {
       title: "Meta: editar segmentación",
-      description: "Edita la segmentación de un conjunto existente cambiando SOLO lo indicado (lo demás se conserva): quitar intereses por nombre o todos, edad, género, ubicación (pin con radio, ciudades o países) y Advantage+. Meta reemplaza el objeto completo: la herramienta lee el actual y manda la versión modificada. Cambiar la audiencia de un conjunto activo reinicia su aprendizaje. Sin confirmar: true solo muestra antes → después.",
+      description: "Edita la segmentación de un conjunto existente cambiando SOLO lo indicado (lo demás se conserva): agregar/quitar intereses, incluir/excluir públicos, edad, género, ubicación geográfica (pin, ciudades, países), ubicaciones de anuncio (feed, reels, stories…) y Advantage+. Meta reemplaza el objeto completo: la herramienta lee el actual y manda la versión modificada. Cambiar la audiencia de un conjunto activo reinicia su aprendizaje. Sin confirmar: true solo muestra antes → después.",
       inputSchema: z.object({
         proyecto: z.string(),
         adset_id: z.string(),
@@ -183,6 +184,11 @@ export function registerMetaCreateTools(server: McpServer) {
         ciudades: z.array(z.object({ key: z.string(), radio_km: z.number().optional() })).optional(),
         paises: z.array(z.string().length(2)).optional(),
         advantage: z.boolean().optional().describe("Activar/desactivar audiencia Advantage+"),
+        agregar_intereses: z.array(z.object({ id: z.string(), name: z.string() })).optional().describe("De meta_buscar_intereses"),
+        incluir_publicos: z.array(z.string()).optional().describe("Ids de públicos personalizados/similares (meta_publicos)"),
+        excluir_publicos: z.array(z.string()).optional(),
+        quitar_publicos: z.array(z.string()).optional().describe("Ids a quitar de incluidos o excluidos"),
+        ubicaciones: z.array(z.enum(["automaticas", ...PLACEMENT_KEYS])).optional().describe("Reemplaza las ubicaciones; ['automaticas'] vuelve a automáticas"),
         confirmar: z.boolean().default(false),
       }),
     },
@@ -221,6 +227,23 @@ export function registerMetaCreateTools(server: McpServer) {
           : { countries: a.paises }
       }
       if (a.advantage != null) t.targeting_automation = { ...(t.targeting_automation ?? {}), advantage_audience: a.advantage ? 1 : 0 }
+      if (a.agregar_intereses?.length) {
+        const spec = (t.flexible_spec ?? []) as Record<string, any[]>[]
+        const first = spec[0] ?? {}
+        const have = new Set((first.interests ?? []).map((i) => i.id))
+        first.interests = [...(first.interests ?? []), ...a.agregar_intereses.filter((i) => !have.has(i.id))]
+        t.flexible_spec = [first, ...spec.slice(1)]
+      }
+      const ids = (l?: any[]) => (l ?? []).map((x) => String(x.id))
+      if (a.quitar_publicos?.length) {
+        const q = new Set(a.quitar_publicos)
+        t.custom_audiences = (t.custom_audiences ?? []).filter((x: any) => !q.has(String(x.id)))
+        t.excluded_custom_audiences = (t.excluded_custom_audiences ?? []).filter((x: any) => !q.has(String(x.id)))
+      }
+      if (a.incluir_publicos?.length) t.custom_audiences = [...(t.custom_audiences ?? []), ...a.incluir_publicos.filter((id) => !ids(t.custom_audiences).includes(id)).map((id) => ({ id }))]
+      if (a.excluir_publicos?.length) t.excluded_custom_audiences = [...(t.excluded_custom_audiences ?? []), ...a.excluir_publicos.filter((id) => !ids(t.excluded_custom_audiences).includes(id)).map((id) => ({ id }))]
+      for (const k of ["custom_audiences", "excluded_custom_audiences"]) if (Array.isArray(t[k]) && !t[k].length) delete t[k]
+      if (a.ubicaciones) applyPlacements(t, a.ubicaciones)
       const desc = `Conjunto "${o.name}" [${o.id}]\nAntes: ${describeTargeting(targeting ?? {})}\nDespués: ${describeTargeting(t)}${removed.length ? `\nIntereses quitados: ${[...new Set(removed)].join(", ")}` : ""}`
       if (!a.confirmar) return text(`Cambiaría en ${c.name}:\n${desc}\n\nSi el conjunto está activo, reinicia su fase de aprendizaje.${confirmHint}`)
       await post(o.id, { targeting: JSON.stringify(t) })
@@ -335,6 +358,7 @@ export function registerMetaCreateTools(server: McpServer) {
         paises: z.array(z.string().length(2)).default(["MX"]).describe("Códigos ISO, ej. MX, US"),
         ciudades: z.array(z.object({ key: z.string(), radio_km: z.number().optional() })).optional().describe("Claves de ciudad (de meta_buscar_ubicacion); reemplaza a paises"),
         ubicacion_pin: z.object({ lat: z.number(), lng: z.number(), radio_km: z.number().min(1).max(80), nombre: z.string().optional() }).optional().describe("Radio alrededor de un punto (p. ej. el club); reemplaza a paises/ciudades"),
+        ubicaciones: z.array(z.enum(["automaticas", ...PLACEMENT_KEYS])).optional().describe("Ubicaciones manuales (p. ej. instagram_feed, instagram_reels, instagram_stories) o ['automaticas']. Por defecto automáticas"),
         copiar_segmentacion_de: z.string().optional().describe("adset_id de otro conjunto de la cuenta: copia su segmentación completa (ubicación, edad, intereses) e ignora paises/ciudades/pin/edad"),
         edad_min: z.number().min(18).max(65).default(18),
         edad_max: z.number().min(18).max(65).default(65),
@@ -387,10 +411,11 @@ export function registerMetaCreateTools(server: McpServer) {
         const src = await own(c, a.copiar_segmentacion_de)
         if (src.kind !== "conjunto") throw new Error("copiar_segmentacion_de debe ser un conjunto.")
         const { targeting } = await get<{ targeting: Record<string, unknown> }>(src.id, { fields: "targeting" })
-        body.targeting = JSON.stringify(targeting)
+        body.targeting = JSON.stringify(a.ubicaciones ? applyPlacements(targeting, a.ubicaciones) : targeting)
         whereLabel = `segmentación copiada de "${src.name}" (${describeTargeting(targeting)})`; ageLabel = ""
       } else {
-        body.targeting = JSON.stringify({ geo_locations: geo, age_min: a.edad_min, age_max: a.edad_max, targeting_automation: { advantage_audience: 1 } })
+        body.targeting = JSON.stringify(applyPlacements({ geo_locations: geo, age_min: a.edad_min, age_max: a.edad_max, targeting_automation: { advantage_audience: 1 } }, a.ubicaciones ?? ["automaticas"]))
+        if (a.ubicaciones && !a.ubicaciones.includes("automaticas")) ageLabel += ` · ${describePlacements(JSON.parse(body.targeting))}`
       }
       if (a.presupuesto_diario) { body.daily_budget = toMinor(a.presupuesto_diario); body.bid_strategy = "LOWEST_COST_WITHOUT_CAP" }
 

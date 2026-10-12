@@ -373,3 +373,48 @@ export function registerMetaTools(server: McpServer) {
     },
   )
 }
+
+// ── Ubicaciones (placements) ────────────────────────────────────────────
+// Nombres simples → publisher_platforms + *_positions de Meta. Sin lista =
+// ubicaciones automáticas (Advantage+ placements).
+export const PLACEMENTS = {
+  facebook_feed: ["facebook", "facebook_positions", "feed"],
+  facebook_stories: ["facebook", "facebook_positions", "story"],
+  facebook_reels: ["facebook", "facebook_positions", "facebook_reels"],
+  facebook_video: ["facebook", "facebook_positions", "video_feeds"],
+  facebook_marketplace: ["facebook", "facebook_positions", "marketplace"],
+  facebook_search: ["facebook", "facebook_positions", "search"],
+  instagram_feed: ["instagram", "instagram_positions", "stream"],
+  instagram_stories: ["instagram", "instagram_positions", "story"],
+  instagram_reels: ["instagram", "instagram_positions", "reels"],
+  instagram_explore: ["instagram", "instagram_positions", "explore"],
+  instagram_profile: ["instagram", "instagram_positions", "profile_feed"],
+  messenger: ["messenger", "messenger_positions", "messenger_home"],
+  audience_network: ["audience_network", "audience_network_positions", "classic"],
+} as const
+export type Placement = keyof typeof PLACEMENTS
+export const PLACEMENT_KEYS = Object.keys(PLACEMENTS) as [Placement, ...Placement[]]
+const PLACEMENT_FIELDS = ["publisher_platforms", "facebook_positions", "instagram_positions", "messenger_positions", "audience_network_positions", "device_platforms"]
+
+// Aplica ubicaciones a un targeting (muta y regresa). "automaticas" las quita.
+export function applyPlacements(t: Record<string, unknown>, list: (Placement | "automaticas")[]): Record<string, unknown> {
+  for (const f of PLACEMENT_FIELDS) delete t[f]
+  if (list.includes("automaticas")) return t
+  const platforms = new Set<string>()
+  for (const p of list as Placement[]) {
+    const [platform, field, pos] = PLACEMENTS[p]
+    platforms.add(platform)
+    t[field] = [...new Set([...((t[field] as string[]) ?? []), pos])]
+  }
+  t.publisher_platforms = [...platforms]
+  return t
+}
+
+export function describePlacements(t: Record<string, any>): string {
+  if (!t.publisher_platforms?.length) return "ubicaciones automáticas"
+  const names: string[] = []
+  for (const [k, [platform, field, pos]] of Object.entries(PLACEMENTS)) {
+    if (t.publisher_platforms.includes(platform) && (!t[field] || t[field].includes(pos))) names.push(k.replace("_", " "))
+  }
+  return `ubicaciones: ${names.join(", ")}`
+}

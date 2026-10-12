@@ -57,7 +57,15 @@ más estricto desde el inicio, no una copia de cómo funciona Telegram.
   `meta_crear_conjunto` `ubicacion_pin` (radio alrededor de lat/lng) o
   `copiar_segmentacion_de` (segmentación completa de otro conjunto), y
   `meta_editar_segmentacion` (cambia solo lo indicado de un conjunto existente:
-  quitar intereses, edad, género, ubicación, Advantage+).
+  agregar/quitar intereses, incluir/excluir públicos, edad, género, ubicación,
+  ubicaciones de anuncio y Advantage+). Ubicaciones manuales también al crear
+  conjunto (`ubicaciones`; lista en `PLACEMENTS` de meta-tools.ts).
+- **Editar en Meta** (`lib/mcp/meta-edit-tools.ts`): `meta_editar_anuncio`
+  (texto, título, CTA, URL, UTMs o cambiar el video/imagen por un asset del
+  Creative Tracker; crea un creativo igual con los cambios y lo asigna →
+  vuelve a revisión), `meta_buscar_intereses`, `meta_publicos` (personalizados
+  y similares), `meta_programacion` (fechas, presupuesto total, puja: menor
+  costo / costo objetivo / tope).
   Mensaje de bienvenida de anuncios de mensajes: `meta_bienvenida_leer` y
   `meta_bienvenida_cambiar` (saludo + hasta 4 opciones con respuesta; Claude
   los redacta desde el objetivo que describe el usuario). Meta no edita
