@@ -76,7 +76,8 @@ más estricto desde el inicio, no una copia de cómo funciona Telegram.
   usa `processStandup`). Siempre dos pasos: con `texto` regresa vista previa
   numerada + `items` (JSON); con `items` + `confirmar: true` crea tareas
   (`createTask`) y notas (`addLogEntry`). Claude puede ajustar los items entre
-  pasos. `agregar_nota_proyecto` acepta además `categoria`, `fecha_evento` y
+  pasos. Las tareas llevan también `descripcion` y `pingear`/`avisar_al_terminar`
+  (la IA los propone si el texto lo da). `agregar_nota_proyecto` acepta además `categoria`, `fecha_evento` y
   `fijar` (contexto fijo). `crear_tarea`/`agregar_nota_proyecto` siguen
   directas (una sola cosa puntual).
 - **Crear proyectos** (`lib/mcp/project-tools.ts`): `crear_proyecto` usa la misma

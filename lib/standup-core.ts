@@ -27,6 +27,9 @@ export async function interpretStandup(db: SupabaseClient, text: string): Promis
       projectNameRaw: m.proyecto ?? null,
       assigneeIdGuess: assignee?.id ?? null,
       assigneeNameRaw: m.asignado ?? null,
+      pingear: m.tipo === "tarea" && !!m.pingear,
+      pingRecipientIdsGuess: m.tipo === "tarea" && m.pingear ? (m.avisar_a ?? []).map((n) => findByName(profileList, n)?.id).filter((x): x is string => !!x) : [],
+      pingNamesRaw: m.tipo === "tarea" && m.pingear ? m.avisar_a ?? [] : [],
     }
   })
 }

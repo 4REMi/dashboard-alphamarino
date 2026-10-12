@@ -20,6 +20,8 @@ export interface Movimiento {
   // tarea / tarea_completada
   titulo?: string
   asignado?: string
+  pingear?: boolean          // tarea: avisar cuando se complete
+  avisar_a?: string[]        // tarea: a quién avisar (vacío = equipo del proyecto)
   personal?: boolean
   // cliente
   empresa?: string
@@ -154,7 +156,9 @@ const STANDUP_TOOL: Anthropic.Tool = {
               description: "'tarea' = un pendiente o algo por hacer, explícito o implícito. 'nota_proyecto' = un comentario o actualización informativa de un proyecto, no un pendiente.",
             },
             titulo: { type: "string", description: "Para 'tarea': título breve y claro (o el texto tal cual si es un pendiente implícito)." },
-            descripcion: { type: "string", description: "Para 'nota_proyecto': el cuerpo de la nota." },
+            descripcion: { type: "string", description: "Para 'nota_proyecto': el cuerpo de la nota. Para 'tarea': contexto útil para quien la haga (qué, para qué, detalles, links o cifras mencionados), SOLO si el texto lo da; si no, vacío. No repitas el título." },
+            pingear: { type: "boolean", description: "Solo 'tarea': true si el usuario pide que le avisen/confirmen cuando se termine, o que se avise a alguien al completarla. Si no lo pide, false." },
+            avisar_a: { type: "array", items: { type: "string" }, description: "Solo 'tarea' con pingear: nombres de quién debe enterarse al completarla. Vacío = todo el equipo del proyecto." },
             proyecto: { type: "string", description: "Nombre del proyecto mencionado (tal cual lo dice el usuario). Puede faltar en una 'tarea' (queda sin proyecto); una 'nota_proyecto' SIEMPRE debe tener proyecto." },
             asignado: { type: "string", description: "Nombre de la persona a la que se le asigna la tarea, SOLO si se menciona explícitamente un nombre propio. Si no se menciona a nadie, déjalo vacío." },
             fecha: { type: "string", description: "Fecha límite en formato YYYY-MM-DD, solo si se menciona." },

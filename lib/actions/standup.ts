@@ -12,6 +12,9 @@ export interface StandupItem {
   projectNameRaw: string | null
   assigneeIdGuess: string | null   // tarea — solo si se mencionó un nombre explícito
   assigneeNameRaw: string | null
+  pingear: boolean                 // tarea: avisar al completarla
+  pingRecipientIdsGuess: string[]  // vacío = equipo del proyecto
+  pingNamesRaw: string[]
 }
 
 // "Captura rápida" en /tasks — un solo texto libre puede describir pendientes

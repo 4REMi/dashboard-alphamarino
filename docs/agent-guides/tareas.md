@@ -46,6 +46,10 @@ navegar a cada proyecto uno por uno.
   montado en `app/(dashboard)/layout.tsx`). Abre el mismo modal; los datos se
   cargan al abrirlo (`getQuickCaptureData`, mismos proyectos visibles que /tasks).
   En /tasks no aparece (ya está el botón de la página).
+- **Pre-rellenado de la IA en Captura rápida**: además de proyecto, responsable y
+  fecha, la IA propone la **descripción** (solo si el texto da contexto) y el
+  **ping** (si pides que te avisen al terminar, con a quién). Mismo motor para el
+  dashboard y el MCP (`lib/standup-core.ts`).
 - **"Más detalles" en Captura rápida**: cada tarjeta de tipo tarea trae, colapsado
   por default, un desplegable con descripción, SOP, checklist, y Ping — los mismos
   campos que ya existen en una tarea normal, pero que la IA de clasificación nunca

@@ -188,6 +188,9 @@ export function registerMcpTools(server: McpServer) {
     proyecto: z.string().optional().describe("Nombre del proyecto (obligatorio en notas)"),
     responsable: z.string().optional().describe("Solo tareas"),
     fecha_limite: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("Solo tareas"),
+    descripcion: z.string().optional().describe("Solo tareas: contexto para quien la haga"),
+    pingear: z.boolean().optional().describe("Solo tareas con proyecto: avisar por Telegram cuando se complete"),
+    avisar_al_terminar: z.array(z.string()).optional().describe("Solo tareas pingeadas: nombres a avisar (vacío = equipo del proyecto)"),
     avisar_a: z.string().optional().describe("Solo notas: 'equipo' o un nombre"),
   })
   server.registerTool(
@@ -218,6 +221,9 @@ export function registerMcpTools(server: McpServer) {
           proyecto: pName(it.projectIdGuess) ?? undefined,
           responsable: it.tipo === "tarea" ? uName(it.assigneeIdGuess) ?? undefined : undefined,
           fecha_limite: it.tipo === "tarea" ? it.fecha ?? undefined : undefined,
+          descripcion: it.tipo === "tarea" && it.descripcion ? it.descripcion : undefined,
+          pingear: it.pingear && !!it.projectIdGuess ? true : undefined,
+          avisar_al_terminar: it.pingear && it.pingRecipientIdsGuess.length ? it.pingRecipientIdsGuess.map((id) => uName(id)).filter((x): x is string => !!x) : undefined,
           _proyectoMencionado: it.projectNameRaw, _responsableMencionado: it.assigneeNameRaw,
         }))
         const lines = out.map((it, i) => {
@@ -225,14 +231,18 @@ export function registerMcpTools(server: McpServer) {
           if (it._proyectoMencionado && !it.proyecto) warn.push(`proyecto "${it._proyectoMencionado}" no encontrado`)
           if (it.tipo === "nota" && !it.proyecto) warn.push("las notas necesitan proyecto")
           if (it._responsableMencionado && !it.responsable) warn.push(`"${it._responsableMencionado}" no encontrado en el equipo`)
-          return `${i + 1}. ${it.tipo === "tarea" ? "☐ Tarea" : "📝 Nota"}: ${it.texto}\n   ${it.proyecto ?? "sin proyecto"}${it.responsable ? ` · ${it.responsable}` : ""}${it.fecha_limite ? ` · vence ${it.fecha_limite}` : ""}${warn.length ? `\n   ⚠️ ${warn.join("; ")}` : ""}`
+          const extra = [
+            it.descripcion ? `   Descripción: ${it.descripcion}` : "",
+            it.pingear ? `   🔔 Ping al completar: ${it.avisar_al_terminar?.length ? it.avisar_al_terminar.join(", ") : "equipo del proyecto"}` : "",
+          ].filter(Boolean).join("\n")
+          return `${i + 1}. ${it.tipo === "tarea" ? "☐ Tarea" : "📝 Nota"}: ${it.texto}\n   ${it.proyecto ?? "sin proyecto"}${it.responsable ? ` · ${it.responsable}` : ""}${it.fecha_limite ? ` · vence ${it.fecha_limite}` : ""}${extra ? `\n${extra}` : ""}${warn.length ? `\n   ⚠️ ${warn.join("; ")}` : ""}`
         })
         const clean = out.map(({ _proyectoMencionado, _responsableMencionado, ...rest }) => { void _proyectoMencionado; void _responsableMencionado; return rest })
         return textResult(`Vista previa (nada creado todavía):\n${lines.join("\n")}\n\nMuestra esto al usuario. Si lo aprueba (o tras aplicar sus ajustes), llama de nuevo con confirmar: true e items:\n${JSON.stringify(clean)}`)
       }
 
       if (!confirmar) {
-        return textResult(`Crearía ${items.length} elemento(s):\n${items.map((it, i) => `${i + 1}. ${it.tipo === "tarea" ? "☐" : "📝"} ${it.texto} · ${it.proyecto ?? "sin proyecto"}${it.responsable ? ` · ${it.responsable}` : ""}${it.fecha_limite ? ` · vence ${it.fecha_limite}` : ""}`).join("\n")}\n\nNo se creó nada. Si es correcto, vuelve a llamar con confirmar: true.`)
+        return textResult(`Crearía ${items.length} elemento(s):\n${items.map((it, i) => `${i + 1}. ${it.tipo === "tarea" ? "☐" : "📝"} ${it.texto} · ${it.proyecto ?? "sin proyecto"}${it.responsable ? ` · ${it.responsable}` : ""}${it.fecha_limite ? ` · vence ${it.fecha_limite}` : ""}${it.pingear ? " · 🔔 ping" : ""}${it.descripcion ? " · con descripción" : ""}`).join("\n")}\n\nNo se creó nada. Si es correcto, vuelve a llamar con confirmar: true.`)
       }
       const done: string[] = [], failed: string[] = []
       for (const [i, it] of items.entries()) {
@@ -251,6 +261,13 @@ export function registerMcpTools(server: McpServer) {
             const assigneeId = await resolveAssigneeId(it.responsable)
             if (assigneeId) fd.set("assignee_id", assigneeId)
             if (it.fecha_limite) fd.set("due_date", it.fecha_limite)
+            if (it.descripcion?.trim()) fd.set("description", it.descripcion.trim())
+            const pinged = !!it.pingear && !!projectId
+            fd.set("is_pinged", String(pinged))
+            if (pinged && it.avisar_al_terminar?.length) {
+              const ids = (await Promise.all(it.avisar_al_terminar.map((n) => resolveAssigneeId(n)))).filter(Boolean)
+              fd.set("ping_recipient_ids_json", JSON.stringify(ids))
+            }
             await createTask(fd, actingProfileId)
           }
           done.push(`${i + 1}. ${it.texto}`)
