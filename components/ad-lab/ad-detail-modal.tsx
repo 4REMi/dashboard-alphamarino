@@ -563,10 +563,11 @@ export function AdDetailModal({ ad, boards: boardsProp, onClose, savedAdId }: Pr
               </div>
             )}
 
-            {/* Action row */}
-            <div className="p-4 flex items-center gap-2">
+            {/* Action row — guardar arriba a todo lo ancho; herramientas abajo,
+                repartidas y con salto de línea si no caben */}
+            <div className="p-4 flex flex-wrap items-center gap-2">
             {/* Save to board */}
-            <div className="relative flex-1">
+            <div className="relative basis-full">
               <button
                 onClick={() => { setShowBoardPicker((v) => !v); if (showBoardPicker) setPendingCloneType(null) }}
                 disabled={saving}
@@ -673,7 +674,7 @@ export function AdDetailModal({ ad, boards: boardsProp, onClose, savedAdId }: Pr
                     setShowBoardPicker(true)
                   }
                 }}
-                className="h-9 px-4 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted flex items-center gap-2 whitespace-nowrap flex-shrink-0 transition-colors"
+                className="h-9 px-3 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted flex items-center gap-2 whitespace-nowrap flex-1 justify-center transition-colors"
               >
                 <Wand2 className="w-4 h-4" />
                 Clonar
@@ -685,7 +686,7 @@ export function AdDetailModal({ ad, boards: boardsProp, onClose, savedAdId }: Pr
               <button
                 title="Extraer el guión original, sin adaptarlo"
                 onClick={() => setShowExtractScript(true)}
-                className="h-9 px-4 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted flex items-center gap-2 whitespace-nowrap flex-shrink-0 transition-colors"
+                className="h-9 px-3 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted flex items-center gap-2 whitespace-nowrap flex-1 justify-center transition-colors"
               >
                 <FileText className="w-4 h-4" />
                 Extraer script
@@ -697,7 +698,7 @@ export function AdDetailModal({ ad, boards: boardsProp, onClose, savedAdId }: Pr
               <button
                 title="Desarma el concepto del anuncio: ángulo, persona, dolor, gancho, estructura y cómo adaptarlo"
                 onClick={() => setShowAnalysis(true)}
-                className="h-9 px-4 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted flex items-center gap-2 whitespace-nowrap flex-shrink-0 transition-colors"
+                className="h-9 px-3 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted flex items-center gap-2 whitespace-nowrap flex-1 justify-center transition-colors"
               >
                 <ScanSearch className="w-4 h-4" />
                 Analizar concepto
@@ -716,7 +717,7 @@ export function AdDetailModal({ ad, boards: boardsProp, onClose, savedAdId }: Pr
                     setShowBoardPicker(true)
                   }
                 }}
-                className="h-9 px-4 rounded-xl border border-violet-200 text-sm font-medium text-violet-600 hover:bg-violet-50 flex items-center gap-2 whitespace-nowrap flex-shrink-0 transition-colors"
+                className="h-9 px-3 rounded-xl border border-violet-200 text-sm font-medium text-violet-600 hover:bg-violet-50 flex items-center gap-2 whitespace-nowrap flex-1 justify-center transition-colors"
               >
                 <ImageIcon className="w-4 h-4" />
                 Clonar imagen
