@@ -70,6 +70,7 @@ export function ConceptAnalysisModal({ ad, open, onClose }: { ad: LibraryAdInput
             <div className="flex flex-wrap gap-1.5">
               {ad.videoUrl && <Chip ok={!!a.transcript} Icon={Mic}>{a.transcript ? "Transcrito" : "Sin voz"}</Chip>}
               <Chip ok={!!a.media} Icon={Eye}>{a.media ? "Visto por Gemini" : "No se pudo ver el creativo"}</Chip>
+              {!a.media && a.visionError && <span className="basis-full text-[11px] text-amber-700 dark:text-amber-300 order-last">Motivo: {a.visionError}</span>}
               <Chip ok={a.landingLeida} Icon={Globe}>{a.landingLeida ? "Landing leída" : "Sin landing"}</Chip>
               {a.diasCorriendo && <Chip ok Icon={CalendarClock}>{a.diasCorriendo} días corriendo</Chip>}
               <button onClick={copy} className="ml-auto h-7 px-2.5 rounded-md border border-border text-xs inline-flex items-center gap-1 hover:bg-muted">{copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}{copied ? "Copiado" : "Copiar"}</button>

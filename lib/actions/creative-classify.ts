@@ -31,6 +31,7 @@ export interface Classification {
   transcript: string | null
   video: VideoDescription | null
   provider: string | null
+  visionError: string | null
   summary: string
   matches: { concept_id: string; name: string; confidence: number; reason: string }[]
   new_concept: ConceptDraft
@@ -74,7 +75,7 @@ export async function classifyAsset(projectId: string, assetId: string, lineId: 
     // Estáticos: no hay audio que transcribir; Gemini lee la imagen (y su texto).
     asset.file_type === "image" ? Promise.all([Promise.resolve(null), describeVideo(url, "image")]) : Promise.all([transcribe(url), describeVideo(url, "video")]),
   ])
-  const [transcript, { description: video, provider }] = transcriptAndVideo
+  const [transcript, { description: video, provider, error: visionError }] = transcriptAndVideo
   const { data: lines } = project?.brand_brain_id ? await db.from("brand_lines").select("id, name, description").eq("brand_brain_id", project.brand_brain_id) : { data: [] }
   if (!transcript && !video) throw new Error(asset.file_type === "image" ? "No se pudo analizar la imagen. Inténtalo de nuevo." : "No se pudo transcribir ni analizar el video. Revisa que tenga audio o inténtalo de nuevo.")
 
@@ -118,7 +119,7 @@ LO QUE SE VE Y SE OYE: ${video ? JSON.stringify(video) : "(no disponible — cla
   const analysis = { summary: parsed.summary, video, provider, matches, new_concept, analyzed_at: new Date().toISOString() }
   const { error } = await db.from("creative_assets").update({ transcript, ai_analysis: analysis }).eq("id", assetId)
   if (error && !/transcript|ai_analysis/.test(error.message)) console.error("[classify] guardar análisis:", error.message)
-  return { assetId, transcript, video, provider, summary: parsed.summary, matches, new_concept }
+  return { assetId, transcript, video, provider, visionError, summary: parsed.summary, matches, new_concept }
 }
 
 export async function assignAssetToConcept(projectId: string, assetId: string, conceptId: string): Promise<void> {

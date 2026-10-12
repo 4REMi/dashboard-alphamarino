@@ -158,6 +158,7 @@ function ItemCard({ it, brandLines, onDraft, onAssign, onCreate }: { it: Item; b
                 <div className="flex flex-wrap gap-1.5 mt-1.5 text-[11px]">
                   {!isImg(it.file) && <span className={cn("px-1.5 py-0.5 rounded inline-flex items-center gap-1", r.transcript ? "bg-muted" : "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300")}><Mic className="w-3 h-3" />{r.transcript ? "Transcrito" : "Sin voz"}</span>}
                   <span className={cn("px-1.5 py-0.5 rounded inline-flex items-center gap-1", r.video ? "bg-muted" : "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300")}><Eye className="w-3 h-3" />{r.video ? "Visto por Gemini" : (isImg(it.file) ? "No se pudo analizar la imagen" : "No se pudo ver: solo transcripción")}</span>
+                  {!r.video && r.visionError && <span className="basis-full text-[11px] text-amber-700 dark:text-amber-300">Motivo: {r.visionError}</span>}
                   {r.video && <span className="px-1.5 py-0.5 rounded bg-muted">{r.video.formato}</span>}
                   <button onClick={() => setShowDetail((v) => !v)} className="text-primary hover:underline inline-flex items-center gap-0.5">Detalle<ChevronDown className={cn("w-3 h-3", showDetail && "rotate-180")} /></button>
                 </div>

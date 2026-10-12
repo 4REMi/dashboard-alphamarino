@@ -61,29 +61,50 @@ async function uploadToGemini(key: string, buf: Buffer, mime: string): Promise<s
   throw new Error("Gemini tardó demasiado en procesar el video")
 }
 
-async function viaGoogle(url: string, kind: "video" | "image"): Promise<VideoDescription | null> {
+// Modelos en orden: GEMINI_MODEL (si se define en Vercel), el alias que
+// siempre apunta al Flash vigente, y 2.5 Flash como respaldo.
+const MODELS = [process.env.GEMINI_MODEL, "gemini-flash-latest", "gemini-2.5-flash"].filter((m, i, a): m is string => !!m && a.indexOf(m) === i)
+
+async function viaGoogle(url: string, kind: "video" | "image"): Promise<{ d: VideoDescription | null; error: string | null }> {
   const key = process.env.GEMINI_API_KEY
-  if (!key) { console.error("[video-understanding] falta GEMINI_API_KEY"); return null }
+  if (!key) return { d: null, error: "Falta GEMINI_API_KEY en el servidor (¿se hizo redeploy después de agregarla?)" }
   try {
     const res0 = await fetch(url)
-    const mime = res0.headers.get("content-type")?.split(";")[0] || (kind === "image" ? "image/jpeg" : "video/mp4")
+    if (!res0.ok) return { d: null, error: `No se pudo descargar el archivo (${res0.status})` }
+    let mime = res0.headers.get("content-type")?.split(";")[0] || ""
+    if (!/^(video|image)\//.test(mime)) mime = kind === "image" ? "image/jpeg" : "video/mp4"
     const buf = Buffer.from(await res0.arrayBuffer())
-    const videoPart = buf.length <= 18_000_000
+    const mediaPart = buf.length <= 18_000_000
       ? { inline_data: { mime_type: mime, data: buf.toString("base64") } }
       : { file_data: { mime_type: mime, file_uri: await uploadToGemini(key, buf, mime) } }
-    const res = await fetch(`${G}/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contents: [{ parts: [videoPart, { text: kind === "image" ? IMAGE_PROMPT : PROMPT }] }], generationConfig: { responseMimeType: "application/json" } }),
-    })
-    const j = await res.json().catch(() => null)
-    if (!res.ok) console.error("[video-understanding] Gemini:", res.status, JSON.stringify(j)?.slice(0, 300))
-    return parse(j?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join(""))
-  } catch (e) { console.error("[video-understanding] Gemini:", e); return null }
+    let lastError = "sin respuesta"
+    for (const model of MODELS) {
+      const res = await fetch(`${G}/v1beta/models/${model}:generateContent?key=${key}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts: [mediaPart, { text: kind === "image" ? IMAGE_PROMPT : PROMPT }] }], generationConfig: { responseMimeType: "application/json" } }),
+      })
+      const j = await res.json().catch(() => null)
+      if (!res.ok) {
+        lastError = `Gemini (${model}) ${res.status}: ${j?.error?.message ?? "error"}`
+        console.error("[video-understanding]", lastError)
+        if (res.status === 404 || res.status === 400) continue   // modelo no disponible → siguiente
+        break
+      }
+      const raw = j?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("")
+      const d = parse(raw)
+      if (d) return { d, error: null }
+      lastError = `Gemini (${model}) respondió sin un análisis válido${j?.candidates?.[0]?.finishReason ? ` (${j.candidates[0].finishReason})` : ""}: ${String(raw ?? "").slice(0, 160)}`
+      console.error("[video-understanding]", lastError)
+    }
+    return { d: null, error: lastError }
+  } catch (e) {
+    return { d: null, error: e instanceof Error ? e.message : String(e) }
+  }
 }
 
 // Solo la API oficial de Gemini (APIMart no pasa el video al modelo).
-export async function describeVideo(url: string, kind: "video" | "image" = "video"): Promise<{ description: VideoDescription | null; provider: "google" | null }> {
-  const g = await viaGoogle(url, kind)
-  return { description: g, provider: g ? "google" : null }
+export async function describeVideo(url: string, kind: "video" | "image" = "video"): Promise<{ description: VideoDescription | null; provider: "google" | null; error: string | null }> {
+  const { d, error } = await viaGoogle(url, kind)
+  return { description: d, provider: d ? "google" : null, error }
 }

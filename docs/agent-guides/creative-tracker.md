@@ -215,7 +215,9 @@ texto (formato, composición, gancho visual, texto literal). Por video: se sube 
 concepto** (`registerUploadedAsset`), se transcribe (AssemblyAI) y Gemini 2.5
 Flash lo "ve" (`lib/ai/video-understanding.ts`: escenas con tiempos, visual,
 audio, texto en pantalla, formato, música, tono, efectos, gancho). Proveedor: API oficial de Gemini
-(`GEMINI_API_KEY`; video embebido ≤18 MB o por Files API si es más grande). APIMart
+(`GEMINI_API_KEY`; video embebido ≤18 MB o por Files API si es más grande; modelo:
+`GEMINI_MODEL` si está definido, si no `gemini-flash-latest` y luego `gemini-2.5-flash`).
+Si falla, la tarjeta muestra el motivo exacto. APIMart
 se probó y no pasa el video al modelo. Si Gemini falla, se clasifica solo con la
 transcripción. Claude compara contra los conceptos del proyecto y propone
 hasta 3 coincidencias con % de confianza y un concepto nuevo pre-llenado

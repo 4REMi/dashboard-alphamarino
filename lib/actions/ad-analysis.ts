@@ -37,6 +37,7 @@ export interface LibraryAdAnalysis {
   como_adaptarlo: string[]
   transcript: string | null
   media: VideoDescription | null
+  visionError: string | null
   landingLeida: boolean
   diasCorriendo: number | null
 }
@@ -74,7 +75,7 @@ export async function analyzeLibraryAd(ad: LibraryAdInput): Promise<LibraryAdAna
   const mediaUrl = ad.videoUrl ?? ad.imageUrl
   if (!mediaUrl) throw new Error("Este anuncio no tiene video ni imagen para analizar")
 
-  const [transcript, { description: media }, landing] = await Promise.all([
+  const [transcript, { description: media, error: visionError }, landing] = await Promise.all([
     ad.videoUrl ? transcribe(ad.videoUrl) : Promise.resolve(null),
     describeVideo(mediaUrl, ad.videoUrl ? "video" : "image"),
     landingText(ad.linkUrl),
@@ -109,5 +110,5 @@ TEXTO DE LA LANDING: ${landing ?? "(no disponible)"}`,
     }],
   })
   const parsed = parseAiJson<Omit<LibraryAdAnalysis, "transcript" | "media" | "landingLeida" | "diasCorriendo">>(msg, "analyzeLibraryAd")
-  return { ...parsed, transcript, media, landingLeida: !!landing, diasCorriendo: dias }
+  return { ...parsed, transcript, media, visionError, landingLeida: !!landing, diasCorriendo: dias }
 }
