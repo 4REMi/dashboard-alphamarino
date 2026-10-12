@@ -3,15 +3,20 @@
 import { useState, useTransition } from "react"
 import { createProject, updateProject } from "@/lib/actions/projects"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
-import { Plus } from "lucide-react"
+import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Plus, Check, Loader2, FolderKanban } from "lucide-react"
 import type { Project, Customer, ProjectType, PhaseSetPhase, BrandBrain, Profile } from "@/lib/types"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
 import { CustomerCombobox } from "@/components/projects/customer-combobox"
 import { BrandBrainPicker } from "@/components/projects/brand-brain-picker"
+import { getProjectTypeIcon } from "@/lib/project-type-icons"
+import { cn } from "@/lib/utils"
+
+// Nuevo / editar proyecto. Arriba el nombre; luego el tipo como tarjetas
+// (con su ícono y color) que define las fases; cliente y marca; el equipo
+// como chips con avatar (al crear: así las tareas se asignan por puesto);
+// las fases a incluir; y al final fechas, dinero y descripción. Pie fijo
+// con el resumen de lo que se va a crear.
 
 interface ProjectFormProps {
   project?: Project
@@ -23,6 +28,20 @@ interface ProjectFormProps {
   canViewFinancials?: boolean
 }
 
+function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-2 min-w-0">
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{title}</p>
+        {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+      </div>
+      {children}
+    </section>
+  )
+}
+
+const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join("")
+
 export function ProjectForm({ project, customers, projectTypes, brandBrains = [], employees = [], trigger, canViewFinancials = true }: ProjectFormProps) {
   const [open, setOpen] = useState(false)
   const [customerId, setCustomerId] = useState(project?.customer_id ?? "none")
@@ -30,201 +49,159 @@ export function ProjectForm({ project, customers, projectTypes, brandBrains = []
   const [brandBrainId, setBrandBrainId] = useState(project?.brand_brain_id ?? "none")
   const [selectedPhaseIds, setSelectedPhaseIds] = useState<string[]>([])
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([])
+  const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+  const isEdit = !!project
 
-  // Get the selected project type and its default phase set
   const selectedType = projectTypes.find((pt) => pt.id === projectTypeId)
-  const defaultPhaseSet = selectedType?.default_phase_set as { phases?: PhaseSetPhase[] } | undefined
-  const availablePhases: PhaseSetPhase[] = defaultPhaseSet?.phases ?? []
+  const availablePhases: PhaseSetPhase[] = (selectedType?.default_phase_set as { phases?: PhaseSetPhase[] } | undefined)?.phases ?? []
 
-  function handleTypeChange(typeId: string) {
+  function pickType(typeId: string) {
     setProjectTypeId(typeId)
-    // Auto-select all phases of the new type's default phase set
     const type = projectTypes.find((pt) => pt.id === typeId)
     const phases = (type?.default_phase_set as { phases?: PhaseSetPhase[] } | undefined)?.phases ?? []
     setSelectedPhaseIds(phases.map((p) => p.id))
   }
-
-  function togglePhase(phaseId: string) {
-    setSelectedPhaseIds((prev) =>
-      prev.includes(phaseId) ? prev.filter((id) => id !== phaseId) : [...prev, phaseId]
-    )
-  }
-
-  function toggleMember(profileId: string) {
-    setSelectedMemberIds((prev) =>
-      prev.includes(profileId) ? prev.filter((id) => id !== profileId) : [...prev, profileId]
-    )
-  }
+  const toggle = (list: string[], set: (v: string[]) => void, id: string) => set(list.includes(id) ? list.filter((x) => x !== id) : [...list, id])
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
+    setError(null)
     const formData = new FormData(e.currentTarget)
     formData.set("customer_id", customerId === "none" ? "" : customerId)
     formData.set("project_type_id", projectTypeId === "none" ? "" : projectTypeId)
     formData.set("brand_brain_id", brandBrainId === "none" ? "" : brandBrainId)
-
     startTransition(async () => {
-      if (project) {
-        await updateProject(project.id, formData)
-      } else {
-        await createProject(
-          formData,
-          selectedPhaseIds.length > 0 ? selectedPhaseIds : undefined,
-          selectedMemberIds.length > 0 ? selectedMemberIds : undefined
-        )
-      }
-      setOpen(false)
+      try {
+        if (project) await updateProject(project.id, formData)
+        else await createProject(formData, selectedPhaseIds.length ? selectedPhaseIds : undefined, selectedMemberIds.length ? selectedMemberIds : undefined)
+        setOpen(false)
+      } catch (err) { setError(err instanceof Error ? err.message : String(err)) }
     })
   }
+
+  const input = "w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+  const summary = !isEdit ? [
+    selectedType ? selectedType.name : null,
+    selectedPhaseIds.length ? `${selectedPhaseIds.length} fase${selectedPhaseIds.length === 1 ? "" : "s"}` : null,
+    selectedMemberIds.length ? `${selectedMemberIds.length} persona${selectedMemberIds.length === 1 ? "" : "s"}` : null,
+  ].filter(Boolean).join(" · ") : ""
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {trigger ?? (
-          <Button size="sm">
-            <Plus className="w-4 h-4" />
-            Nuevo Proyecto
-          </Button>
+          <Button size="sm"><Plus className="w-4 h-4" />Nuevo Proyecto</Button>
         )}
       </DialogTrigger>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto [&_input]:bg-white [&_textarea]:bg-white [&_[role=combobox]]:bg-white">
-        <DialogHeader>
-          <DialogTitle>{project ? "Editar Proyecto" : "Nuevo Proyecto"}</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">Nombre *</Label>
-            <Input id="name" name="name" defaultValue={project?.name} required />
+      <DialogContent className="max-w-[min(760px,96vw)] w-[96vw] max-h-[92vh] overflow-y-auto overflow-x-hidden p-0 gap-0 grid-cols-1">
+        <form onSubmit={handleSubmit} className="min-w-0">
+          {/* Nombre */}
+          <div className="px-6 pt-5 pb-4 border-b border-border space-y-1 pr-12">
+            <DialogTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{isEdit ? "Editar proyecto" : "Nuevo proyecto"}</DialogTitle>
+            <input name="name" defaultValue={project?.name} required autoFocus placeholder="Nombre del proyecto"
+              className="w-full bg-transparent text-2xl font-semibold placeholder:text-muted-foreground/50 focus:outline-none" />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Tipo de Proyecto</Label>
-              <Select value={projectTypeId} onValueChange={handleTypeChange}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Sin tipo" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Sin tipo</SelectItem>
-                  {projectTypes.map((pt) => (
-                    <SelectItem key={pt.id} value={pt.id}>{pt.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <div className="px-6 py-5 space-y-6">
+            {/* Tipo */}
+            <Section title="Tipo de proyecto" hint={!isEdit ? "Define las fases y tareas que se crean." : undefined}>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 [&>*]:min-w-0">
+                {[...projectTypes, { id: "none", name: "Sin tipo", color: null, icon: null } as Pick<ProjectType, "id" | "name" | "color" | "icon">].map((t) => {
+                  const Icon = getProjectTypeIcon(t.icon) ?? FolderKanban
+                  const on = projectTypeId === t.id
+                  return (
+                    <button key={t.id} type="button" onClick={() => pickType(t.id)}
+                      className={cn("rounded-lg border px-3 py-2.5 text-left flex items-center gap-2.5 transition-colors", on ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border hover:border-foreground/30")}>
+                      <span className="w-8 h-8 rounded-md flex items-center justify-center shrink-0" style={{ background: t.color ? `${t.color}22` : "var(--muted)", color: t.color ?? undefined }}>
+                        <Icon className="w-4 h-4" />
+                      </span>
+                      <span className="text-sm font-medium leading-tight truncate">{t.name}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </Section>
+
+            {/* Cliente y marca */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>*]:min-w-0">
+              <Section title="Cliente"><CustomerCombobox customers={customers} value={customerId} onChange={setCustomerId} /></Section>
+              {brandBrains.length > 0 && (
+                <Section title="Brand Brain"><BrandBrainPicker brandBrains={brandBrains} value={brandBrainId} onChange={setBrandBrainId} /></Section>
+              )}
             </div>
-            <div className="space-y-2">
-              <Label>Cliente</Label>
-              <CustomerCombobox customers={customers} value={customerId} onChange={setCustomerId} />
+
+            {/* Equipo */}
+            {!isEdit && employees.length > 0 && (
+              <Section title={`Equipo · ${selectedMemberIds.length}`} hint="Agrégalos ya para que las tareas de las fases se asignen solas por puesto.">
+                <div className="flex flex-wrap gap-1.5">
+                  {employees.map((e) => {
+                    const on = selectedMemberIds.includes(e.id)
+                    return (
+                      <button key={e.id} type="button" onClick={() => toggle(selectedMemberIds, setSelectedMemberIds, e.id)}
+                        className={cn("h-9 pl-1 pr-3 rounded-full border inline-flex items-center gap-2 text-sm transition-colors", on ? "border-primary bg-primary/5" : "border-border hover:border-foreground/30")}>
+                        <span className="relative w-7 h-7 rounded-full overflow-hidden bg-muted flex items-center justify-center text-[10px] font-semibold shrink-0">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          {e.avatar_url ? <img src={e.avatar_url} alt="" className="w-full h-full object-cover" /> : initials(e.full_name ?? e.email ?? "?")}
+                          {on && <span className="absolute inset-0 bg-primary/80 flex items-center justify-center text-primary-foreground"><Check className="w-3.5 h-3.5" /></span>}
+                        </span>
+                        <span className="leading-tight text-left">
+                          <span className="block">{e.full_name ?? e.email}</span>
+                          {e.position && <span className="block text-[10px] text-muted-foreground">{e.position}</span>}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </Section>
+            )}
+
+            {/* Fases */}
+            {!isEdit && availablePhases.length > 0 && (
+              <Section title={`Fases · ${selectedPhaseIds.length} de ${availablePhases.length}`} hint="Quita las que no apliquen a este proyecto.">
+                <div className="flex flex-wrap gap-1.5">
+                  {availablePhases.map((ph, i) => {
+                    const on = selectedPhaseIds.includes(ph.id)
+                    return (
+                      <button key={ph.id} type="button" onClick={() => toggle(selectedPhaseIds, setSelectedPhaseIds, ph.id)} title={ph.description ?? undefined}
+                        className={cn("h-8 pl-1.5 pr-3 rounded-full border inline-flex items-center gap-1.5 text-sm transition-colors", on ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground line-through decoration-muted-foreground/50 hover:border-foreground/30")}>
+                        <span className={cn("w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center", on ? "bg-background/20" : "bg-muted")}>{i + 1}</span>
+                        {ph.name}
+                      </button>
+                    )
+                  })}
+                </div>
+              </Section>
+            )}
+
+            {/* Fechas y dinero */}
+            <div className={cn("grid grid-cols-2 gap-4 [&>*]:min-w-0", canViewFinancials ? "sm:grid-cols-4" : "")}>
+              <label className="space-y-1"><span className="text-xs font-medium text-muted-foreground">Inicio</span>
+                <input name="start_date" type="date" defaultValue={project?.start_date ?? ""} className={input} /></label>
+              <label className="space-y-1"><span className="text-xs font-medium text-muted-foreground">Fin estimado</span>
+                <input name="end_date" type="date" defaultValue={project?.end_date ?? ""} className={input} /></label>
+              {canViewFinancials && <>
+                <label className="space-y-1"><span className="text-xs font-medium text-muted-foreground">Valor del proyecto</span>
+                  <input name="project_value" type="number" min="0" step="0.01" placeholder="$" defaultValue={project?.project_value ?? ""} className={cn(input, "tabular-nums")} /></label>
+                <label className="space-y-1"><span className="text-xs font-medium text-muted-foreground">Fee mensual</span>
+                  <input name="monthly_fee" type="number" min="0" step="0.01" placeholder="$" defaultValue={project?.monthly_fee ?? ""} className={cn(input, "tabular-nums")} /></label>
+              </>}
             </div>
+
+            <label className="block space-y-1">
+              <span className="text-xs font-medium text-muted-foreground">Descripción</span>
+              <AutoTextarea name="description" rows={2} defaultValue={project?.description ?? ""} placeholder="Qué incluye, objetivo, notas…" className={cn(input, "resize-none")} />
+            </label>
           </div>
 
-          {brandBrains.length > 0 && (
-            <div className="space-y-2">
-              <Label>Brand Brain</Label>
-              <BrandBrainPicker brandBrains={brandBrains} value={brandBrainId} onChange={setBrandBrainId} />
-            </div>
-          )}
-
-          {canViewFinancials && (
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="project_value">Valor del Proyecto ($)</Label>
-                <Input id="project_value" name="project_value" type="number" min="0" step="0.01"
-                  defaultValue={project?.project_value ?? ""} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="monthly_fee">Fee Mensual ($)</Label>
-                <Input id="monthly_fee" name="monthly_fee" type="number" min="0" step="0.01"
-                  defaultValue={project?.monthly_fee ?? ""} />
-              </div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="start_date">Fecha Inicio</Label>
-              <Input id="start_date" name="start_date" type="date" defaultValue={project?.start_date ?? ""} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="end_date">Fecha Fin Estimada</Label>
-              <Input id="end_date" name="end_date" type="date" defaultValue={project?.end_date ?? ""} />
-            </div>
+          {/* Pie */}
+          <div className="px-6 py-3 border-t border-border bg-background flex items-center gap-3 sticky bottom-0 z-10">
+            <span className={cn("text-xs flex-1 truncate", error ? "text-red-600" : "text-muted-foreground")}>{error ?? summary}</span>
+            <button type="button" onClick={() => setOpen(false)} className="h-9 px-3 text-sm text-muted-foreground hover:text-foreground">Cancelar</button>
+            <button type="submit" disabled={isPending} className="h-9 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center gap-1.5 disabled:opacity-50">
+              {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{isEdit ? "Guardar" : "Crear proyecto"}
+            </button>
           </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="description">Descripción</Label>
-            <AutoTextarea
-              id="description"
-              name="description"
-              rows={2}
-              defaultValue={project?.description ?? ""}
-              className="w-full rounded-md border border-input bg-white px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
-            />
-          </div>
-
-          {/* Team members — only when creating. Picking members here (before
-              phases/tasks are copied from the type's task sets) lets task
-              templates auto-assign by position right away, instead of every
-              task landing unassigned because the project had no team yet. */}
-          {!project && employees.length > 0 && (
-            <div className="space-y-2 border border-border rounded-lg p-3">
-              <p className="text-xs font-medium text-muted-foreground">
-                Equipo ({selectedMemberIds.length}/{employees.length})
-              </p>
-              <div className="space-y-1.5 max-h-40 overflow-y-auto">
-                {employees.map((employee) => (
-                  <label key={employee.id} className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={selectedMemberIds.includes(employee.id)}
-                      onChange={() => toggleMember(employee.id)}
-                      className="w-4 h-4 accent-primary"
-                    />
-                    <span className="text-sm text-foreground">{employee.full_name}</span>
-                    {employee.position && (
-                      <span className="text-xs text-muted-foreground">— {employee.position}</span>
-                    )}
-                  </label>
-                ))}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Se agregan de una vez para que las tareas de las fases se asignen automáticamente por posición.
-              </p>
-            </div>
-          )}
-
-          {/* Phase set checkboxes — only when creating and type has phases */}
-          {!project && availablePhases.length > 0 && (
-            <div className="space-y-2 border border-border rounded-lg p-3">
-              <p className="text-xs font-medium text-muted-foreground">
-                Fases a incluir ({selectedPhaseIds.length}/{availablePhases.length})
-              </p>
-              <div className="space-y-1.5">
-                {availablePhases.map((phase) => (
-                  <label key={phase.id} className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={selectedPhaseIds.includes(phase.id)}
-                      onChange={() => togglePhase(phase.id)}
-                      className="w-4 h-4 accent-primary"
-                    />
-                    <span className="text-sm text-foreground">{phase.name}</span>
-                    {phase.description && (
-                      <span className="text-xs text-muted-foreground">— {phase.description}</span>
-                    )}
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-            <Button type="submit" disabled={isPending}>
-              {isPending ? "Guardando..." : project ? "Actualizar" : "Crear"}
-            </Button>
-          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
