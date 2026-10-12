@@ -134,8 +134,9 @@ export async function addCustomDeliverable(
   text: string,
   cadence: DeliverableCadence,
   quantity: number | null,
+  actingProfileId?: string,
 ): Promise<ProjectCustomDeliverable> {
-  const profile = await requireProfile()
+  const profile = await requireProfile(actingProfileId)
   if (!isAdminOrSubadmin(profile.role)) throw new Error("Permission denied")
   const trimmed = text.trim()
   if (!trimmed) throw new Error("El entregable necesita un texto")
@@ -223,11 +224,12 @@ function resolveRule(
 // entró al proyecto hasta el periodo actual, y regresa todo para el
 // historial. Filas en 0 que ya no caen en la cuadrícula de periodos (ej.
 // se cambió la regla) se borran; las que tienen algo marcado se conservan.
-export async function getScopeOverview(projectId: string): Promise<ScopeOverview> {
-  const profile = await requireProfile()
+export async function getScopeOverview(projectId: string, actingProfileId?: string): Promise<ScopeOverview> {
+  const profile = await requireProfile(actingProfileId)
   if (!can(profile, "view_service_deliverables")) throw new Error("Permission denied")
 
-  const supabase = await createClient()
+  // MCP (sin sesión): cliente admin, ya validado el permiso arriba.
+  const supabase = actingProfileId ? createAdminClient() : await createClient()
   const { data: projectRow } = await supabase.from("projects").select("*").eq("id", projectId).single()
   if (!projectRow) throw new Error("Project not found")
   const project = projectRow as { scope_period_mode: string | null; scope_period_anchor: string | null; scope_period_weeks: number | null; start_date: string | null; created_at: string }
@@ -389,8 +391,8 @@ export async function setScopePeriodRule(projectId: string, rule: { mode: ScopeP
 
 // Sin tope: si tocaban 3 y se entregaron 4, se registra 4 (sobre-entrega
 // visible). Marcar un periodo ya terminado queda como "marcado después".
-export async function updateDeliverableFulfilled(periodId: string, fulfilledQuantity: number, projectId: string): Promise<void> {
-  const profile = await requireProfile()
+export async function updateDeliverableFulfilled(periodId: string, fulfilledQuantity: number, projectId: string, actingProfileId?: string): Promise<void> {
+  const profile = await requireProfile(actingProfileId)
   if (!isAdminOrSubadmin(profile.role) && !can(profile, "manage_tasks")) throw new Error("Permission denied")
 
   const admin = createAdminClient()
@@ -421,8 +423,8 @@ export async function updateDeliverableFulfilled(periodId: string, fulfilledQuan
 // (the offer's deliverable line, or the custom deliverable definition)
 // again. Kept deliberately consistent with how expected_quantity already
 // behaved, rather than introducing a second, different override model.
-export async function updatePeriodText(periodId: string, text: string, projectId: string): Promise<void> {
-  const profile = await requireProfile()
+export async function updatePeriodText(periodId: string, text: string, projectId: string, actingProfileId?: string): Promise<void> {
+  const profile = await requireProfile(actingProfileId)
   if (!isAdminOrSubadmin(profile.role)) throw new Error("Permission denied")
   const trimmed = text.trim()
   if (!trimmed) throw new Error("El texto no puede quedar vacío")
@@ -438,8 +440,8 @@ export async function updatePeriodText(periodId: string, text: string, projectId
   revalidateProject(projectId)
 }
 
-export async function updatePeriodExpectedQuantity(periodId: string, expectedQuantity: number, projectId: string): Promise<void> {
-  const profile = await requireProfile()
+export async function updatePeriodExpectedQuantity(periodId: string, expectedQuantity: number, projectId: string, actingProfileId?: string): Promise<void> {
+  const profile = await requireProfile(actingProfileId)
   if (!isAdminOrSubadmin(profile.role)) throw new Error("Permission denied")
   if (expectedQuantity < 0) throw new Error("La cantidad no puede ser negativa")
 

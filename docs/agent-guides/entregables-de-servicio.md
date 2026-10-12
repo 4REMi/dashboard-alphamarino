@@ -168,3 +168,7 @@ sección "Entregables personalizados".
 - `lib/types.ts` — `ServiceDeliverable`, `ProjectServiceOffer`,
   `ProjectDeliverablePeriod`, `ProjectCustomDeliverable`.
 - `lib/permissions.ts` — `view_service_deliverables`.
+
+
+## Por MCP
+Claude puede ver el periodo actual (`entregables_proyecto`), palomear avance (`marcar_entregable`), ajustar cantidad/texto del periodo (`ajustar_entregable`) y agregar extras (`agregar_entregable_extra`). Mismas funciones y permisos que el Hub; queda en la bitácora.

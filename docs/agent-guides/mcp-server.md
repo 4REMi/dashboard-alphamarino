@@ -85,6 +85,13 @@ más estricto desde el inicio, no una copia de cómo funciona Telegram.
   líneas (por número o texto) con vista previa antes → después. Guarda con
   `updateServiceOffer` (mismo camino que la pantalla de Servicios); líneas
   nuevas llevan `added_at` = hoy (cuentan desde hoy en proyectos con la oferta).
+- **Entregables del proyecto por periodo** (`lib/mcp/deliverable-tools.ts`):
+  `entregables_proyecto` (periodo actual con avance, hitos únicos pendientes,
+  periodo anterior incompleto), `marcar_entregable` (sumar/hecho/completo;
+  directo), `ajustar_entregable` (cantidad o texto solo de este periodo) y
+  `agregar_entregable_extra` (fuera de oferta). Usan las mismas funciones del
+  alcance (`service-deliverables.ts`, con `actingProfileId`) y sus permisos;
+  todo cambio queda en la bitácora.
 - **Crear proyectos** (`lib/mcp/project-tools.ts`): `crear_proyecto` usa la misma
   función que el modal (`createProject`, con `actingProfileId`). Tipo, cliente,
   Brand Brain, equipo y fases a quitar por nombre (nunca adivina). El equipo se
