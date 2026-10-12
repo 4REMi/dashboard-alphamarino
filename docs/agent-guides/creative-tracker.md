@@ -209,7 +209,9 @@ contadores de briefs/assets; subir un asset o crear un brief se hace dentro del
 concepto (o con "Crear desde asset existente").
 
 ## Crear desde asset existente (videos sin brief)
-Abre el embudo sin línea fija: la IA también propone la línea. Por video: se sube a Storage como asset **borrador sin
+Abre el embudo sin línea fija: la IA también propone la línea. Acepta **videos e
+imágenes estáticas**: en imágenes no hay transcripción y Gemini lee la imagen y su
+texto (formato, composición, gancho visual, texto literal). Por video: se sube a Storage como asset **borrador sin
 concepto** (`registerUploadedAsset`), se transcribe (AssemblyAI) y Gemini 2.5
 Flash lo "ve" (`lib/ai/video-understanding.ts`: escenas con tiempos, visual,
 audio, texto en pantalla, formato, música, tono, efectos, gancho). Proveedor: API oficial de Gemini

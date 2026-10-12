@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Upload, Loader2, Check, ChevronDown, Plus, Film, AlertTriangle, Eye, Mic } from "lucide-react"
+import { Upload, Loader2, Check, ChevronDown, Plus, Film, ImageIcon, AlertTriangle, Eye, Mic } from "lucide-react"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { createClient } from "@/lib/supabase/client"
 import { captureVideoThumbnail } from "@/components/projects/hub/creatives/asset-modal"
@@ -15,6 +15,8 @@ import { cn } from "@/lib/utils"
 
 const ANGULOS = ["Desired Outcome", "Objection", "Feature / Benefit", "Use Case", "Consequence", "Misconception", "Education", "Acceptance", "Failed Solutions", "Identity"]
 const MAX_VIDEO = 150 * 1024 * 1024
+const MAX_IMAGE = 20 * 1024 * 1024
+const isImg = (f: File) => f.type.startsWith("image/")
 
 type Item = {
   key: string
@@ -47,17 +49,18 @@ export function ClassifyUploader({ projectId, cycleId, brandLines, lineId, open,
       const supabase = createClient()
       const uuid = crypto.randomUUID()
       const ext = (it.file.name.split(".").pop() ?? "mp4").slice(0, 4).toLowerCase()
-      const path = `${projectId}/${uuid}/video.${ext}`
+      const kind = isImg(it.file) ? "image" : "video"
+      const path = `${projectId}/${uuid}/${kind}.${ext}`
       const { error } = await supabase.storage.from("creative-assets").upload(path, it.file, { contentType: it.file.type, upsert: false })
       if (error) throw new Error(`Error al subir: ${error.message}`)
       let thumbPath: string | null = null
-      const thumb = await captureVideoThumbnail(it.previewUrl)
+      const thumb = kind === "video" ? await captureVideoThumbnail(it.previewUrl) : null
       if (thumb) {
         const tp = `${projectId}/${uuid}/thumbnail.jpg`
         const { error: te } = await supabase.storage.from("creative-assets").upload(tp, thumb, { contentType: "image/jpeg", upsert: false })
         if (!te) thumbPath = tp
       }
-      const assetId = await registerUploadedAsset(projectId, { file_path: path, thumbnail_path: thumbPath, file_type: "video", cycle_id: cycleId })
+      const assetId = await registerUploadedAsset(projectId, { file_path: path, thumbnail_path: thumbPath, file_type: kind, cycle_id: cycleId })
       patch(it.key, { stage: "analyzing", assetId })
       const result = await classifyAsset(projectId, assetId, lineId)
       patch(it.key, { stage: "ready", result, draft: result.new_concept })
@@ -67,8 +70,11 @@ export function ClassifyUploader({ projectId, cycleId, brandLines, lineId, open,
   }, [projectId, cycleId, lineId])
 
   function addFiles(files: File[]) {
-    const vids = files.filter((f) => f.type.startsWith("video/"))
-    const next: Item[] = vids.map((f) => ({ key: crypto.randomUUID(), file: f, previewUrl: URL.createObjectURL(f), stage: f.size > MAX_VIDEO ? "error" : "uploading", error: f.size > MAX_VIDEO ? "Supera 150 MB" : undefined }))
+    const media = files.filter((f) => f.type.startsWith("video/") || isImg(f))
+    const next: Item[] = media.map((f) => {
+      const tooBig = f.size > (isImg(f) ? MAX_IMAGE : MAX_VIDEO)
+      return { key: crypto.randomUUID(), file: f, previewUrl: URL.createObjectURL(f), stage: tooBig ? "error" : "uploading", error: tooBig ? `Supera ${isImg(f) ? "20" : "150"} MB` : undefined }
+    })
     setItems((xs) => [...next, ...xs])
     // De dos en dos para no saturar transcripción/IA.
     const queue = next.filter((x) => x.stage === "uploading")
@@ -95,7 +101,7 @@ export function ClassifyUploader({ projectId, cycleId, brandLines, lineId, open,
         <DialogContent className="max-w-[min(1000px,96vw)] w-[96vw] max-h-[92vh] overflow-y-auto p-0 gap-0">
           <div className="px-6 pt-5 pb-3 border-b border-border">
             <DialogTitle className="text-lg">Conceptos desde videos · {lineName}</DialogTitle>
-            <p className="text-xs text-muted-foreground">Para videos que no salieron de un brief. La IA los transcribe, los ve y te dice a qué concepto pertenecen, o te propone uno nuevo. Entran como borrador: el cliente no los ve.</p>
+            <p className="text-xs text-muted-foreground">Para videos o imágenes que no salieron de un brief. La IA los transcribe (si tienen voz), los ve y te dice a qué concepto pertenecen, o te propone uno nuevo. Entran como borrador: el cliente no los ve.</p>
           </div>
 
           <div className="p-6 space-y-4">
@@ -105,9 +111,9 @@ export function ClassifyUploader({ projectId, cycleId, brandLines, lineId, open,
               onClick={() => inputRef.current?.click()}
               className={cn("rounded-xl border-2 border-dashed px-6 py-8 text-center cursor-pointer transition-colors", drag ? "border-primary bg-primary/5" : "border-border hover:border-foreground/30")}>
               <Upload className="w-6 h-6 mx-auto text-muted-foreground" />
-              <p className="text-sm font-medium mt-2">Arrastra uno o varios videos, o haz clic</p>
+              <p className="text-sm font-medium mt-2">Arrastra videos o imágenes, o haz clic</p>
               <p className="text-xs text-muted-foreground">Hasta 150 MB cada uno · ~1 minuto de análisis por video</p>
-              <input ref={inputRef} type="file" accept="video/*" multiple hidden onChange={(e) => { addFiles([...(e.target.files ?? [])]); e.target.value = "" }} />
+              <input ref={inputRef} type="file" accept="video/*,image/*" multiple hidden onChange={(e) => { addFiles([...(e.target.files ?? [])]); e.target.value = "" }} />
             </div>
             {pending > 0 && <p className="text-xs text-muted-foreground flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" />Procesando {pending} video{pending === 1 ? "" : "s"}… puedes seguir agregando.</p>}
 
@@ -131,13 +137,16 @@ function ItemCard({ it, brandLines, onDraft, onAssign, onCreate }: { it: Item; b
     <article className={cn("rounded-xl border bg-card overflow-hidden", it.stage === "done" ? "border-emerald-300 dark:border-emerald-800" : it.stage === "error" ? "border-red-300 dark:border-red-900" : "border-border")}>
       <div className="grid md:grid-cols-[150px_1fr]">
         <div className="bg-black flex items-center justify-center">
-          <video src={it.previewUrl} controls muted className="w-full max-h-[260px] object-contain" />
+          {isImg(it.file)
+            // eslint-disable-next-line @next/next/no-img-element
+            ? <img src={it.previewUrl} alt="" className="w-full max-h-[260px] object-contain" />
+            : <video src={it.previewUrl} controls muted className="w-full max-h-[260px] object-contain" />}
         </div>
         <div className="p-4 space-y-3 min-w-0">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground"><Film className="w-3.5 h-3.5" /><span className="truncate">{it.file.name}</span></div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">{isImg(it.file) ? <ImageIcon className="w-3.5 h-3.5" /> : <Film className="w-3.5 h-3.5" />}<span className="truncate">{it.file.name}</span></div>
 
           {(it.stage === "uploading" || (it.stage === "analyzing" && !r)) && (
-            <p className="text-sm flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" />{it.stage === "uploading" ? "Subiendo…" : "Transcribiendo y viendo el video…"}</p>
+            <p className="text-sm flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" />{it.stage === "uploading" ? "Subiendo…" : isImg(it.file) ? "Analizando la imagen…" : "Transcribiendo y viendo el video…"}</p>
           )}
           {it.stage === "error" && <p className="text-sm text-red-600 flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" />{it.error}</p>}
           {it.stage === "done" && <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5"><Check className="w-4 h-4" />{it.doneLabel}</p>}
@@ -147,8 +156,8 @@ function ItemCard({ it, brandLines, onDraft, onAssign, onCreate }: { it: Item; b
               <div>
                 <p className="text-sm font-medium">{r.summary}</p>
                 <div className="flex flex-wrap gap-1.5 mt-1.5 text-[11px]">
-                  <span className={cn("px-1.5 py-0.5 rounded inline-flex items-center gap-1", r.transcript ? "bg-muted" : "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300")}><Mic className="w-3 h-3" />{r.transcript ? "Transcrito" : "Sin voz"}</span>
-                  <span className={cn("px-1.5 py-0.5 rounded inline-flex items-center gap-1", r.video ? "bg-muted" : "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300")}><Eye className="w-3 h-3" />{r.video ? "Visto por Gemini" : "No se pudo ver: solo transcripción"}</span>
+                  {!isImg(it.file) && <span className={cn("px-1.5 py-0.5 rounded inline-flex items-center gap-1", r.transcript ? "bg-muted" : "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300")}><Mic className="w-3 h-3" />{r.transcript ? "Transcrito" : "Sin voz"}</span>}
+                  <span className={cn("px-1.5 py-0.5 rounded inline-flex items-center gap-1", r.video ? "bg-muted" : "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300")}><Eye className="w-3 h-3" />{r.video ? "Visto por Gemini" : (isImg(it.file) ? "No se pudo analizar la imagen" : "No se pudo ver: solo transcripción")}</span>
                   {r.video && <span className="px-1.5 py-0.5 rounded bg-muted">{r.video.formato}</span>}
                   <button onClick={() => setShowDetail((v) => !v)} className="text-primary hover:underline inline-flex items-center gap-0.5">Detalle<ChevronDown className={cn("w-3 h-3", showDetail && "rotate-180")} /></button>
                 </div>

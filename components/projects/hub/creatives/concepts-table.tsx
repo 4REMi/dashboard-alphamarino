@@ -1388,7 +1388,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
           )}
           {canManageAssets && cycleId && (
             <Button variant="outline" size="sm" className="text-xs" onClick={() => setVideosForLineId(null)}
-              title="Para videos que no salieron de un brief: la IA los transcribe, los ve y propone a qué concepto pertenecen o uno nuevo">
+              title="Videos o imágenes que no salieron de un brief: la IA los analiza y propone a qué concepto pertenecen o uno nuevo">
               <Film className="w-3.5 h-3.5 mr-1" />Crear desde asset existente
             </Button>
           )}

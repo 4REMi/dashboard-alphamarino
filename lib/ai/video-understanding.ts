@@ -18,6 +18,10 @@ export interface VideoDescription {
   escenas: VideoScene[]
 }
 
+const IMAGE_PROMPT = `Analiza esta imagen publicitaria (anuncio estático). Responde SOLO JSON en español con esta forma exacta:
+{"resumen":"","formato":"estático|carrusel|meme|testimonio|producto|infografía|otro","personas":"quién sale o 'nadie'","escenario":"dónde/fondo","musica":"no aplica","tono":"tono visual y del copy","efectos_y_transiciones":"composición, colores, jerarquía visual","gancho":"lo primero que atrapa la vista","escenas":[{"t":"imagen","visual":"descripción detallada","audio":"—","texto_en_pantalla":"todo el texto que aparece, literal"}]}
+Si no puedes ver la imagen, responde exactamente {"error":"sin_imagen"}.`
+
 const PROMPT = `Analiza este video publicitario COMPLETO (imagen y audio). Responde SOLO JSON en español:
 {"resumen":"","formato":"UGC|testimonio|talking head|b-roll|demo|animación|otro","personas":"quién sale","escenario":"dónde","musica":"tipo/ánimo o 'sin música'","tono":"cómo se dice (energía, emoción)","efectos_y_transiciones":"cortes, zooms, textos animados, etc.","gancho":"qué pasa y qué se dice en los primeros 3 segundos","escenas":[{"t":"0:00-0:03","visual":"","audio":"voz/música/efecto","texto_en_pantalla":null}]}
 Si no puedes ver el video, responde exactamente {"error":"sin_video"}.`
@@ -57,12 +61,12 @@ async function uploadToGemini(key: string, buf: Buffer, mime: string): Promise<s
   throw new Error("Gemini tardó demasiado en procesar el video")
 }
 
-async function viaGoogle(url: string): Promise<VideoDescription | null> {
+async function viaGoogle(url: string, kind: "video" | "image"): Promise<VideoDescription | null> {
   const key = process.env.GEMINI_API_KEY
   if (!key) { console.error("[video-understanding] falta GEMINI_API_KEY"); return null }
   try {
     const res0 = await fetch(url)
-    const mime = res0.headers.get("content-type")?.split(";")[0] || "video/mp4"
+    const mime = res0.headers.get("content-type")?.split(";")[0] || (kind === "image" ? "image/jpeg" : "video/mp4")
     const buf = Buffer.from(await res0.arrayBuffer())
     const videoPart = buf.length <= 18_000_000
       ? { inline_data: { mime_type: mime, data: buf.toString("base64") } }
@@ -70,7 +74,7 @@ async function viaGoogle(url: string): Promise<VideoDescription | null> {
     const res = await fetch(`${G}/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contents: [{ parts: [videoPart, { text: PROMPT }] }], generationConfig: { responseMimeType: "application/json" } }),
+      body: JSON.stringify({ contents: [{ parts: [videoPart, { text: kind === "image" ? IMAGE_PROMPT : PROMPT }] }], generationConfig: { responseMimeType: "application/json" } }),
     })
     const j = await res.json().catch(() => null)
     if (!res.ok) console.error("[video-understanding] Gemini:", res.status, JSON.stringify(j)?.slice(0, 300))
@@ -79,7 +83,7 @@ async function viaGoogle(url: string): Promise<VideoDescription | null> {
 }
 
 // Solo la API oficial de Gemini (APIMart no pasa el video al modelo).
-export async function describeVideo(url: string): Promise<{ description: VideoDescription | null; provider: "google" | null }> {
-  const g = await viaGoogle(url)
+export async function describeVideo(url: string, kind: "video" | "image" = "video"): Promise<{ description: VideoDescription | null; provider: "google" | null }> {
+  const g = await viaGoogle(url, kind)
   return { description: g, provider: g ? "google" : null }
 }

@@ -71,18 +71,19 @@ export async function classifyAsset(projectId: string, assetId: string, lineId: 
   const [{ data: project }, { data: concepts }, transcriptAndVideo] = await Promise.all([
     db.from("projects").select("name, brand_brain_id").eq("id", projectId).single(),
     db.from("creative_concepts").select("id, name, angle_type, organizing_principle, target_persona, pain_point, why_it_works, transformation, funnel_stage, brand_line_id, status").eq("project_id", projectId).neq("status", "Archived").limit(80),
-    Promise.all([transcribe(url), describeVideo(url)]),
+    // Estáticos: no hay audio que transcribir; Gemini lee la imagen (y su texto).
+    asset.file_type === "image" ? Promise.all([Promise.resolve(null), describeVideo(url, "image")]) : Promise.all([transcribe(url), describeVideo(url, "video")]),
   ])
   const [transcript, { description: video, provider }] = transcriptAndVideo
   const { data: lines } = project?.brand_brain_id ? await db.from("brand_lines").select("id, name, description").eq("brand_brain_id", project.brand_brain_id) : { data: [] }
-  if (!transcript && !video) throw new Error("No se pudo transcribir ni analizar el video. Revisa que tenga audio o inténtalo de nuevo.")
+  if (!transcript && !video) throw new Error(asset.file_type === "image" ? "No se pudo analizar la imagen. Inténtalo de nuevo." : "No se pudo transcribir ni analizar el video. Revisa que tenga audio o inténtalo de nuevo.")
 
   const Anthropic = (await import("@anthropic-ai/sdk")).default
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
   const msg = await client.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 2048,
-    system: `Eres estratega creativo de una agencia de paid media. Clasificas un video publicitario contra los CONCEPTOS existentes de un proyecto (un concepto = una hipótesis creativa: ángulo + persona + dolor/deseo).
+    system: `Eres estratega creativo de una agencia de paid media. Clasificas un creativo publicitario (video o imagen estática) contra los CONCEPTOS existentes de un proyecto (un concepto = una hipótesis creativa: ángulo + persona + dolor/deseo).
 Reglas:
 - "matches": hasta 3 conceptos existentes donde el video encaje, con confidence 0-100 honesto (más de 70 solo si el mensaje central y la persona coinciden de verdad) y una razón de una frase.
 - "new_concept": SIEMPRE propón uno nuevo como alternativa, basado en lo que el video realmente dice y muestra. angle_type debe ser EXACTAMENTE uno de: ${ANGULOS.join(", ")}. funnel_stage: TOF, MOF o BOF. organizing_principle: Pain-First o Desire-First. brand_line_id: el id de la línea que mejor aplique o null.
@@ -95,7 +96,8 @@ SUBIDO DESDE LA LÍNEA: ${lineId ? (lines ?? []).find((l) => l.id === lineId)?.n
 LÍNEAS DE PRODUCTO: ${JSON.stringify((lines ?? []).map((l) => ({ id: l.id, name: l.name, description: l.description })))}
 CONCEPTOS EXISTENTES: ${JSON.stringify((concepts ?? []).map((c) => ({ id: c.id, name: c.name, angle: c.angle_type, persona: c.target_persona, pain: c.pain_point, transformation: c.transformation, funnel: c.funnel_stage, line: c.brand_line_id })))}
 
-TRANSCRIPCIÓN: ${transcript ?? "(sin voz o no disponible)"}
+TIPO: ${asset.file_type === "image" ? "imagen estática" : "video"}
+TRANSCRIPCIÓN: ${asset.file_type === "image" ? "(no aplica)" : transcript ?? "(sin voz o no disponible)"}
 
 LO QUE SE VE Y SE OYE: ${video ? JSON.stringify(video) : "(no disponible — clasifica solo con la transcripción)"}`,
     }],
