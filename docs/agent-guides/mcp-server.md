@@ -71,6 +71,11 @@ más estricto desde el inicio, no una copia de cómo funciona Telegram.
   los redacta desde el objetivo que describe el usuario). Meta no edita
   creativos: se crea uno igual con el mensaje nuevo y se asigna al anuncio
   (vuelve a revisión). `meta_crear_anuncio` acepta `saludo` y `preguntas`.
+- **Crear proyectos** (`lib/mcp/project-tools.ts`): `crear_proyecto` usa la misma
+  función que el modal (`createProject`, con `actingProfileId`). Tipo, cliente,
+  Brand Brain, equipo y fases a quitar por nombre (nunca adivina). El equipo se
+  agrega antes de copiar las tareas para que se asignen por puesto. Valor y fee
+  solo con `view_project_financials`. Solo admin/subadmin; dos pasos.
 - **Finanzas** (`lib/mcp/finance-tools.ts`): `registrar_gasto`, `listar_gastos`,
   `resumen_finanzas`; `registrar_gasto` también da de alta recurrentes generales (`frecuencia`). Permiso `view_global_finances` (igual que /finances).
   Mismo modelo que el bot de Telegram: montos en USD (MXN se convierte con el

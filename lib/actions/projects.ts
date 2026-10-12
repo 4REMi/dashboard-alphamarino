@@ -573,11 +573,20 @@ export async function getProject(id: string) {
 export async function createProject(
   formData: FormData,
   selectedPhaseSetPhaseIds?: string[],
-  selectedMemberIds?: string[]
-) {
-  // Get authenticated user before switching to admin client
-  const authClient = await createClient()
-  const { data: { user } } = await authClient.auth.getUser()
+  selectedMemberIds?: string[],
+  actingProfileId?: string,
+): Promise<{ id: string }> {
+  // Get authenticated user before switching to admin client. actingProfileId
+  // solo lo pasa el servidor MCP (sin cookies), igual que en tasks.ts.
+  let user: { id: string } | null = null
+  if (actingProfileId) {
+    const { data: prof } = await createAdminClient().from("profiles").select("id").eq("id", actingProfileId).single()
+    if (!prof) throw new Error("Not authenticated")
+    user = { id: prof.id }
+  } else {
+    const authClient = await createClient()
+    user = (await authClient.auth.getUser()).data.user
+  }
 
   const supabase = createAdminClient()
   const projectTypeId = formData.get("project_type_id") as string
