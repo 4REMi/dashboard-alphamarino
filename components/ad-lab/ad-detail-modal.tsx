@@ -6,13 +6,14 @@ import { saveAd, addAdToBoard, createBoard } from "@/lib/actions/ad-lab"
 import { getAdClones, deleteAdClone } from "@/lib/actions/ad-clone"
 import { getImageClones, deleteImageClone } from "@/lib/actions/image-clone"
 import {
-  X, ExternalLink, Bookmark, Check, Loader2,
+  X, ExternalLink, Bookmark, ScanSearch, Check, Loader2,
   Calendar, Wand2, ImageIcon, ChevronLeft, ChevronRight, Link as LinkIcon, Plus, Trash2, FolderPlus, FileText,
 } from "lucide-react"
 import { SiFacebook, SiInstagram, SiMessenger, SiMeta, SiThreads } from "@icons-pack/react-simple-icons"
 import { CloneModal } from "@/components/ad-lab/clone-modal"
 import { ImageCloneModal } from "@/components/ad-lab/image-clone-modal"
 import { ExtractScriptModal } from "@/components/ad-lab/extract-script-modal"
+import { ConceptAnalysisModal } from "@/components/ad-lab/concept-analysis-modal"
 
 interface Props {
   ad: MetaAdResult | null
@@ -75,6 +76,7 @@ export function AdDetailModal({ ad, boards: boardsProp, onClose, savedAdId }: Pr
   const [creatingBoard, setCreatingBoard] = useState(false)
   const [showClone, setShowClone] = useState(false)
   const [showExtractScript, setShowExtractScript] = useState(false)
+  const [showAnalysis, setShowAnalysis] = useState(false)
   const [clones, setClones] = useState<AdClone[] | null>(null)
   const [loadingClones, setLoadingClones] = useState(false)
   const [deletingCloneId, setDeletingCloneId] = useState<string | null>(null)
@@ -209,6 +211,27 @@ export function AdDetailModal({ ad, boards: boardsProp, onClose, savedAdId }: Pr
           }
         }}
       />
+    )
+  }
+
+  if (showAnalysis) {
+    return (
+        <ConceptAnalysisModal
+          open={showAnalysis}
+          onClose={() => setShowAnalysis(false)}
+          ad={{
+            pageName: ad.page_name,
+            body,
+            title: snap?.title || card?.title || null,
+            caption: snap?.caption || card?.caption || null,
+            cta: snap?.cta_text || card?.cta_text || null,
+            linkUrl,
+            videoUrl: videoUrl ?? null,
+            imageUrl: card?.original_image_url || imageItem?.original_image_url || thumbUrl || null,
+            isActive: !!ad.is_active,
+            startDate: ad.start_date ?? null,
+          }}
+        />
     )
   }
 
@@ -666,6 +689,18 @@ export function AdDetailModal({ ad, boards: boardsProp, onClose, savedAdId }: Pr
               >
                 <FileText className="w-4 h-4" />
                 Extraer script
+              </button>
+            )}
+
+            {/* Concept analysis — video or image; no brand/board needed */}
+            {(videoUrl || thumbUrl) && (
+              <button
+                title="Desarma el concepto del anuncio: ángulo, persona, dolor, gancho, estructura y cómo adaptarlo"
+                onClick={() => setShowAnalysis(true)}
+                className="h-9 px-4 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted flex items-center gap-2 whitespace-nowrap flex-shrink-0 transition-colors"
+              >
+                <ScanSearch className="w-4 h-4" />
+                Analizar concepto
               </button>
             )}
 
