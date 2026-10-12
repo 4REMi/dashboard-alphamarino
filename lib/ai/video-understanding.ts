@@ -78,24 +78,29 @@ async function viaGoogle(url: string, kind: "video" | "image"): Promise<{ d: Vid
       ? { inline_data: { mime_type: mime, data: buf.toString("base64") } }
       : { file_data: { mime_type: mime, file_uri: await uploadToGemini(key, buf, mime) } }
     let lastError = "sin respuesta"
+    // Saturación (503/429/500) es temporal: se reintenta con espera y, si
+    // sigue, se pasa al siguiente modelo. 404/400 (modelo no disponible) → siguiente.
     for (const model of MODELS) {
-      const res = await fetch(`${G}/v1beta/models/${model}:generateContent?key=${key}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contents: [{ parts: [mediaPart, { text: kind === "image" ? IMAGE_PROMPT : PROMPT }] }], generationConfig: { responseMimeType: "application/json" } }),
-      })
-      const j = await res.json().catch(() => null)
-      if (!res.ok) {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const res = await fetch(`${G}/v1beta/models/${model}:generateContent?key=${key}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contents: [{ parts: [mediaPart, { text: kind === "image" ? IMAGE_PROMPT : PROMPT }] }], generationConfig: { responseMimeType: "application/json" } }),
+        })
+        const j = await res.json().catch(() => null)
+        if (res.ok) {
+          const raw = j?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("")
+          const d = parse(raw)
+          if (d) return { d, error: null }
+          lastError = `Gemini (${model}) respondió sin un análisis válido${j?.candidates?.[0]?.finishReason ? ` (${j.candidates[0].finishReason})` : ""}: ${String(raw ?? "").slice(0, 160)}`
+          console.error("[video-understanding]", lastError)
+          break
+        }
         lastError = `Gemini (${model}) ${res.status}: ${j?.error?.message ?? "error"}`
         console.error("[video-understanding]", lastError)
-        if (res.status === 404 || res.status === 400) continue   // modelo no disponible → siguiente
-        break
+        if (![429, 500, 503].includes(res.status)) break
+        if (attempt < 2) await new Promise((r) => setTimeout(r, 4000 * (attempt + 1)))
       }
-      const raw = j?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("")
-      const d = parse(raw)
-      if (d) return { d, error: null }
-      lastError = `Gemini (${model}) respondió sin un análisis válido${j?.candidates?.[0]?.finishReason ? ` (${j.candidates[0].finishReason})` : ""}: ${String(raw ?? "").slice(0, 160)}`
-      console.error("[video-understanding]", lastError)
     }
     return { d: null, error: lastError }
   } catch (e) {
