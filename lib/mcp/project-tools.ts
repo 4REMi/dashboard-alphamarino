@@ -29,7 +29,7 @@ export function registerProjectTools(server: McpServer) {
     "crear_proyecto",
     {
       title: "Crear proyecto",
-      description: "Crea un proyecto como el modal 'Nuevo proyecto': nombre, tipo (define fases y tareas), cliente, Brand Brain, equipo (se agrega antes de crear las tareas para que se asignen solas por puesto), fases (todas las del tipo salvo las que se quiten), fechas, valor y fee mensual. Todo por nombre. Sin confirmar: true solo muestra el plan. Solo admin/subadmin.",
+      description: "Crea un proyecto como el modal 'Nuevo proyecto': nombre, tipo (define fases y tareas), cliente, Brand Brain, equipo (se agrega antes de crear las tareas para que se asignen solas por puesto), fases (todas las del tipo salvo las que se quiten), fechas, valor y fee mensual, y el ALCANCE (obligatorio): ofertas del catálogo por nombre, entregables propios, o interno: true para proyectos internos sin alcance de cliente. Todo por nombre. Sin confirmar: true solo muestra el plan. Solo admin/subadmin.",
       inputSchema: z.object({
         nombre: z.string().min(2),
         tipo: z.string().optional().describe("Tipo de proyecto, ej. Paid Media, Shopify"),
@@ -42,11 +42,19 @@ export function registerProjectTools(server: McpServer) {
         valor: z.number().nonnegative().optional().describe("Valor del proyecto (USD)"),
         fee_mensual: z.number().nonnegative().optional().describe("Fee mensual (USD)"),
         descripcion: z.string().optional(),
+        ofertas: z.array(z.string()).optional().describe("Ofertas del catálogo por nombre (ver listar_ofertas)"),
+        entregables_propios: z.array(z.object({
+          texto: z.string().min(1),
+          cadencia: z.enum(["once", "monthly", "quarterly", "biannual"]).default("monthly").describe("once = una vez; monthly = por periodo; quarterly/biannual = cada 3/6 periodos"),
+          cantidad: z.number().int().positive().default(1),
+        })).optional(),
+        interno: z.boolean().optional().describe("Proyecto interno de la agencia: no lleva alcance de cliente"),
         confirmar: z.boolean().default(false),
       }),
     },
     async (a, ctx: ToolCtx) => {
       const profileId = await requireEditor(ctx)
+      if (!a.interno && !a.ofertas?.length && !a.entregables_propios?.length) throw new Error("Falta el alcance: indica ofertas, entregables_propios, o interno: true.")
       const { data: me } = await db().from("profiles").select("role, permissions").eq("id", profileId).single()
       if ((a.valor != null || a.fee_mensual != null) && !can(me as never, "view_project_financials")) throw new Error("No tienes permiso para fijar valor o fee del proyecto.")
 
@@ -56,6 +64,11 @@ export function registerProjectTools(server: McpServer) {
         db().from("brand_brains").select("id, name"),
         db().from("profiles").select("id, full_name, position"),
       ])
+      // Solo nombre y entregables de las ofertas; nunca precios.
+      const { data: offerRows } = a.interno || !a.ofertas?.length ? { data: [] } : await db().from("service_offers").select("id, name, deliverables").eq("status", "active")
+      const offers = a.interno ? [] : (a.ofertas ?? []).map((n) => pick((offerRows ?? []) as { id: string; name: string; deliverables: { text: string; control_text?: string | null; cadence: string; quantity: number | null }[] | null }[], n, "oferta"))
+      const customs = a.interno ? [] : a.entregables_propios ?? []
+      const CAD: Record<string, string> = { once: "una vez", monthly: "por periodo", quarterly: "cada 3 periodos", biannual: "cada 6 periodos", continuous: "continuo" }
       const type = a.tipo ? pick(types ?? [], a.tipo, "tipo de proyecto") : null
       const customer = a.cliente ? pick(customers ?? [], a.cliente, "cliente") : null
       const brain = a.brand_brain ? pick(brains ?? [], a.brand_brain, "Brand Brain") : null
@@ -75,6 +88,10 @@ export function registerProjectTools(server: McpServer) {
         `Equipo: ${members.length ? members.map((m) => `${m.full_name}${m.position ? ` (${m.position})` : ""}`).join(", ") : "solo tú"} (tú te agregas siempre)`,
         phases.length ? `Fases (${keep.length} de ${phases.length}): ${keep.map((p) => p.name).join(" → ")}${removed.length ? ` · sin: ${removed.map((r) => r.name).join(", ")}` : ""}` : "Sin fases (el tipo no tiene plantilla)",
         a.fecha_inicio || a.fecha_fin ? `Fechas: ${a.fecha_inicio ?? "—"} → ${a.fecha_fin ?? "—"}` : "",
+        a.interno ? "Alcance: proyecto interno (sin alcance de cliente)" : `Alcance:\n${[
+          ...offers.map((o) => `- Oferta ${o.name}: ${(o.deliverables ?? []).map((d) => `${d.quantity ?? 1}× ${d.control_text?.trim() || d.text} (${CAD[d.cadence] ?? d.cadence})`).join(", ") || "sin entregables"}`),
+          ...customs.map((c) => `- Propio: ${c.cantidad}× ${c.texto} (${CAD[c.cadencia]})`),
+        ].join("\n")}`,
         a.valor != null || a.fee_mensual != null ? `Valor: ${a.valor ?? "—"} · Fee mensual: ${a.fee_mensual ?? "—"}` : "",
       ].filter(Boolean).join("\n")
       if (!a.confirmar) return text(`Crearía:\n${plan}${confirmHint}`)
@@ -89,6 +106,9 @@ export function registerProjectTools(server: McpServer) {
       if (a.valor != null) fd.set("project_value", String(a.valor))
       if (a.fee_mensual != null) fd.set("monthly_fee", String(a.fee_mensual))
       if (a.descripcion) fd.set("description", a.descripcion)
+      fd.set("is_internal", String(!!a.interno))
+      fd.set("offer_ids_json", JSON.stringify(offers.map((o) => o.id)))
+      fd.set("custom_deliverables_json", JSON.stringify(customs.map((c) => ({ text: c.texto, cadence: c.cadencia, quantity: c.cantidad }))))
       const project = await createProject(fd, keep.length ? keep.map((p) => p.id) : undefined, members.map((m) => m.id), profileId)
       return text(`✅ Proyecto creado: "${a.nombre}" [id ${project.id}]\n${plan}`)
     },

@@ -25,6 +25,25 @@ sistema completamente separado de:
 **Es 100% interno.** No existe ningún portal, link o vista de cliente para esto —
 nunca se expone fuera del dashboard. Es control interno del equipo, punto.
 
+## Barra de avance y alcance obligatorio (2026-10-12)
+
+- **La barra de la tarjeta de proyecto mide entregables, no fases.** Recurrente:
+  `hechos/esperados` del periodo actual + marca de "hoy" (qué parte del periodo
+  ya pasó). Color por ritmo (`scopeTone` en `lib/utils/project-signals.ts`):
+  verde si va al día (o ≤10 pts detrás del tiempo), ámbar si va algo atrasado,
+  rojo si va muy atrasado o el periodo anterior cerró incompleto. Si el
+  proyecto solo tiene entregables "una vez", mide esos hitos (sin marca de
+  tiempo). Si no hay ni ofertas ni entregables propios: estado punteado
+  "Sin alcance definido" → cuenta como atención y tiene filtro propio.
+  Proyecto **interno** (`projects.is_internal`, migración 114): sin barra.
+- Si tiene alcance pero el periodo aún no se generó (se genera al abrir el
+  proyecto), la barra queda neutra con "el periodo se abre al entrar".
+- **Crear proyecto exige alcance** (admin/subadmin, que son quienes pueden
+  definirlo): sección "Alcance" del modal con las ofertas del catálogo —
+  solo nombre, categoría y textos de control, **nunca precios** (el subadmin
+  no debe verlos) —, entregables propios, o "Proyecto interno". `createProject`
+  valida en servidor y adjunta todo. Mismo requisito en MCP `crear_proyecto`.
+
 ## Rediseño 2026-09-26 (lo más reciente manda sobre lo de abajo)
 
 - **Periodo por proyecto, no calendario** (migración 102, `lib/utils/scope-periods.ts`):

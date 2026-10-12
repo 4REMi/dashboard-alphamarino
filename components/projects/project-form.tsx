@@ -11,6 +11,7 @@ import { CustomerCombobox } from "@/components/projects/customer-combobox"
 import { BrandBrainPicker } from "@/components/projects/brand-brain-picker"
 import { getProjectTypeIcon } from "@/lib/project-type-icons"
 import { cn } from "@/lib/utils"
+import { ScopePicker, scopeReady, type ScopeOffer, type ScopeValue } from "@/components/projects/scope-picker"
 
 // Nuevo / editar proyecto. Arriba el nombre; luego el tipo como tarjetas
 // (con su ícono y color) que define las fases; cliente y marca; el equipo
@@ -26,6 +27,9 @@ interface ProjectFormProps {
   employees?: Profile[]
   trigger?: React.ReactNode
   canViewFinancials?: boolean
+  // Alcance al crear (solo admin/subadmin). Ofertas sin precios.
+  offers?: ScopeOffer[]
+  canDefineScope?: boolean
 }
 
 function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
@@ -42,16 +46,19 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
 
 const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join("")
 
-export function ProjectForm({ project, customers, projectTypes, brandBrains = [], employees = [], trigger, canViewFinancials = true }: ProjectFormProps) {
+export function ProjectForm({ project, customers, projectTypes, brandBrains = [], employees = [], trigger, canViewFinancials = true, offers = [], canDefineScope = false }: ProjectFormProps) {
   const [open, setOpen] = useState(false)
   const [customerId, setCustomerId] = useState(project?.customer_id ?? "none")
   const [projectTypeId, setProjectTypeId] = useState(project?.project_type_id ?? "none")
   const [brandBrainId, setBrandBrainId] = useState(project?.brand_brain_id ?? "none")
   const [selectedPhaseIds, setSelectedPhaseIds] = useState<string[]>([])
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([])
+  const [scope, setScope] = useState<ScopeValue>({ offerIds: [], customs: [], internal: false })
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
   const isEdit = !!project
+  const askScope = !isEdit && canDefineScope
+  const scopeOk = !askScope || scopeReady(scope)
 
   const selectedType = projectTypes.find((pt) => pt.id === projectTypeId)
   const availablePhases: PhaseSetPhase[] = (selectedType?.default_phase_set as { phases?: PhaseSetPhase[] } | undefined)?.phases ?? []
@@ -71,6 +78,11 @@ export function ProjectForm({ project, customers, projectTypes, brandBrains = []
     formData.set("customer_id", customerId === "none" ? "" : customerId)
     formData.set("project_type_id", projectTypeId === "none" ? "" : projectTypeId)
     formData.set("brand_brain_id", brandBrainId === "none" ? "" : brandBrainId)
+    if (!isEdit && askScope) {
+      formData.set("offer_ids_json", JSON.stringify(scope.internal ? [] : scope.offerIds))
+      formData.set("custom_deliverables_json", JSON.stringify(scope.internal ? [] : scope.customs))
+      formData.set("is_internal", String(scope.internal))
+    }
     startTransition(async () => {
       try {
         if (project) await updateProject(project.id, formData)
@@ -85,6 +97,7 @@ export function ProjectForm({ project, customers, projectTypes, brandBrains = []
     selectedType ? selectedType.name : null,
     selectedPhaseIds.length ? `${selectedPhaseIds.length} fase${selectedPhaseIds.length === 1 ? "" : "s"}` : null,
     selectedMemberIds.length ? `${selectedMemberIds.length} persona${selectedMemberIds.length === 1 ? "" : "s"}` : null,
+    askScope ? (scope.internal ? "Interno" : scopeReady(scope) ? `${scope.offerIds.length + scope.customs.length} de alcance` : "Falta definir el alcance") : null,
   ].filter(Boolean).join(" · ") : ""
 
   return (
@@ -130,6 +143,13 @@ export function ProjectForm({ project, customers, projectTypes, brandBrains = []
                 <Section title="Brand Brain"><BrandBrainPicker brandBrains={brandBrains} value={brandBrainId} onChange={setBrandBrainId} /></Section>
               )}
             </div>
+
+            {/* Alcance */}
+            {askScope && (
+              <Section title="Alcance" hint="Lo que se entrega. De aquí sale la barra de avance del proyecto.">
+                <ScopePicker offers={offers} value={scope} onChange={setScope} />
+              </Section>
+            )}
 
             {/* Equipo */}
             {!isEdit && employees.length > 0 && (
@@ -198,7 +218,7 @@ export function ProjectForm({ project, customers, projectTypes, brandBrains = []
           <div className="px-6 py-3 border-t border-border bg-background flex items-center gap-3 sticky bottom-0 z-10">
             <span className={cn("text-xs flex-1 truncate", error ? "text-red-600" : "text-muted-foreground")}>{error ?? summary}</span>
             <button type="button" onClick={() => setOpen(false)} className="h-9 px-3 text-sm text-muted-foreground hover:text-foreground">Cancelar</button>
-            <button type="submit" disabled={isPending} className="h-9 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center gap-1.5 disabled:opacity-50">
+            <button type="submit" disabled={isPending || !scopeOk} title={scopeOk ? undefined : "Define el alcance o marca el proyecto como interno"} className="h-9 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center gap-1.5 disabled:opacity-50">
               {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{isEdit ? "Guardar" : "Crear proyecto"}
             </button>
           </div>

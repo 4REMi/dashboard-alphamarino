@@ -109,6 +109,9 @@ más estricto desde el inicio, no una copia de cómo funciona Telegram.
   Brand Brain, equipo y fases a quitar por nombre (nunca adivina). El equipo se
   agrega antes de copiar las tareas para que se asignen por puesto. Valor y fee
   solo con `view_project_financials`. Solo admin/subadmin; dos pasos.
+  **Alcance obligatorio**: `ofertas[]` (por nombre; la vista previa muestra sus
+  entregables, nunca precios), `entregables_propios[]` (texto, cadencia,
+  cantidad) o `interno: true`. Sin ninguno de los tres, falla.
 - **Finanzas** (`lib/mcp/finance-tools.ts`): `registrar_gasto`, `listar_gastos`,
   `resumen_finanzas`; `registrar_gasto` también da de alta recurrentes generales (`frecuencia`). Permiso `view_global_finances` (igual que /finances).
   Mismo modelo que el bot de Telegram: montos en USD (MXN se convierte con el

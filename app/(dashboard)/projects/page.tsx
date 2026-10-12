@@ -4,6 +4,7 @@ import { getCustomers } from "@/lib/actions/customers"
 import { getProjectTypes } from "@/lib/actions/config"
 import { getBrandBrains } from "@/lib/actions/brand-brains"
 import { getEmployees } from "@/lib/actions/employees"
+import { getAvailableServiceOffers } from "@/lib/actions/service-deliverables"
 import { ProjectForm } from "@/components/projects/project-form"
 import { ProjectsClient } from "@/components/projects/projects-client"
 import type { Customer, Project, ProjectType } from "@/lib/types"
@@ -20,12 +21,14 @@ export default async function ProjectsPage() {
   const canViewFinancials = can(profile, "view_project_financials")
   const isAdminOrSubadmin = profile?.role === "admin" || profile?.role === "subadmin"
 
-  const [allProjects, customers, projectTypes, brandBrains, employees] = await Promise.all([
+  const [allProjects, customers, projectTypes, brandBrains, employees, offers] = await Promise.all([
     getProjects(true).catch(() => []),
     getCustomers().catch(() => []),
     canEditProjects ? getProjectTypes().catch(() => []) : Promise.resolve([]),
     canEditProjects ? getBrandBrains().catch(() => []) : Promise.resolve([]),
     canEditProjects ? getEmployees().catch(() => []) : Promise.resolve([]),
+    // Solo id, nombre, categoría y entregables: sin precios.
+    canEditProjects && isAdminOrSubadmin ? getAvailableServiceOffers().catch(() => []) : Promise.resolve([]),
   ])
 
   const visible = (allProjects as Project[]).filter((p) =>
@@ -52,6 +55,8 @@ export default async function ProjectsPage() {
             brandBrains={brandBrains as any[]}
             employees={employees as any[]}
             canViewFinancials={canViewFinancials}
+            offers={offers as never}
+            canDefineScope={isAdminOrSubadmin}
           />
         )}
       </div>

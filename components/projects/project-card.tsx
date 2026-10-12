@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils"
 import type { Project } from "@/lib/types"
 import { getProjectTypeIcon } from "@/lib/project-type-icons"
 import { phaseColor } from "@/lib/phase-colors"
-import { type ProjectSignals, scopeTone, cycleNeedsAttention } from "@/lib/utils/project-signals"
+import { type ProjectSignals, scopeTone, cycleNeedsAttention, noScope } from "@/lib/utils/project-signals"
 import { RefreshCw, PenLine, EyeOff, Clock, Moon } from "lucide-react"
 
 interface Member { id: string; full_name: string; avatar_url: string | null }
@@ -65,6 +65,7 @@ export function ProjectCard({ project, canViewFinancials = false }: ProjectCardP
     attention.hasPendingClientChanges ||
     attention.inactiveForDays > 7 ||
     (sig?.scope && scopeTone(sig.scope) === "red") ||
+    (project.status === "Active" && noScope(sig)) ||
     cycleNeedsAttention(sig?.cycle ?? null)
   )
 
@@ -132,14 +133,16 @@ export function ProjectCard({ project, canViewFinancials = false }: ProjectCardP
             )}
           </div>
 
-          {/* ── Progress ────────────────────────────────────────── */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>{t("progress")}</span>
-              <span className="font-semibold text-foreground">{project.progress}%</span>
+          {/* ── Avance: entregables del periodo (o hitos), no fases ── */}
+          {sig ? <ScopeBar sig={sig} /> : (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>{t("progress")}</span>
+                <span className="font-semibold text-foreground">{project.progress}%</span>
+              </div>
+              <Progress value={project.progress} className="h-1.5" />
             </div>
-            <Progress value={project.progress} className="h-1.5" />
-          </div>
+          )}
 
           {/* ── Fases: mini stepper con hover (antes: fase + tarea activa en texto) ── */}
           {project.phases && project.phases.length > 0 && <MiniPhases phases={project.phases} tasks={project.tasks ?? []} current={phase} blockedLabel={t("blockedLabel")} />}
@@ -208,9 +211,9 @@ export function ProjectCard({ project, canViewFinancials = false }: ProjectCardP
 }
 
 // Hover genérico: la señal en la tarjeta, el porqué al pasar el cursor.
-function Hover({ children, content, align = "left" }: { children: React.ReactNode; content: React.ReactNode; align?: "left" | "right" }) {
+function Hover({ children, content, align = "left", block }: { children: React.ReactNode; content: React.ReactNode; align?: "left" | "right"; block?: boolean }) {
   return (
-    <span className="relative group/hover inline-flex">
+    <span className={cn("relative group/hover", block ? "flex" : "inline-flex")}>
       {children}
       <span className={cn("absolute top-full pt-1.5 z-40 hidden group-hover/hover:block", align === "left" ? "left-0" : "right-0")}>
         <span className="block w-60 rounded-lg border border-border bg-popover text-popover-foreground shadow-lg p-2.5 text-xs space-y-1 font-normal">
@@ -280,29 +283,63 @@ function List({ items, max = 5 }: { items: string[]; max?: number }) {
   )
 }
 
-function Ring({ pct, tone }: { pct: number; tone: "green" | "amber" | "red" }) {
-  const color = tone === "green" ? "#10b981" : tone === "amber" ? "#f59e0b" : "#ef4444"
+const FILL = { green: "bg-emerald-500", amber: "bg-amber-500", red: "bg-red-500" }
+
+function ScopeBar({ sig }: { sig: ProjectSignals }) {
+  const sc = sig.scope
+  if (sig.isInternal && !sc) {
+    return <div className="flex items-center gap-2 text-xs text-muted-foreground"><Badge variant="secondary" className="text-[10px] h-5">Interno</Badge><span>Sin alcance de cliente</span></div>
+  }
+  if (!sc) {
+    if (sig.hasScope) {
+      return (
+        <div className="space-y-1.5">
+          <div className="text-xs text-muted-foreground">Entregables · el periodo se abre al entrar al proyecto</div>
+          <div className="h-1.5 rounded-full bg-muted" />
+        </div>
+      )
+    }
+    return (
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-muted-foreground">Sin alcance definido</span>
+          <span className="font-medium text-primary group-hover:underline">Definir entregables →</span>
+        </div>
+        <div className="h-1.5 rounded-full border border-dashed border-muted-foreground/40" />
+      </div>
+    )
+  }
+  const tone = scopeTone(sc)
+  const pct = sc.expected ? Math.min(1, sc.done / sc.expected) : 1
+  const unit = sc.kind === "hitos" ? "hitos" : "entregables"
   return (
-    <span className="w-3 h-3 rounded-full inline-block" style={{ background: `conic-gradient(${color} ${pct * 360}deg, color-mix(in srgb, ${color} 20%, transparent) 0)` }} />
+    <Hover block content={<>
+      <span className="block font-semibold">{sc.kind === "hitos" ? "Hitos del proyecto" : `Entregables · ${sc.label}`}</span>
+      <span className="block text-muted-foreground">{sc.done} de {sc.expected} entregados{sc.day && sc.days ? ` · día ${sc.day} de ${sc.days}` : ""}</span>
+      {sc.missing.length > 0 && <><span className="block text-muted-foreground pt-0.5">Faltan:</span><List items={sc.missing} /></>}
+      {sc.prevIncomplete && <span className="block text-red-600">Periodo anterior ({sc.prevIncomplete.label}) cerró con {sc.prevIncomplete.done}/{sc.prevIncomplete.expected}</span>}
+    </>}>
+      <span className="block w-full space-y-1.5">
+        <span className="flex items-center justify-between text-xs text-muted-foreground gap-2">
+          <span className="truncate">
+            <span className="font-semibold text-foreground">{sc.done}/{sc.expected}</span> {unit}
+            {sc.day && sc.days ? <> · día {sc.day} de {sc.days}</> : null}
+          </span>
+          {sc.prevIncomplete && <span className="text-red-600 shrink-0">Periodo anterior incompleto</span>}
+        </span>
+        <span className="relative block h-1.5 rounded-full bg-muted">
+          <span className={cn("absolute inset-y-0 left-0 rounded-full transition-all", sc.kind === "hitos" && tone === "amber" ? "bg-primary" : FILL[tone])} style={{ width: `${pct * 100}%` }} />
+          {sc.timePct != null && sc.timePct < 1 && (
+            <span className="absolute -top-0.5 -bottom-0.5 w-0.5 rounded-full bg-foreground/50" style={{ left: `calc(${sc.timePct * 100}% - 1px)` }} title="Hoy" />
+          )}
+        </span>
+      </span>
+    </Hover>
   )
 }
 
 function SignalsRow({ sig }: { sig: ProjectSignals }) {
   const items: React.ReactNode[] = []
-  if (sig.scope) {
-    const tone = scopeTone(sig.scope)
-    const pct = sig.scope.expected ? sig.scope.done / sig.scope.expected : 1
-    items.push(
-      <Hover key="scope" content={<>
-        <span className="block font-semibold">Entregables · {sig.scope.label}</span>
-        <span className="block text-muted-foreground">{sig.scope.done} de {sig.scope.expected} entregados</span>
-        {sig.scope.missing.length > 0 && <List items={sig.scope.missing} />}
-        {sig.scope.prevIncomplete && <span className="block text-red-600">Periodo anterior ({sig.scope.prevIncomplete.label}) cerró con {sig.scope.prevIncomplete.done}/{sig.scope.prevIncomplete.expected}</span>}
-      </>}>
-        <Chip tone={tone}><Ring pct={pct} tone={tone} />{sig.scope.done}/{sig.scope.expected}</Chip>
-      </Hover>,
-    )
-  }
   if (sig.cycle && cycleNeedsAttention(sig.cycle)) {
     const c = sig.cycle
     const tone = c.reviewPending || c.daysLeft < 0 ? "red" : "amber"

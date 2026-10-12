@@ -7,7 +7,8 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { notify } from "@/lib/notifications/notify"
 import { can } from "@/lib/permissions"
-import type { ProjectStatus, PhaseStatus, CampaignStatus, Profile, ProjectLogCategory, CycleChannelRow } from "@/lib/types"
+import { attachServiceOfferToProject, addCustomDeliverable } from "@/lib/actions/service-deliverables"
+import type { ProjectStatus, PhaseStatus, CampaignStatus, Profile, ProjectLogCategory, CycleChannelRow, DeliverableCadence } from "@/lib/types"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
 // Builds position_id → [profile_ids] from a project's current members, so
@@ -307,9 +308,8 @@ export async function getProjects(includeArchived = false) {
     // Señales de la tarjeta (ver lib/utils/project-signals.ts).
     supabase
       .from("project_deliverable_periods")
-      .select("project_id, deliverable_text, period_start, period_label, expected_quantity, fulfilled_quantity")
+      .select("project_id, deliverable_text, period_start, period_end, period_label, expected_quantity, fulfilled_quantity")
       .in("project_id", projectIds)
-      .neq("period_label", "Único")
       .lte("period_start", now)
       .then((r) => r, () => ({ data: null })),
     supabase
@@ -396,27 +396,48 @@ export async function getProjects(includeArchived = false) {
     draftsByProject[a.project_id] = (draftsByProject[a.project_id] ?? 0) + 1
   }
 
-  // Entregables: periodo actual = el más reciente que ya empezó.
-  const periodsByProject: Record<string, { deliverable_text: string; period_start: string; period_label: string; expected_quantity: number; fulfilled_quantity: number }[]> = {}
-  for (const r of (periodsRes.data ?? []) as typeof periodsByProject[string]) (periodsByProject[(r as unknown as { project_id: string }).project_id] ??= []).push(r)
+  // Entregables: periodo actual = el más reciente que ya empezó. Si el
+  // proyecto no tiene entregables recurrentes, se miden sus hitos únicos.
+  type PRow = { deliverable_text: string; period_start: string; period_end: string | null; period_label: string; expected_quantity: number; fulfilled_quantity: number }
+  const periodsByProject: Record<string, PRow[]> = {}
+  for (const r of (periodsRes.data ?? []) as unknown as (PRow & { project_id: string })[]) (periodsByProject[r.project_id] ??= []).push(r)
   const scopeFor = (pid: string): ProjectSignals["scope"] => {
-    const rows = periodsByProject[pid]
-    if (!rows?.length) return null
-    const starts = [...new Set(rows.map((r) => r.period_start))].sort().reverse()
-    const sum = (list: typeof rows) => ({
+    const all = periodsByProject[pid]
+    if (!all?.length) return null
+    const sum = (list: PRow[]) => ({
       done: list.reduce((s, r) => s + Math.min(r.fulfilled_quantity, r.expected_quantity), 0),
       expected: list.reduce((s, r) => s + r.expected_quantity, 0),
     })
+    const rows = all.filter((r) => r.period_label !== "Único")
+    if (!rows.length) {
+      const once = all.filter((r) => r.period_label === "Único")
+      return { kind: "hitos", label: "Hitos", ...sum(once), timePct: null, day: null, days: null, missing: once.filter((r) => r.fulfilled_quantity < r.expected_quantity).map((r) => r.deliverable_text), prevIncomplete: null }
+    }
+    const starts = [...new Set(rows.map((r) => r.period_start))].sort().reverse()
     const cur = rows.filter((r) => r.period_start === starts[0])
     const prev = starts[1] ? rows.filter((r) => r.period_start === starts[1]) : []
     const prevSum = sum(prev)
+    const end = cur.find((r) => r.period_end)?.period_end ?? null
+    const dayMs = 86_400_000
+    const days = end ? Math.max(1, Math.round((Date.parse(end) - Date.parse(starts[0])) / dayMs) + 1) : null
+    const day = days ? Math.min(days, Math.max(1, Math.round((Date.parse(now) - Date.parse(starts[0])) / dayMs) + 1)) : null
     return {
+      kind: "periodo",
       label: cur[0].period_label,
       ...sum(cur),
+      timePct: days && day ? day / days : null,
+      day, days,
       missing: cur.filter((r) => r.fulfilled_quantity < r.expected_quantity).map((r) => r.deliverable_text),
       prevIncomplete: prev.length && prevSum.done < prevSum.expected ? { label: prev[0].period_label, ...prevSum } : null,
     }
   }
+  // ¿Tiene alcance definido? (ofertas o entregables propios), aunque el
+  // periodo actual todavía no se haya generado.
+  const [{ data: offerLinks }, { data: customLinks }] = await Promise.all([
+    supabase.from("project_service_offers").select("project_id").in("project_id", projectIds).then((r) => r, () => ({ data: null })),
+    supabase.from("project_custom_deliverables").select("project_id").in("project_id", projectIds).then((r) => r, () => ({ data: null })),
+  ])
+  const withScope = new Set([...(offerLinks ?? []), ...(customLinks ?? [])].map((r) => (r as { project_id: string }).project_id))
 
   const staleBefore = new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10)
   const staleManualByProject: Record<string, string[]> = {}
@@ -479,6 +500,8 @@ export async function getProjects(includeArchived = false) {
         .filter((t) => !t.is_personal && t.status !== "Done" && t.due_date && t.due_date < now)
         .map((t) => t.title ?? "Tarea"),
       inactiveDays: inactiveForDays,
+      hasScope: withScope.has(pid) || !!periodsByProject[pid]?.length,
+      isInternal: !!(p as { is_internal?: boolean }).is_internal,
     }
 
     return {
@@ -591,9 +614,21 @@ export async function createProject(
   const supabase = createAdminClient()
   const projectTypeId = formData.get("project_type_id") as string
 
+  // Alcance: ofertas del catálogo y/o entregables propios. Obligatorio para
+  // quien puede definirlo (admin/subadmin), salvo proyectos internos.
+  const parse = <T,>(k: string): T[] => { try { const v = JSON.parse((formData.get(k) as string) || "[]"); return Array.isArray(v) ? v : [] } catch { return [] } }
+  const offerIds = parse<string>("offer_ids_json").filter((x) => typeof x === "string")
+  const customs = parse<{ text: string; cadence: DeliverableCadence; quantity: number | null }>("custom_deliverables_json").filter((c) => c?.text?.trim())
+  const isInternal = formData.get("is_internal") === "true"
+  if (user && !isInternal && !offerIds.length && !customs.length) {
+    const { data: me } = await supabase.from("profiles").select("role").eq("id", user.id).single()
+    if (me?.role === "admin" || me?.role === "subadmin") throw new Error("Define el alcance: elige una oferta, agrega entregables propios o marca el proyecto como interno.")
+  }
+
   const { data: project, error } = await supabase
     .from("projects")
     .insert({
+      is_internal: isInternal,
       name: formData.get("name") as string,
       customer_id: (formData.get("customer_id") as string) || null,
       project_type_id: projectTypeId && projectTypeId !== "none" ? projectTypeId : null,
@@ -652,6 +687,11 @@ export async function createProject(
       })
       await copyTaskSetsToProject(supabase, templatePhases, project.id, phaseIdByTaskSetId)
     }
+  }
+
+  if (user && !isInternal) {
+    for (const id of offerIds) await attachServiceOfferToProject(project.id, id, user.id)
+    for (const c of customs) await addCustomDeliverable(project.id, c.text.trim(), c.cadence, c.quantity ?? null, user.id)
   }
 
   revalidatePath("/projects")
