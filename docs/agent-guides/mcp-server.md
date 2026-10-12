@@ -80,6 +80,11 @@ más estricto desde el inicio, no una copia de cómo funciona Telegram.
   (la IA los propone si el texto lo da). `agregar_nota_proyecto` acepta además `categoria`, `fecha_evento` y
   `fijar` (contexto fijo). `crear_tarea`/`agregar_nota_proyecto` siguen
   directas (una sola cosa puntual).
+- **Entregables de ofertas**: `crear_oferta` acepta `entregables` (texto de venta,
+  control, cadencia, cantidad) y `oferta_entregables` agrega/edita/quita/mueve
+  líneas (por número o texto) con vista previa antes → después. Guarda con
+  `updateServiceOffer` (mismo camino que la pantalla de Servicios); líneas
+  nuevas llevan `added_at` = hoy (cuentan desde hoy en proyectos con la oferta).
 - **Crear proyectos** (`lib/mcp/project-tools.ts`): `crear_proyecto` usa la misma
   función que el modal (`createProject`, con `actingProfileId`). Tipo, cliente,
   Brand Brain, equipo y fases a quitar por nombre (nunca adivina). El equipo se

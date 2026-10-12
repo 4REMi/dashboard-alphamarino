@@ -3,7 +3,7 @@ import type { McpServer, AuthInfo } from "@modelcontextprotocol/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createTask, updateTaskStatus } from "@/lib/actions/tasks"
 import { addLogEntry } from "@/lib/actions/projects"
-import { createServiceOffer, archiveServiceOffer } from "@/lib/actions/services"
+import { createServiceOffer, archiveServiceOffer, updateServiceOffer } from "@/lib/actions/services"
 import { attachServiceOfferToProject } from "@/lib/actions/service-deliverables"
 import { registerOperationsTools } from "@/lib/mcp/operations-tools"
 import { registerFinanceTools } from "@/lib/mcp/finance-tools"
@@ -592,6 +592,23 @@ export function registerMcpTools(server: McpServer) {
     },
   )
 
+  // Líneas de entregables de una oferta: texto de venta, texto de control
+  // (lo que se palomea en el proyecto), cadencia y cantidad.
+  const CADENCIA = { una_vez: "once", por_periodo: "monthly", cada_3_periodos: "quarterly", cada_6_periodos: "biannual", continuo: "continuous" } as const
+  const CAD_LABEL: Record<string, string> = { once: "una vez", monthly: "por periodo", quarterly: "cada 3 periodos", biannual: "cada 6 periodos", continuous: "continuo" }
+  const Linea = z.object({
+    texto: z.string().min(1).describe("Texto de venta (lo que ve el cliente en la oferta)"),
+    control: z.string().optional().describe("Texto de control: corto y verificable, lo que se palomea (ej. '6 piezas visuales')"),
+    cadencia: z.enum(["una_vez", "por_periodo", "cada_3_periodos", "cada_6_periodos", "continuo"]).optional(),
+    cantidad: z.number().int().positive().optional().describe("Unidades por periodo; no aplica a 'continuo'"),
+  })
+  type Del = { id: string; text: string; control_text: string | null; cadence: string; quantity: number | null; added_at: string | null }
+  const toDel = (l: z.infer<typeof Linea>): Del => {
+    const cadence = l.cadencia ? CADENCIA[l.cadencia] : "once"
+    return { id: crypto.randomUUID(), text: l.texto.trim(), control_text: l.control?.trim() || null, cadence, quantity: cadence === "continuous" ? null : l.cantidad ?? null, added_at: todayIso() }
+  }
+  const fmtDel = (d: Del, i: number) => `${i + 1}. ${d.text}${d.control_text ? ` [control: ${d.control_text}]` : ""} · ${CAD_LABEL[d.cadence] ?? d.cadence}${d.quantity ? ` ×${d.quantity}` : ""}`
+
   server.registerTool(
     "crear_oferta",
     {
@@ -603,18 +620,88 @@ export function registerMcpTools(server: McpServer) {
         descripcion: z.string().optional(),
         precio: z.number().optional(),
         moneda: z.enum(["MXN", "USD"]).optional(),
+        entregables: z.array(Linea).max(60).optional().describe("Líneas de entregables con su control, cadencia y cantidad"),
       }),
     },
-    async ({ nombre, categoria, descripcion, precio, moneda }, ctx: ToolCtx) => {
+    async ({ nombre, categoria, descripcion, precio, moneda, entregables }, ctx: ToolCtx) => {
       const actingProfileId = requireProfileId(ctx)
       const fd = new FormData()
+      if (entregables?.length) fd.set("deliverables_json", JSON.stringify(entregables.map(toDel)))
       fd.set("name", nombre)
       fd.set("category", categoria)
       if (descripcion) fd.set("description", descripcion)
       if (precio != null) fd.set("price", String(precio))
       fd.set("currency", moneda ?? "MXN")
       await createServiceOffer(fd, actingProfileId)
-      return textResult(`Oferta "${nombre}" creada en la categoría "${categoria}".`)
+      return textResult(`Oferta "${nombre}" creada en la categoría "${categoria}"${entregables?.length ? ` con ${entregables.length} entregable(s):\n${entregables.map(toDel).map(fmtDel).join("\n")}` : "."}`)
+    },
+  )
+
+  server.registerTool(
+    "oferta_entregables",
+    {
+      title: "Editar entregables de una oferta",
+      description: "Agrega, edita, quita o mueve líneas de entregables de una oferta del catálogo (texto de venta, texto de control, cadencia, cantidad). Las líneas se indican por número (de detalle_oferta) o por parte de su texto. Las líneas nuevas cuentan desde hoy en los proyectos que ya tienen la oferta. Sin confirmar: true solo muestra antes → después. Solo admin/subadmin.",
+      inputSchema: z.object({
+        oferta: z.string().min(1),
+        cambios: z.array(z.object({
+          accion: z.enum(["agregar", "editar", "quitar", "mover"]),
+          linea: z.string().optional().describe("Número de línea o parte de su texto (editar/quitar/mover)"),
+          texto: z.string().optional(), control: z.string().optional(),
+          cadencia: Linea.shape.cadencia, cantidad: z.number().int().nonnegative().optional().describe("0 para quitar la cantidad"),
+          posicion: z.number().int().positive().optional().describe("agregar/mover: posición destino (1 = primera)"),
+        })).min(1).max(40),
+        confirmar: z.boolean().default(false),
+      }),
+    },
+    async ({ oferta, cambios, confirmar }, ctx: ToolCtx) => {
+      const actingProfileId = requireProfileId(ctx)
+      const { id } = await resolveOfferId(oferta)
+      const { data: o } = await createAdminClient().from("service_offers").select("*").eq("id", id).single()
+      if (!o) throw new Error("No encontré la oferta.")
+      const before = ((o.deliverables ?? []) as Del[]).map((d) => ({ ...d, id: d.id || crypto.randomUUID(), control_text: d.control_text ?? null, quantity: d.quantity ?? null, added_at: d.added_at ?? null }))
+      const list = before.map((d) => ({ ...d }))
+      const find = (ref?: string) => {
+        if (!ref?.trim()) throw new Error("Falta indicar la línea.")
+        if (/^\d+$/.test(ref.trim())) { const d = list[Number(ref) - 1]; if (!d) throw new Error(`No hay línea ${ref}.`); return d }
+        const q = ref.trim().toLowerCase()
+        const hits = list.filter((d) => d.text.toLowerCase().includes(q) || (d.control_text ?? "").toLowerCase().includes(q))
+        if (hits.length !== 1) throw new Error(hits.length ? `"${ref}" coincide con varias líneas; usa el número.` : `No encontré la línea "${ref}".`)
+        return hits[0]
+      }
+      for (const c of cambios) {
+        if (c.accion === "agregar") {
+          if (!c.texto?.trim()) throw new Error("Para agregar hace falta el texto de venta.")
+          const d = toDel({ texto: c.texto, control: c.control, cadencia: c.cadencia, cantidad: c.cantidad || undefined })
+          list.splice(c.posicion ? Math.min(c.posicion - 1, list.length) : list.length, 0, d)
+        } else if (c.accion === "editar") {
+          const d = find(c.linea)
+          if (c.texto != null) d.text = c.texto.trim()
+          if (c.control != null) d.control_text = c.control.trim() || null
+          if (c.cadencia) d.cadence = CADENCIA[c.cadencia]
+          if (c.cantidad != null) d.quantity = c.cantidad || null
+          if (d.cadence === "continuous") d.quantity = null
+        } else if (c.accion === "quitar") {
+          const d = find(c.linea); list.splice(list.indexOf(d), 1)
+        } else {
+          const d = find(c.linea); if (!c.posicion) throw new Error("Para mover indica la posición.")
+          list.splice(list.indexOf(d), 1); list.splice(Math.min(c.posicion - 1, list.length), 0, d)
+        }
+      }
+      const desc = `Oferta "${o.name}"\nAntes (${before.length}):\n${before.map(fmtDel).join("\n") || "(sin entregables)"}\n\nDespués (${list.length}):\n${list.map(fmtDel).join("\n") || "(sin entregables)"}`
+      if (!confirmar) return textResult(`${desc}\n\nNo se cambió nada. Si es correcto, vuelve a llamar con confirmar: true.`)
+      const fd = new FormData()
+      fd.set("name", o.name); fd.set("category", o.category)
+      if (o.description) fd.set("description", o.description)
+      fd.set("is_base", String(!!o.is_base))
+      if (o.based_on_offer_id) fd.set("based_on_offer_id", o.based_on_offer_id)
+      if (o.default_project_type_id) fd.set("default_project_type_id", o.default_project_type_id)
+      if (o.price != null) fd.set("price", String(o.price))
+      if (o.currency) fd.set("currency", o.currency)
+      if (o.price_note) fd.set("price_note", o.price_note)
+      fd.set("deliverables_json", JSON.stringify(list))
+      await updateServiceOffer(o.id, fd, actingProfileId)
+      return textResult(`✅ Entregables actualizados.\n${desc}`)
     },
   )
 
