@@ -1,13 +1,30 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Upload, Loader2, Check, ChevronDown, Plus, Film, ImageIcon, AlertTriangle, Eye, Mic } from "lucide-react"
+import { Upload, Loader2, Check, Plus, Film, ImageIcon, AlertTriangle, Eye, Mic, ScanSearch } from "lucide-react"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { createClient } from "@/lib/supabase/client"
 import { captureVideoThumbnail } from "@/components/projects/hub/creatives/asset-modal"
 import { registerUploadedAsset, classifyAsset, assignAssetToConcept, createConceptFromAsset, type Classification, type ConceptDraft } from "@/lib/actions/creative-classify"
 import type { BrandLine } from "@/lib/types"
 import { cn } from "@/lib/utils"
+import { ConceptAnalysisModal } from "@/components/ad-lab/concept-analysis-modal"
+import type { LibraryAdAnalysis } from "@/lib/actions/ad-analysis"
+
+// Resultado del embudo → formato de la ventana de análisis (modo asset).
+export function toAnalysis(r: Pick<Classification, "breakdown" | "summary" | "new_concept" | "video" | "transcript" | "visionError">): LibraryAdAnalysis {
+  const b = r.breakdown
+  const nc = r.new_concept
+  return {
+    resumen: b?.resumen ?? r.summary,
+    concepto: b?.concepto ?? { nombre: nc.name, angle_type: nc.angle_type, organizing_principle: nc.organizing_principle, target_persona: nc.target_persona, pain_point: nc.pain_point, objection: "", why_it_works: nc.why_it_works, transformation: nc.transformation, funnel_stage: nc.funnel_stage, awareness_stage: 3 },
+    gancho: b?.gancho ?? { texto: r.video?.gancho ?? "", tipo: "", por_que_atrapa: "" },
+    estructura: b?.estructura ?? [],
+    mecanica: b?.mecanica ?? "", formato: b?.formato ?? r.video?.formato ?? "",
+    por_que_funciona: b?.por_que_funciona ?? [], debilidades: b?.debilidades ?? [], como_adaptarlo: b?.como_mejorarlo ?? [],
+    transcript: r.transcript, media: r.video, visionError: r.visionError, landingLeida: false, diasCorriendo: null, analyzedAt: new Date().toISOString(),
+  }
+}
 
 // "Subir y clasificar": videos sin brief → se suben como borrador, se
 // transcriben, Gemini los "ve" y Claude propone a qué concepto van (o uno
@@ -160,20 +177,17 @@ function ItemCard({ it, brandLines, onDraft, onAssign, onCreate }: { it: Item; b
                   <span className={cn("px-1.5 py-0.5 rounded inline-flex items-center gap-1", r.video ? "bg-muted" : "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300")}><Eye className="w-3 h-3" />{r.video ? "Visto por Gemini" : (isImg(it.file) ? "No se pudo analizar la imagen" : "No se pudo ver: solo transcripción")}</span>
                   {!r.video && r.visionError && <span className="basis-full text-[11px] text-amber-700 dark:text-amber-300">Motivo: {r.visionError}</span>}
                   {r.video && <span className="px-1.5 py-0.5 rounded bg-muted">{r.video.formato}</span>}
-                  <button onClick={() => setShowDetail((v) => !v)} className="text-primary hover:underline inline-flex items-center gap-0.5">Detalle<ChevronDown className={cn("w-3 h-3", showDetail && "rotate-180")} /></button>
                 </div>
+                {(r.breakdown || r.video || r.transcript) && (
+                  <button onClick={() => setShowDetail(true)} className="mt-2 h-8 px-3 rounded-lg border border-border text-xs font-medium inline-flex items-center gap-1.5 hover:bg-muted">
+                    <ScanSearch className="w-3.5 h-3.5" />Ver análisis completo
+                  </button>
+                )}
                 {showDetail && (
-                  <div className="mt-2 rounded-lg bg-muted/40 p-3 text-xs space-y-2 max-h-64 overflow-y-auto">
-                    {r.video && (
-                      <>
-                        <p><b>Gancho:</b> {r.video.gancho}</p>
-                        <p><b>Música:</b> {r.video.musica} · <b>Tono:</b> {r.video.tono}</p>
-                        <p><b>Efectos:</b> {r.video.efectos_y_transiciones}</p>
-                        <ul className="space-y-1">{r.video.escenas.map((s, i) => <li key={i}><span className="font-mono text-muted-foreground">{s.t}</span> {s.visual}{s.audio ? ` · 🔊 ${s.audio}` : ""}{s.texto_en_pantalla ? ` · “${s.texto_en_pantalla}”` : ""}</li>)}</ul>
-                      </>
-                    )}
-                    {r.transcript && <p className="whitespace-pre-wrap"><b>Transcripción:</b> {r.transcript}</p>}
-                  </div>
+                  <ConceptAnalysisModal open mode="asset" onClose={() => setShowDetail(false)}
+                    ad={{ adArchiveId: it.assetId ?? it.key, pageId: null, pageName: it.file.name, body: null, title: null, caption: null, cta: null, linkUrl: null,
+                      videoUrl: isImg(it.file) ? null : it.previewUrl, imageUrl: isImg(it.file) ? it.previewUrl : null, isActive: false, startDate: null }}
+                    initial={toAnalysis(r)} />
                 )}
               </div>
 

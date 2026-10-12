@@ -15,9 +15,11 @@ import type { AssetMetaLinkStatus } from "@/lib/actions/paid-media-performance"
 import { BriefCreator } from "./brief-creator"
 import { AssetCopyBank } from "./asset-copy-bank"
 import { QuickScriptModal } from "./quick-script-modal"
-import { Plus, Sparkles, Check, X, Loader2, Star, ArrowUpRight, Pencil, Trash2, Link2, FileText, Upload, ChevronDown, Film, ImageIcon, Eye, EyeOff, MessageSquare, Clock, Radio, AlertTriangle, ArrowRightLeft, Share2 } from "lucide-react"
+import { Plus, Sparkles, Check, X, Loader2, Star, ArrowUpRight, Pencil, Trash2, Link2, FileText, Upload, ChevronDown, Film, ImageIcon, Eye, EyeOff, MessageSquare, Clock, Radio, AlertTriangle, ArrowRightLeft, Share2, ScanSearch } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { PlatformIcon } from "@/components/ui/platform-icon"
+import { ConceptAnalysisModal } from "@/components/ad-lab/concept-analysis-modal"
+import { toAnalysis } from "@/components/projects/hub/creatives/classify-uploader"
 import { ClassifyUploader } from "@/components/projects/hub/creatives/classify-uploader"
 
 function fmt$(v: number) {
@@ -327,6 +329,7 @@ function ConceptDetailModal({
   const [lightboxAsset, setLightboxAsset] = useState<CreativeAsset | null>(null)
   const [lightboxVideoError, setLightboxVideoError] = useState(false)
   const [moveOpen, setMoveOpen] = useState(false)
+  const [analysisFor, setAnalysisFor] = useState<CreativeAsset | null>(null)
   const [moveQuery, setMoveQuery] = useState("")
   const [editingBriefId, setEditingBriefId] = useState<string | null>(null)
   const [briefTitleDraft, setBriefTitleDraft] = useState("")
@@ -668,6 +671,16 @@ function ConceptDetailModal({
         </div>
 
         {/* ── Visor del asset — pantalla dividida: info y copies a la izquierda, media a la derecha ── */}
+        {analysisFor && (() => {
+          const ai = (analysisFor as CreativeAsset & { ai_analysis?: any; transcript?: string | null }).ai_analysis
+          const isImage = analysisFor.file_type === "image"
+          return (
+            <ConceptAnalysisModal open mode="asset" onClose={() => setAnalysisFor(null)}
+              ad={{ adArchiveId: analysisFor.id, pageId: null, pageName: concept.name ?? "Creativo", body: null, title: null, caption: null, cta: null, linkUrl: null,
+                videoUrl: isImage ? null : assetFileUrl(analysisFor), imageUrl: isImage ? assetFileUrl(analysisFor) : null, isActive: false, startDate: null }}
+              initial={toAnalysis({ breakdown: ai.breakdown, summary: ai.summary ?? "", new_concept: ai.new_concept, video: ai.video ?? null, transcript: (analysisFor as any).transcript ?? null, visionError: null })} />
+          )
+        })()}
         {lightboxAsset && (() => {
           const a = lightboxAsset
           const piece = pieces.find((p) => p.versions.some((v) => v.id === a.id))
@@ -753,6 +766,13 @@ function ConceptDetailModal({
                       )}
                     </div>
 
+                    {(a as CreativeAsset & { ai_analysis?: { breakdown?: unknown } | null }).ai_analysis?.breakdown ? (
+                      <div className="px-5 py-3 border-b flex items-center gap-2">
+                        <ScanSearch className="w-4 h-4 text-primary" />
+                        <span className="text-sm flex-1">Análisis del creativo</span>
+                        <Button type="button" size="sm" variant="outline" onClick={() => setAnalysisFor(a)}>Ver análisis</Button>
+                      </div>
+                    ) : null}
                     {piece && piece.versions.length > 1 && (
                       <div className="px-5 py-4 border-b">
                         <p className="text-xs font-semibold mb-2">Versiones</p>

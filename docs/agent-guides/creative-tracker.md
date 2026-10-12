@@ -209,7 +209,12 @@ contadores de briefs/assets; subir un asset o crear un brief se hace dentro del
 concepto (o con "Crear desde asset existente").
 
 ## Crear desde asset existente (videos sin brief)
-Abre el embudo sin línea fija: la IA también propone la línea. Acepta **videos e
+Abre el embudo sin línea fija: la IA también propone la línea. Cada tarjeta
+tiene **"Ver análisis completo"**: la misma ventana por capas de Ad Lab
+(`ConceptAnalysisModal` en modo `asset`: sin marca inferida, "Cómo mejorarlo" en
+vez de "Cómo adaptarlo", sin acciones de librería). El desglose sale en la misma
+llamada de clasificación (`breakdown` en `ai_analysis`) y queda guardado: en el
+visor del creativo dentro del concepto aparece **"Ver análisis"** si existe. Acepta **videos e
 imágenes estáticas**: en imágenes no hay transcripción y Gemini lee la imagen y su
 texto (formato, composición, gancho visual, texto literal). Por video: se sube a Storage como asset **borrador sin
 concepto** (`registerUploadedAsset`), se transcribe (AssemblyAI) y Gemini 2.5

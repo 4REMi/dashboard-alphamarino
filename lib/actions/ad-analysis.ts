@@ -29,7 +29,7 @@ export interface LibraryAdInput {
 }
 
 export interface LibraryAdAnalysis {
-  marca: { que_vende: string; audiencia: string; oferta: string; posicionamiento: string; confianza: "alta" | "media" | "baja"; basado_en: string }
+  marca?: { que_vende: string; audiencia: string; oferta: string; posicionamiento: string; confianza: "alta" | "media" | "baja"; basado_en: string }
   concepto: { nombre: string; angle_type: string; organizing_principle: string; target_persona: string; pain_point: string; objection: string; why_it_works: string; transformation: string; funnel_stage: string; awareness_stage: number }
   gancho: { texto: string; tipo: string; por_que_atrapa: string }
   estructura: { t: string; momento: string; que_pasa: string }[]

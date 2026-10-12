@@ -26,6 +26,20 @@ export interface ConceptDraft {
   funnel_stage: "TOF" | "MOF" | "BOF"
   brand_line_id: string | null
 }
+// Desglose del creativo (mismo formato corto que el análisis de Ad Lab, sin
+// "marca": aquí la marca ya se conoce; y "cómo mejorarlo" en vez de adaptarlo).
+export interface AssetBreakdown {
+  resumen: string
+  concepto: { nombre: string; angle_type: string; organizing_principle: string; target_persona: string; pain_point: string; objection: string; why_it_works: string; transformation: string; funnel_stage: string; awareness_stage: number }
+  gancho: { texto: string; tipo: string; por_que_atrapa: string }
+  estructura: { t: string; momento: string; que_pasa: string }[]
+  mecanica: string
+  formato: string
+  por_que_funciona: { titulo: string; detalle: string }[]
+  debilidades: { titulo: string; detalle: string }[]
+  como_mejorarlo: { titulo: string; detalle: string }[]
+}
+
 export interface Classification {
   assetId: string
   transcript: string | null
@@ -33,6 +47,7 @@ export interface Classification {
   provider: string | null
   visionError: string | null
   summary: string
+  breakdown: AssetBreakdown | null
   matches: { concept_id: string; name: string; confidence: number; reason: string }[]
   new_concept: ConceptDraft
 }
@@ -83,13 +98,20 @@ export async function classifyAsset(projectId: string, assetId: string, lineId: 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
   const msg = await client.messages.create({
     model: "claude-sonnet-4-6",
-    max_tokens: 2048,
+    max_tokens: 4096,
     system: `Eres estratega creativo de una agencia de paid media. Clasificas un creativo publicitario (video o imagen estática) contra los CONCEPTOS existentes de un proyecto (un concepto = una hipótesis creativa: ángulo + persona + dolor/deseo).
 Reglas:
 - "matches": hasta 3 conceptos existentes donde el video encaje, con confidence 0-100 honesto (más de 70 solo si el mensaje central y la persona coinciden de verdad) y una razón de una frase.
 - "new_concept": SIEMPRE propón uno nuevo como alternativa, basado en lo que el video realmente dice y muestra. angle_type debe ser EXACTAMENTE uno de: ${ANGULOS.join(", ")}. funnel_stage: TOF, MOF o BOF. organizing_principle: Pain-First o Desire-First. brand_line_id: el id de la línea que mejor aplique o null.
 - "summary": una frase de qué es el video.
-Responde SOLO JSON: {"summary":"","matches":[{"concept_id":"","confidence":0,"reason":""}],"new_concept":{"name":"","angle_type":"","organizing_principle":"","target_persona":"","pain_point":"","why_it_works":"","transformation":"","funnel_stage":"","brand_line_id":null}}`,
+- "breakdown": desarma el creativo para el equipo. ESCRIBE CORTO (se lee en una interfaz; respeta los límites de palabras). "t" de la estructura en formato m:ss-m:ss cubriendo todo el video (en imágenes una sola entrada "imagen"). "como_mejorarlo": qué cambiar en ESTE creativo o en su siguiente versión.
+Responde SOLO JSON: {"summary":"","matches":[{"concept_id":"","confidence":0,"reason":""}],"new_concept":{"name":"","angle_type":"","organizing_principle":"","target_persona":"","pain_point":"","why_it_works":"","transformation":"","funnel_stage":"","brand_line_id":null},
+"breakdown":{"resumen":"máx. 25 palabras","concepto":{"nombre":"máx. 8","angle_type":"","organizing_principle":"","target_persona":"máx. 20","pain_point":"máx. 20","objection":"máx. 15","why_it_works":"máx. 25","transformation":"máx. 15","funnel_stage":"","awareness_stage":3},
+"gancho":{"texto":"primeros 3 s, literal","tipo":"pregunta|afirmación polémica|dato|demostración|historia|otro","por_que_atrapa":"máx. 20"},
+"estructura":[{"t":"0:00-0:05","momento":"gancho|problema|demostración|prueba social|oferta|CTA|otro","que_pasa":"máx. 18"}],
+"mecanica":"máx. 18","formato":"máx. 10",
+"por_que_funciona":[{"titulo":"máx. 7","detalle":"máx. 30"}],"debilidades":[{"titulo":"máx. 7","detalle":"máx. 30"}],"como_mejorarlo":[{"titulo":"máx. 7","detalle":"máx. 30"}]}}
+3-4 puntos en por_que_funciona y como_mejorarlo; 2-3 en debilidades.`,
     messages: [{
       role: "user",
       content: `PROYECTO: ${project?.name ?? ""}
@@ -103,7 +125,7 @@ TRANSCRIPCIÓN: ${asset.file_type === "image" ? "(no aplica)" : transcript ?? "(
 LO QUE SE VE Y SE OYE: ${video ? JSON.stringify(video) : "(no disponible — clasifica solo con la transcripción)"}`,
     }],
   })
-  const parsed = parseAiJson<{ summary: string; matches: { concept_id: string; confidence: number; reason: string }[]; new_concept: ConceptDraft }>(msg, "classifyAsset")
+  const parsed = parseAiJson<{ summary: string; breakdown?: AssetBreakdown; matches: { concept_id: string; confidence: number; reason: string }[]; new_concept: ConceptDraft }>(msg, "classifyAsset")
   const byId = new Map((concepts ?? []).map((c) => [c.id, c]))
   const matches = (parsed.matches ?? []).filter((m) => byId.has(m.concept_id)).slice(0, 3)
     .map((m) => ({ ...m, name: byId.get(m.concept_id)!.name ?? "Concepto", confidence: Math.max(0, Math.min(100, Math.round(m.confidence))) }))
@@ -116,10 +138,11 @@ LO QUE SE VE Y SE OYE: ${video ? JSON.stringify(video) : "(no disponible — cla
     brand_line_id: (lines ?? []).some((l) => l.id === nc.brand_line_id) ? nc.brand_line_id : lineId,
   }
 
-  const analysis = { summary: parsed.summary, video, provider, matches, new_concept, analyzed_at: new Date().toISOString() }
+  const breakdown = parsed.breakdown?.concepto ? parsed.breakdown : null
+  const analysis = { summary: parsed.summary, breakdown, video, provider, matches, new_concept, analyzed_at: new Date().toISOString() }
   const { error } = await db.from("creative_assets").update({ transcript, ai_analysis: analysis }).eq("id", assetId)
   if (error && !/transcript|ai_analysis/.test(error.message)) console.error("[classify] guardar análisis:", error.message)
-  return { assetId, transcript, video, provider, visionError, summary: parsed.summary, matches, new_concept }
+  return { assetId, transcript, video, provider, visionError, summary: parsed.summary, breakdown, matches, new_concept }
 }
 
 export async function assignAssetToConcept(projectId: string, assetId: string, conceptId: string): Promise<void> {

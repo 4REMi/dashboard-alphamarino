@@ -62,7 +62,11 @@ function Points({ title, items, tone }: { title: string; items: Point[]; tone: s
   )
 }
 
-export function ConceptAnalysisModal({ ad, open, onClose, initial = null, onClone }: { ad: LibraryAdInput; open: boolean; onClose: () => void; initial?: LibraryAdAnalysis | null; onClone?: () => void }) {
+// mode "asset": un creativo propio del proyecto (Crear desde asset existente):
+// sin marca inferida, "Cómo mejorarlo" en vez de adaptarlo y sin acciones de
+// librería (asignar/crear concepto vive en la tarjeta del embudo).
+export function ConceptAnalysisModal({ ad, open, onClose, initial = null, onClone, mode = "library" }: { ad: LibraryAdInput; open: boolean; onClose: () => void; initial?: LibraryAdAnalysis | null; onClone?: () => void; mode?: "library" | "asset" }) {
+  const isAsset = mode === "asset"
   const [a, setA] = useState<LibraryAdAnalysis | null>(initial)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -114,7 +118,7 @@ export function ConceptAnalysisModal({ ad, open, onClose, initial = null, onClon
                 <div className="flex flex-wrap gap-1">
                   {ad.videoUrl && <Chip ok={!!a.transcript} Icon={Mic}>{a.transcript ? "Transcrito" : "Sin voz"}</Chip>}
                   <Chip ok={!!a.media} Icon={Eye}>{a.media ? "Visto" : "No visto"}</Chip>
-                  <Chip ok={a.landingLeida} Icon={Globe}>{a.landingLeida ? "Landing" : "Sin landing"}</Chip>
+                  {!isAsset && <Chip ok={a.landingLeida} Icon={Globe}>{a.landingLeida ? "Landing" : "Sin landing"}</Chip>}
                   {a.diasCorriendo && <Chip ok Icon={CalendarClock}>{a.diasCorriendo} días</Chip>}
                 </div>
               )}
@@ -122,10 +126,10 @@ export function ConceptAnalysisModal({ ad, open, onClose, initial = null, onClon
               {a && (
                 <div className="flex gap-1.5">
                   <button onClick={copy} className="flex-1 h-8 rounded-md border border-border text-xs inline-flex items-center justify-center gap-1 hover:bg-muted">{copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}{copied ? "Copiado" : "Copiar"}</button>
-                  <button onClick={() => run(true)} disabled={busy} title="Volver a analizar (cuesta transcripción e IA)" className="h-8 px-2.5 rounded-md border border-border text-xs inline-flex items-center gap-1 hover:bg-muted disabled:opacity-50"><RefreshCw className={cn("w-3.5 h-3.5", busy && "animate-spin")} /></button>
+                  {!isAsset && <button onClick={() => run(true)} disabled={busy} title="Volver a analizar (cuesta transcripción e IA)" className="h-8 px-2.5 rounded-md border border-border text-xs inline-flex items-center gap-1 hover:bg-muted disabled:opacity-50"><RefreshCw className={cn("w-3.5 h-3.5", busy && "animate-spin")} /></button>}
                 </div>
               )}
-              {a && <p className="text-[10px] text-muted-foreground">Analizado {new Date(a.analyzedAt ?? Date.now()).toLocaleDateString("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>}
+              {a && !isAsset && <p className="text-[10px] text-muted-foreground">Analizado {new Date(a.analyzedAt ?? Date.now()).toLocaleDateString("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>}
             </div>
           </aside>
 
@@ -154,7 +158,7 @@ export function ConceptAnalysisModal({ ad, open, onClose, initial = null, onClon
                   </div>
                 </header>
                 <nav className="px-6 border-b border-border flex gap-1 overflow-x-auto">
-                  {TABS.filter((t) => t.key !== "transcripcion" || a.transcript || a.media).map((t) => (
+                  {TABS.filter((t) => (t.key !== "transcripcion" || a.transcript || a.media) && (t.key !== "marca" || a.marca)).map((t) => (
                     <button key={t.key} onClick={() => { setTab(t.key); setToProject(false) }} className={cn("px-3 py-2.5 text-sm whitespace-nowrap border-b-2 -mb-px", tab === t.key ? "border-primary text-foreground font-medium" : "border-transparent text-muted-foreground hover:text-foreground")}>{t.label}</button>
                   ))}
                 </nav>
@@ -210,11 +214,11 @@ export function ConceptAnalysisModal({ ad, open, onClose, initial = null, onClon
                     <div className="grid lg:grid-cols-3 gap-4">
                       <Points title="Por qué funciona" items={a.por_que_funciona} tone="text-emerald-600 dark:text-emerald-400" />
                       <Points title="Debilidades" items={a.debilidades} tone="text-amber-600 dark:text-amber-400" />
-                      <Points title="Cómo adaptarlo" items={a.como_adaptarlo} tone="text-primary" />
+                      <Points title={isAsset ? "Cómo mejorarlo" : "Cómo adaptarlo"} items={a.como_adaptarlo} tone="text-primary" />
                     </div>
                   )}
 
-                  {!toProject && tab === "marca" && (
+                  {!toProject && tab === "marca" && a.marca && (
                     <div className="space-y-4 max-w-2xl">
                       <div className="flex items-center gap-2">
                         <span className={cn("text-xs font-semibold px-2 py-0.5 rounded-full", CONF[a.marca.confianza] ?? CONF.media)}>Confianza {a.marca.confianza}</span>
@@ -254,7 +258,7 @@ export function ConceptAnalysisModal({ ad, open, onClose, initial = null, onClon
                   )}
                 </div>
                 {/* Acciones: llevar el análisis a trabajo */}
-                {!toProject && (
+                {!toProject && !isAsset && (
                   <footer className="px-6 py-3 border-t border-border flex items-center gap-2 flex-wrap bg-background">
                     <a href="/ad-lab/analisis" className="text-[11px] text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1 hover:underline mr-auto"><Check className="w-3.5 h-3.5" />Guardado en Ad Lab → Análisis</a>
                     {onClone && (
