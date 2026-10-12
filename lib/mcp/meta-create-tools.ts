@@ -167,6 +167,69 @@ export function registerMetaCreateTools(server: McpServer) {
   )
 
   server.registerTool(
+    "meta_editar_segmentacion",
+    {
+      title: "Meta: editar segmentación",
+      description: "Edita la segmentación de un conjunto existente cambiando SOLO lo indicado (lo demás se conserva): quitar intereses por nombre o todos, edad, género, ubicación (pin con radio, ciudades o países) y Advantage+. Meta reemplaza el objeto completo: la herramienta lee el actual y manda la versión modificada. Cambiar la audiencia de un conjunto activo reinicia su aprendizaje. Sin confirmar: true solo muestra antes → después.",
+      inputSchema: z.object({
+        proyecto: z.string(),
+        adset_id: z.string(),
+        quitar_intereses: z.array(z.string()).optional().describe("Nombres (coincidencia parcial, sin mayúsculas) de intereses/comportamientos a quitar"),
+        quitar_todos_los_intereses: z.boolean().optional(),
+        edad_min: z.number().min(18).max(65).optional(),
+        edad_max: z.number().min(18).max(65).optional(),
+        genero: z.enum(["todos", "hombres", "mujeres"]).optional(),
+        ubicacion_pin: z.object({ lat: z.number(), lng: z.number(), radio_km: z.number().min(1).max(80), nombre: z.string().optional() }).optional(),
+        ciudades: z.array(z.object({ key: z.string(), radio_km: z.number().optional() })).optional(),
+        paises: z.array(z.string().length(2)).optional(),
+        advantage: z.boolean().optional().describe("Activar/desactivar audiencia Advantage+"),
+        confirmar: z.boolean().default(false),
+      }),
+    },
+    async (a, ctx: ToolCtx) => {
+      const profileId = await requireEditor(ctx)
+      const c = await client(a.proyecto)
+      const o = await own(c, a.adset_id)
+      if (o.kind !== "conjunto") throw new Error("adset_id no es un conjunto.")
+      const { targeting } = await get<{ targeting: Record<string, any> }>(o.id, { fields: "targeting" })
+      const t = JSON.parse(JSON.stringify(targeting ?? {})) as Record<string, any>
+      const removed: string[] = []
+      if (a.quitar_todos_los_intereses) {
+        for (const f of t.flexible_spec ?? []) for (const k of Object.keys(f)) for (const i of f[k] ?? []) if (i?.name) removed.push(i.name)
+        delete t.flexible_spec
+      } else if (a.quitar_intereses?.length) {
+        const qs = a.quitar_intereses.map((x) => x.toLowerCase())
+        t.flexible_spec = (t.flexible_spec ?? []).map((f: Record<string, any[]>) => {
+          const nf: Record<string, any[]> = {}
+          for (const [k, list] of Object.entries(f)) {
+            if (!Array.isArray(list)) { nf[k] = list; continue }
+            const keep = list.filter((i) => { const hit = qs.some((q) => String(i?.name ?? "").toLowerCase().includes(q)); if (hit) removed.push(i.name); return !hit })
+            if (keep.length) nf[k] = keep
+          }
+          return nf
+        }).filter((f: Record<string, unknown>) => Object.keys(f).length)
+        if (!t.flexible_spec.length) delete t.flexible_spec
+        if (!removed.length) throw new Error(`No encontré intereses que coincidan con: ${a.quitar_intereses.join(", ")}.`)
+      }
+      if (a.edad_min != null) t.age_min = a.edad_min
+      if (a.edad_max != null) t.age_max = a.edad_max
+      if (a.genero) { if (a.genero === "todos") delete t.genders; else t.genders = [a.genero === "hombres" ? 1 : 2] }
+      if (a.ubicacion_pin || a.ciudades?.length || a.paises?.length) {
+        t.geo_locations = a.ubicacion_pin
+          ? { custom_locations: [{ latitude: a.ubicacion_pin.lat, longitude: a.ubicacion_pin.lng, radius: a.ubicacion_pin.radio_km, distance_unit: "kilometer", ...(a.ubicacion_pin.nombre ? { name: a.ubicacion_pin.nombre } : {}) }] }
+          : a.ciudades?.length ? { cities: a.ciudades.map((x) => ({ key: x.key, radius: x.radio_km ?? 25, distance_unit: "kilometer" })) }
+          : { countries: a.paises }
+      }
+      if (a.advantage != null) t.targeting_automation = { ...(t.targeting_automation ?? {}), advantage_audience: a.advantage ? 1 : 0 }
+      const desc = `Conjunto "${o.name}" [${o.id}]\nAntes: ${describeTargeting(targeting ?? {})}\nDespués: ${describeTargeting(t)}${removed.length ? `\nIntereses quitados: ${[...new Set(removed)].join(", ")}` : ""}`
+      if (!a.confirmar) return text(`Cambiaría en ${c.name}:\n${desc}\n\nSi el conjunto está activo, reinicia su fase de aprendizaje.${confirmHint}`)
+      await post(o.id, { targeting: JSON.stringify(t) })
+      await log(c, profileId, `Segmentación editada: ${desc}`)
+      return text(`✅ Segmentación actualizada en Meta.\n${desc}`)
+    },
+  )
+
+  server.registerTool(
     "meta_buscar_ubicacion",
     {
       title: "Meta: buscar ubicación",

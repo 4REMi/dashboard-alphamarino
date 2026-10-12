@@ -55,7 +55,9 @@ más estricto desde el inicio, no una copia de cómo funciona Telegram.
   Ubicación: `meta_segmentacion` (lee la segmentación de conjuntos activos o
   pasados), `meta_buscar_ubicacion` (nombre → key de ciudad/estado/CP), y en
   `meta_crear_conjunto` `ubicacion_pin` (radio alrededor de lat/lng) o
-  `copiar_segmentacion_de` (segmentación completa de otro conjunto).
+  `copiar_segmentacion_de` (segmentación completa de otro conjunto), y
+  `meta_editar_segmentacion` (cambia solo lo indicado de un conjunto existente:
+  quitar intereses, edad, género, ubicación, Advantage+).
   Mensaje de bienvenida de anuncios de mensajes: `meta_bienvenida_leer` y
   `meta_bienvenida_cambiar` (saludo + hasta 4 opciones con respuesta; Claude
   los redacta desde el objetivo que describe el usuario). Meta no edita
