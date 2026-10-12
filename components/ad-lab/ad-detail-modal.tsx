@@ -220,6 +220,9 @@ export function AdDetailModal({ ad, boards: boardsProp, onClose, savedAdId }: Pr
           open={showAnalysis}
           onClose={() => setShowAnalysis(false)}
           ad={{
+            // Guardados viejos o subidos a mano no traen id de la librería: se usa el del board.
+            adArchiveId: ad.ad_archive_id || (savedAdId ? `saved:${savedAdId}` : `media:${videoUrl ?? thumbUrl ?? ad.page_name}`),
+            pageId: ad.page_id ?? null,
             pageName: ad.page_name,
             body,
             title: snap?.title || card?.title || null,

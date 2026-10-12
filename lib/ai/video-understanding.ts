@@ -61,9 +61,10 @@ async function uploadToGemini(key: string, buf: Buffer, mime: string): Promise<s
   throw new Error("Gemini tardó demasiado en procesar el video")
 }
 
-// Modelos en orden: GEMINI_MODEL (si se define en Vercel), el alias que
-// siempre apunta al Flash vigente, y 2.5 Flash como respaldo.
-const MODELS = [process.env.GEMINI_MODEL, "gemini-flash-latest", "gemini-2.5-flash"].filter((m, i, a): m is string => !!m && a.indexOf(m) === i)
+// Modelos en orden: GEMINI_MODEL (si se define en Vercel), el Flash actual
+// que recomienda Google, el alias del Flash vigente y un respaldo. (2.5 Flash
+// ya no está disponible para cuentas nuevas.)
+const MODELS = [process.env.GEMINI_MODEL, "gemini-3.8-flash", "gemini-flash-latest", "gemini-3-flash-preview"].filter((m, i, a): m is string => !!m && a.indexOf(m) === i)
 
 async function viaGoogle(url: string, kind: "video" | "image"): Promise<{ d: VideoDescription | null; error: string | null }> {
   const key = process.env.GEMINI_API_KEY

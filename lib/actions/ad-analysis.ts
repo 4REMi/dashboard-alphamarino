@@ -1,6 +1,7 @@
 "use server"
 
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { aaiPost, aaiGet } from "@/lib/actions/ad-clone"
 import { describeVideo, type VideoDescription } from "@/lib/ai/video-understanding"
 import { parseAiJson } from "@/lib/utils/ai-json"
@@ -13,6 +14,8 @@ import { parseAiJson } from "@/lib/utils/ai-json"
 const ANGULOS = ["Desired Outcome", "Objection", "Feature / Benefit", "Use Case", "Consequence", "Misconception", "Education", "Acceptance", "Failed Solutions", "Identity"]
 
 export interface LibraryAdInput {
+  adArchiveId: string
+  pageId: string | null
   pageName: string
   body: string | null
   title: string | null
@@ -32,15 +35,20 @@ export interface LibraryAdAnalysis {
   estructura: { t: string; momento: string; que_pasa: string }[]
   mecanica: string
   formato: string
-  por_que_funciona: string[]
-  debilidades: string[]
-  como_adaptarlo: string[]
+  resumen: string
+  por_que_funciona: Point[]
+  debilidades: Point[]
+  como_adaptarlo: Point[]
   transcript: string | null
   media: VideoDescription | null
   visionError: string | null
   landingLeida: boolean
   diasCorriendo: number | null
+  analyzedAt: string
 }
+
+// Cada aprendizaje: un título corto (lo que se ve) y el detalle (al abrirlo).
+export interface Point { titulo: string; detalle: string }
 
 async function transcribe(url: string): Promise<string | null> {
   try {
@@ -68,6 +76,15 @@ async function landingText(url: string | null): Promise<string | null> {
   } catch { return null }
 }
 
+// Análisis guardado (sin costo). null si no hay o falta la migración 113.
+export async function getSavedAdAnalysis(adArchiveId: string): Promise<LibraryAdAnalysis | null> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+  const { data } = await createAdminClient().from("ad_analyses").select("analysis").eq("ad_archive_id", adArchiveId).maybeSingle()
+  return (data?.analysis as LibraryAdAnalysis | undefined) ?? null
+}
+
 export async function analyzeLibraryAd(ad: LibraryAdInput): Promise<LibraryAdAnalysis> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -87,16 +104,22 @@ export async function analyzeLibraryAd(ad: LibraryAdInput): Promise<LibraryAdAna
   const msg = await client.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 3000,
-    system: `Eres estratega creativo senior de paid media. Desarmas un anuncio de la competencia para entender su CONCEPTO y por qué funciona. No tienes ficha de la marca: infiere su contexto SOLO de la evidencia (nombre de la página, copy, landing, lo que se ve y se oye) y di qué tan segura es la inferencia y en qué te basas. No inventes datos que no estén en la evidencia; si algo no se puede saber, dilo.
+    system: `Eres estratega creativo senior de paid media. Desarmas un anuncio de la competencia para entender su CONCEPTO y por qué funciona. No tienes ficha de la marca: infiere su contexto SOLO de la evidencia (nombre de la página, copy, landing, lo que se ve y se oye) y di qué tan segura es la inferencia y en qué te basas. No inventes datos que no estén en la evidencia.
 Un anuncio que lleva muchos días activo es señal de que le funciona a la marca.
-angle_type debe ser EXACTAMENTE uno de: ${ANGULOS.join(", ")}. funnel_stage: TOF, MOF o BOF. organizing_principle: Pain-First o Desire-First. awareness_stage: 1-5.
+ESCRIBE CORTO: se lee en una interfaz. Respeta los límites de palabras; nada de párrafos.
+angle_type EXACTAMENTE uno de: ${ANGULOS.join(", ")}. funnel_stage: TOF, MOF o BOF. organizing_principle: Pain-First o Desire-First. awareness_stage: 1-5.
+"t" de la estructura en formato m:ss-m:ss, cubriendo todo el video (en imágenes una sola entrada "imagen").
 Responde SOLO JSON en español:
-{"marca":{"que_vende":"","audiencia":"","oferta":"","posicionamiento":"","confianza":"alta|media|baja","basado_en":""},
-"concepto":{"nombre":"","angle_type":"","organizing_principle":"","target_persona":"","pain_point":"","objection":"","why_it_works":"","transformation":"","funnel_stage":"","awareness_stage":3},
-"gancho":{"texto":"lo que se dice/ve en los primeros 3 s","tipo":"pregunta|afirmación polémica|dato|demostración|historia|otro","por_que_atrapa":""},
-"estructura":[{"t":"0:00-0:03","momento":"gancho|problema|demostración|prueba social|oferta|CTA","que_pasa":""}],
-"mecanica":"el mecanismo creativo central en una frase","formato":"",
-"por_que_funciona":["3-5 razones concretas"],"debilidades":["2-3"],"como_adaptarlo":["3-5 ideas para usar este concepto en otra marca sin copiarlo"]}`,
+{"resumen":"qué hace el anuncio y por qué funciona, máx. 25 palabras",
+"marca":{"que_vende":"máx. 20 palabras","audiencia":"máx. 15","oferta":"máx. 15","posicionamiento":"máx. 15","confianza":"alta|media|baja","basado_en":"máx. 25"},
+"concepto":{"nombre":"máx. 8 palabras","angle_type":"","organizing_principle":"","target_persona":"máx. 20","pain_point":"máx. 20","objection":"máx. 15","why_it_works":"máx. 25","transformation":"máx. 15","funnel_stage":"","awareness_stage":3},
+"gancho":{"texto":"lo que se dice/ve en los primeros 3 s, literal","tipo":"pregunta|afirmación polémica|dato|demostración|historia|otro","por_que_atrapa":"máx. 20"},
+"estructura":[{"t":"0:00-0:06","momento":"gancho|problema|demostración|prueba social|oferta|CTA|otro","que_pasa":"máx. 18 palabras"}],
+"mecanica":"máx. 18 palabras","formato":"máx. 10 palabras",
+"por_que_funciona":[{"titulo":"máx. 7 palabras","detalle":"máx. 30"}],
+"debilidades":[{"titulo":"máx. 7","detalle":"máx. 30"}],
+"como_adaptarlo":[{"titulo":"máx. 7","detalle":"máx. 30"}]}
+3-5 puntos en por_que_funciona y como_adaptarlo; 2-3 en debilidades.`,
     messages: [{
       role: "user",
       content: `PÁGINA: ${ad.pageName}
@@ -109,6 +132,17 @@ LO QUE SE VE Y SE OYE: ${media ? JSON.stringify(media) : "(no se pudo analizar e
 TEXTO DE LA LANDING: ${landing ?? "(no disponible)"}`,
     }],
   })
-  const parsed = parseAiJson<Omit<LibraryAdAnalysis, "transcript" | "media" | "landingLeida" | "diasCorriendo">>(msg, "analyzeLibraryAd")
-  return { ...parsed, transcript, media, visionError, landingLeida: !!landing, diasCorriendo: dias }
+  const parsed = parseAiJson<Omit<LibraryAdAnalysis, "transcript" | "media" | "visionError" | "landingLeida" | "diasCorriendo" | "analyzedAt">>(msg, "analyzeLibraryAd")
+  // Tolerar listas como texto suelto (versión anterior del prompt).
+  const pts = (l: unknown): Point[] => (Array.isArray(l) ? l : []).map((x) => (typeof x === "string" ? { titulo: x, detalle: "" } : x as Point))
+  const result: LibraryAdAnalysis = {
+    ...parsed, por_que_funciona: pts(parsed.por_que_funciona), debilidades: pts(parsed.debilidades), como_adaptarlo: pts(parsed.como_adaptarlo),
+    transcript, media, visionError, landingLeida: !!landing, diasCorriendo: dias, analyzedAt: new Date().toISOString(),
+  }
+  const { error } = await createAdminClient().from("ad_analyses").upsert({
+    ad_archive_id: ad.adArchiveId, page_id: ad.pageId, page_name: ad.pageName, media_type: ad.videoUrl ? "video" : "image",
+    analysis: result, created_by: user.id, updated_at: new Date().toISOString(),
+  }, { onConflict: "ad_archive_id" })
+  if (error && !/ad_analyses/.test(error.message)) console.error("[analyzeLibraryAd] guardar:", error.message)
+  return result
 }
