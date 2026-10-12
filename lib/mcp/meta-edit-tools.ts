@@ -1,7 +1,7 @@
 import { z } from "zod"
 import type { McpServer } from "@modelcontextprotocol/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { client, get, post, own, log, text, requireEditor, confirmHint, type ToolCtx } from "@/lib/mcp/meta-tools"
+import { client, get, post, own, log, text, requireEditor, confirmHint, cleanStoryForCopy, type ToolCtx } from "@/lib/mcp/meta-tools"
 
 // Modificar lo que ya existe en Meta: contenido de un anuncio (texto,
 // título, CTA, URL/UTMs o el video/imagen), intereses y públicos para la
@@ -116,6 +116,7 @@ export function registerMetaEditTools(server: McpServer) {
       const newSpec = { ...spec }
       delete newSpec.video_data; delete newSpec.link_data
       newSpec[target] = block
+      cleanStoryForCopy(newSpec)
       const body: Record<string, string> = { name: `${cr.name ?? o.name} · editado ${new Date().toISOString().slice(0, 10)}`, object_story_spec: JSON.stringify(newSpec) }
       if (after.tags) body.url_tags = after.tags
       const creative = await post(`${act}/adcreatives`, body) as { id: string }

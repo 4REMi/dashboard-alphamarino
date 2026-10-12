@@ -418,3 +418,14 @@ export function describePlacements(t: Record<string, any>): string {
   }
   return `ubicaciones: ${names.join(", ")}`
 }
+
+// Al copiar un creativo, Meta regresa la miniatura del video como image_url
+// Y image_hash a la vez, pero al crear solo acepta UNA de las dos. Se deja el
+// hash (es el asset ya subido a la cuenta) y se quita la URL.
+export function cleanStoryForCopy(spec: Record<string, any>): Record<string, any> {
+  for (const k of ["video_data", "link_data"]) {
+    const d = spec[k]
+    if (d && d.image_hash && d.image_url) delete d.image_url
+  }
+  return spec
+}

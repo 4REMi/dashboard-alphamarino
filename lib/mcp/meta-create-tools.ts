@@ -1,7 +1,7 @@
 import { z } from "zod"
 import type { McpServer } from "@modelcontextprotocol/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { client, get, post, own, log, text, requireEditor, confirmHint, applyPlacements, describePlacements, PLACEMENT_KEYS, type ToolCtx } from "@/lib/mcp/meta-tools"
+import { client, get, post, own, log, text, requireEditor, confirmHint, applyPlacements, describePlacements, PLACEMENT_KEYS, cleanStoryForCopy, type ToolCtx } from "@/lib/mcp/meta-tools"
 
 // Crear desde cero en Meta: campaña → conjunto → anuncio (con un creativo
 // del Creative Tracker). Mismas reglas que meta-tools.ts: solo admin/
@@ -139,6 +139,7 @@ export function registerMetaCreateTools(server: McpServer) {
       if (!confirmar) return text(`Cambiaría en ${c.name}:\n${desc}\n\nEl anuncio volverá a revisión de Meta.${confirmHint}`)
       const spec = JSON.parse(JSON.stringify(w.spec))
       spec[w.key].page_welcome_message = welcomeJson(w.welcome.raw, saludo, preguntas)
+      cleanStoryForCopy(spec)
       const creative = await post(`act_${c.account}/adcreatives`, { name: `${w.creative.name ?? o.name} · bienvenida ${new Date().toISOString().slice(0, 10)}`, object_story_spec: JSON.stringify(spec) }) as { id: string }
       await post(ad_id, { creative: JSON.stringify({ creative_id: creative.id }) })
       await log(c, profileId, `Mensaje de bienvenida cambiado: ${desc}`)
