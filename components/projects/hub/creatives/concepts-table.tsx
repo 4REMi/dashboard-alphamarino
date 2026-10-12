@@ -15,8 +15,9 @@ import type { AssetMetaLinkStatus } from "@/lib/actions/paid-media-performance"
 import { BriefCreator } from "./brief-creator"
 import { AssetCopyBank } from "./asset-copy-bank"
 import { QuickScriptModal } from "./quick-script-modal"
-import { Plus, Sparkles, Check, X, Loader2, Star, ArrowUpRight, Pencil, Trash2, Link2, FileText, Upload, ChevronDown, Film, ImageIcon, Eye, EyeOff, MessageSquare, Clock, Radio, AlertTriangle, ArrowRightLeft } from "lucide-react"
+import { Plus, Sparkles, Check, X, Loader2, Star, ArrowUpRight, Pencil, Trash2, Link2, FileText, Upload, ChevronDown, Film, ImageIcon, Eye, EyeOff, MessageSquare, Clock, Radio, AlertTriangle, ArrowRightLeft, Share2 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { PlatformIcon } from "@/components/ui/platform-icon"
 import { ClassifyUploader } from "@/components/projects/hub/creatives/classify-uploader"
 
 function fmt$(v: number) {
@@ -29,32 +30,39 @@ function fmt$(v: number) {
 function conceptLiveRollup(conceptAssetIds: string[], assetLinkStatus: Record<string, AssetMetaLinkStatus>) {
   let anyActive = false
   let totalSpend = 0
-  const activeAds = new Set<string>()
+  const metaAds = new Set<string>()
   const campaigns = new Set<string>()
-  let everLinked = false
+  const manual = new Set<string>()
   for (const id of conceptAssetIds) {
     const s = assetLinkStatus[id]
     if (!s) continue
     anyActive = anyActive || s.anyActive
     totalSpend += s.totalSpend
-    if (s.ads.length || s.manualChannels.length) everLinked = true
-    for (const ad of s.ads) if (ad.status === "ACTIVE") { activeAds.add(ad.adId); if (ad.campaignName) campaigns.add(ad.campaignName) }
-    for (const ch of s.manualChannels) campaigns.add(ch)
+    for (const ad of s.ads) if (ad.status === "ACTIVE") { metaAds.add(ad.adId); if (ad.campaignName) campaigns.add(ad.campaignName) }
+    for (const ch of s.manualChannels) manual.add(ch)
   }
-  return { anyActive, totalSpend, activeAds: activeAds.size, campaigns: [...campaigns], everLinked }
+  // Un renglón por canal donde corre hoy: Meta (con # de anuncios) + manuales.
+  const channels: { channel: string; count: number }[] = [
+    ...(metaAds.size ? [{ channel: "Meta", count: metaAds.size }] : []),
+    ...[...manual].map((ch) => ({ channel: ch, count: 0 })),
+  ]
+  return { anyActive, totalSpend, channels, campaigns: [...campaigns] }
 }
 
-// Medalla de la fila: corre hoy en una campaña activa / corrió antes.
+// Medalla compacta: punto verde + logo de cada plataforma donde corre hoy.
 function LiveMedal({ rollup }: { rollup: ReturnType<typeof conceptLiveRollup> }) {
-  if (rollup.anyActive) {
-    return (
-      <span title={`Corriendo en: ${rollup.campaigns.join(" · ") || "Meta"} — ${fmt$(rollup.totalSpend)} este ciclo`}
-        className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 whitespace-nowrap">
-        <Radio className="w-3 h-3" />En Meta{rollup.activeAds ? ` · ${rollup.activeAds}` : ""}
-      </span>
-    )
-  }
-  return null
+  if (!rollup.anyActive || !rollup.channels.length) return null
+  const title = `Corriendo en ${rollup.channels.map((c) => (c.count ? `${c.channel} (${c.count} anuncio${c.count === 1 ? "" : "s"})` : c.channel)).join(", ")}${rollup.campaigns.length ? ` — ${rollup.campaigns.join(" · ")}` : ""} — ${fmt$(rollup.totalSpend)} este ciclo`
+  return (
+    <span title={title} className="inline-flex items-center gap-1.5 h-5 pl-1.5 pr-2 rounded-full border border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/40 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
+      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+      {rollup.channels.map((c) => (
+        <span key={c.channel} className="inline-flex items-center gap-0.5">
+          <PlatformIcon channel={c.channel} size={11} className="text-foreground" />{c.count > 1 ? c.count : ""}
+        </span>
+      ))}
+    </span>
+  )
 }
 
 // One entry per script inside a brief's adapted_script — mirrors the
@@ -1368,9 +1376,10 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
             size="sm"
             className={cn("text-xs", copied && "text-emerald-600 border-emerald-300")}
             onClick={handleShareProject}
+            title="Copia el link del panel donde el cliente ve y aprueba conceptos y creativos"
           >
-            <Link2 className="w-3.5 h-3.5 mr-1" />
-            {copied ? "¡Copiado!" : "Link de cliente"}
+            <Share2 className="w-3.5 h-3.5 mr-1" />
+            {copied ? "¡Link copiado!" : "Panel del cliente"}
           </Button>
           {isAdminOrSubadmin && cycleId && (
             <Button size="sm" className="text-xs" onClick={() => setCreateForLineId(null)}>

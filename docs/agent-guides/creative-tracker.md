@@ -192,14 +192,16 @@ vinculada).
 - `app/share/concepts/[projectId]/page.tsx` — la página pública de revisión.
 
 ## Medalla "En Meta" por concepto
-En la columna Status de cada concepto: **"En Meta · N"** (verde) si algún creativo
-vinculado tiene anuncios activos (al pasar el mouse: campañas y gasto del ciclo),
+En la columna Status de cada concepto: medalla verde con punto y el **logo de cada
+plataforma** donde corre hoy (Meta con # de anuncios activos; canales de campañas
+manuales con su logo) — al pasar el mouse: campañas y gasto del ciclo. Logos de
+`components/ui/platform-icon.tsx` (Simple Icons, CC0; LinkedIn cae a ícono genérico).
 Depende del vínculo anuncio↔creativo (`creative_asset_meta_ads`): lo subido
 directo en Ads Manager sin vincular no cuenta. `conceptLiveRollup`/`LiveMedal`
 en `concepts-table.tsx`.
 
 ## Barra del Creative Tracker y alta de conceptos
-Junto a "Link de cliente": **"Nuevo concepto"** (modal con selector de línea y
+Junto a "Panel del cliente" (copia el link del panel del cliente): **"Nuevo concepto"** (modal con selector de línea y
 "describe la idea → la IA llena todo") y **"Crear desde asset existente"** (el
 embudo de abajo). Ya no hay acciones por línea (Nuevo/Generar) ni "Generar con
 IA": el autorrelleno del modal lo reemplaza. En las filas solo quedan los
