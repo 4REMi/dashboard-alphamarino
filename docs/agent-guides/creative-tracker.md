@@ -205,10 +205,10 @@ junto a "Nuevo" y "Generar" (ciclo activo, quien puede administrar creativos):
 es otra forma de crear o alimentar conceptos, y usa esa línea como contexto. Por video: se sube a Storage como asset **borrador sin
 concepto** (`registerUploadedAsset`), se transcribe (AssemblyAI) y Gemini 2.5
 Flash lo "ve" (`lib/ai/video-understanding.ts`: escenas con tiempos, visual,
-audio, texto en pantalla, formato, música, tono, efectos, gancho). Proveedor:
-APIMart (`APIMART_API_KEY`, el soporte de video no está documentado — se valida
-la respuesta) → Google directo (`GEMINI_API_KEY`, video ≤19 MB) → si ninguno,
-solo transcripción. Claude compara contra los conceptos del proyecto y propone
+audio, texto en pantalla, formato, música, tono, efectos, gancho). Proveedor: API oficial de Gemini
+(`GEMINI_API_KEY`; video embebido ≤18 MB o por Files API si es más grande). APIMart
+se probó y no pasa el video al modelo. Si Gemini falla, se clasifica solo con la
+transcripción. Claude compara contra los conceptos del proyecto y propone
 hasta 3 coincidencias con % de confianza y un concepto nuevo pre-llenado
 (editable). Nada se asigna sin un clic: `assignAssetToConcept` o
 `createConceptFromAsset`. Transcripción y análisis quedan en

@@ -1,9 +1,9 @@
 // "Ver" un video con Gemini 2.5 Flash: escenas con tiempos, lo que se ve,
 // lo que se oye (voz, música, efectos), texto en pantalla, formato y tono.
-// Solo servidor. Proveedores en orden: APIMart (formato OpenAI, el soporte
-// de video no está documentado — se valida la respuesta) → Google directo
-// (GEMINI_API_KEY, formato nativo con el video embebido) → null (el
-// llamador sigue solo con la transcripción).
+// Solo servidor. API oficial de Gemini (GEMINI_API_KEY): el video va
+// embebido si pesa ≤18 MB o por Files API si es más grande. Si falla,
+// regresa null y el llamador sigue solo con la transcripción. (APIMart se
+// probó y no pasa el video al modelo.)
 
 export interface VideoScene { t: string; visual: string; audio: string; texto_en_pantalla?: string | null }
 export interface VideoDescription {
@@ -33,46 +33,53 @@ function parse(raw: string | null | undefined): VideoDescription | null {
   } catch { return null }
 }
 
-async function viaApimart(url: string): Promise<VideoDescription | null> {
-  const key = process.env.APIMART_API_KEY
-  if (!key) return null
-  // Dos formas de mandar el video que aceptan los proxies de Gemini.
-  for (const part of [{ type: "video_url", video_url: { url } }, { type: "image_url", image_url: { url } }]) {
-    try {
-      const res = await fetch("https://api.apimart.ai/v1/chat/completions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "gemini-2.5-flash", messages: [{ role: "user", content: [{ type: "text", text: PROMPT }, part] }], max_tokens: 4096 }),
-      })
-      const j = await res.json().catch(() => null)
-      const out = parse(j?.choices?.[0]?.message?.content)
-      if (out) return out
-      console.error("[video-understanding] APIMart sin video válido:", res.status, JSON.stringify(j)?.slice(0, 300))
-    } catch (e) { console.error("[video-understanding] APIMart:", e) }
+const G = "https://generativelanguage.googleapis.com"
+
+// Videos grandes: Files API (subida resumible) y esperar a que quede ACTIVE.
+async function uploadToGemini(key: string, buf: Buffer, mime: string): Promise<string> {
+  const start = await fetch(`${G}/upload/v1beta/files?key=${key}`, {
+    method: "POST",
+    headers: { "X-Goog-Upload-Protocol": "resumable", "X-Goog-Upload-Command": "start", "X-Goog-Upload-Header-Content-Length": String(buf.length), "X-Goog-Upload-Header-Content-Type": mime, "Content-Type": "application/json" },
+    body: JSON.stringify({ file: { display_name: "creative" } }),
+  })
+  const uploadUrl = start.headers.get("x-goog-upload-url")
+  if (!uploadUrl) throw new Error(`Files API start ${start.status}`)
+  const up = await fetch(uploadUrl, { method: "POST", headers: { "X-Goog-Upload-Offset": "0", "X-Goog-Upload-Command": "upload, finalize", "Content-Length": String(buf.length) }, body: new Uint8Array(buf) })
+  const j = await up.json()
+  const name = j.file?.name as string | undefined
+  if (!name) throw new Error(`Files API upload ${up.status}`)
+  for (let i = 0; i < 40; i++) {
+    const f = await (await fetch(`${G}/v1beta/${name}?key=${key}`)).json()
+    if (f.state === "ACTIVE") return f.uri as string
+    if (f.state === "FAILED") throw new Error("Gemini no pudo procesar el video")
+    await new Promise((r) => setTimeout(r, 3000))
   }
-  return null
+  throw new Error("Gemini tardó demasiado en procesar el video")
 }
 
 async function viaGoogle(url: string): Promise<VideoDescription | null> {
   const key = process.env.GEMINI_API_KEY
-  if (!key) return null
+  if (!key) { console.error("[video-understanding] falta GEMINI_API_KEY"); return null }
   try {
-    const buf = Buffer.from(await (await fetch(url)).arrayBuffer())
-    if (buf.length > 19_000_000) { console.error("[video-understanding] video >19 MB para envío directo"); return null }
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`, {
+    const res0 = await fetch(url)
+    const mime = res0.headers.get("content-type")?.split(";")[0] || "video/mp4"
+    const buf = Buffer.from(await res0.arrayBuffer())
+    const videoPart = buf.length <= 18_000_000
+      ? { inline_data: { mime_type: mime, data: buf.toString("base64") } }
+      : { file_data: { mime_type: mime, file_uri: await uploadToGemini(key, buf, mime) } }
+    const res = await fetch(`${G}/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contents: [{ parts: [{ inline_data: { mime_type: "video/mp4", data: buf.toString("base64") } }, { text: PROMPT }] }], generationConfig: { responseMimeType: "application/json" } }),
+      body: JSON.stringify({ contents: [{ parts: [videoPart, { text: PROMPT }] }], generationConfig: { responseMimeType: "application/json" } }),
     })
     const j = await res.json().catch(() => null)
+    if (!res.ok) console.error("[video-understanding] Gemini:", res.status, JSON.stringify(j)?.slice(0, 300))
     return parse(j?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join(""))
-  } catch (e) { console.error("[video-understanding] Google:", e); return null }
+  } catch (e) { console.error("[video-understanding] Gemini:", e); return null }
 }
 
-export async function describeVideo(url: string): Promise<{ description: VideoDescription | null; provider: "apimart" | "google" | null }> {
-  const a = await viaApimart(url)
-  if (a) return { description: a, provider: "apimart" }
+// Solo la API oficial de Gemini (APIMart no pasa el video al modelo).
+export async function describeVideo(url: string): Promise<{ description: VideoDescription | null; provider: "google" | null }> {
   const g = await viaGoogle(url)
-  if (g) return { description: g, provider: "google" }
-  return { description: null, provider: null }
+  return { description: g, provider: g ? "google" : null }
 }
