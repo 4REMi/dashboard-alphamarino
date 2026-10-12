@@ -71,6 +71,14 @@ más estricto desde el inicio, no una copia de cómo funciona Telegram.
   los redacta desde el objetivo que describe el usuario). Meta no edita
   creativos: se crea uno igual con el mensaje nuevo y se asigna al anuncio
   (vuelve a revisión). `meta_crear_anuncio` acepta `saludo` y `preguntas`.
+- **Captura rápida** (`captura_rapida` en `lib/mcp/tools.ts`): misma IA que el
+  botón del dashboard (`interpretStandup` en `lib/standup-core.ts`, que también
+  usa `processStandup`). Siempre dos pasos: con `texto` regresa vista previa
+  numerada + `items` (JSON); con `items` + `confirmar: true` crea tareas
+  (`createTask`) y notas (`addLogEntry`). Claude puede ajustar los items entre
+  pasos. `agregar_nota_proyecto` acepta además `categoria`, `fecha_evento` y
+  `fijar` (contexto fijo). `crear_tarea`/`agregar_nota_proyecto` siguen
+  directas (una sola cosa puntual).
 - **Crear proyectos** (`lib/mcp/project-tools.ts`): `crear_proyecto` usa la misma
   función que el modal (`createProject`, con `actingProfileId`). Tipo, cliente,
   Brand Brain, equipo y fases a quitar por nombre (nunca adivina). El equipo se

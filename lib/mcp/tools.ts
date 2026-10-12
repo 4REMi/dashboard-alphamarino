@@ -12,6 +12,7 @@ import { registerMetaCreateTools } from "@/lib/mcp/meta-create-tools"
 import { registerMetaEditTools } from "@/lib/mcp/meta-edit-tools"
 import { registerProjectTools } from "@/lib/mcp/project-tools"
 import { getProjectContext } from "@/lib/project-context"
+import { interpretStandup } from "@/lib/standup-core"
 
 // Minimal shape of what registerTool's handler actually receives —
 // typed loosely on purpose (see docs/agent-guides/mcp-server.md) instead
@@ -158,10 +159,13 @@ export function registerMcpTools(server: McpServer) {
       inputSchema: z.object({
         proyecto: z.string().min(1),
         nota: z.string().min(1),
-        avisar_a: z.string().optional().describe('"todos"/"equipo" para avisarle a todo el equipo del proyecto, o el nombre de una persona (match parcial) para avisarle solo a ella. Si se omite, la nota queda silenciosa (default).'),
+        avisar_a: z.string().optional().describe('"todos"/"equipo" para avisarle a todo el equipo del proyecto, o el nombre de una persona (match parcial) para avisarle solo a ella. Si se omite, la nota queda silenciosa (default). Escribir @Nombre Completo en la nota también avisa a esa persona.'),
+        categoria: z.enum(["Decisión", "Bloqueo", "Cliente", "Interno"]).optional(),
+        fecha_evento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("Cuándo pasó, si no fue hoy (YYYY-MM-DD)"),
+        fijar: z.boolean().optional().describe("Fijarla como contexto fijo del proyecto (acuerdos/reglas vigentes que leen reportes, briefs y Claude)"),
       }),
     },
-    async ({ proyecto, nota, avisar_a }, ctx: ToolCtx) => {
+    async ({ proyecto, nota, avisar_a, categoria, fecha_evento, fijar }, ctx: ToolCtx) => {
       const actingProfileId = requireProfileId(ctx)
       const projectId = await resolveProjectId(proyecto)
       if (!projectId) throw new Error(`No encontré el proyecto "${proyecto}".`)
@@ -169,8 +173,90 @@ export function registerMcpTools(server: McpServer) {
       const wantsTeam = !!avisar_a && ["todos", "equipo", "todo el equipo"].includes(avisar_a.trim().toLowerCase())
       const recipientId = !wantsTeam && avisar_a ? await resolveAssigneeId(avisar_a) : null
 
-      await addLogEntry(projectId, nota, actingProfileId, { team: wantsTeam, recipientIds: recipientId ? [recipientId] : undefined })
-      return textResult(`Nota agregada a la bitácora del proyecto${wantsTeam ? " — se avisó a todo el equipo." : recipientId ? " — se avisó a la persona indicada." : "."}`)
+      await addLogEntry(projectId, nota, actingProfileId, { team: wantsTeam, recipientIds: recipientId ? [recipientId] : undefined }, { category: categoria ?? null, eventDate: fecha_evento ?? null, pinned: !!fijar })
+      return textResult(`Nota agregada${fijar ? " y fijada como contexto" : ""} a la bitácora del proyecto${wantsTeam ? " — se avisó a todo el equipo." : recipientId ? " — se avisó a la persona indicada." : "."}`)
+    },
+  )
+
+  // Captura rápida: la misma IA que el botón del dashboard separa un texto
+  // libre en tareas y notas. SIEMPRE en dos pasos: con `texto` regresa la
+  // vista previa (y los items en JSON); con `items` + confirmar: true crea.
+  // Entre ambos, Claude puede ajustar los items según lo que diga el usuario.
+  const CaptureItem = z.object({
+    tipo: z.enum(["tarea", "nota"]),
+    texto: z.string().min(1).describe("Título de la tarea o cuerpo de la nota"),
+    proyecto: z.string().optional().describe("Nombre del proyecto (obligatorio en notas)"),
+    responsable: z.string().optional().describe("Solo tareas"),
+    fecha_limite: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("Solo tareas"),
+    avisar_a: z.string().optional().describe("Solo notas: 'equipo' o un nombre"),
+  })
+  server.registerTool(
+    "captura_rapida",
+    {
+      title: "Captura rápida",
+      description: "Convierte un texto libre (stand-up, resumen de llamada, lista de pendientes de varios proyectos y personas) en tareas y notas de bitácora, con la misma IA que la Captura rápida del dashboard. Paso 1: manda `texto` → regresa la vista previa numerada para mostrarla al usuario y los `items`. Paso 2: manda esos `items` (ajustados si el usuario pidió cambios) con confirmar: true → crea todo. Nunca crea nada en el paso 1.",
+      inputSchema: z.object({
+        texto: z.string().optional(),
+        items: z.array(CaptureItem).max(40).optional(),
+        confirmar: z.boolean().default(false),
+      }),
+    },
+    async ({ texto, items, confirmar }, ctx: ToolCtx) => {
+      const actingProfileId = requireProfileId(ctx)
+      const admin = createAdminClient()
+      if (!items?.length) {
+        if (!texto?.trim()) throw new Error("Manda el texto a capturar.")
+        const parsed = await interpretStandup(admin, texto)
+        if (!parsed.length) return textResult("No encontré tareas ni notas en ese texto.")
+        const { data: projects } = await admin.from("projects").select("id, name")
+        const { data: people } = await admin.from("profiles").select("id, full_name")
+        const pName = (id: string | null) => projects?.find((p) => p.id === id)?.name
+        const uName = (id: string | null) => people?.find((p) => p.id === id)?.full_name
+        const out = parsed.map((it) => ({
+          tipo: it.tipo === "nota_proyecto" ? "nota" as const : "tarea" as const,
+          texto: (it.tipo === "nota_proyecto" ? it.descripcion ?? it.titulo : it.titulo ?? it.descripcion) ?? "",
+          proyecto: pName(it.projectIdGuess) ?? undefined,
+          responsable: it.tipo === "tarea" ? uName(it.assigneeIdGuess) ?? undefined : undefined,
+          fecha_limite: it.tipo === "tarea" ? it.fecha ?? undefined : undefined,
+          _proyectoMencionado: it.projectNameRaw, _responsableMencionado: it.assigneeNameRaw,
+        }))
+        const lines = out.map((it, i) => {
+          const warn: string[] = []
+          if (it._proyectoMencionado && !it.proyecto) warn.push(`proyecto "${it._proyectoMencionado}" no encontrado`)
+          if (it.tipo === "nota" && !it.proyecto) warn.push("las notas necesitan proyecto")
+          if (it._responsableMencionado && !it.responsable) warn.push(`"${it._responsableMencionado}" no encontrado en el equipo`)
+          return `${i + 1}. ${it.tipo === "tarea" ? "☐ Tarea" : "📝 Nota"}: ${it.texto}\n   ${it.proyecto ?? "sin proyecto"}${it.responsable ? ` · ${it.responsable}` : ""}${it.fecha_limite ? ` · vence ${it.fecha_limite}` : ""}${warn.length ? `\n   ⚠️ ${warn.join("; ")}` : ""}`
+        })
+        const clean = out.map(({ _proyectoMencionado, _responsableMencionado, ...rest }) => { void _proyectoMencionado; void _responsableMencionado; return rest })
+        return textResult(`Vista previa (nada creado todavía):\n${lines.join("\n")}\n\nMuestra esto al usuario. Si lo aprueba (o tras aplicar sus ajustes), llama de nuevo con confirmar: true e items:\n${JSON.stringify(clean)}`)
+      }
+
+      if (!confirmar) {
+        return textResult(`Crearía ${items.length} elemento(s):\n${items.map((it, i) => `${i + 1}. ${it.tipo === "tarea" ? "☐" : "📝"} ${it.texto} · ${it.proyecto ?? "sin proyecto"}${it.responsable ? ` · ${it.responsable}` : ""}${it.fecha_limite ? ` · vence ${it.fecha_limite}` : ""}`).join("\n")}\n\nNo se creó nada. Si es correcto, vuelve a llamar con confirmar: true.`)
+      }
+      const done: string[] = [], failed: string[] = []
+      for (const [i, it] of items.entries()) {
+        try {
+          const projectId = await resolveProjectId(it.proyecto)
+          if (it.tipo === "nota") {
+            if (!projectId) throw new Error("las notas necesitan proyecto")
+            const wantsTeam = !!it.avisar_a && ["todos", "equipo", "todo el equipo"].includes(it.avisar_a.trim().toLowerCase())
+            const recipientId = !wantsTeam && it.avisar_a ? await resolveAssigneeId(it.avisar_a) : null
+            await addLogEntry(projectId, it.texto, actingProfileId, { team: wantsTeam, recipientIds: recipientId ? [recipientId] : undefined })
+          } else {
+            const fd = new FormData()
+            fd.set("title", it.texto)
+            fd.set("status", "Todo")
+            if (projectId) fd.set("project_id", projectId)
+            const assigneeId = await resolveAssigneeId(it.responsable)
+            if (assigneeId) fd.set("assignee_id", assigneeId)
+            if (it.fecha_limite) fd.set("due_date", it.fecha_limite)
+            await createTask(fd, actingProfileId)
+          }
+          done.push(`${i + 1}. ${it.texto}`)
+        } catch (e) { failed.push(`${i + 1}. ${it.texto} — ${e instanceof Error ? e.message : e}`) }
+      }
+      return textResult(`${done.length ? `✅ Creado (${done.length}):\n${done.join("\n")}` : ""}${failed.length ? `\n\n❌ No se pudo (${failed.length}):\n${failed.join("\n")}` : ""}`)
     },
   )
 
