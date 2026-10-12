@@ -28,13 +28,35 @@ function fmt$(v: number) {
 function conceptLiveRollup(conceptAssetIds: string[], assetLinkStatus: Record<string, AssetMetaLinkStatus>) {
   let anyActive = false
   let totalSpend = 0
+  const activeAds = new Set<string>()
+  const campaigns = new Set<string>()
+  let everLinked = false
   for (const id of conceptAssetIds) {
     const s = assetLinkStatus[id]
     if (!s) continue
     anyActive = anyActive || s.anyActive
     totalSpend += s.totalSpend
+    if (s.ads.length || s.manualChannels.length) everLinked = true
+    for (const ad of s.ads) if (ad.status === "ACTIVE") { activeAds.add(ad.adId); if (ad.campaignName) campaigns.add(ad.campaignName) }
+    for (const ch of s.manualChannels) campaigns.add(ch)
   }
-  return { anyActive, totalSpend }
+  return { anyActive, totalSpend, activeAds: activeAds.size, campaigns: [...campaigns], everLinked }
+}
+
+// Medalla de la fila: corre hoy en una campaña activa / corrió antes.
+function LiveMedal({ rollup }: { rollup: ReturnType<typeof conceptLiveRollup> }) {
+  if (rollup.anyActive) {
+    return (
+      <span title={`Corriendo en: ${rollup.campaigns.join(" · ") || "Meta"} — ${fmt$(rollup.totalSpend)} este ciclo`}
+        className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 whitespace-nowrap">
+        <Radio className="w-3 h-3" />En Meta{rollup.activeAds ? ` · ${rollup.activeAds}` : ""}
+      </span>
+    )
+  }
+  if (rollup.everLinked) {
+    return <span title="Tuvo anuncios en Meta, hoy ninguno activo" className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground whitespace-nowrap">Corrió antes</span>
+  }
+  return null
 }
 
 // One entry per script inside a brief's adapted_script — mirrors the
@@ -1791,7 +1813,7 @@ function ConceptRow({
         </td>
       )}
       <td className="px-3 py-3">
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 flex-wrap">
           <Badge className={cn("text-xs border-0", CONCEPT_STATUS_COLORS[concept.status])}>
             {concept.status}
           </Badge>
@@ -1804,11 +1826,7 @@ function ConceptRow({
             <span title={`Archivado pero sigue corriendo en Meta — ${fmt$(liveRollup.totalSpend)} este ciclo`}>
               <AlertTriangle className="w-3 h-3 text-destructive" />
             </span>
-          ) : liveRollup.anyActive ? (
-            <span title={`Corriendo en Meta — ${fmt$(liveRollup.totalSpend)} este ciclo`}>
-              <Radio className="w-3 h-3 text-emerald-600" />
-            </span>
-          ) : null}
+          ) : <LiveMedal rollup={liveRollup} />}
         </div>
       </td>
       <td className="px-3 py-3">
