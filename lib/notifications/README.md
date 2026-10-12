@@ -91,3 +91,12 @@ Actualiza esta tabla cada vez que agregues un evento nuevo.
 
 Configuración → Automatizaciones incluye la bitácora de `notification_log` — quién
 recibió qué, cuándo, y si de verdad se envió o se saltó por no tener Telegram vinculado.
+
+## Bandeja en el inicio del dashboard
+Todo lo que pasa por `notify()` queda en `notification_log` y además se ve en
+el inicio (`components/home/notifications-inbox.tsx`): cada persona ve solo
+las suyas de los últimos 30 días, con filtros por tipo (según el prefijo del
+`event_key`: `task_`, `project_`, `creative_`, `cycle_`, `bonus_`) y marca de
+leído (`read_at`, migración 111). Aparece aunque la persona no tenga Telegram
+conectado o haya apagado ese aviso. Un evento nuevo aparece solo; si usa un
+prefijo nuevo, agrégalo a `CATS` en ese componente para su ícono y filtro.

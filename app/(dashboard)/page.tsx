@@ -21,6 +21,7 @@ import {
   UserCircle,
 } from "lucide-react"
 import { formatCurrency } from "@/lib/utils"
+import { NotificationsInbox } from "@/components/home/notifications-inbox"
 import type { ProjectWithAttention, Task, Profile, Customer, Domain } from "@/lib/types"
 
 export default async function HomePage() {
@@ -102,6 +103,9 @@ export default async function HomePage() {
         <h1 className="text-2xl font-bold">{greeting}, {firstName}</h1>
         <p className="text-muted-foreground text-sm mt-1 capitalize">{dateStr}</p>
       </div>
+
+      {/* Lo mismo que llega por Telegram, para todos */}
+      <NotificationsInbox />
 
       {/* ── ADMIN VIEW ── */}
       {isAdmin && (
