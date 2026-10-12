@@ -62,6 +62,17 @@ async function resolveOfferId(offerName: string): Promise<{ id: string; status: 
   return data[0]
 }
 
+// "📎 falta entregable" / "📎 entregado" para tareas que lo requieren.
+async function deliverableFlags(tasks: { id: string; requires_deliverable?: boolean | null }[]): Promise<Map<string, string>> {
+  const need = tasks.filter((t) => t.requires_deliverable).map((t) => t.id)
+  const out = new Map<string, string>()
+  if (!need.length) return out
+  const { data } = await createAdminClient().from("deliverables").select("task_id").in("task_id", need)
+  const done = new Set((data ?? []).map((d) => d.task_id as string))
+  for (const id of need) out.set(id, done.has(id) ? " · 📎 entregable subido" : " · 📎 falta entregable")
+  return out
+}
+
 function textResult(text: string) {
   return { content: [{ type: "text" as const, text }] }
 }
@@ -402,7 +413,7 @@ export function registerMcpTools(server: McpServer) {
       const projectId = await resolveProjectId(proyecto)
       const assigneeId = await resolveAssigneeId(asignado_a)
 
-      let q = admin.from("tasks").select("title, status, due_date, is_personal, assignee_id, project:projects(name)").neq("status", "Done")
+      let q = admin.from("tasks").select("id, title, status, due_date, is_personal, assignee_id, requires_deliverable, project:projects(name)").neq("status", "Done")
       if (projectId) q = q.eq("project_id", projectId)
       if (assigneeId) q = q.eq("assignee_id", assigneeId)
       const { data } = await q.order("due_date", { ascending: true, nullsFirst: false }).limit(20)
@@ -414,10 +425,11 @@ export function registerMcpTools(server: McpServer) {
       if (visible.length === 0) return textResult("No hay tareas abiertas visibles que coincidan con eso.")
 
       const today = todayIso()
+      const flags = await deliverableFlags(visible)
       const lines = visible.map((t) => {
         const overdue = t.due_date && t.due_date < today
         const proj = t.project && "name" in t.project ? (t.project as { name: string }).name : "personal"
-        return `- ${t.title} [${t.status}] · ${proj} · vence ${formatDate(t.due_date)}${overdue ? " ⚠️ VENCIDA" : ""}`
+        return `- ${t.title} [${t.status}] · ${proj} · vence ${formatDate(t.due_date)}${overdue ? " ⚠️ VENCIDA" : ""}${flags.get(t.id) ?? ""}`
       })
       const suffix = data.length === 20 ? "\n(mostrando las 20 más próximas — hay más)" : ""
       return textResult(`Tareas abiertas:\n${lines.join("\n")}${suffix}`)
@@ -469,7 +481,7 @@ export function registerMcpTools(server: McpServer) {
       const admin = createAdminClient()
       const { data } = await admin
         .from("tasks")
-        .select("title, status, due_date, project:projects(name)")
+        .select("id, title, status, due_date, requires_deliverable, project:projects(name)")
         .eq("assignee_id", actingProfileId)
         .neq("status", "Done")
         .order("due_date", { ascending: true, nullsFirst: false })
@@ -477,10 +489,11 @@ export function registerMcpTools(server: McpServer) {
       if (!data || data.length === 0) return textResult("No tienes tareas abiertas — todo al día.")
 
       const today = todayIso()
+      const flags = await deliverableFlags(data)
       const lines = data.map((t) => {
         const overdue = t.due_date && t.due_date < today
         const proj = t.project && "name" in t.project ? (t.project as { name: string }).name : "personal"
-        return `- ${t.title} [${t.status}] · ${proj} · vence ${formatDate(t.due_date)}${overdue ? " ⚠️ VENCIDA" : ""}`
+        return `- ${t.title} [${t.status}] · ${proj} · vence ${formatDate(t.due_date)}${overdue ? " ⚠️ VENCIDA" : ""}${flags.get(t.id) ?? ""}`
       })
       const suffix = data.length === 20 ? "\n(mostrando las 20 más próximas — hay más)" : ""
       return textResult(`Tus tareas abiertas:\n${lines.join("\n")}${suffix}`)

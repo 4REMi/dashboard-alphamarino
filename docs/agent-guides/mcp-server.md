@@ -92,6 +92,14 @@ más estricto desde el inicio, no una copia de cómo funciona Telegram.
   `agregar_entregable_extra` (fuera de oferta). Usan las mismas funciones del
   alcance (`service-deliverables.ts`, con `actingProfileId`) y sus permisos;
   todo cambio queda en la bitácora.
+- **Entregables de tareas** (también en `deliverable-tools.ts`):
+  `entregables_de_tareas` (tareas con "requiere entregable": entregadas con qué/
+  quién/cuándo y faltantes con responsable/fecha/vencida) y `entregar_tarea`
+  (sube texto o enlace con `submitDeliverable`+`actingProfileId`, opcional
+  completar la tarea; propone el entregable del alcance que podría sumar por
+  palabras en común, o lo suma con `sumar_a_alcance`). `resumen_tareas` y
+  `mis_tareas_pendientes` marcan 📎 falta/subido. Los dos tipos de entregable
+  NO están ligados en datos: la conexión es esta propuesta.
 - **Crear proyectos** (`lib/mcp/project-tools.ts`): `crear_proyecto` usa la misma
   función que el modal (`createProject`, con `actingProfileId`). Tipo, cliente,
   Brand Brain, equipo y fases a quitar por nombre (nunca adivina). El equipo se

@@ -33,9 +33,16 @@ export async function getDeliverablesForTasks(taskIds: string[]) {
   return data ?? []
 }
 
-export async function submitDeliverable(formData: FormData) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+export async function submitDeliverable(formData: FormData, actingProfileId?: string) {
+  // actingProfileId: solo el servidor MCP (sin cookies), mismo patrón que tasks.ts.
+  let user: { id: string } | null = null
+  if (actingProfileId) {
+    const { data: prof } = await createAdminClient().from("profiles").select("id").eq("id", actingProfileId).single()
+    user = prof ? { id: prof.id } : null
+  } else {
+    const supabase = await createClient()
+    user = (await supabase.auth.getUser()).data.user
+  }
   if (!user) throw new Error("Not authenticated")
 
   const projectId    = (formData.get("project_id") as string) || null
