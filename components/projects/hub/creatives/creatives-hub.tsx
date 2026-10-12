@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useTransition } from "react"
 import { useRouter } from "next/navigation"
+import { ClassifyUploader } from "@/components/projects/hub/creatives/classify-uploader"
 import { ConceptsTable } from "./concepts-table"
 import { RelationshipMap } from "./relationship-map"
 import { LayoutGrid, Share2, X } from "lucide-react"
@@ -176,7 +177,12 @@ export function CreativesHub({
           </span>
         )}
 
-        <div className="ml-auto">{viewToggle}</div>
+        <div className="ml-auto flex items-center gap-2">
+          {canManageAssets && isActiveCycle && (
+            <ClassifyUploader projectId={projectId} cycleId={selectedCycleId} brandLines={brandLines} onDone={reload} />
+          )}
+          {viewToggle}
+        </div>
       </div>
 
       <ConceptsTable

@@ -16,7 +16,7 @@ const ACCEPT = "image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quickt
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024
 const MAX_VIDEO_BYTES = 150 * 1024 * 1024
 
-function captureVideoThumbnail(blobUrl: string): Promise<Blob | null> {
+export function captureVideoThumbnail(blobUrl: string): Promise<Blob | null> {
   return new Promise((resolve) => {
     const video = document.createElement("video")
     video.preload = "metadata"
