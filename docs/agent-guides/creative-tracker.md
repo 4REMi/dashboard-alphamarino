@@ -194,15 +194,20 @@ vinculada).
 ## Medalla "En Meta" por concepto
 En la columna Status de cada concepto: **"En Meta · N"** (verde) si algún creativo
 vinculado tiene anuncios activos (al pasar el mouse: campañas y gasto del ciclo),
-**"Corrió antes"** (gris) si tuvo anuncios vinculados pero hoy ninguno está activo.
 Depende del vínculo anuncio↔creativo (`creative_asset_meta_ads`): lo subido
 directo en Ads Manager sin vincular no cuenta. `conceptLiveRollup`/`LiveMedal`
 en `concepts-table.tsx`.
 
-## Conceptos desde videos (videos sin brief)
-Acción **"Desde videos"** en el encabezado de cada línea del Creative Tracker,
-junto a "Nuevo" y "Generar" (ciclo activo, quien puede administrar creativos):
-es otra forma de crear o alimentar conceptos, y usa esa línea como contexto. Por video: se sube a Storage como asset **borrador sin
+## Barra del Creative Tracker y alta de conceptos
+Junto a "Link de cliente": **"Nuevo concepto"** (modal con selector de línea y
+"describe la idea → la IA llena todo") y **"Crear desde asset existente"** (el
+embudo de abajo). Ya no hay acciones por línea (Nuevo/Generar) ni "Generar con
+IA": el autorrelleno del modal lo reemplaza. En las filas solo quedan los
+contadores de briefs/assets; subir un asset o crear un brief se hace dentro del
+concepto (o con "Crear desde asset existente").
+
+## Crear desde asset existente (videos sin brief)
+Abre el embudo sin línea fija: la IA también propone la línea. Por video: se sube a Storage como asset **borrador sin
 concepto** (`registerUploadedAsset`), se transcribe (AssemblyAI) y Gemini 2.5
 Flash lo "ve" (`lib/ai/video-understanding.ts`: escenas con tiempos, visual,
 audio, texto en pantalla, formato, música, tono, efectos, gancho). Proveedor: API oficial de Gemini

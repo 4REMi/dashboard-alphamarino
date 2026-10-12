@@ -54,9 +54,6 @@ function LiveMedal({ rollup }: { rollup: ReturnType<typeof conceptLiveRollup> })
       </span>
     )
   }
-  if (rollup.everLinked) {
-    return <span title="Tuvo anuncios en Meta, hoy ninguno activo" className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground whitespace-nowrap">Corrió antes</span>
-  }
   return null
 }
 
@@ -1375,23 +1372,16 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
             <Link2 className="w-3.5 h-3.5 mr-1" />
             {copied ? "¡Copiado!" : "Link de cliente"}
           </Button>
-          {isAdminOrSubadmin && (
-            <>
-              {cycleId && groups.length <= 1 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-xs"
-                  onClick={() => openBrainPicker()}
-                  disabled={isGenerating}
-                >
-                  {isGenerating
-                    ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />Generando…</>
-                    : <><Sparkles className="w-3.5 h-3.5 mr-1 text-purple-500" />Generar con IA</>
-                  }
-                </Button>
-              )}
-            </>
+          {isAdminOrSubadmin && cycleId && (
+            <Button size="sm" className="text-xs" onClick={() => setCreateForLineId(null)}>
+              <Plus className="w-3.5 h-3.5 mr-1" />Nuevo concepto
+            </Button>
+          )}
+          {canManageAssets && cycleId && (
+            <Button variant="outline" size="sm" className="text-xs" onClick={() => setVideosForLineId(null)}
+              title="Para videos que no salieron de un brief: la IA los transcribe, los ve y propone a qué concepto pertenecen o uno nuevo">
+              <Film className="w-3.5 h-3.5 mr-1" />Crear desde asset existente
+            </Button>
           )}
         </div>
       </div>
@@ -1475,48 +1465,6 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
               <span className={cn("text-xs mr-2", count === 0 ? "text-muted-foreground/40 italic" : "text-muted-foreground")}>
                 {count === 0 ? "Sin conceptos" : `${count} concepto${count !== 1 ? "s" : ""}`}
               </span>
-              {isAdminOrSubadmin && cycleId && (
-                <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                  <span
-                    onClick={() => setCreateForLineId(line?.id ?? null)}
-                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-muted transition-colors"
-                  >
-                    <Plus className="w-3 h-3" />
-                    Nuevo
-                  </span>
-                  <span
-                    onClick={() => {
-                      if (line) {
-                        const brain = brandBrains.find((b: any) => b.id === line.brand_brain_id)
-                        if (brain) {
-                          handleGenerate(brain.id, line.id)
-                        } else {
-                          openBrainPicker(line.id)
-                        }
-                      } else {
-                        openBrainPicker()
-                      }
-                    }}
-                    className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-700 px-2 py-1 rounded hover:bg-purple-50 transition-colors"
-                  >
-                    {isGenerating && generateForLineId === (line?.id ?? null)
-                      ? <Loader2 className="w-3 h-3 animate-spin" />
-                      : <Sparkles className="w-3 h-3" />
-                    }
-                    Generar
-                  </span>
-                  {canManageAssets && (
-                    <span
-                      onClick={() => setVideosForLineId(line?.id ?? null)}
-                      title="Videos que no salieron de un brief: la IA los transcribe, los ve y propone a qué concepto pertenecen o uno nuevo"
-                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-muted transition-colors"
-                    >
-                      <Film className="w-3 h-3" />
-                      Desde videos
-                    </span>
-                  )}
-                </div>
-              )}
               <ChevronDown className={cn(
                 "w-4 h-4 text-muted-foreground transition-transform",
                 isCollapsed && "-rotate-90"
@@ -1548,27 +1496,6 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
                             <p className="text-sm text-muted-foreground">
                               {line ? `Sin conceptos para ${line.name}` : "Sin conceptos"}
                             </p>
-                            {isAdminOrSubadmin && cycleId && line && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const brain = brandBrains.find((b: any) => b.id === line.brand_brain_id)
-                                  if (brain) {
-                                    handleGenerate(brain.id, line.id)
-                                  } else {
-                                    openBrainPicker(line.id)
-                                  }
-                                }}
-                                disabled={isGenerating}
-                                className="flex items-center gap-1.5 text-xs text-purple-600 hover:text-purple-700 px-3 py-1.5 rounded-lg border border-purple-200 hover:bg-purple-50 transition-colors"
-                              >
-                                <Sparkles className="w-3 h-3" />
-                                Generar primeros conceptos
-                              </button>
-                            )}
-                            {isAdminOrSubadmin && cycleId && !line && (
-                              <p className="text-xs text-muted-foreground">Crea uno manualmente o genera con IA</p>
-                            )}
                           </div>
                         </td>
                       </tr>
@@ -1633,6 +1560,8 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
           assets={assets.filter((a) => a.concept_id === editConcept.id)}
           isAdminOrSubadmin={isAdminOrSubadmin}
           open={!!editConcept}
+          brandLines={brandLines as BrandLine[]}
+          brandBrainId={projectBrandBrainId}
           onRefresh={onRefresh}
           onClose={() => setEditConcept(null)}
           onNewAsset={() => {
@@ -1650,7 +1579,8 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
           cycleId={cycleId}
           isAdminOrSubadmin={isAdminOrSubadmin}
           brandLineId={createForLineId}
-          brandBrainId={createForLineId ? brandLines.find((l: any) => l.id === createForLineId)?.brand_brain_id : projectBrandBrainId}
+          brandBrainId={projectBrandBrainId}
+          brandLines={brandLines as BrandLine[]}
           open={createForLineId !== undefined}
           onRefresh={onRefresh}
           onClose={() => setCreateForLineId(undefined)}
@@ -1894,28 +1824,6 @@ function ConceptRow({
               <Upload className="w-3 h-3" />
               {conceptAssets.length}
             </span>
-          )}
-          {(isAdminOrSubadmin || canManageAssets) && (
-            <div className="flex gap-0.5 ml-1" onClick={(e) => e.stopPropagation()}>
-              {isAdminOrSubadmin && (
-                <button
-                  onClick={onNewBrief}
-                  className="p-1 rounded hover:bg-violet-100 text-muted-foreground hover:text-violet-600 transition-colors"
-                  title="Crear brief"
-                >
-                  <FileText className="w-3.5 h-3.5" />
-                </button>
-              )}
-              {canManageAssets && (
-                <button
-                  onClick={onNewAsset}
-                  className="p-1 rounded hover:bg-blue-100 text-muted-foreground hover:text-blue-600 transition-colors"
-                  title="Subir asset"
-                >
-                  <Upload className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
           )}
           {!isAdminOrSubadmin && conceptBriefs.length === 0 && conceptAssets.length === 0 && (
             <span className="text-xs text-muted-foreground">Ver →</span>

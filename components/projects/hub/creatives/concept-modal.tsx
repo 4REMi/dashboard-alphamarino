@@ -1,21 +1,26 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
 import { createConcept, updateConcept, deleteConcept, autofillConcept } from "@/lib/actions/creatives"
-import { ANGLE_GUIDE, AWARENESS_LABELS, CONCEPT_STATUS_COLORS, PRODUCTION_STATUS_COLORS, VERDICT_COLORS } from "@/lib/constants/creatives"
-import type { CreativeConcept, CreativeAsset, FunnelStage } from "@/lib/types"
-import { Sparkles, ChevronDown, ChevronUp, Trash2, ArrowUpRight, Plus, Info, Wand2, Loader2 } from "lucide-react"
+import { ANGLE_GUIDE, AWARENESS_LABELS, CONCEPT_STATUS_COLORS } from "@/lib/constants/creatives"
+import type { BrandLine, CreativeConcept, CreativeAsset, FunnelStage } from "@/lib/types"
+import { Trash2, ArrowUpRight, Wand2, Loader2, Check } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-const ORGANIZING_PRINCIPLES = ["Pain-First", "Desire-First"] as const
-const FUNNEL_STAGES: FunnelStage[] = ["TOF", "MOF", "BOF"]
-const STATUSES = ["Active", "Archived", "Transmuted", "Evergreen"] as const
+// Crear / editar concepto. Arriba: la línea de producto (chips de color) y
+// "describe tu idea" para que la IA rellene todo. Abajo, en tres bloques:
+// a quién (persona, principio), el ángulo (tarjetas con su guía a la vista,
+// funnel y awareness como selector) y el mecanismo (dolor, objeción, por qué
+// funciona, transformación). Nada de menús con "— seleccionar —".
 
-const SECTIONS = ["Identificación", "Ángulo", "Mecanismo"] as const
+const FUNNEL: { v: FunnelStage; label: string; hint: string }[] = [
+  { v: "TOF", label: "TOF", hint: "Frío" },
+  { v: "MOF", label: "MOF", hint: "Consideración" },
+  { v: "BOF", label: "BOF", hint: "Conversión" },
+]
+const STATUSES = ["Active", "Archived", "Transmuted", "Evergreen"] as const
 
 interface ConceptModalProps {
   projectId: string
@@ -26,32 +31,41 @@ interface ConceptModalProps {
   open: boolean
   brandLineId?: string | null
   brandBrainId?: string | null
+  brandLines?: BrandLine[]
   onRefresh?: () => void
   onClose: () => void
   onNewAsset?: () => void
 }
 
-function FieldLabel({ label, tooltip, required }: { label: string; tooltip?: string; required?: boolean }) {
+function Label({ children, hint }: { children: React.ReactNode; hint?: string }) {
   return (
-    <div className="flex items-center gap-1">
-      <span className="text-xs font-medium text-muted-foreground">
-        {label}{required && " *"}
-      </span>
-      {tooltip && (
-        <span title={tooltip} className="cursor-help inline-flex text-muted-foreground/40 hover:text-muted-foreground transition-colors">
-          <Info className="w-3 h-3" />
-        </span>
-      )}
+    <p className="text-xs font-medium text-muted-foreground">
+      {children}{hint && <span className="font-normal text-muted-foreground/70"> · {hint}</span>}
+    </p>
+  )
+}
+
+function Segmented<T extends string>({ value, options, onChange }: { value: T | ""; options: { v: T; label: string; hint?: string }[]; onChange: (v: T | "") => void }) {
+  return (
+    <div className="inline-flex rounded-lg border border-border p-0.5 bg-muted/40 flex-wrap">
+      {options.map((o) => (
+        <button key={o.v} type="button" onClick={() => onChange(value === o.v ? "" : o.v)} title={o.hint}
+          className={cn("px-3 py-1.5 rounded-md text-xs font-medium transition-colors", value === o.v ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")}>
+          {o.label}{o.hint && <span className="hidden sm:inline font-normal text-muted-foreground"> · {o.hint}</span>}
+        </button>
+      ))}
     </div>
   )
 }
 
-export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSubadmin, open, brandLineId, brandBrainId, onRefresh, onClose, onNewAsset }: ConceptModalProps) {
+export function ConceptModal({ projectId, cycleId, concept, isAdminOrSubadmin, open, brandLineId, brandBrainId, brandLines = [], onRefresh, onClose }: ConceptModalProps) {
   const isEdit = !!concept
   const [isPending, startTransition] = useTransition()
-  const [showAngleGuide, setShowAngleGuide] = useState(false)
   const [ideaText, setIdeaText] = useState("")
   const [isAutofilling, setIsAutofilling] = useState(false)
+  const [autofilled, setAutofilled] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [lineId, setLineId] = useState<string | null>(concept?.brand_line_id ?? brandLineId ?? null)
 
   const [form, setForm] = useState({
     name:                 concept?.name ?? "",
@@ -67,257 +81,199 @@ export function ConceptModal({ projectId, cycleId, concept, assets, isAdminOrSub
     status:               concept?.status ?? "Active",
     insight:              concept?.insight ?? "",
   })
+  const set = (key: keyof typeof form, value: string) => setForm((prev) => ({ ...prev, [key]: value }))
+  const guide = ANGLE_GUIDE.find((a) => a.name === form.angle_type)
+  const brainId = (lineId ? (brandLines.find((l) => l.id === lineId) as (BrandLine & { brand_brain_id?: string }) | undefined)?.brand_brain_id : null) ?? brandBrainId ?? undefined
 
-  function set(key: keyof typeof form, value: string) {
-    setForm((prev) => ({ ...prev, [key]: value }))
-  }
-
-  const guideEntry = ANGLE_GUIDE.find((a) => a.name === form.angle_type)
-
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  function submit(e: React.FormEvent) {
     e.preventDefault()
+    if (!form.target_persona.trim()) { setError("Falta la persona objetivo."); return }
+    setError(null)
     const fd = new FormData()
     Object.entries(form).forEach(([k, v]) => fd.set(k, v))
     if (cycleId) fd.set("cycle_id", cycleId)
-    const lineId = concept?.brand_line_id ?? brandLineId
     if (lineId) fd.set("brand_line_id", lineId)
     startTransition(async () => {
-      if (isEdit) {
-        await updateConcept(concept.id, projectId, fd)
-      } else {
-        await createConcept(projectId, fd)
-      }
-      onRefresh?.()
-      onClose()
+      try {
+        if (isEdit) await updateConcept(concept.id, projectId, fd)
+        else await createConcept(projectId, fd)
+        onRefresh?.(); onClose()
+      } catch (err) { setError(err instanceof Error ? err.message : String(err)) }
     })
   }
 
-  function handleDelete() {
-    if (!concept) return
-    if (!confirm("¿Eliminar este concepto?")) return
-    startTransition(async () => {
-      await deleteConcept(concept.id, projectId)
-      onRefresh?.()
-      onClose()
-    })
+  function remove() {
+    if (!concept || !confirm("¿Eliminar este concepto?")) return
+    startTransition(async () => { await deleteConcept(concept.id, projectId); onRefresh?.(); onClose() })
   }
 
-  async function handleAutofill() {
+  async function autofill() {
     if (!ideaText.trim() || isAutofilling) return
-    setIsAutofilling(true)
+    setIsAutofilling(true); setError(null)
     try {
-      const result = await autofillConcept(
-        ideaText.trim(),
-        brandBrainId ?? undefined,
-        (concept?.brand_line_id ?? brandLineId) ?? undefined,
-      )
-      setForm((prev) => ({
-        ...prev,
-        name:                 result.name ?? prev.name,
-        organizing_principle: result.organizing_principle ?? prev.organizing_principle,
-        target_persona:       result.target_persona ?? prev.target_persona,
-        angle_type:           result.angle_type ?? prev.angle_type,
-        awareness_stage:      String(result.awareness_stage ?? prev.awareness_stage),
-        funnel_stage:         result.funnel_stage ?? prev.funnel_stage,
-        pain_point:           result.pain_point ?? prev.pain_point,
-        objection:            result.objection ?? prev.objection,
-        why_it_works:         result.why_it_works ?? prev.why_it_works,
-        transformation:       result.transformation ?? prev.transformation,
+      const r = await autofillConcept(ideaText.trim(), brainId, lineId ?? undefined)
+      setForm((p) => ({
+        ...p,
+        name: r.name ?? p.name, organizing_principle: r.organizing_principle ?? p.organizing_principle, target_persona: r.target_persona ?? p.target_persona,
+        angle_type: r.angle_type ?? p.angle_type, awareness_stage: String(r.awareness_stage ?? p.awareness_stage), funnel_stage: r.funnel_stage ?? p.funnel_stage,
+        pain_point: r.pain_point ?? p.pain_point, objection: r.objection ?? p.objection, why_it_works: r.why_it_works ?? p.why_it_works, transformation: r.transformation ?? p.transformation,
       }))
-    } catch (err) {
-      console.error("Autofill failed:", err)
-    } finally {
-      setIsAutofilling(false)
-    }
+      setAutofilled(true)
+    } catch { setError("No se pudo rellenar con IA. Intenta de nuevo o llena los campos.") }
+    finally { setIsAutofilling(false) }
   }
 
-  const fieldCls = "w-full text-sm border rounded px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+  const input = "w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+  const section = "text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+  const lineColor = (id: string | null) => brandLines.find((l) => l.id === id)?.color ?? null
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-purple-500" />
-            {isEdit ? "Editar Concepto" : "Nuevo Concepto"}
-            {concept?.status && (
-              <Badge className={cn("text-xs ml-1", CONCEPT_STATUS_COLORS[concept.status])}>
-                {concept.status}
-              </Badge>
+      <DialogContent className="max-w-[min(820px,96vw)] w-[96vw] max-h-[92vh] overflow-y-auto p-0 gap-0">
+        <form onSubmit={submit}>
+          {/* Encabezado */}
+          <div className="px-6 pt-5 pb-4 border-b border-border space-y-3">
+            <div className="flex items-center gap-2 pr-8">
+              <DialogTitle className="text-lg">{isEdit ? "Editar concepto" : "Nuevo concepto"}</DialogTitle>
+              {isEdit && <span className={cn("text-[11px] font-semibold px-2 py-0.5 rounded-full", CONCEPT_STATUS_COLORS[concept.status])}>{concept.status}</span>}
+            </div>
+            {concept?.parent && (
+              <p className="text-xs text-muted-foreground inline-flex items-center gap-1.5"><ArrowUpRight className="w-3.5 h-3.5" />Evolución de <b className="font-medium">{concept.parent.angle_type ?? "concepto anterior"}</b></p>
             )}
-          </DialogTitle>
-        </DialogHeader>
-
-        {concept?.parent && (
-          <div className="text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-2 flex items-center gap-2">
-            <ArrowUpRight className="w-3.5 h-3.5 flex-shrink-0" />
-            <span>
-              Evolución de: <span className="font-medium">{concept.parent.angle_type ?? "concepto anterior"}</span>
-              {" "}·{" "}<span className={CONCEPT_STATUS_COLORS[concept.parent.status]}>{concept.parent.status}</span>
-            </span>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-5">
-
-          {/* ── AI Autofill ── */}
-          {!isEdit && (
-            <div className="flex gap-2">
-              <input
-                value={ideaText}
-                onChange={(e) => setIdeaText(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAutofill() } }}
-                placeholder="Describe tu idea y la IA rellena todo..."
-                className={cn(fieldCls, "flex-1")}
-                disabled={isAutofilling}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleAutofill}
-                disabled={isAutofilling || !ideaText.trim()}
-                className="shrink-0 gap-1.5 text-purple-600 border-purple-200 hover:bg-purple-50 hover:text-purple-700"
-              >
-                {isAutofilling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
-                {isAutofilling ? "Generando..." : "Auto-rellenar"}
-              </Button>
-            </div>
-          )}
-
-          {/* ── Identificación ── */}
-          <div className="space-y-3">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">Identificación</p>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <FieldLabel label="Nombre del concepto" tooltip="Título corto para identificar este concepto." />
-                <input value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="Ej. Miedo al olvido" className={fieldCls} />
+            {brandLines.length > 0 && (
+              <div className="space-y-1.5">
+                <p className={section}>Línea de producto</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {[...brandLines.map((l) => ({ id: l.id as string | null, name: l.name, color: l.color })), { id: null, name: "General", color: null }].map((l) => {
+                    const on = lineId === l.id
+                    return (
+                      <button key={l.id ?? "general"} type="button" onClick={() => setLineId(l.id)} title={l.name}
+                        className={cn("h-8 px-3 max-w-[240px] rounded-full border text-sm inline-flex items-center gap-1.5 transition-colors", on ? "border-foreground bg-foreground text-background" : "border-border hover:border-foreground/40")}>
+                        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: l.color ?? "currentColor", opacity: l.color ? 1 : 0.4 }} />
+                        <span className="truncate">{l.name}</span>
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
-              <div className="space-y-1">
-                <FieldLabel label="Principio organizador" tooltip="Pain-First parte del dolor. Desire-First parte de la aspiración." />
-                <select value={form.organizing_principle} onChange={(e) => set("organizing_principle", e.target.value)} className={fieldCls}>
-                  <option value="">— seleccionar —</option>
-                  {ORGANIZING_PRINCIPLES.map((p) => <option key={p} value={p}>{p}</option>)}
-                </select>
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <FieldLabel label="Persona objetivo" required tooltip="Quién ve este anuncio: demografía, situación, contexto." />
-              <input value={form.target_persona} onChange={(e) => set("target_persona", e.target.value)} placeholder="Ej. Dueño de cafetería en México, 35-50 años" className={fieldCls} required />
-            </div>
+            )}
           </div>
 
-          {/* ── Ángulo ── */}
-          <div className="space-y-3">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">Ángulo</p>
-
-            <div className="space-y-1">
-              <FieldLabel label="Tipo de ángulo" tooltip="El mecanismo psicológico que estructura el mensaje." />
-              <select value={form.angle_type} onChange={(e) => { set("angle_type", e.target.value); setShowAngleGuide(false) }} className={fieldCls}>
-                <option value="">— seleccionar —</option>
-                {ANGLE_GUIDE.map((a) => <option key={a.name} value={a.name}>{a.emoji} {a.name}</option>)}
-              </select>
-            </div>
-
-            {form.angle_type && guideEntry && (
-              <div className="border rounded-lg overflow-hidden">
-                <button type="button" className="w-full flex items-center justify-between px-3 py-2 bg-purple-50/60 text-xs font-medium text-purple-700 hover:bg-purple-50" onClick={() => setShowAngleGuide((v) => !v)}>
-                  <span>{guideEntry.emoji} Guía: {form.angle_type}</span>
-                  {showAngleGuide ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                </button>
-                {showAngleGuide && (
-                  <div className="px-3 py-2.5 space-y-1.5 text-xs text-muted-foreground bg-purple-50/20">
-                    <p><span className="font-medium text-foreground">Pregunta guía:</span> {guideEntry.guiding_question}</p>
-                    <p><span className="font-medium text-foreground">Mecanismo:</span> {guideEntry.mechanism}</p>
-                    <p><span className="font-medium text-foreground">Cuándo usar:</span> {guideEntry.when_to_use}</p>
-                    <p><span className="font-medium text-foreground">Ejemplo de hook:</span> <em>&ldquo;{guideEntry.hook_example}&rdquo;</em></p>
-                  </div>
-                )}
+          <div className="px-6 py-5 space-y-6">
+            {/* IA */}
+            {!isEdit && (
+              <div className="rounded-xl border border-violet-200 dark:border-violet-900 bg-violet-50/50 dark:bg-violet-950/20 p-3 space-y-2">
+                <p className="text-sm font-medium flex items-center gap-1.5"><Wand2 className="w-4 h-4 text-violet-500" />Describe la idea y la IA llena todo</p>
+                <AutoTextarea value={ideaText} onChange={(e) => setIdeaText(e.target.value)} rows={2} disabled={isAutofilling}
+                  onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); autofill() } }}
+                  placeholder="Ej. Empresas que hacen team building en Chicago y quieren algo distinto a la cena de siempre…"
+                  className={cn(input, "resize-none bg-background")} />
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={autofill} disabled={isAutofilling || !ideaText.trim()}
+                    className="h-8 px-3 rounded-lg bg-violet-600 text-white text-xs font-semibold inline-flex items-center gap-1.5 whitespace-nowrap hover:bg-violet-700 disabled:opacity-50">
+                    {isAutofilling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}{isAutofilling ? "Rellenando…" : "Rellenar con IA"}
+                  </button>
+                  {autofilled && <span className="text-xs text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1"><Check className="w-3.5 h-3.5" />Listo, revisa y ajusta abajo</span>}
+                  <span className="text-[11px] text-muted-foreground ml-auto">Usa la marca y la línea elegida</span>
+                </div>
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-3">
+            {/* A quién */}
+            <section className="space-y-3">
+              <p className={section}>A quién</p>
               <div className="space-y-1">
-                <FieldLabel label="Awareness Stage" tooltip="1 = No sabe que tiene el problema · 5 = Lista para comprar." />
-                <select value={form.awareness_stage} onChange={(e) => set("awareness_stage", e.target.value)} className={fieldCls}>
-                  <option value="">—</option>
-                  {[1,2,3,4,5].map((n) => <option key={n} value={n}>{n} — {AWARENESS_LABELS[n]}</option>)}
-                </select>
+                <Label>Nombre del concepto</Label>
+                <input value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="Ej. Más allá de la cena de negocios" className={cn(input, "text-base font-medium")} />
               </div>
               <div className="space-y-1">
-                <FieldLabel label="Funnel Stage" tooltip="TOF = frío. MOF = consideración. BOF = conversión." />
-                <select value={form.funnel_stage} onChange={(e) => set("funnel_stage", e.target.value)} className={fieldCls}>
-                  <option value="">—</option>
-                  {FUNNEL_STAGES.map((f) => <option key={f} value={f}>{f}</option>)}
-                </select>
+                <Label hint="demografía, situación, contexto">Persona objetivo</Label>
+                <AutoTextarea value={form.target_persona} onChange={(e) => set("target_persona", e.target.value)} rows={2} placeholder="Ej. Profesional de RRHH en empresa mediana de Chicago, 30–45 años" className={cn(input, "resize-none")} />
               </div>
-            </div>
-          </div>
+              <div className="space-y-1">
+                <Label>Parte de</Label>
+                <Segmented value={form.organizing_principle as "Pain-First" | "Desire-First" | ""} onChange={(v) => set("organizing_principle", v)}
+                  options={[{ v: "Pain-First", label: "Un dolor" }, { v: "Desire-First", label: "Un deseo" }]} />
+              </div>
+            </section>
 
-          {/* ── Mecanismo ── */}
-          <div className="space-y-3">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">Mecanismo</p>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <FieldLabel label="Pain Point" tooltip="El problema concreto que activa la atención." />
-                <AutoTextarea value={form.pain_point} onChange={(e) => set("pain_point", e.target.value)} rows={2} placeholder="El dolor que activa este ángulo" className={fieldCls} />
+            {/* Ángulo */}
+            <section className="space-y-3">
+              <p className={section}>Ángulo</p>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
+                {ANGLE_GUIDE.map((a) => (
+                  <button key={a.name} type="button" onClick={() => set("angle_type", form.angle_type === a.name ? "" : a.name)} title={a.guiding_question}
+                    className={cn("rounded-lg border px-2 py-2 text-left text-xs leading-tight transition-colors", form.angle_type === a.name ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border hover:border-foreground/30")}>
+                    <span className="block text-base leading-none mb-1">{a.emoji}</span>{a.name}
+                  </button>
+                ))}
               </div>
-              <div className="space-y-1">
-                <FieldLabel label="Objeción principal" tooltip="La resistencia que el ad debe superar." />
-                <AutoTextarea value={form.objection} onChange={(e) => set("objection", e.target.value)} rows={2} placeholder="La duda que frena al buyer persona" className={fieldCls} />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <FieldLabel label="¿Por qué funciona?" tooltip="Por qué este ángulo resuena con esta persona." />
-                <AutoTextarea value={form.why_it_works} onChange={(e) => set("why_it_works", e.target.value)} rows={2} placeholder="El fundamento de que convierte" className={fieldCls} />
-              </div>
-              <div className="space-y-1">
-                <FieldLabel label="Transformación" tooltip="El cambio prometido si toma acción." />
-                <AutoTextarea value={form.transformation} onChange={(e) => set("transformation", e.target.value)} rows={2} placeholder="El antes y después" className={fieldCls} />
-              </div>
-            </div>
-
-          </div>
-
-          {/* ── Edit-only fields ── */}
-          {isEdit && (
-            <div className="space-y-3 border-t pt-4">
-              <div className="space-y-1">
-                <FieldLabel label="Status" />
-                <select value={form.status} onChange={(e) => set("status", e.target.value)} className={fieldCls}>
-                  {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-              {isAdminOrSubadmin && (
-                <div className="space-y-1">
-                  <FieldLabel label="Insight estratégico" tooltip="Qué funcionó, qué no. Solo visible para admin/subadmin." />
-                  <AutoTextarea value={form.insight} onChange={(e) => set("insight", e.target.value)} rows={2} placeholder="Aprendizajes del ciclo" className={fieldCls} />
+              {guide && (
+                <div className="rounded-lg bg-muted/40 px-3 py-2.5 text-xs space-y-1">
+                  <p><b>{guide.guiding_question}</b> {guide.mechanism}</p>
+                  <p className="text-muted-foreground">Cuándo: {guide.when_to_use}</p>
+                  <p className="text-muted-foreground italic">“{guide.hook_example}”</p>
                 </div>
               )}
-            </div>
-          )}
+              <div className="flex flex-wrap gap-x-6 gap-y-3">
+                <div className="space-y-1">
+                  <Label>Funnel</Label>
+                  <Segmented value={form.funnel_stage as FunnelStage | ""} onChange={(v) => set("funnel_stage", v)} options={FUNNEL} />
+                </div>
+                <div className="space-y-1">
+                  <Label hint={form.awareness_stage ? AWARENESS_LABELS[Number(form.awareness_stage)] : "1 no sabe del problema · 5 listo para comprar"}>Awareness</Label>
+                  <Segmented value={form.awareness_stage as "1" | "2" | "3" | "4" | "5" | ""} onChange={(v) => set("awareness_stage", v)}
+                    options={(["1", "2", "3", "4", "5"] as const).map((n) => ({ v: n, label: n }))} />
+                </div>
+              </div>
+            </section>
 
-          {/* Footer */}
-          <DialogFooter className="flex items-center justify-between pt-2 border-t gap-2">
-            <div className="flex gap-2">
-              {isEdit && isAdminOrSubadmin && (
-                <Button type="button" variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={handleDelete} disabled={isPending}>
-                  <Trash2 className="w-3.5 h-3.5" />
-                </Button>
-              )}
-            </div>
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={isPending}>Cancelar</Button>
-              <Button type="submit" size="sm" disabled={isPending || !isAdminOrSubadmin}>
-                {isPending ? "Guardando..." : isEdit ? "Guardar" : "Crear concepto"}
-              </Button>
-            </div>
-          </DialogFooter>
+            {/* Mecanismo */}
+            <section className="space-y-3">
+              <p className={section}>Mecanismo</p>
+              <div className="grid sm:grid-cols-2 gap-3">
+                {([
+                  ["pain_point", "Dolor", "el problema que activa la atención"],
+                  ["objection", "Objeción", "lo que frena la compra"],
+                  ["why_it_works", "Por qué funciona", "por qué resuena con esta persona"],
+                  ["transformation", "Transformación", "el antes y después"],
+                ] as const).map(([k, label, hint]) => (
+                  <div key={k} className="space-y-1">
+                    <Label hint={hint}>{label}</Label>
+                    <AutoTextarea value={form[k]} onChange={(e) => set(k, e.target.value)} rows={2} className={cn(input, "resize-none")} />
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            {isEdit && (
+              <section className="space-y-3 border-t border-border pt-5">
+                <div className="space-y-1">
+                  <Label>Status</Label>
+                  <Segmented value={form.status as (typeof STATUSES)[number]} onChange={(v) => v && set("status", v)} options={STATUSES.map((s) => ({ v: s, label: s }))} />
+                </div>
+                {isAdminOrSubadmin && (
+                  <div className="space-y-1">
+                    <Label hint="qué funcionó y qué no · solo equipo">Insight estratégico</Label>
+                    <AutoTextarea value={form.insight} onChange={(e) => set("insight", e.target.value)} rows={2} className={cn(input, "resize-none")} />
+                  </div>
+                )}
+              </section>
+            )}
+          </div>
+
+          {/* Pie */}
+          <div className="px-6 py-3 border-t border-border bg-background flex items-center gap-2 sticky bottom-0 z-10">
+            {isEdit && isAdminOrSubadmin && (
+              <button type="button" onClick={remove} disabled={isPending} className="h-9 w-9 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 inline-flex items-center justify-center" title="Eliminar concepto"><Trash2 className="w-4 h-4" /></button>
+            )}
+            {error && <span className="text-xs text-red-600">{error}</span>}
+            <span className="flex-1" />
+            <button type="button" onClick={onClose} disabled={isPending} className="h-9 px-3 text-sm text-muted-foreground hover:text-foreground">Cancelar</button>
+            <button type="submit" disabled={isPending || !isAdminOrSubadmin} className="h-9 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center gap-1.5 disabled:opacity-50">
+              {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{isEdit ? "Guardar" : "Crear concepto"}
+            </button>
+          </div>
         </form>
       </DialogContent>
     </Dialog>
