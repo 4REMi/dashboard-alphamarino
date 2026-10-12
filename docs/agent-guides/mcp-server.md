@@ -100,6 +100,10 @@ más estricto desde el inicio, no una copia de cómo funciona Telegram.
   palabras en común, o lo suma con `sumar_a_alcance`). `resumen_tareas` y
   `mis_tareas_pendientes` marcan 📎 falta/subido. Los dos tipos de entregable
   NO están ligados en datos: la conexión es esta propuesta.
+- **Clientes** (`lib/mcp/customer-tools.ts`): `buscar_clientes` (con o sin
+  proyecto, filtro por estado o "sin proyecto"), `detalle_cliente` (contacto,
+  proyectos con tipo y marca; finanzas solo con `view_project_financials`),
+  `crear_cliente` y `editar_cliente` (permiso `manage_customers`, vista previa).
 - **Crear proyectos** (`lib/mcp/project-tools.ts`): `crear_proyecto` usa la misma
   función que el modal (`createProject`, con `actingProfileId`). Tipo, cliente,
   Brand Brain, equipo y fases a quitar por nombre (nunca adivina). El equipo se
