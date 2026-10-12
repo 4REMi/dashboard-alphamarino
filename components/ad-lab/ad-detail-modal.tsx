@@ -219,6 +219,13 @@ export function AdDetailModal({ ad, boards: boardsProp, onClose, savedAdId }: Pr
         <ConceptAnalysisModal
           open={showAnalysis}
           onClose={() => setShowAnalysis(false)}
+          // Mismo flujo que los botones Clonar: si no está guardado, primero elige board.
+          onClone={() => {
+            setShowAnalysis(false)
+            const type = videoUrl ? "video" : "image"
+            if (effectiveSavedAdId) { if (type === "video") setShowClone(true); else setShowImageClone(true) }
+            else { setPendingCloneType(type); setShowBoardPicker(true) }
+          }}
           ad={{
             // Guardados viejos o subidos a mano no traen id de la librería: se usa el del board.
             adArchiveId: ad.ad_archive_id || (savedAdId ? `saved:${savedAdId}` : `media:${videoUrl ?? thumbUrl ?? ad.page_name}`),

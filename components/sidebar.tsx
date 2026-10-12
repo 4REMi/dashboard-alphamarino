@@ -32,6 +32,7 @@ import {
   Sun,
   Puzzle,
   Wallet,
+  ScanSearch,
 } from "lucide-react"
 import { useState } from "react"
 import Image from "next/image"
@@ -93,6 +94,7 @@ export function Sidebar({ profile, logoUrl, myPendingTaskCount = 0, mobileOpen =
       children: [
         { href: "/ad-lab/discovery", icon: LayoutGrid, label: "Discovery"     },
         { href: "/ad-lab/boards",    icon: FolderOpen, label: "Boards"        },
+        { href: "/ad-lab/analisis",  icon: ScanSearch, label: "Análisis"      },
         { href: "/ad-lab/brands",    icon: Radio,      label: "Marcas"        },
         { href: "/ad-lab/creatives", icon: ImagePlay,  label: "Creatives"     },
         { href: "/ad-lab/scratch",   icon: Sparkles,   label: "Crear desde cero" },

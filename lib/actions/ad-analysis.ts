@@ -45,6 +45,7 @@ export interface LibraryAdAnalysis {
   landingLeida: boolean
   diasCorriendo: number | null
   analyzedAt: string
+  ad?: LibraryAdInput        // el anuncio analizado (para reabrirlo desde la lista)
 }
 
 // Cada aprendizaje: un título corto (lo que se ve) y el detalle (al abrirlo).
@@ -137,7 +138,7 @@ TEXTO DE LA LANDING: ${landing ?? "(no disponible)"}`,
   const pts = (l: unknown): Point[] => (Array.isArray(l) ? l : []).map((x) => (typeof x === "string" ? { titulo: x, detalle: "" } : x as Point))
   const result: LibraryAdAnalysis = {
     ...parsed, por_que_funciona: pts(parsed.por_que_funciona), debilidades: pts(parsed.debilidades), como_adaptarlo: pts(parsed.como_adaptarlo),
-    transcript, media, visionError, landingLeida: !!landing, diasCorriendo: dias, analyzedAt: new Date().toISOString(),
+    transcript, media, visionError, landingLeida: !!landing, diasCorriendo: dias, analyzedAt: new Date().toISOString(), ad,
   }
   const { error } = await createAdminClient().from("ad_analyses").upsert({
     ad_archive_id: ad.adArchiveId, page_id: ad.pageId, page_name: ad.pageName, media_type: ad.videoUrl ? "video" : "image",
@@ -145,4 +146,85 @@ TEXTO DE LA LANDING: ${landing ?? "(no disponible)"}`,
   }, { onConflict: "ad_archive_id" })
   if (error && !/ad_analyses/.test(error.message)) console.error("[analyzeLibraryAd] guardar:", error.message)
   return result
+}
+
+
+// ── Análisis guardados (Ad Lab → Análisis) ──────────────────────────────
+export interface SavedAnalysisRow { adArchiveId: string; pageName: string | null; mediaType: string | null; createdAt: string; by: string | null; analysis: LibraryAdAnalysis }
+
+export async function listSavedAnalyses(): Promise<SavedAnalysisRow[]> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error("No autenticado")
+  const { data, error } = await createAdminClient().from("ad_analyses")
+    .select("ad_archive_id, page_name, media_type, analysis, updated_at, who:profiles!ad_analyses_created_by_fkey(full_name)")
+    .order("updated_at", { ascending: false }).limit(300)
+  if (error) throw new Error(/ad_analyses/.test(error.message) ? "Falta correr la migración 113 en Supabase" : error.message)
+  return ((data ?? []) as unknown as { ad_archive_id: string; page_name: string | null; media_type: string | null; analysis: LibraryAdAnalysis; updated_at: string; who: { full_name: string } | null }[])
+    .map((r) => ({ adArchiveId: r.ad_archive_id, pageName: r.page_name, mediaType: r.media_type, createdAt: r.updated_at, by: r.who?.full_name ?? null, analysis: r.analysis }))
+}
+
+export async function deleteSavedAnalysis(adArchiveId: string): Promise<void> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error("No autenticado")
+  await createAdminClient().from("ad_analyses").delete().eq("ad_archive_id", adArchiveId)
+}
+
+// ── Fase 3: llevar el concepto a un proyecto ────────────────────────────
+export interface ConceptTarget { id: string; name: string; lines: { id: string; name: string; color: string | null }[]; cycleId: string | null }
+
+// Proyectos activos con Creative Tracker (admin/subadmin: todos; resto: los suyos).
+export async function getConceptTargets(): Promise<ConceptTarget[]> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error("No autenticado")
+  const db = createAdminClient()
+  const { data: me } = await db.from("profiles").select("role").eq("id", user.id).single()
+  const { data: projects } = await db.from("projects").select("id, name, brand_brain_id, status").eq("status", "Active").order("name")
+  let rows = projects ?? []
+  if (me?.role !== "admin" && me?.role !== "subadmin") {
+    const { data: mine } = await db.from("project_members").select("project_id").eq("profile_id", user.id)
+    const set = new Set((mine ?? []).map((m) => m.project_id))
+    rows = rows.filter((p) => set.has(p.id))
+  }
+  const ids = rows.map((p) => p.id)
+  const brains = [...new Set(rows.map((p) => p.brand_brain_id).filter(Boolean))] as string[]
+  const [{ data: cycles }, { data: lines }] = await Promise.all([
+    ids.length ? db.from("paid_media_cycles").select("id, project_id").eq("is_active", true).in("project_id", ids) : Promise.resolve({ data: [] }),
+    brains.length ? db.from("brand_lines").select("id, name, color, brand_brain_id, position").in("brand_brain_id", brains).order("position") : Promise.resolve({ data: [] }),
+  ])
+  const cycleBy = new Map((cycles ?? []).map((c) => [c.project_id, c.id as string]))
+  return rows.map((p) => ({
+    id: p.id, name: p.name, cycleId: cycleBy.get(p.id) ?? null,
+    lines: (lines ?? []).filter((l) => l.brand_brain_id === p.brand_brain_id).map((l) => ({ id: l.id, name: l.name, color: l.color })),
+  }))
+}
+
+// Crea el concepto en el proyecto a partir del análisis (adaptado: el nombre
+// y la persona los puede editar la persona antes de crear).
+export async function createConceptFromAnalysis(projectId: string, input: {
+  brand_line_id: string | null; name: string; angle_type: string; organizing_principle: string; target_persona: string
+  pain_point: string; objection: string; why_it_works: string; transformation: string; funnel_stage: string; awareness_stage: number
+  source: string
+}): Promise<void> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error("No autenticado")
+  const db = createAdminClient()
+  const { data: me } = await db.from("profiles").select("role").eq("id", user.id).single()
+  if (me?.role !== "admin" && me?.role !== "subadmin") throw new Error("Solo admin o subadmin crean conceptos")
+  const { data: cycle } = await db.from("paid_media_cycles").select("id").eq("project_id", projectId).eq("is_active", true).maybeSingle()
+  const { data, error } = await db.from("creative_concepts").insert({
+    project_id: projectId, cycle_id: cycle?.id ?? null, brand_line_id: input.brand_line_id, name: input.name,
+    angle_type: ANGULOS.includes(input.angle_type) ? input.angle_type : null,
+    organizing_principle: ["Pain-First", "Desire-First"].includes(input.organizing_principle) ? input.organizing_principle : null,
+    target_persona: input.target_persona ?? "", pain_point: input.pain_point || null, objection: input.objection || null,
+    why_it_works: input.why_it_works || null, transformation: input.transformation || null,
+    funnel_stage: ["TOF", "MOF", "BOF"].includes(input.funnel_stage) ? input.funnel_stage : null,
+    awareness_stage: input.awareness_stage >= 1 && input.awareness_stage <= 5 ? input.awareness_stage : null,
+    insight: `Inspirado en: ${input.source}`, status: "Active", created_by: user.id,
+  }).select("id").single()
+  if (error) throw new Error(error.message)
+  if (cycle?.id) await db.from("creative_concept_cycles").insert({ concept_id: data.id, cycle_id: cycle.id }).then(() => {}, () => {})
 }

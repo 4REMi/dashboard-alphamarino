@@ -1,9 +1,9 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Loader2, Copy, Check, Mic, Eye, Globe, CalendarClock, AlertTriangle, RefreshCw, ChevronDown, Play } from "lucide-react"
+import { Loader2, Copy, Check, Mic, Eye, Globe, CalendarClock, AlertTriangle, RefreshCw, ChevronDown, Play, Wand2, FolderPlus, ArrowUpRight } from "lucide-react"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
-import { analyzeLibraryAd, getSavedAdAnalysis, type LibraryAdAnalysis, type LibraryAdInput, type Point } from "@/lib/actions/ad-analysis"
+import { analyzeLibraryAd, getSavedAdAnalysis, getConceptTargets, createConceptFromAnalysis, type ConceptTarget, type LibraryAdAnalysis, type LibraryAdInput, type Point } from "@/lib/actions/ad-analysis"
 import { ANGLE_GUIDE } from "@/lib/constants/creatives"
 import { cn } from "@/lib/utils"
 
@@ -62,13 +62,15 @@ function Points({ title, items, tone }: { title: string; items: Point[]; tone: s
   )
 }
 
-export function ConceptAnalysisModal({ ad, open, onClose, initial = null }: { ad: LibraryAdInput; open: boolean; onClose: () => void; initial?: LibraryAdAnalysis | null }) {
+export function ConceptAnalysisModal({ ad, open, onClose, initial = null, onClone }: { ad: LibraryAdInput; open: boolean; onClose: () => void; initial?: LibraryAdAnalysis | null; onClone?: () => void }) {
   const [a, setA] = useState<LibraryAdAnalysis | null>(initial)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>("concepto")
   const [copied, setCopied] = useState(false)
   const [now, setNow] = useState(0)
+  const [toProject, setToProject] = useState(false)
+  const [hookCopied, setHookCopied] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
 
   function run(force: boolean) {
@@ -153,16 +155,23 @@ export function ConceptAnalysisModal({ ad, open, onClose, initial = null }: { ad
                 </header>
                 <nav className="px-6 border-b border-border flex gap-1 overflow-x-auto">
                   {TABS.filter((t) => t.key !== "transcripcion" || a.transcript || a.media).map((t) => (
-                    <button key={t.key} onClick={() => setTab(t.key)} className={cn("px-3 py-2.5 text-sm whitespace-nowrap border-b-2 -mb-px", tab === t.key ? "border-primary text-foreground font-medium" : "border-transparent text-muted-foreground hover:text-foreground")}>{t.label}</button>
+                    <button key={t.key} onClick={() => { setTab(t.key); setToProject(false) }} className={cn("px-3 py-2.5 text-sm whitespace-nowrap border-b-2 -mb-px", tab === t.key ? "border-primary text-foreground font-medium" : "border-transparent text-muted-foreground hover:text-foreground")}>{t.label}</button>
                   ))}
                 </nav>
 
                 <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
-                  {tab === "concepto" && (
+                  {toProject && <ToProjectPanel a={a} ad={ad} onCancel={() => setToProject(false)} />}
+                  {!toProject && tab === "concepto" && (
                     <div className="space-y-5">
                       <div className="rounded-xl bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-900 p-4 space-y-1.5">
                         <p className="text-[11px] font-semibold uppercase tracking-wider text-violet-700 dark:text-violet-300">Gancho · {a.gancho.tipo}</p>
-                        <p className="text-base font-medium leading-snug">“{a.gancho.texto}”</p>
+                        <div className="flex items-start gap-2">
+                          <p className="flex-1 text-base font-medium leading-snug">“{a.gancho.texto}”</p>
+                          <button type="button" title="Copiar gancho" onClick={() => navigator.clipboard.writeText(a.gancho.texto).then(() => { setHookCopied(true); setTimeout(() => setHookCopied(false), 1500) }).catch(() => {})}
+                            className="h-7 w-7 shrink-0 rounded-md hover:bg-violet-100 dark:hover:bg-violet-900/40 inline-flex items-center justify-center text-violet-700 dark:text-violet-300">
+                            {hookCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
                         <p className="text-xs text-muted-foreground">{a.gancho.por_que_atrapa}</p>
                       </div>
                       <div className="grid sm:grid-cols-2 gap-x-6 gap-y-4">
@@ -178,7 +187,7 @@ export function ConceptAnalysisModal({ ad, open, onClose, initial = null }: { ad
                     </div>
                   )}
 
-                  {tab === "estructura" && (
+                  {!toProject && tab === "estructura" && (
                     <ol className="space-y-1">
                       {a.estructura.map((e, i) => {
                         const r = range(e.t)
@@ -197,7 +206,7 @@ export function ConceptAnalysisModal({ ad, open, onClose, initial = null }: { ad
                     </ol>
                   )}
 
-                  {tab === "aprendizajes" && (
+                  {!toProject && tab === "aprendizajes" && (
                     <div className="grid lg:grid-cols-3 gap-4">
                       <Points title="Por qué funciona" items={a.por_que_funciona} tone="text-emerald-600 dark:text-emerald-400" />
                       <Points title="Debilidades" items={a.debilidades} tone="text-amber-600 dark:text-amber-400" />
@@ -205,7 +214,7 @@ export function ConceptAnalysisModal({ ad, open, onClose, initial = null }: { ad
                     </div>
                   )}
 
-                  {tab === "marca" && (
+                  {!toProject && tab === "marca" && (
                     <div className="space-y-4 max-w-2xl">
                       <div className="flex items-center gap-2">
                         <span className={cn("text-xs font-semibold px-2 py-0.5 rounded-full", CONF[a.marca.confianza] ?? CONF.media)}>Confianza {a.marca.confianza}</span>
@@ -221,7 +230,7 @@ export function ConceptAnalysisModal({ ad, open, onClose, initial = null }: { ad
                     </div>
                   )}
 
-                  {tab === "transcripcion" && (
+                  {!toProject && tab === "transcripcion" && (
                     <div className="space-y-4">
                       {a.media?.escenas?.length ? (
                         <div className="space-y-1">
@@ -244,11 +253,105 @@ export function ConceptAnalysisModal({ ad, open, onClose, initial = null }: { ad
                     </div>
                   )}
                 </div>
+                {/* Acciones: llevar el análisis a trabajo */}
+                {!toProject && (
+                  <footer className="px-6 py-3 border-t border-border flex items-center gap-2 flex-wrap bg-background">
+                    <a href="/ad-lab/analisis" className="text-[11px] text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1 hover:underline mr-auto"><Check className="w-3.5 h-3.5" />Guardado en Ad Lab → Análisis</a>
+                    {onClone && (
+                      <button onClick={onClone} className="h-9 px-3 rounded-lg border border-border text-sm inline-flex items-center gap-1.5 hover:bg-muted"><Wand2 className="w-4 h-4" />Clonar con este ángulo</button>
+                    )}
+                    <button onClick={() => setToProject(true)} className="h-9 px-3 rounded-lg bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center gap-1.5 hover:bg-primary/90"><FolderPlus className="w-4 h-4" />Crear concepto en proyecto</button>
+                  </footer>
+                )}
               </>
             )}
           </section>
         </div>
       </DialogContent>
     </Dialog>
+  )
+}
+
+// Crear el concepto en un proyecto: eliges proyecto y línea, y adaptas
+// nombre y persona a tu cliente (el resto viene del análisis, editable
+// después en el Creative Tracker).
+function ToProjectPanel({ a, ad, onCancel }: { a: LibraryAdAnalysis; ad: LibraryAdInput; onCancel: () => void }) {
+  const [targets, setTargets] = useState<ConceptTarget[] | null>(null)
+  const [projectId, setProjectId] = useState("")
+  const [lineId, setLineId] = useState<string | null>(null)
+  const [name, setName] = useState(a.concepto.nombre)
+  const [persona, setPersona] = useState(a.concepto.target_persona)
+  const [busy, setBusy] = useState(false)
+  const [done, setDone] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => { getConceptTargets().then(setTargets).catch((e) => setError(e instanceof Error ? e.message : String(e))) }, [])
+  const target = targets?.find((t) => t.id === projectId)
+  const input = "w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+
+  async function create() {
+    if (!projectId) return
+    setBusy(true); setError(null)
+    try {
+      const c = a.concepto
+      await createConceptFromAnalysis(projectId, { brand_line_id: lineId, name: name.trim() || c.nombre, angle_type: c.angle_type, organizing_principle: c.organizing_principle, target_persona: persona, pain_point: c.pain_point, objection: c.objection, why_it_works: c.why_it_works, transformation: c.transformation, funnel_stage: c.funnel_stage, awareness_stage: Number(c.awareness_stage), source: `anuncio de ${ad.pageName}${ad.adArchiveId && !ad.adArchiveId.includes(":") ? ` (librería ${ad.adArchiveId})` : ""}` })
+      setDone(projectId)
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)) } finally { setBusy(false) }
+  }
+
+  if (done) {
+    return (
+      <div className="max-w-lg space-y-3">
+        <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5"><Check className="w-4 h-4" />Concepto creado en {targets?.find((t) => t.id === done)?.name}</p>
+        <p className="text-xs text-muted-foreground">Quedó en el ciclo activo, con la nota de dónde se inspiró. Desde ahí puedes ajustarlo, crear su brief o subir creativos.</p>
+        <div className="flex gap-2">
+          <a href={`/projects/${done}#creative-tracker`} className="h-9 px-3 rounded-lg bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center gap-1.5">Abrir proyecto<ArrowUpRight className="w-4 h-4" /></a>
+          <button onClick={onCancel} className="h-9 px-3 rounded-lg border border-border text-sm hover:bg-muted">Volver al análisis</button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="max-w-xl space-y-4">
+      <div>
+        <p className="text-sm font-semibold">Crear concepto en un proyecto</p>
+        <p className="text-xs text-muted-foreground">Se copia el ángulo, dolor, objeción, transformación y funnel. Adapta el nombre y la persona a tu cliente.</p>
+      </div>
+      <label className="block space-y-1">
+        <span className="text-xs font-medium text-muted-foreground">Proyecto</span>
+        <select value={projectId} onChange={(e) => { setProjectId(e.target.value); setLineId(null) }} className={input} disabled={!targets}>
+          <option value="">{targets ? "Elige un proyecto…" : "Cargando…"}</option>
+          {targets?.map((t) => <option key={t.id} value={t.id}>{t.name}{t.cycleId ? "" : " (sin ciclo activo)"}</option>)}
+        </select>
+      </label>
+      {target && target.lines.length > 0 && (
+        <div className="space-y-1">
+          <span className="text-xs font-medium text-muted-foreground">Línea de producto</span>
+          <div className="flex flex-wrap gap-1.5">
+            {[...target.lines, { id: null as string | null, name: "General", color: null }].map((l) => (
+              <button key={l.id ?? "g"} type="button" onClick={() => setLineId(l.id)} title={l.name}
+                className={cn("h-8 px-3 max-w-[220px] rounded-full border text-sm inline-flex items-center gap-1.5", lineId === l.id ? "border-foreground bg-foreground text-background" : "border-border hover:border-foreground/40")}>
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: l.color ?? "currentColor", opacity: l.color ? 1 : 0.4 }} /><span className="truncate">{l.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <label className="block space-y-1">
+        <span className="text-xs font-medium text-muted-foreground">Nombre del concepto</span>
+        <input value={name} onChange={(e) => setName(e.target.value)} className={cn(input, "font-medium")} />
+      </label>
+      <label className="block space-y-1">
+        <span className="text-xs font-medium text-muted-foreground">Persona (adáptala a tu cliente)</span>
+        <textarea value={persona} onChange={(e) => setPersona(e.target.value)} rows={2} className={cn(input, "resize-none")} />
+      </label>
+      {error && <p className="text-xs text-red-600">{error}</p>}
+      <div className="flex gap-2">
+        <button onClick={create} disabled={!projectId || busy} className="h-9 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center gap-1.5 disabled:opacity-50">
+          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <FolderPlus className="w-4 h-4" />}Crear concepto
+        </button>
+        <button onClick={onCancel} className="h-9 px-3 text-sm text-muted-foreground hover:text-foreground">Cancelar</button>
+      </div>
+    </div>
   )
 }

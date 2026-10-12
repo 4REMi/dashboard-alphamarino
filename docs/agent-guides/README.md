@@ -87,5 +87,6 @@ grep-ear todo el repo desde cero.
 | [mcp-server.md](./mcp-server.md) | Servidor MCP (`/api/mcp`) — acciones de IA con permisos reales | 2026-09-18 |
 | [creative-tracker.md](./creative-tracker.md) | Creative Tracker — producción, revisión de cliente, pipeline | 2026-09-23 |
 | [nomina.md](./nomina.md) | Equipo — Nómina y compensación (solo admin) | 2026-10-01 |
+| [ad-lab-analisis.md](./ad-lab-analisis.md) | Ad Lab — Análisis de concepto (`/ad-lab/analisis` + "Analizar concepto") | 2026-10-12 |
 
 Actualiza esta tabla cada vez que agregues un archivo nuevo.
