@@ -199,9 +199,10 @@ Depende del vínculo anuncio↔creativo (`creative_asset_meta_ads`): lo subido
 directo en Ads Manager sin vincular no cuenta. `conceptLiveRollup`/`LiveMedal`
 en `concepts-table.tsx`.
 
-## Subir y clasificar (videos sin brief)
-Botón **"Subir y clasificar"** en el Creative Tracker (ciclo activo, quien puede
-administrar creativos). Por video: se sube a Storage como asset **borrador sin
+## Conceptos desde videos (videos sin brief)
+Acción **"Desde videos"** en el encabezado de cada línea del Creative Tracker,
+junto a "Nuevo" y "Generar" (ciclo activo, quien puede administrar creativos):
+es otra forma de crear o alimentar conceptos, y usa esa línea como contexto. Por video: se sube a Storage como asset **borrador sin
 concepto** (`registerUploadedAsset`), se transcribe (AssemblyAI) y Gemini 2.5
 Flash lo "ve" (`lib/ai/video-understanding.ts`: escenas con tiempos, visual,
 audio, texto en pantalla, formato, música, tono, efectos, gancho). Proveedor:

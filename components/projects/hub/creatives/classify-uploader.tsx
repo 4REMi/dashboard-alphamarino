@@ -1,7 +1,7 @@
 "use client"
 
-import { useCallback, useRef, useState } from "react"
-import { Wand2, Upload, Loader2, Check, ChevronDown, Plus, Film, AlertTriangle, Eye, Mic } from "lucide-react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { Upload, Loader2, Check, ChevronDown, Plus, Film, AlertTriangle, Eye, Mic } from "lucide-react"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { createClient } from "@/lib/supabase/client"
 import { captureVideoThumbnail } from "@/components/projects/hub/creatives/asset-modal"
@@ -28,11 +28,18 @@ type Item = {
   doneLabel?: string
 }
 
-export function ClassifyUploader({ projectId, cycleId, brandLines, onDone }: { projectId: string; cycleId: string | null; brandLines: BrandLine[]; onDone: () => void }) {
-  const [open, setOpen] = useState(false)
+// Se abre desde el encabezado de una línea ("Desde videos"): es otra forma de
+// crear conceptos, junto a "Nuevo" (manual) y "Generar" (IA desde Brand Brain).
+export function ClassifyUploader({ projectId, cycleId, brandLines, lineId, open, onOpenChange, onDone }: {
+  projectId: string; cycleId: string | null; brandLines: BrandLine[]; lineId: string | null
+  open: boolean; onOpenChange: (v: boolean) => void; onDone: () => void
+}) {
+  const lineName = brandLines.find((l) => l.id === lineId)?.name ?? "General"
   const [items, setItems] = useState<Item[]>([])
   const [drag, setDrag] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  // Al reabrir (quizá desde otra línea) se limpian los ya resueltos.
+  useEffect(() => { if (open) setItems((xs) => xs.filter((x) => x.stage === "uploading" || x.stage === "analyzing" || x.stage === "ready")) }, [open])
   const patch = (key: string, p: Partial<Item>) => setItems((xs) => xs.map((x) => (x.key === key ? { ...x, ...p } : x)))
 
   const processOne = useCallback(async (it: Item) => {
@@ -52,12 +59,12 @@ export function ClassifyUploader({ projectId, cycleId, brandLines, onDone }: { p
       }
       const assetId = await registerUploadedAsset(projectId, { file_path: path, thumbnail_path: thumbPath, file_type: "video", cycle_id: cycleId })
       patch(it.key, { stage: "analyzing", assetId })
-      const result = await classifyAsset(projectId, assetId)
+      const result = await classifyAsset(projectId, assetId, lineId)
       patch(it.key, { stage: "ready", result, draft: result.new_concept })
     } catch (e) {
       patch(it.key, { stage: "error", error: e instanceof Error ? e.message : String(e) })
     }
-  }, [projectId, cycleId])
+  }, [projectId, cycleId, lineId])
 
   function addFiles(files: File[]) {
     const vids = files.filter((f) => f.type.startsWith("video/"))
@@ -84,14 +91,11 @@ export function ClassifyUploader({ projectId, cycleId, brandLines, onDone }: { p
 
   return (
     <>
-      <button onClick={() => setOpen(true)} className="h-8 px-3 rounded-lg border border-border text-xs font-medium inline-flex items-center gap-1.5 hover:bg-muted">
-        <Wand2 className="w-3.5 h-3.5 text-violet-500" />Subir y clasificar
-      </button>
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-[min(1000px,96vw)] w-[96vw] max-h-[92vh] overflow-y-auto p-0 gap-0">
           <div className="px-6 pt-5 pb-3 border-b border-border">
-            <DialogTitle className="text-lg">Subir y clasificar videos</DialogTitle>
-            <p className="text-xs text-muted-foreground">Videos sin brief: se transcriben, la IA los ve y te propone a qué concepto van o un concepto nuevo. Entran como borrador (el cliente no los ve).</p>
+            <DialogTitle className="text-lg">Conceptos desde videos · {lineName}</DialogTitle>
+            <p className="text-xs text-muted-foreground">Para videos que no salieron de un brief. La IA los transcribe, los ve y te dice a qué concepto pertenecen, o te propone uno nuevo. Entran como borrador: el cliente no los ve.</p>
           </div>
 
           <div className="p-6 space-y-4">

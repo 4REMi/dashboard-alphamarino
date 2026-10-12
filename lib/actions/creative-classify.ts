@@ -60,7 +60,7 @@ async function transcribe(url: string): Promise<string | null> {
   } catch (e) { console.error("[classify] transcripción:", e); return null }
 }
 
-export async function classifyAsset(projectId: string, assetId: string): Promise<Classification> {
+export async function classifyAsset(projectId: string, assetId: string, lineId: string | null = null): Promise<Classification> {
   await requireManager(projectId)
   const db = createAdminClient()
   const { data: asset } = await db.from("creative_assets").select("id, project_id, file_type, file_path, asset_url").eq("id", assetId).single()
@@ -91,6 +91,7 @@ Responde SOLO JSON: {"summary":"","matches":[{"concept_id":"","confidence":0,"re
     messages: [{
       role: "user",
       content: `PROYECTO: ${project?.name ?? ""}
+SUBIDO DESDE LA LÍNEA: ${lineId ? (lines ?? []).find((l) => l.id === lineId)?.name ?? "—" : "General"} (úsala como línea por defecto del concepto nuevo salvo que el video sea claramente de otra)
 LÍNEAS DE PRODUCTO: ${JSON.stringify((lines ?? []).map((l) => ({ id: l.id, name: l.name, description: l.description })))}
 CONCEPTOS EXISTENTES: ${JSON.stringify((concepts ?? []).map((c) => ({ id: c.id, name: c.name, angle: c.angle_type, persona: c.target_persona, pain: c.pain_point, transformation: c.transformation, funnel: c.funnel_stage, line: c.brand_line_id })))}
 
@@ -109,7 +110,7 @@ LO QUE SE VE Y SE OYE: ${video ? JSON.stringify(video) : "(no disponible — cla
     angle_type: ANGULOS.includes(nc.angle_type) ? nc.angle_type : "Desired Outcome",
     funnel_stage: (["TOF", "MOF", "BOF"] as const).includes(nc.funnel_stage) ? nc.funnel_stage : "TOF",
     organizing_principle: nc.organizing_principle === "Pain-First" ? "Pain-First" : "Desire-First",
-    brand_line_id: (lines ?? []).some((l) => l.id === nc.brand_line_id) ? nc.brand_line_id : null,
+    brand_line_id: (lines ?? []).some((l) => l.id === nc.brand_line_id) ? nc.brand_line_id : lineId,
   }
 
   const analysis = { summary: parsed.summary, video, provider, matches, new_concept, analyzed_at: new Date().toISOString() }

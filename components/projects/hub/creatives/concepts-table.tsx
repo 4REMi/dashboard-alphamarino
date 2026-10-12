@@ -17,6 +17,7 @@ import { AssetCopyBank } from "./asset-copy-bank"
 import { QuickScriptModal } from "./quick-script-modal"
 import { Plus, Sparkles, Check, X, Loader2, Star, ArrowUpRight, Pencil, Trash2, Link2, FileText, Upload, ChevronDown, Film, ImageIcon, Eye, EyeOff, MessageSquare, Clock, Radio, AlertTriangle, ArrowRightLeft } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { ClassifyUploader } from "@/components/projects/hub/creatives/classify-uploader"
 
 function fmt$(v: number) {
   return `$${v.toLocaleString("en-US", { maximumFractionDigits: 0 })}`
@@ -1127,6 +1128,8 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
   const [detailConcept, setDetailConcept]   = useState<CreativeConcept | null>(null)
   const [editConcept,   setEditConcept]     = useState<CreativeConcept | null>(null)
   const [createForLineId, setCreateForLineId] = useState<string | null | undefined>(undefined)
+  // undefined = cerrado; null = línea General
+  const [videosForLineId, setVideosForLineId] = useState<string | null | undefined>(undefined)
   const [aiDrafts,      setAiDrafts]        = useState<AIDraftConcept[]>([])
   const [aiDraftsLineId, setAiDraftsLineId] = useState<string | null>(null)
   const [previewIdx,    setPreviewIdx]      = useState<number | null>(null)
@@ -1502,6 +1505,16 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
                     }
                     Generar
                   </span>
+                  {canManageAssets && (
+                    <span
+                      onClick={() => setVideosForLineId(line?.id ?? null)}
+                      title="Videos que no salieron de un brief: la IA los transcribe, los ve y propone a qué concepto pertenecen o uno nuevo"
+                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-muted transition-colors"
+                    >
+                      <Film className="w-3 h-3" />
+                      Desde videos
+                    </span>
+                  )}
                 </div>
               )}
               <ChevronDown className={cn(
@@ -1600,6 +1613,16 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
           allConcepts={concepts}
         />
       )}
+
+      <ClassifyUploader
+        projectId={projectId}
+        cycleId={cycleId}
+        brandLines={brandLines as BrandLine[]}
+        lineId={videosForLineId ?? null}
+        open={videosForLineId !== undefined}
+        onOpenChange={(v) => { if (!v) setVideosForLineId(undefined) }}
+        onDone={onRefresh}
+      />
 
       {/* Edit modal — opens from detail modal "Editar" button */}
       {editConcept && (
