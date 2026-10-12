@@ -39,7 +39,7 @@ nunca se expone fuera del dashboard. Es control interno del equipo, punto.
 - **Texto de control** (`control_text` en cada línea de la oferta): corto, es lo que
   se ve en el proyecto. `text` queda como texto de venta (solo en hover). Viaja en
   el JSON de exportar/importar ofertas, lo propone el autollenado con IA y lo
-  muestra la herramienta MCP de detalle de oferta.
+  muestra la herramienta MCP de detalle de oferta; se edita desde Claude con `oferta_entregables` (y `crear_oferta` con `entregables`).
 - **Cambios a una oferta ya adjunta**: cada línea tiene id fijo, así que editar
   texto/cantidad/cadencia nunca duplica filas. Cantidad: el periodo en curso queda
   congelado (se edita con el lápiz); los siguientes usan la nueva. Una línea
