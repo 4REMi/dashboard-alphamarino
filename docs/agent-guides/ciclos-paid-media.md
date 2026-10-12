@@ -283,3 +283,10 @@ Código: `supabase/migrations/099_cycle_repairs.sql` (`apply_cycle_repair`,
 - `lib/notifications/events.ts` — `cycle_ending_soon`, `cycle_overdue`,
   `cycle_auto_closed`.
 - `lib/permissions.ts` — `edit_cycle_dates`.
+
+## Medallas de la tarjeta del proyecto (lista de proyectos)
+"Cambios pedidos" (lápiz) y "en borrador" (ojo tachado) cuentan solo lo
+**vigente**: versiones no reemplazadas por una más nueva y, si hay ciclo
+activo, solo creativos del ciclo activo (`creative_asset_cycles` o
+`creative_assets.cycle_id`). Guiones con cambios pedidos: solo briefs de
+conceptos del ciclo activo. Ver `getProjects` en `lib/actions/projects.ts`.

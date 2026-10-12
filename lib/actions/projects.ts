@@ -293,14 +293,14 @@ export async function getProjects(includeArchived = false) {
       .then((r) => r, () => ({ data: null })),
     supabase
       .from("creative_assets")
-      .select("project_id, concept:creative_concepts(name)")
+      .select("id, project_id, cycle_id, concept:creative_concepts(name)")
       .in("project_id", projectIds)
       .eq("client_status", "changes_requested")
       .eq("client_visible", true)
       .then((r) => r, () => ({ data: null })),
     supabase
       .from("creative_briefs")
-      .select("project_id, script_reviews")
+      .select("project_id, concept_id, script_reviews")
       .in("project_id", projectIds)
       .not("script_reviews", "eq", "{}")
       .then((r) => r, () => ({ data: null })),
@@ -319,7 +319,7 @@ export async function getProjects(includeArchived = false) {
       .then((r) => r, () => ({ data: null })),
     supabase
       .from("creative_assets")
-      .select("project_id")
+      .select("id, project_id, cycle_id")
       .in("project_id", projectIds)
       .eq("client_visible", false)
       .then((r) => r, () => ({ data: null })),
@@ -363,15 +363,38 @@ export async function getProjects(includeArchived = false) {
   // "activity" (which tracks work the team did). An asset or script can sit in
   // changes_requested for a while with no further admin activity, so this has
   // to be its own signal rather than folded into inactiveForDays.
+  //
+  // Solo cuenta lo VIGENTE: versiones que no fueron reemplazadas por una más
+  // nueva, y — si el proyecto tiene ciclo activo — solo lo del ciclo activo
+  // (antes sumaba la historia completa: v1 ya corregidas y ciclos pasados).
+  const activeCycleBy = new Map(activeCycles.filter((c) => c.is_active).map((c) => [c.project_id, c.id]))
+  const [{ data: revisedRows }, { data: assetCycleRows }, { data: conceptCycleRows }] = await Promise.all([
+    supabase.from("creative_assets").select("revises_asset_id").in("project_id", projectIds).not("revises_asset_id", "is", null).then((r) => r, () => ({ data: null })),
+    activeIds.length ? supabase.from("creative_asset_cycles").select("asset_id").in("cycle_id", activeIds).then((r) => r, () => ({ data: null })) : Promise.resolve({ data: [] as { asset_id: string }[] }),
+    activeIds.length ? supabase.from("creative_concept_cycles").select("concept_id").in("cycle_id", activeIds).then((r) => r, () => ({ data: null })) : Promise.resolve({ data: [] as { concept_id: string }[] }),
+  ])
+  const superseded = new Set(((revisedRows ?? []) as { revises_asset_id: string }[]).map((r) => r.revises_asset_id))
+  const inActiveCycle = new Set(((assetCycleRows ?? []) as { asset_id: string }[]).map((r) => r.asset_id))
+  const conceptsInActive = new Set(((conceptCycleRows ?? []) as { concept_id: string }[]).map((r) => r.concept_id))
+  const isCurrent = (a: { id: string; project_id: string; cycle_id: string | null }) => {
+    if (superseded.has(a.id)) return false
+    const cyc = activeCycleBy.get(a.project_id)
+    return !cyc || inActiveCycle.has(a.id) || a.cycle_id === cyc
+  }
+
   const pendingChangesSet = new Set<string>()
   const changesByProject: Record<string, string[]> = {}
-  for (const a of (assetChangesRes.data ?? []) as { project_id: string; concept?: unknown }[]) {
+  for (const a of (assetChangesRes.data ?? []) as { id: string; project_id: string; cycle_id: string | null; concept?: unknown }[]) {
+    if (!isCurrent(a)) continue
     pendingChangesSet.add(a.project_id)
     const name = (a.concept as { name?: string } | null)?.name ?? "Pieza sin concepto"
     ;(changesByProject[a.project_id] ??= []).push(name)
   }
   const draftsByProject: Record<string, number> = {}
-  for (const a of (draftsRes.data ?? []) as { project_id: string }[]) draftsByProject[a.project_id] = (draftsByProject[a.project_id] ?? 0) + 1
+  for (const a of (draftsRes.data ?? []) as { id: string; project_id: string; cycle_id: string | null }[]) {
+    if (!isCurrent(a)) continue
+    draftsByProject[a.project_id] = (draftsByProject[a.project_id] ?? 0) + 1
+  }
 
   // Entregables: periodo actual = el más reciente que ya empezó.
   const periodsByProject: Record<string, { deliverable_text: string; period_start: string; period_label: string; expected_quantity: number; fulfilled_quantity: number }[]> = {}
@@ -418,6 +441,8 @@ export async function getProjects(includeArchived = false) {
     }
   }
   for (const b of briefsWithReviewsRes.data ?? []) {
+    // Guiones: solo briefs de conceptos del ciclo activo (si lo hay).
+    if (activeCycleBy.has(b.project_id as string) && b.concept_id && !conceptsInActive.has(b.concept_id as string)) continue
     const reviews = (b.script_reviews ?? {}) as Record<string, { client_status?: string }>
     if (Object.values(reviews).some((r) => r?.client_status === "changes_requested")) {
       pendingChangesSet.add(b.project_id as string)
