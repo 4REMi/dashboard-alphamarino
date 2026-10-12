@@ -195,7 +195,7 @@ vinculada).
 En la columna Status de cada concepto: medalla verde con punto y el **logo de cada
 plataforma** donde corre hoy (Meta con # de anuncios activos; canales de campañas
 manuales con su logo) — al pasar el mouse: campañas y gasto del ciclo. Logos de
-`components/ui/platform-icon.tsx` (Simple Icons, CC0; LinkedIn cae a ícono genérico).
+`components/ui/platform-icon.tsx` (paquete @icons-pack/react-simple-icons, el mismo de Ad Lab; LinkedIn cae a la inicial).
 Depende del vínculo anuncio↔creativo (`creative_asset_meta_ads`): lo subido
 directo en Ads Manager sin vincular no cuenta. `conceptLiveRollup`/`LiveMedal`
 en `concepts-table.tsx`.
