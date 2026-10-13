@@ -1,3 +1,4 @@
+import { resolveProject } from "@/lib/mcp/resolve-project"
 import { z } from "zod"
 import type { McpServer, AuthInfo } from "@modelcontextprotocol/server"
 import { createAdminClient } from "@/lib/supabase/admin"
@@ -39,11 +40,7 @@ function requireProfileId(ctx: ToolCtx): string {
 // adivinar cuál.
 async function resolveProjectId(projectName: string | undefined): Promise<string | null> {
   if (!projectName?.trim()) return null
-  const admin = createAdminClient()
-  const { data } = await admin.from("projects").select("id, name").ilike("name", `%${projectName.trim()}%`).limit(6)
-  if (!data || data.length === 0) throw new Error(`No encontré ningún proyecto que coincida con "${projectName}".`)
-  if (data.length > 1) throw new Error(`"${projectName}" coincide con varios proyectos: ${data.map((p) => p.name).join(", ")}. Sé más específico.`)
-  return data[0].id
+  return (await resolveProject(projectName)).id
 }
 
 async function resolveAssigneeId(assigneeName: string | undefined): Promise<string | null> {

@@ -1,3 +1,4 @@
+import { resolveProject } from "@/lib/mcp/resolve-project"
 import { z } from "zod"
 import type { McpServer, AuthInfo } from "@modelcontextprotocol/server"
 import { createAdminClient } from "@/lib/supabase/admin"
@@ -22,13 +23,7 @@ function profileId(ctx: ToolCtx): string {
 }
 
 async function project(name: string): Promise<{ id: string; name: string }> {
-  const { data } = await db().from("projects").select("id, name, status").ilike("name", `%${name.trim()}%`).limit(8)
-  const rows = (data ?? []).filter((p) => p.status !== "Archived")
-  const exact = rows.filter((p) => p.name.toLowerCase() === name.trim().toLowerCase())
-  const hits = exact.length ? exact : rows
-  if (!hits.length) throw new Error(`No encontré el proyecto "${name}".`)
-  if (hits.length > 1) throw new Error(`"${name}" coincide con varios proyectos: ${hits.map((p) => p.name).join(", ")}. Sé más específico.`)
-  return hits[0]
+  return resolveProject(name)
 }
 
 // Filas del periodo actual + hitos únicos pendientes, en orden estable.

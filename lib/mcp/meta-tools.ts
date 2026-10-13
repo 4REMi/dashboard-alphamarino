@@ -1,3 +1,4 @@
+import { resolveProject } from "@/lib/mcp/resolve-project"
 import { z } from "zod"
 import type { McpServer, AuthInfo } from "@modelcontextprotocol/server"
 import { createAdminClient } from "@/lib/supabase/admin"
@@ -39,14 +40,7 @@ interface Client { projectId: string; name: string; account: string; currency: s
 type Periodo = { periodo?: "ciclo_activo" | "ciclo_anterior"; desde?: string; hasta?: string }
 
 export async function client(name: string, range: Periodo = {}): Promise<Client & { label: string }> {
-  const { data } = await db().from("projects").select("id, name, status")
-  const rows = (data ?? []).filter((p) => p.status === "Active")
-  const q = name.trim().toLowerCase()
-  const exact = rows.filter((r) => r.name.toLowerCase() === q)
-  const hits = exact.length ? exact : rows.filter((r) => r.name.toLowerCase().includes(q))
-  if (!hits.length) throw new Error(`No encontré el proyecto activo "${name}".`)
-  if (hits.length > 1) throw new Error(`"${name}" coincide con varios: ${hits.map((h) => h.name).join(", ")}. Sé más específico.`)
-  const p = hits[0]
+  const p = await resolveProject(name, { onlyActive: true })
   const [{ data: integ }, { data: cycle }] = await Promise.all([
     db().from("project_integrations").select("account_id, currency").eq("project_id", p.id).eq("platform", "meta").maybeSingle(),
     db().from("paid_media_cycles").select("start_date, end_date").eq("project_id", p.id).eq("is_active", true).maybeSingle(),

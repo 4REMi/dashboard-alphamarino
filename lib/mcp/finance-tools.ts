@@ -1,3 +1,4 @@
+import { resolveProject } from "@/lib/mcp/resolve-project"
 import { z } from "zod"
 import type { McpServer, AuthInfo } from "@modelcontextprotocol/server"
 import { createAdminClient } from "@/lib/supabase/admin"
@@ -30,14 +31,7 @@ async function requireFinance(ctx: ToolCtx): Promise<string> {
 }
 
 async function findProject(name: string) {
-  const { data } = await db().from("projects").select("id, name")
-  const rows = data ?? []
-  const q = name.trim().toLowerCase()
-  const exact = rows.filter((r) => r.name.toLowerCase() === q)
-  const hits = exact.length ? exact : rows.filter((r) => r.name.toLowerCase().includes(q))
-  if (hits.length === 1) return hits[0]
-  if (!hits.length) throw new Error(`No encontré el proyecto "${name}".`)
-  throw new Error(`"${name}" coincide con varios proyectos: ${hits.map((h) => h.name).join(", ")}. Sé más específico.`)
+  return resolveProject(name)
 }
 
 function monthRange(mes?: string) {

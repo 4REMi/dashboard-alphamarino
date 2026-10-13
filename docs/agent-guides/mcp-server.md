@@ -312,3 +312,11 @@ no tiene `manage_tasks`, `crear_tarea`/`completar_tarea` le van a fallar con
 - `lib/actions/tasks.ts` (`requireTaskPermission`, `createTask`,
   `updateTaskStatus`) y `lib/actions/projects.ts` (`addLogEntry`) — el parámetro
   `actingProfileId` opcional que estas mismas funciones reales ahora aceptan.
+
+## Proyectos por nombre (todas las herramientas)
+
+`lib/mcp/resolve-project.ts`: coincidencia exacta (sin mayúsculas ni acentos)
+antes que parcial; con varias coincidencias gana el proyecto **activo**, luego
+cualquiera no archivado. Un archivado solo se usa si es el único que coincide.
+Solo hay error si siguen empatados varios activos (lista nombres y estado).
+Las herramientas de Meta solo consideran proyectos activos.
