@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Check, Plus, X, Building2 } from "lucide-react"
+import { Check, Plus, X, Building2, Search } from "lucide-react"
 import type { DeliverableCadence, ServiceDeliverable } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -20,7 +20,16 @@ export const scopeReady = (v: ScopeValue) => v.internal || v.offerIds.length > 0
 
 export function ScopePicker({ offers, value, onChange }: { offers: ScopeOffer[]; value: ScopeValue; onChange: (v: ScopeValue) => void }) {
   const [draft, setDraft] = useState<CustomLine>({ text: "", cadence: "monthly", quantity: 1 })
+  const [q, setQ] = useState("")
   const set = (patch: Partial<ScopeValue>) => onChange({ ...value, ...patch })
+  const toggleOffer = (id: string) => set({ offerIds: value.offerIds.includes(id) ? value.offerIds.filter((x) => x !== id) : [...value.offerIds, id] })
+  const countable = (o: ScopeOffer) => (o.deliverables ?? []).filter((d) => d.cadence !== "continuous")
+  const norm = (t: string) => t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+  const groups = Object.entries(
+    offers.filter((o) => !q.trim() || norm(`${o.name} ${o.category ?? ""}`).includes(norm(q.trim())))
+      .reduce<Record<string, ScopeOffer[]>>((acc, o) => { (acc[o.category || "Otras"] ??= []).push(o); return acc }, {}),
+  )
+  const selected = value.offerIds.map((id) => offers.find((o) => o.id === id)).filter((o): o is ScopeOffer => !!o)
   const addDraft = () => {
     if (!draft.text.trim()) return
     set({ customs: [...value.customs, { ...draft, text: draft.text.trim() }] })
@@ -32,36 +41,50 @@ export function ScopePicker({ offers, value, onChange }: { offers: ScopeOffer[];
     <div className="space-y-3 min-w-0">
       <div className={cn("space-y-3 transition-opacity", value.internal && "opacity-40 pointer-events-none")}>
         {offers.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 [&>*]:min-w-0">
-            {offers.map((o) => {
-              const on = value.offerIds.includes(o.id)
-              const lines = (o.deliverables ?? []).filter((d) => d.cadence !== "continuous")
-              return (
-                <button key={o.id} type="button"
-                  onClick={() => set({ offerIds: on ? value.offerIds.filter((x) => x !== o.id) : [...value.offerIds, o.id] })}
-                  className={cn("rounded-lg border px-3 py-2.5 text-left transition-colors flex flex-col justify-start", on ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border hover:border-foreground/30")}>
-                  <span className="flex items-start gap-2">
-                    <span className="flex-1 min-w-0">
-                      <span className="block text-sm font-medium leading-tight truncate">{o.name}</span>
-                      {o.category && <span className="block text-[11px] text-muted-foreground">{o.category}</span>}
-                    </span>
-                    <span className={cn("w-4 h-4 mt-0.5 rounded border flex items-center justify-center shrink-0", on ? "bg-primary border-primary text-primary-foreground" : "border-muted-foreground/40")}>
-                      {on && <Check className="w-3 h-3" />}
-                    </span>
-                  </span>
-                  {lines.length > 0 && (
-                    <span className="block mt-1.5 space-y-0.5 text-[11px] text-muted-foreground">
-                      {lines.slice(0, 4).map((d) => (
-                        <span key={d.id} className="block truncate">{d.quantity ?? 1}× {d.control_text?.trim() || d.text} · {CADENCE[d.cadence]}</span>
-                      ))}
-                      {lines.length > 4 && <span className="block">y {lines.length - 4} más</span>}
-                    </span>
-                  )}
-                </button>
-              )
-            })}
+          <div className="rounded-lg border border-border overflow-hidden">
+            <div className="flex items-center gap-2 px-3 h-9 border-b border-border">
+              <Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar oferta…"
+                className="flex-1 min-w-0 bg-transparent text-sm focus:outline-none" />
+            </div>
+            <div className="max-h-52 overflow-y-auto py-1">
+              {groups.length === 0 && <p className="px-3 py-2 text-xs text-muted-foreground">Sin resultados</p>}
+              {groups.map(([cat, list]) => (
+                <div key={cat}>
+                  <p className="px-3 pt-2 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{cat}</p>
+                  {list.map((o) => {
+                    const on = value.offerIds.includes(o.id)
+                    const n = countable(o).length
+                    return (
+                      <button key={o.id} type="button" onClick={() => toggleOffer(o.id)}
+                        className={cn("w-full flex items-center gap-2.5 px-3 h-8 text-left text-sm hover:bg-muted/60", on && "bg-primary/5")}>
+                        <span className={cn("w-4 h-4 rounded border flex items-center justify-center shrink-0", on ? "bg-primary border-primary text-primary-foreground" : "border-muted-foreground/40")}>
+                          {on && <Check className="w-3 h-3" />}
+                        </span>
+                        <span className="flex-1 min-w-0 truncate">{o.name}</span>
+                        <span className="text-[11px] text-muted-foreground shrink-0 tabular-nums">{n} entregable{n === 1 ? "" : "s"}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              ))}
+            </div>
           </div>
         )}
+
+        {selected.map((o) => (
+          <div key={o.id} className="rounded-lg bg-muted/60 px-3 py-2">
+            <div className="flex items-center gap-2">
+              <span className="flex-1 min-w-0 text-sm font-medium truncate">{o.name}</span>
+              <button type="button" onClick={() => toggleOffer(o.id)} className="text-muted-foreground hover:text-foreground" aria-label="Quitar"><X className="w-3.5 h-3.5" /></button>
+            </div>
+            <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+              {countable(o).map((d) => (
+                <li key={d.id} className="flex gap-2"><span className="tabular-nums shrink-0">{d.quantity ?? 1}×</span><span className="flex-1 min-w-0 truncate">{d.control_text?.trim() || d.text}</span><span className="shrink-0">{CADENCE[d.cadence]}</span></li>
+              ))}
+            </ul>
+          </div>
+        ))}
 
         {value.customs.length > 0 && (
           <div className="space-y-1">
