@@ -190,4 +190,4 @@ sección "Entregables personalizados".
 
 
 ## Por MCP
-Claude puede ver el periodo actual (`entregables_proyecto`), palomear avance (`marcar_entregable`), ajustar cantidad/texto del periodo (`ajustar_entregable`) y agregar extras (`agregar_entregable_extra`). Mismas funciones y permisos que el Hub; queda en la bitácora.
+Claude puede ver el periodo actual (`entregables_proyecto`; con `completo: true` todo el alcance: continuos, hitos cumplidos e historial de periodos), palomear avance (`marcar_entregable`), ajustar cantidad/texto del periodo (`ajustar_entregable`) y agregar extras (`agregar_entregable_extra`). Mismas funciones y permisos que el Hub; queda en la bitácora.

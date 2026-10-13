@@ -86,7 +86,8 @@ más estricto desde el inicio, no una copia de cómo funciona Telegram.
   `updateServiceOffer` (mismo camino que la pantalla de Servicios); líneas
   nuevas llevan `added_at` = hoy (cuentan desde hoy en proyectos con la oferta).
 - **Entregables del proyecto por periodo** (`lib/mcp/deliverable-tools.ts`):
-  `entregables_proyecto` (periodo actual con avance, hitos únicos pendientes,
+  `entregables_proyecto` (con `completo: true` además: continuos, hitos cumplidos
+  e historial de hasta 12 periodos con lo que faltó) (periodo actual con avance, hitos únicos pendientes,
   periodo anterior incompleto), `marcar_entregable` (sumar/hecho/completo;
   directo), `ajustar_entregable` (cantidad o texto solo de este periodo) y
   `agregar_entregable_extra` (fuera de oferta). Usan las mismas funciones del

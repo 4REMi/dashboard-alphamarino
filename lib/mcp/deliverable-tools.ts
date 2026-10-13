@@ -43,6 +43,30 @@ async function currentRows(projectId: string, pid: string) {
   return { cur, rows, prev, prevRows }
 }
 
+// Resto del alcance (para completo: true): continuos, hitos cumplidos e
+// historial de periodos anteriores al actual.
+async function fullScope(projectId: string, pid: string, curStart: string | null) {
+  const ov = await getScopeOverview(projectId, pid)
+  const src = (l: { offerName: string | null }) => l.offerName ? ` (oferta ${l.offerName})` : " (propio)"
+  const cont = ov.lines.filter((l) => l.cadence === "continuous")
+  const doneOnce = ov.rows.filter((r) => r.period_label === "Único" && r.fulfilled_quantity >= r.expected_quantity)
+  const past = ov.periods.filter((pp) => !pp.isCurrent && (!curStart || pp.start < curStart)).reverse()
+  const out: string[] = []
+  out.push(`\n\nContinuos (sin conteo): ${cont.length ? "" : "ninguno"}`)
+  cont.forEach((l) => out.push(`- ${l.text}${src(l)}`))
+  out.push(`\nHitos únicos cumplidos: ${doneOnce.length ? "" : "ninguno"}`)
+  doneOnce.forEach((r) => out.push(`- ✅ ${r.deliverable_text} — ${r.fulfilled_quantity}/${r.expected_quantity}`))
+  out.push(`\nHistorial de periodos: ${past.length ? "" : "sin periodos anteriores"}`)
+  for (const pp of past) {
+    const rs = ov.rows.filter((r) => r.period_start === pp.start && r.period_label !== "Único")
+    const d = rs.reduce((s, r) => s + Math.min(r.fulfilled_quantity, r.expected_quantity), 0)
+    const e = rs.reduce((s, r) => s + r.expected_quantity, 0)
+    const miss = rs.filter((r) => r.fulfilled_quantity < r.expected_quantity)
+    out.push(`- ${pp.label} (${pp.start} → ${pp.end}): ${d}/${e}${e && d >= e ? " ✅" : ""}${miss.length ? ` · faltó: ${miss.map((r) => `${r.deliverable_text} ${r.fulfilled_quantity}/${r.expected_quantity}`).join(", ")}` : ""}`)
+  }
+  return out.join("\n")
+}
+
 const fmt = (r: ProjectDeliverablePeriod, i: number) =>
   `${i + 1}. ${r.fulfilled_quantity >= r.expected_quantity ? "✅" : "◻️"} ${r.deliverable_text} — ${r.fulfilled_quantity}/${r.expected_quantity}${r.period_label === "Único" ? " (una vez)" : ""}`
 
@@ -152,14 +176,15 @@ export function registerDeliverableTools(server: McpServer) {
     "entregables_proyecto",
     {
       title: "Entregables del periodo",
-      description: "Entregables del periodo actual de un proyecto (lo que se palomea): cada uno con su avance (hecho/esperado), los hitos únicos pendientes y si el periodo anterior quedó incompleto. Los números sirven para marcar_entregable y ajustar_entregable.",
-      inputSchema: z.object({ proyecto: z.string().min(1) }),
+      description: "Entregables del periodo actual de un proyecto (lo que se palomea): cada uno con su avance (hecho/esperado), los hitos únicos pendientes y si el periodo anterior quedó incompleto. Los números sirven para marcar_entregable y ajustar_entregable. Con completo: true agrega todo el alcance: entregables continuos (sin conteo), hitos únicos ya cumplidos y el historial de periodos anteriores (hasta 12) con su avance y lo que faltó.",
+      inputSchema: z.object({ proyecto: z.string().min(1), completo: z.boolean().default(false) }),
     },
-    async ({ proyecto }, ctx: ToolCtx) => {
+    async ({ proyecto, completo }, ctx: ToolCtx) => {
       const pid = profileId(ctx)
       const p = await project(proyecto)
       const { cur, rows, prev, prevRows } = await currentRows(p.id, pid)
-      if (!rows.length) return text(`${p.name} no tiene entregables en el periodo actual (¿tiene ofertas asignadas?).`)
+      const extra = completo ? await fullScope(p.id, pid, cur?.start ?? null) : ""
+      if (!rows.length) return text(`${p.name} no tiene entregables en el periodo actual (¿tiene ofertas asignadas?).${extra}`)
       const done = rows.reduce((s, r) => s + Math.min(r.fulfilled_quantity, r.expected_quantity), 0)
       const exp = rows.reduce((s, r) => s + r.expected_quantity, 0)
       const prevMissing = prevRows.filter((r) => r.fulfilled_quantity < r.expected_quantity)
@@ -167,7 +192,7 @@ export function registerDeliverableTools(server: McpServer) {
         `${p.name} · ${cur ? `periodo ${cur.label} (${cur.start} → ${cur.end})` : "sin periodo actual"} · ${done}/${exp}`,
         ...rows.map(fmt),
         prev && prevMissing.length ? `\n⚠️ Periodo anterior (${prev.label}) incompleto: ${prevMissing.map((r) => `${r.deliverable_text} ${r.fulfilled_quantity}/${r.expected_quantity}`).join(", ")}` : "",
-      ].filter(Boolean).join("\n"))
+      ].filter(Boolean).join("\n") + extra)
     },
   )
 
