@@ -230,3 +230,18 @@ hasta 3 coincidencias con % de confianza y un concepto nuevo pre-llenado
 (editable). Nada se asigna sin un clic: `assignAssetToConcept` o
 `createConceptFromAsset`. Transcripción y análisis quedan en
 `creative_assets.transcript` / `ai_analysis` (migración 112) para reusarlos.
+
+## Aprobación interna (sin cliente) — 2026-10-13
+
+Para conceptos donde el cliente final no revisa, admin/subadmin aprueban desde
+el modal del concepto, sin pasar por el panel del cliente:
+- **Piezas**: botón "Aprobar" en cada tarjeta (`setAssetInternalApproval` en
+  `lib/actions/creatives.ts`). Pone `client_status = approved` sin cambiar la
+  visibilidad. Una pieza oculta y aprobada se muestra "Aprobado por el equipo"
+  (verde), ya no cuenta como borrador ni como "sin publicar"; "Quitar
+  aprobación" la regresa a borrador. Si luego se publica al cliente, vuelve a
+  "En revisión" como siempre.
+- **Guiones**: "Aprobar" / "Aprobar guiones" junto a las pastillas del brief
+  (`autoApproveBriefScripts`, ahora acepta claves específicas).
+- **"Aprobar todo"** en la cabecera de Assets: aprueba todas las piezas vigentes
+  y todos los guiones de los briefs del concepto (pide confirmación).

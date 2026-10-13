@@ -466,6 +466,21 @@ export async function toggleClientVisible(
   revalidateProject(projectId)
 }
 
+// Aprobación interna (sin pasar por el panel del cliente): el equipo da por
+// buena la pieza. No cambia la visibilidad; una pieza oculta y aprobada
+// cuenta como "Aprobado por el equipo", no como borrador.
+export async function setAssetInternalApproval(assetIds: string[], projectId: string, approved: boolean): Promise<void> {
+  const { role } = await getRole()
+  if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
+  if (!assetIds.length) return
+  const supabase = await createClient()
+  const { error } = await supabase.from("creative_assets")
+    .update({ client_status: approved ? "approved" : null, client_feedback: null })
+    .in("id", assetIds).eq("project_id", projectId)
+  if (error) throw error
+  revalidateProject(projectId)
+}
+
 // ── BRIEFS ──────────────────────────────────────────────────
 
 export async function createBrief(
@@ -600,7 +615,7 @@ export async function deleteBriefReference(briefId: string, projectId: string, r
 // use the approval status as an internal control signal instead of it
 // sitting stale forever. Only touches scripts that actually exist in
 // adapted_script; doesn't invent entries for keys with no script.
-export async function autoApproveBriefScripts(briefId: string, projectId: string): Promise<void> {
+export async function autoApproveBriefScripts(briefId: string, projectId: string, onlyKeys?: string[]): Promise<void> {
   const { role } = await getRole()
   if (!isAdminOrSubadmin(role)) throw new Error("Permission denied")
   const supabase = await createClient()
@@ -616,7 +631,7 @@ export async function autoApproveBriefScripts(briefId: string, projectId: string
   const scriptKeys = rawScript && !Array.isArray(rawScript) ? Object.keys(rawScript) : rawScript ? ["_single"] : []
 
   const scriptReviews = { ...(existing?.script_reviews as Record<string, unknown> | null ?? {}) }
-  for (const key of scriptKeys) {
+  for (const key of scriptKeys.filter((k) => !onlyKeys || onlyKeys.includes(k))) {
     scriptReviews[key] = { client_status: "approved", client_feedback: null }
   }
 

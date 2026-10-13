@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ConceptModal } from "./concept-modal"
 import { AssetModal } from "./asset-modal"
-import { generateCreativeConcepts, confirmAIDrafts, deleteConcept, bulkDeleteConcepts, deleteBrief, deleteAsset, toggleClientVisible, updateBriefTitle, setAssetBrief, moveAssetsToConcept } from "@/lib/actions/creatives"
+import { generateCreativeConcepts, confirmAIDrafts, deleteConcept, bulkDeleteConcepts, deleteBrief, deleteAsset, toggleClientVisible, updateBriefTitle, setAssetBrief, moveAssetsToConcept, setAssetInternalApproval, autoApproveBriefScripts } from "@/lib/actions/creatives"
 import { CONCEPT_STATUS_COLORS, AWARENESS_LABELS, ANGLE_GUIDE, PRODUCTION_STATUS_COLORS, VERDICT_COLORS } from "@/lib/constants/creatives"
 import type { CreativeConcept, CreativeAsset, CreativeBrief, BrandLine, AdCloneLine } from "@/lib/types"
 import type { AIDraftConcept } from "@/lib/actions/creatives"
@@ -104,8 +104,10 @@ const SCRIPT_STATUS_STYLE: Record<ScriptReviewEntry["status"], { label: string; 
 
 // Pastillas de guion clickeables: abren la vista ligera para revisar y
 // corregir el guion sin salir del concepto (ver script-quick-view.tsx).
-function BriefScriptStatus({ brief, canEdit }: { brief: CreativeBrief; canEdit: boolean }) {
+export function BriefScriptStatus({ brief, canEdit, projectId, onRefresh }: { brief: CreativeBrief; canEdit: boolean; projectId?: string; onRefresh?: () => void }) {
   const [openKey, setOpenKey] = useState<string | null>(null)
+  const [approving, startApprove] = useTransition()
+  const approve = (keys?: string[]) => projectId && startApprove(async () => { await autoApproveBriefScripts(brief.id, projectId, keys); onRefresh?.() })
   const entries = scriptReviewEntries(brief)
   if (entries.length === 0) return null
   const changes = entries.filter((e) => e.status === "changes_requested")
@@ -119,6 +121,13 @@ function BriefScriptStatus({ brief, canEdit }: { brief: CreativeBrief; canEdit: 
             {e.label} · {SCRIPT_STATUS_STYLE[e.status].label}
           </button>
         ))}
+        {canEdit && projectId && entries.some((e) => e.status !== "approved") && (
+          <button type="button" onClick={() => approve(entries.length === 1 ? [entries[0].key] : undefined)} disabled={approving}
+            title="Aprobar sin revisión del cliente"
+            className="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-emerald-300 text-emerald-700 hover:bg-emerald-50 inline-flex items-center gap-0.5 disabled:opacity-50 dark:text-emerald-300 dark:border-emerald-800">
+            <Check className="w-2.5 h-2.5" />{entries.length === 1 ? "Aprobar" : "Aprobar guiones"}
+          </button>
+        )}
       </div>
       {changes.length > 0 && (
         <div className="space-y-1">
@@ -200,18 +209,20 @@ function buildPieces(assets: CreativeAsset[]): AssetPiece[] {
 
 // Estado escrito — antes eran ojitos de colores sin explicación.
 function assetStatus(a: CreativeAsset): { label: string; detail: string } {
+  if (a.client_status === "approved") return a.client_visible ? { label: "Aprobado", detail: "El cliente lo aprobó." } : { label: "Aprobado por el equipo", detail: "Sin revisión del cliente." }
   if (!a.client_visible) return { label: "Borrador", detail: "Solo el equipo lo ve." }
-  if (a.client_status === "approved") return { label: "Aprobado", detail: "El cliente lo aprobó." }
   if (a.client_status === "changes_requested") return { label: "Cambios pedidos", detail: "El cliente pidió cambios." }
   return { label: "En revisión del cliente", detail: "El cliente lo ve y aún no responde." }
 }
 
-function AssetPieceCard({ piece, live, canManage, onOpen, onNewVersion }: {
+export function AssetPieceCard({ piece, live, canManage, canApprove, onOpen, onNewVersion, onApprove }: {
   piece: AssetPiece
   live: AssetMetaLinkStatus | undefined
   canManage: boolean
+  canApprove?: boolean
   onOpen: () => void
   onNewVersion: () => void
+  onApprove?: (approved: boolean) => void
 }) {
   const a = piece.current
   const thumb = assetThumbUrl(a)
@@ -220,10 +231,10 @@ function AssetPieceCard({ piece, live, canManage, onOpen, onNewVersion }: {
   // Mismo significado que las pastillas del tracker: rojo = cambios
   // pedidos, verde = aprobado, ámbar = borrador (sin publicar), neutro =
   // esperando al cliente.
-  const tone = !a.client_visible
-    ? "bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-900"
-    : a.client_status === "approved"
-      ? "bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-900"
+  const tone = a.client_status === "approved"
+    ? "bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-900"
+    : !a.client_visible
+      ? "bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-900"
       : needsChanges
         ? "bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-900"
         : "bg-card"
@@ -269,6 +280,14 @@ function AssetPieceCard({ piece, live, canManage, onOpen, onNewVersion }: {
             {a.client_feedback}
           </div>
         )}
+        {canApprove && onApprove && (a.client_status === "approved" ? (
+          !a.client_visible && <button type="button" onClick={() => onApprove(false)} className="text-[11px] text-left text-muted-foreground hover:text-foreground">Quitar aprobación</button>
+        ) : (
+          <button type="button" onClick={() => onApprove(true)}
+            className="mt-1 h-7 rounded-md border border-emerald-300 bg-background text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 inline-flex items-center justify-center gap-1 dark:text-emerald-300 dark:border-emerald-800">
+            <Check className="w-3 h-3" /> Aprobar
+          </button>
+        ))}
         {canManage && (
           <button
             type="button"
@@ -373,7 +392,22 @@ function ConceptDetailModal({
       pieces: pieces.filter((p) => !p.current.brief_id || !conceptBriefs.some((b) => b.id === p.current.brief_id)),
     },
   ].filter((g) => g.pieces.length > 0 || g.key !== "_none")
-  const unpublished = pieces.filter((p) => !p.current.client_visible)
+  const unpublished = pieces.filter((p) => !p.current.client_visible && p.current.client_status !== "approved")
+  const unapproved = pieces.filter((p) => p.current.client_status !== "approved")
+  const pendingScripts = conceptBriefs.some((b) => scriptReviewEntries(b).some((e) => e.status !== "approved"))
+
+  function approveAssets(ids: string[], approved: boolean) {
+    for (const id of ids) onUpdateAsset(id, { client_status: approved ? "approved" : null, client_feedback: null })
+    startTransition(async () => { await setAssetInternalApproval(ids, projectId, approved) })
+  }
+  function approveEverything() {
+    if (!confirm("¿Aprobar todas las piezas y guiones de este concepto sin revisión del cliente?")) return
+    approveAssets(unapproved.map((p) => p.current.id), true)
+    startTransition(async () => {
+      await Promise.all(conceptBriefs.map((b) => autoApproveBriefScripts(b.id, projectId)))
+      onRefresh()
+    })
+  }
 
   function publishAll() {
     for (const p of unpublished) {
@@ -583,7 +617,7 @@ function ConceptDetailModal({
                             )}
                           </div>
                         )}
-                        <BriefScriptStatus brief={b} canEdit={isAdminOrSubadmin} />
+                        <BriefScriptStatus brief={b} canEdit={isAdminOrSubadmin} projectId={projectId} onRefresh={onRefresh} />
                       </div>
                     ))}
                   </div>
@@ -621,6 +655,13 @@ function ConceptDetailModal({
                 </p>
               </div>
               <div className="flex items-center gap-2">
+                {isAdminOrSubadmin && (unapproved.length > 0 || pendingScripts) && (
+                  <Button type="button" variant="outline" size="sm" onClick={approveEverything} disabled={isPending}
+                    title="Para conceptos sin revisión del cliente: aprueba piezas y guiones aquí mismo">
+                    <Check className="w-3.5 h-3.5 mr-1.5" />
+                    Aprobar todo
+                  </Button>
+                )}
                 {isAdminOrSubadmin && unpublished.length > 0 && (
                   <Button type="button" variant="outline" size="sm" onClick={publishAll} disabled={isPending}>
                     <Eye className="w-3.5 h-3.5 mr-1.5" />
@@ -660,6 +701,8 @@ function ConceptDetailModal({
                           canManage={canManageAssets}
                           onOpen={() => { setLightboxVideoError(false); setLightboxAsset(p.current) }}
                           onNewVersion={() => onNewAsset({ briefId: p.current.brief_id, revisesAssetId: p.current.id })}
+                          canApprove={isAdminOrSubadmin}
+                          onApprove={(ok) => approveAssets([p.current.id], ok)}
                         />
                       ))}
                     </div>
@@ -1469,7 +1512,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
         const count = groupConcepts.length
         const groupConceptIds = new Set(groupConcepts.map((c) => c.id))
         const unpublishedInGroup = buildPieces(assets.filter((a) => a.concept_id && groupConceptIds.has(a.concept_id)))
-          .filter((p) => !p.current.client_visible).length
+          .filter((p) => !p.current.client_visible && p.current.client_status !== "approved").length
 
         return (
           <div key={groupId} className="border rounded-lg overflow-hidden bg-card">
@@ -1735,7 +1778,7 @@ function ConceptAttentionNotes({ conceptAssets, conceptBriefs }: { conceptAssets
   // Solo la versión vigente de cada pieza — una versión anterior ya
   // reemplazada no es algo pendiente.
   const current = buildPieces(conceptAssets).map((p) => p.current)
-  const unpublished = current.filter((a) => !a.client_visible).length
+  const unpublished = current.filter((a) => !a.client_visible && a.client_status !== "approved").length
   const assetChanges = current.filter((a) => a.client_visible && a.client_status === "changes_requested").length
   const scriptEntries = conceptBriefs.flatMap((b) => scriptReviewEntries(b))
   const scriptChanges = scriptEntries.filter((e) => e.status === "changes_requested").length

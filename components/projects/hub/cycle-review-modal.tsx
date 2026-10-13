@@ -35,8 +35,8 @@ function daysBetween(start: string, end: string) {
 
 // Mismo código de color que las tarjetas de pieza del Creative Tracker.
 function assetTone(a: CreativeAsset): { label: string; className: string; warning?: string } {
+  if (a.client_status === "approved") return { label: a.client_visible ? "Aprobado" : "Aprobado por el equipo", className: "bg-emerald-100 text-emerald-800" }
   if (!a.client_visible) return { label: "Borrador", className: "bg-amber-100 text-amber-800", warning: "Se lleva sin terminar" }
-  if (a.client_status === "approved") return { label: "Aprobado", className: "bg-emerald-100 text-emerald-800" }
   if (a.client_status === "changes_requested") return { label: "Cambios pedidos", className: "bg-red-100 text-red-800", warning: "Se lleva con cambios pendientes" }
   return { label: "En revisión del cliente", className: "bg-muted text-muted-foreground" }
 }

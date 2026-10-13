@@ -43,8 +43,8 @@ export function captureVideoThumbnail(blobUrl: string): Promise<Blob | null> {
 const ASSET_BASE = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/creative-assets/`
 
 function revisionStatusLabel(a: CreativeAsset): string {
+  if (a.client_status === "approved") return a.client_visible ? "Aprobado" : "Aprobado por el equipo"
   if (!a.client_visible) return "Borrador"
-  if (a.client_status === "approved") return "Aprobado"
   if (a.client_status === "changes_requested") return "Cambios pedidos"
   return "En revisión del cliente"
 }
