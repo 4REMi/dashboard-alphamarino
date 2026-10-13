@@ -532,6 +532,12 @@ export function StandupDump({ projects, employees, sops, currentUserId, onClose,
                             <span className="w-1.5 h-1.5 rounded-full bg-violet-500" title="Tiene detalles adicionales" />
                           )}
                         </button>
+                        {!expandedKeys.has(it.key) && it.description.trim() && (
+                          <button type="button" onClick={() => toggleExpanded(it.key)}
+                            className="block w-full text-left text-xs text-muted-foreground whitespace-pre-line line-clamp-3 hover:text-foreground">
+                            {it.description.trim()}
+                          </button>
+                        )}
                         {expandedKeys.has(it.key) && (
                           <TaskDetailsEditor
                             description={it.description}

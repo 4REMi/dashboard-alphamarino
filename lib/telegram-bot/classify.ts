@@ -155,8 +155,8 @@ const STANDUP_TOOL: Anthropic.Tool = {
               enum: ["tarea", "nota_proyecto"],
               description: "'tarea' = un pendiente o algo por hacer, explícito o implícito. 'nota_proyecto' = un comentario o actualización informativa de un proyecto, no un pendiente.",
             },
-            titulo: { type: "string", description: "Para 'tarea': título breve y claro (o el texto tal cual si es un pendiente implícito)." },
-            descripcion: { type: "string", description: "Para 'nota_proyecto': el cuerpo de la nota. Para 'tarea': contexto útil para quien la haga (qué, para qué, detalles, links o cifras mencionados), SOLO si el texto lo da; si no, vacío. No repitas el título." },
+            titulo: { type: "string", description: "Para 'tarea': título breve y accionable (verbo + objeto, máx. ~70 caracteres). Si el pendiente viene largo, NO copies el texto: resúmelo en el título y deja el detalle en la descripción." },
+            descripcion: { type: "string", description: "Para 'nota_proyecto': el cuerpo de la nota. Para 'tarea', a tu criterio según qué tanto da el texto: (a) pendiente simple o corto (\"mandar factura a X\") → vacío o una línea de contexto; (b) pendiente largo o con varias partes (explica un proceso, objetivos, condiciones, pasos, con quién coordinar) → desarróllalo: 1–2 líneas de contexto (qué y para qué) y luego pasos numerados (\"1. …\"), con lo que hay que validar antes y qué dejar al terminar si aplica. Usa solo hechos del texto; puedes ordenar y explicitar pasos lógicos, pero no inventes cifras, fechas, nombres ni requisitos. Texto plano, sin markdown de negritas. No repitas el título." },
             pingear: { type: "boolean", description: "Solo 'tarea': true si el usuario pide que le avisen/confirmen cuando se termine, o que se avise a alguien al completarla. Si no lo pide, false." },
             avisar_a: { type: "array", items: { type: "string" }, description: "Solo 'tarea' con pingear: nombres de quién debe enterarse al completarla. Vacío = todo el equipo del proyecto." },
             proyecto: { type: "string", description: "Nombre del proyecto mencionado (tal cual lo dice el usuario). Puede faltar en una 'tarea' (queda sin proyecto); una 'nota_proyecto' SIEMPRE debe tener proyecto." },
@@ -183,7 +183,7 @@ export async function classifyStandup(
 
   const response = await client.messages.create({
     model: "claude-sonnet-4-6",
-    max_tokens: 2048,
+    max_tokens: 4096,
     tools: [STANDUP_TOOL],
     tool_choice: { type: "tool", name: "registrar_pendientes" },
     messages: [

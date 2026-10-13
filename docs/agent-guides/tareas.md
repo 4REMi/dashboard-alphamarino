@@ -47,7 +47,11 @@ navegar a cada proyecto uno por uno.
   cargan al abrirlo (`getQuickCaptureData`, mismos proyectos visibles que /tasks).
   En /tasks no aparece (ya está el botón de la página).
 - **Pre-rellenado de la IA en Captura rápida**: además de proyecto, responsable y
-  fecha, la IA propone la **descripción** (solo si el texto da contexto) y el
+  fecha, la IA propone la **descripción** a su criterio: pendiente corto → vacía
+  o una línea; pendiente largo → título corto y accionable + descripción
+  desarrollada (contexto y pasos numerados, sin inventar datos; prompt en
+  `lib/telegram-bot/classify.ts`). La tarjeta muestra un avance de 3 líneas de
+  la descripción sin abrir "Más detalles". También propone el
   **ping** (si pides que te avisen al terminar, con a quién). Mismo motor para el
   dashboard y el MCP (`lib/standup-core.ts`).
 - **"Más detalles" en Captura rápida**: cada tarjeta de tipo tarea trae, colapsado
