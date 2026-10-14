@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Plus, ChevronDown, Check, ListChecks, TriangleAlert } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { NotifyTeamToggle } from "@/components/projects/notify-team-toggle"
 
 interface PhaseSetPhase {
   id: string
@@ -38,6 +39,8 @@ interface Props {
 export function AddPhasesButton({ projectId, phaseSets, defaultPhaseSetId, existingPhases }: Props) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
+  // Apagado por defecto: en proyectos ya empezados no siempre conviene avisar.
+  const [notifyTeam, setNotifyTeam] = useState(false)
   const [selectedSetId, setSelectedSetId] = useState(defaultPhaseSetId ?? phaseSets[0]?.id ?? "")
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [selectedPhaseIds, setSelectedPhaseIds] = useState<Set<string>>(new Set())
@@ -91,7 +94,8 @@ export function AddPhasesButton({ projectId, phaseSets, defaultPhaseSetId, exist
         await importPhasesToProject(
           projectId,
           orderedIds,
-          afterPhaseId === "start" ? null : afterPhaseId
+          afterPhaseId === "start" ? null : afterPhaseId,
+          notifyTeam,
         )
         setOpen(false)
         router.refresh()
@@ -250,6 +254,8 @@ export function AddPhasesButton({ projectId, phaseSets, defaultPhaseSetId, exist
             <Check className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0 mt-0.5" />
             Las fases y tareas existentes no se modifican. Solo se agregan las fases seleccionadas.
           </p>
+
+          <NotifyTeamToggle value={notifyTeam} onChange={setNotifyTeam} />
 
           {error && (
             <p className="text-sm text-destructive flex items-center gap-1.5">

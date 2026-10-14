@@ -99,7 +99,8 @@ async function copyTaskSetsToProject(
   supabase: SupabaseClient,
   templatePhases: Array<{ default_task_set_id: string | null }>,
   projectId: string,
-  phaseIdByTaskSetId: Record<string, string> = {}
+  phaseIdByTaskSetId: Record<string, string> = {},
+  notifyTeam = true,
 ) {
   try {
     const taskSetIds = templatePhases
@@ -161,7 +162,7 @@ async function copyTaskSetsToProject(
       // — applying a phase set can auto-assign dozens of tasks by position
       // in a single shot, and nobody needs a flood of individual "task
       // assigned" pings for that. See NOTIFICATION_EVENTS.project_phase_tasks_assigned.
-      if (insertedTasks && insertedTasks.length > 0) {
+      if (notifyTeam && insertedTasks && insertedTasks.length > 0) {
         const countByAssignee = new Map<string, number>()
         for (const t of insertedTasks) {
           if (!t.assignee_id) continue
@@ -701,7 +702,8 @@ export async function createProject(
 export async function importPhasesToProject(
   projectId: string,
   phaseSetPhaseIds: string[],
-  afterPhaseId: string | null   // null = prepend, "end" = append, else insert after that phase
+  afterPhaseId: string | null,  // null = prepend, "end" = append, else insert after that phase
+  notifyTeam = true,
 ) {
   const supabase = createAdminClient()
 
@@ -767,12 +769,12 @@ export async function importPhasesToProject(
       phaseIdByTaskSetId[tp.default_task_set_id] = created.id
     }
   })
-  await copyTaskSetsToProject(supabase, templatePhases, projectId, phaseIdByTaskSetId)
+  await copyTaskSetsToProject(supabase, templatePhases, projectId, phaseIdByTaskSetId, notifyTeam)
 
   revalidatePath(`/projects/${projectId}`)
 }
 
-export async function applyPhaseSetToProject(projectId: string, phaseSetId: string) {
+export async function applyPhaseSetToProject(projectId: string, phaseSetId: string, notifyTeam = true) {
   const supabase = createAdminClient()
 
   // Get phases from the phase set
@@ -808,7 +810,7 @@ export async function applyPhaseSetToProject(projectId: string, phaseSetId: stri
   })
 
   // Copy tasks from each phase's default task set
-  await copyTaskSetsToProject(supabase, templatePhases, projectId, phaseIdByTaskSetId)
+  await copyTaskSetsToProject(supabase, templatePhases, projectId, phaseIdByTaskSetId, notifyTeam)
 
   revalidatePath(`/projects/${projectId}`)
 }

@@ -225,3 +225,13 @@ fase"): lista las fases con su número de tareas; al quitar una con tareas se
 elige moverlas a otra fase, dejarlas sin fase o eliminarlas
 (`deleteProjectPhase(phaseId, projectId, tasksTo)`). Las fases restantes se
 renumeran. Se reordenan arrastrando (asa a la izquierda; `reorderProjectPhases`). Para reemplazar fases: quitar aquí y agregar con "Agregar fase".
+
+## "Notificar al equipo" al agregar/aplicar fases — 2026-10-14
+
+"Agregar fase" y "Aplicar fases" en proyectos existentes traen el interruptor
+**Notificar al equipo**, apagado por defecto. Apagado: las tareas de plantilla
+se crean y se asignan por puesto igual, pero nadie recibe el aviso
+`project_phase_tasks_assigned`. Encendido: un aviso por persona con su total.
+(`notifyTeam` en `importPhasesToProject` / `applyPhaseSetToProject` /
+`copyTaskSetsToProject`; crear proyecto sigue avisando siempre.) Reordenar o
+quitar fases nunca avisa.

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { GitBranch, TriangleAlert, ChevronDown, Check, ListChecks } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { NotifyTeamToggle } from "@/components/projects/notify-team-toggle"
 
 interface PhaseSetPhase {
   id: string
@@ -31,6 +32,8 @@ interface Props {
 export function ApplyPhasesButton({ projectId, phaseSets, defaultPhaseSetId }: Props) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
+  // Apagado por defecto: en proyectos ya empezados no siempre conviene avisar.
+  const [notifyTeam, setNotifyTeam] = useState(false)
   const [step, setStep] = useState<"select" | "confirm">("select")
   const [selectedSetId, setSelectedSetId] = useState(defaultPhaseSetId ?? phaseSets[0]?.id ?? "")
   const [dropdownOpen, setDropdownOpen] = useState(false)
@@ -50,7 +53,7 @@ export function ApplyPhasesButton({ projectId, phaseSets, defaultPhaseSetId }: P
     setError(null)
     startTransition(async () => {
       try {
-        await applyPhaseSetToProject(projectId, selectedSetId)
+        await applyPhaseSetToProject(projectId, selectedSetId, notifyTeam)
         setOpen(false)
         setStep("select")
         router.refresh()
@@ -214,6 +217,8 @@ export function ApplyPhasesButton({ projectId, phaseSets, defaultPhaseSetId }: P
                 <p className="text-sm font-semibold">{selectedSet?.name}</p>
               </div>
             </div>
+
+            <NotifyTeamToggle value={notifyTeam} onChange={setNotifyTeam} />
 
             {error && <p className="text-sm text-destructive">{error}</p>}
 
