@@ -33,6 +33,7 @@ import {
   Puzzle,
   Wallet,
   ScanSearch,
+  Bot,
 } from "lucide-react"
 import { useState } from "react"
 import Image from "next/image"
@@ -107,6 +108,7 @@ export function Sidebar({ profile, logoUrl, myPendingTaskCount = 0, mobileOpen =
       href: "/operations", icon: FlaskConical, label: t("operationsLab"), adminOnly: true,
     },
     { href: "/my-lab", icon: Lightbulb, label: "Ops. Canva" },
+    { href: "/actividad-ia", icon: Bot, label: "Actividad de IA", adminOnly: true },
     { href: "/settings", icon: Settings, label: t("settings"), adminOnly: true },
   ]
 

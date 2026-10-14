@@ -320,3 +320,13 @@ antes que parcial; con varias coincidencias gana el proyecto **activo**, luego
 cualquiera no archivado. Un archivado solo se usa si es el único que coincide.
 Solo hay error si siguen empatados varios activos (lista nombres y estado).
 Las herramientas de Meta solo consideran proyectos activos.
+
+## Actividad de IA (provisional, solo admin) — 2026-10-14
+
+Los cambios que hace Claude en Meta vía MCP ya **no** van a la bitácora del
+proyecto: se guardan en la tabla `ai_activity` (migración 116; `log()` en
+`lib/mcp/meta-tools.ts`). Campos: proyecto, `actor` (`claude_mcp`; a futuro
+`agente`), quién lo pidió, plataforma, resumen, motivo opcional. Se ve en
+`/actividad-ia` (solo rol admin; link en el sidebar), agrupado por sesión
+(mismo proyecto, IA y solicitante, sin pausas de >30 min) y filtrable por
+proyecto. La migración movió ahí las notas viejas "Meta (vía Claude)".

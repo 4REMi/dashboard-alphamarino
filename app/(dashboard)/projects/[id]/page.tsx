@@ -25,6 +25,7 @@ import { CreativesHub } from "@/components/projects/hub/creatives/creatives-hub"
 import { ProjectActions } from "@/components/projects/project-actions"
 import { ApplyPhasesButton } from "@/components/projects/apply-phases-button"
 import { AddPhasesButton } from "@/components/projects/add-phases-button"
+import { EditPhasesButton } from "@/components/projects/edit-phases-button"
 import { TaskForm } from "@/components/tasks/task-form"
 import { TaskTable } from "@/components/tasks/task-table"
 import { ProjectPhases } from "@/components/projects/project-phases"
@@ -141,6 +142,13 @@ export default async function ProjectDetailPage({ params, searchParams }: { para
   const isProjectMember = memberProfiles.some((m) => m.id === user!.id)
 
   const hasContextSection = hasPhases || (isAdminOrSubadmin && phaseSets.length > 0) || isPaidMedia
+
+  const phaseTaskCounts: Record<string, { done: number; total: number }> = Object.fromEntries(
+    phases.map((ph) => {
+      const phaseTasks = tasks.filter((t) => t.phase_id === ph.id)
+      return [ph.id, { done: phaseTasks.filter((t) => t.status === "Done").length, total: phaseTasks.length }]
+    }).filter(([, v]) => (v as { total: number }).total > 0)
+  )
 
   return (
     <div className="flex flex-col min-h-full">
@@ -271,6 +279,7 @@ export default async function ProjectDetailPage({ params, searchParams }: { para
               canEdit={isAdminOrSubadmin}
               actions={isAdminOrSubadmin && phaseSets.length > 0 ? (
                 <>
+                  {phases.length > 0 && <EditPhasesButton projectId={project.id} phases={phases.map((p) => ({ id: p.id, name: p.name, phase_order: p.phase_order }))} taskCountByPhaseId={phaseTaskCounts} />}
                   <AddPhasesButton
                     projectId={project.id}
                     phaseSets={phaseSets as Parameters<typeof ApplyPhasesButton>[0]["phaseSets"]}
@@ -284,12 +293,7 @@ export default async function ProjectDetailPage({ params, searchParams }: { para
                   />
                 </>
               ) : undefined}
-              taskCountByPhaseId={Object.fromEntries(
-                phases.map((ph) => {
-                  const phaseTasks = tasks.filter((t) => t.phase_id === ph.id)
-                  return [ph.id, { done: phaseTasks.filter((t) => t.status === "Done").length, total: phaseTasks.length }]
-                }).filter(([, v]) => (v as { total: number }).total > 0)
-              )}
+              taskCountByPhaseId={phaseTaskCounts}
             />
         )}
 

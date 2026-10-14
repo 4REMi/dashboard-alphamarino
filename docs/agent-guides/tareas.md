@@ -217,3 +217,11 @@ nunca se infiere del contenido.
 - `supabase/migrations/070_task_personal_scope.sql` — columna `tasks.is_personal`.
 - `lib/notifications/` — `task_assigned` se dispara al asignar (por dashboard o por
   voz a alguien más, no en auto-asignación a uno mismo).
+
+## Quitar fases de un proyecto — 2026-10-14
+
+Botón **"Editar fases"** en el Hub Proyecto (admin/subadmin, junto a "Agregar
+fase"): lista las fases con su número de tareas; al quitar una con tareas se
+elige moverlas a otra fase, dejarlas sin fase o eliminarlas
+(`deleteProjectPhase(phaseId, projectId, tasksTo)`). Las fases restantes se
+renumeran. Para reemplazar fases: quitar aquí y agregar con "Agregar fase".

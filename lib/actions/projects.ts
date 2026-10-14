@@ -957,14 +957,24 @@ export async function updateProjectPhaseStatus(
   revalidatePath(`/projects/${projectId}`)
 }
 
-export async function deleteProjectPhase(phaseId: string, projectId: string) {
-  const supabase = await createClient()
-  // Tasks in this phase are deleted via ON DELETE CASCADE on phase_id,
-  // or we can reassign them. Since project_phases FK on tasks is nullable
-  // let's delete the tasks explicitly first, then the phase.
-  await supabase.from("tasks").delete().eq("phase_id", phaseId)
+// Borra una fase. Sus tareas: se mueven a otra fase (tasksTo = id), se
+// quedan sin fase (null) o se borran ("delete", lo de antes). Admin/subadmin.
+export async function deleteProjectPhase(phaseId: string, projectId: string, tasksTo: string | null | "delete" = "delete") {
+  const authClient = await createClient()
+  const { data: { user } } = await authClient.auth.getUser()
+  if (!user) throw new Error("Not authenticated")
+  const supabase = createAdminClient()
+  const { data: me } = await supabase.from("profiles").select("role").eq("id", user.id).single()
+  if (me?.role !== "admin" && me?.role !== "subadmin") throw new Error("Permission denied")
+  const { data: phase } = await supabase.from("project_phases").select("id").eq("id", phaseId).eq("project_id", projectId).single()
+  if (!phase) throw new Error("Fase no encontrada")
+  if (tasksTo === "delete") await supabase.from("tasks").delete().eq("phase_id", phaseId)
+  else await supabase.from("tasks").update({ phase_id: tasksTo }).eq("phase_id", phaseId)
   const { error } = await supabase.from("project_phases").delete().eq("id", phaseId)
   if (error) throw error
+  // Reordena las que quedan para que la numeración no tenga huecos.
+  const { data: rest } = await supabase.from("project_phases").select("id").eq("project_id", projectId).order("phase_order")
+  await Promise.all((rest ?? []).map((r, i) => supabase.from("project_phases").update({ phase_order: i }).eq("id", r.id)))
   revalidatePath(`/projects/${projectId}`)
 }
 

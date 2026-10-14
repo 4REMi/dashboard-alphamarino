@@ -113,7 +113,8 @@ export async function own(c: Client, id: string): Promise<Obj> {
 const money = (minor: string | number | undefined, cur: string) => minor == null ? "—" : new Intl.NumberFormat("es-MX", { style: "currency", currency: cur }).format(Number(minor) / 100)
 
 export async function log(c: Client, profileId: string, body: string) {
-  await db().from("project_log_entries").insert({ project_id: c.projectId, author_id: profileId, body: `**Meta (vía Claude):** ${body}`, category: "Decisión" })
+  // Va a Actividad de IA (solo admin), no a la bitácora del proyecto.
+  await db().from("ai_activity").insert({ project_id: c.projectId, actor: "claude_mcp", requested_by: profileId, platform: "meta", summary: body })
 }
 
 export const confirmHint = "\n\nNo se cambió nada. Si es correcto, vuelve a llamar con confirmar: true."
