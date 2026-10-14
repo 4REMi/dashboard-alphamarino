@@ -1,11 +1,14 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useEffect, useState, useTransition } from "react"
+import { DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core"
+import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 import { useRouter } from "next/navigation"
-import { deleteProjectPhase } from "@/lib/actions/projects"
+import { deleteProjectPhase, reorderProjectPhases } from "@/lib/actions/projects"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Pencil, Trash2, Loader2 } from "lucide-react"
+import { Pencil, Trash2, Loader2, GripVertical } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 // Quitar fases de un proyecto existente (p. ej. para reemplazarlas con
@@ -24,7 +27,22 @@ export function EditPhasesButton({ projectId, phases, taskCountByPhaseId }: Prop
   const [dest, setDest] = useState<string>("")
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
-  const sorted = [...phases].sort((a, b) => a.phase_order - b.phase_order)
+  const [sorted, setSorted] = useState(() => [...phases].sort((a, b) => a.phase_order - b.phase_order))
+  useEffect(() => { setSorted([...phases].sort((a, b) => a.phase_order - b.phase_order)) }, [phases])
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }))
+
+  function onDragEnd(e: DragEndEvent) {
+    if (!e.over || e.active.id === e.over.id) return
+    const from = sorted.findIndex((p) => p.id === e.active.id), to = sorted.findIndex((p) => p.id === e.over!.id)
+    const prev = sorted
+    const next = arrayMove(sorted, from, to)
+    setSorted(next)
+    setError(null)
+    startTransition(async () => {
+      try { await reorderProjectPhases(projectId, next.map((p) => p.id)); router.refresh() }
+      catch (err) { setSorted(prev); setError(err instanceof Error ? err.message : String(err)) }
+    })
+  }
 
   function start(id: string) {
     setError(null)
@@ -57,13 +75,16 @@ export function EditPhasesButton({ projectId, phases, taskCountByPhaseId }: Prop
         {sorted.length === 0 ? (
           <p className="text-sm text-muted-foreground">Este proyecto no tiene fases.</p>
         ) : (
-          <ul className="divide-y divide-border rounded-lg border border-border">
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+          <SortableContext items={sorted.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+          <ul className="divide-y divide-border rounded-lg border border-border max-h-[65vh] overflow-y-auto">
             {sorted.map((p, i) => {
               const count = taskCountByPhaseId[p.id]?.total ?? 0
               const isRemoving = removing === p.id
               return (
-                <li key={p.id} className={cn("px-3 py-2.5", isRemoving && "bg-red-50/60 dark:bg-red-950/20")}>
+                <Row key={p.id} id={p.id} className={cn("px-3 py-2.5", isRemoving && "bg-red-50/60 dark:bg-red-950/20")}>{(handle) => (<>
                   <div className="flex items-center gap-3">
+                    {handle}
                     <span className="w-6 h-6 rounded-full bg-muted text-[11px] font-semibold flex items-center justify-center shrink-0">{i + 1}</span>
                     <span className="flex-1 min-w-0">
                       <span className="block text-sm font-medium truncate">{p.name}</span>
@@ -95,14 +116,32 @@ export function EditPhasesButton({ projectId, phases, taskCountByPhaseId }: Prop
                       </div>
                     </div>
                   )}
-                </li>
+                </>)}</Row>
               )
             })}
           </ul>
+          </SortableContext>
+          </DndContext>
         )}
         {error && <p className="text-xs text-red-600">{error}</p>}
-        <p className="text-[11px] text-muted-foreground">Para reemplazar fases: quita las que sobran aquí y agrega las nuevas con “Agregar fase”.</p>
+        <p className="text-[11px] text-muted-foreground">Arrastra para reordenar. Para reemplazar fases: quita las que sobran aquí y agrega las nuevas con “Agregar fase”.</p>
       </DialogContent>
     </Dialog>
+  )
+}
+
+function Row({ id, className, children }: { id: string; className?: string; children: (handle: React.ReactNode) => React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id })
+  const handle = (
+    <button type="button" ref={setActivatorNodeRef} {...attributes} {...listeners} aria-label="Arrastrar para reordenar"
+      className="-ml-1 p-1 rounded text-muted-foreground/60 hover:text-foreground cursor-grab active:cursor-grabbing touch-none">
+      <GripVertical className="w-4 h-4" />
+    </button>
+  )
+  return (
+    <li ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={cn(className, "bg-card", isDragging && "relative z-10 shadow-lg ring-1 ring-border rounded-md")}>
+      {children(handle)}
+    </li>
   )
 }

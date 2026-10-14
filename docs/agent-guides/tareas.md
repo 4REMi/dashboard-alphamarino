@@ -224,4 +224,4 @@ Botón **"Editar fases"** en el Hub Proyecto (admin/subadmin, junto a "Agregar
 fase"): lista las fases con su número de tareas; al quitar una con tareas se
 elige moverlas a otra fase, dejarlas sin fase o eliminarlas
 (`deleteProjectPhase(phaseId, projectId, tasksTo)`). Las fases restantes se
-renumeran. Para reemplazar fases: quitar aquí y agregar con "Agregar fase".
+renumeran. Se reordenan arrastrando (asa a la izquierda; `reorderProjectPhases`). Para reemplazar fases: quitar aquí y agregar con "Agregar fase".

@@ -978,6 +978,18 @@ export async function deleteProjectPhase(phaseId: string, projectId: string, tas
   revalidatePath(`/projects/${projectId}`)
 }
 
+// Nuevo orden de las fases (ids en el orden deseado). Admin/subadmin.
+export async function reorderProjectPhases(projectId: string, orderedIds: string[]) {
+  const authClient = await createClient()
+  const { data: { user } } = await authClient.auth.getUser()
+  if (!user) throw new Error("Not authenticated")
+  const supabase = createAdminClient()
+  const { data: me } = await supabase.from("profiles").select("role").eq("id", user.id).single()
+  if (me?.role !== "admin" && me?.role !== "subadmin") throw new Error("Permission denied")
+  await Promise.all(orderedIds.map((id, i) => supabase.from("project_phases").update({ phase_order: i }).eq("id", id).eq("project_id", projectId)))
+  revalidatePath(`/projects/${projectId}`)
+}
+
 export async function updateProjectPhaseNotes(phaseId: string, notes: string, projectId: string) {
   const supabase = await createClient()
   const { error } = await supabase
