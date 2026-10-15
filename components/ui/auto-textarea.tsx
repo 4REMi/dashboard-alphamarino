@@ -21,11 +21,27 @@ export function AutoTextarea({ rows, style, onInput, value, textareaRef, ...prop
     const el = ref.current
     if (!el) return
     el.style.height = "auto"
-    el.style.height = `${el.scrollHeight}px`
+    // + bordes: con box-sizing border-box, scrollHeight no los incluye.
+    el.style.height = `${el.scrollHeight + (el.offsetHeight - el.clientHeight)}px`
   }
 
-  // Resize on mount — handles pre-filled defaultValue / edit modals
-  useEffect(() => { resize() }, [])
+  // Resize on mount — handles pre-filled defaultValue / edit modals. En un
+  // modal recién abierto el ancho aún no es el final (animación, fuentes),
+  // así que se mide de nuevo en el siguiente frame y cada vez que cambia el
+  // ancho; si no, un texto largo quedaba cortado sin poder hacer scroll.
+  useEffect(() => {
+    resize()
+    const raf = requestAnimationFrame(resize)
+    const el = ref.current
+    let lastWidth = el?.offsetWidth ?? 0
+    const ro = typeof ResizeObserver !== "undefined" && el
+      ? new ResizeObserver(() => { if (el.offsetWidth !== lastWidth) { lastWidth = el.offsetWidth; resize() } })
+      : null
+    if (el && ro) ro.observe(el)
+    document.fonts?.ready.then(resize).catch(() => {})
+    return () => { cancelAnimationFrame(raf); ro?.disconnect() }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Resize when controlled value changes externally (e.g. AI generation)
   useEffect(() => { if (value !== undefined) resize() }, [value])
@@ -37,7 +53,9 @@ export function AutoTextarea({ rows, style, onInput, value, textareaRef, ...prop
       onInput={(e) => { resize(); onInput?.(e) }}
       style={{
         minHeight: rows ? `${rows * 1.5}rem` : "2.5rem",
-        overflow: "hidden",
+        // Red de seguridad: si la medida falla, se puede desplazar dentro
+        // en vez de quedar cortado (con la medida correcta no hay barra).
+        overflowY: "auto",
         resize: "none",
         ...style,
       }}
