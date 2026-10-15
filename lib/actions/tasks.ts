@@ -138,6 +138,7 @@ export async function createTask(formData: FormData, actingProfileId?: string) {
     due_date: (formData.get("due_date") as string) || null,
     assignee_id: assigneeId,
     sop_id: sopId,
+    phase_id: (formData.get("phase_id") as string) || null,
   } as Record<string, unknown>)
     .select("id")
     .single()

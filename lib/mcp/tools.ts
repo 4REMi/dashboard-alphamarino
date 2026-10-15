@@ -106,19 +106,37 @@ export function registerMcpTools(server: McpServer) {
     "crear_tarea",
     {
       title: "Crear tarea",
-      description: "Crea una tarea nueva, opcionalmente dentro de un proyecto y/o asignada a alguien del equipo.",
+      description: "Crea una tarea nueva, opcionalmente dentro de un proyecto y/o asignada a alguien del equipo. Igual que el dashboard: puede avisar a personas cuando se complete (avisar_al_terminar; \"yo\" = quien llama), llevar checklist, pedir entregable y caer en una fase del proyecto.",
       inputSchema: z.object({
         titulo: z.string().min(1),
         descripcion: z.string().optional(),
         proyecto: z.string().optional().describe("Nombre del proyecto (match parcial) — si se omite, la tarea queda personal/sin proyecto."),
         asignado_a: z.string().optional().describe("Nombre de la persona del equipo a quien asignarla (match parcial)."),
         fecha_limite: z.string().optional().describe("YYYY-MM-DD"),
+        avisar_al_terminar: z.array(z.string()).optional().describe("Personas a avisar cuando se complete (nombres; \"yo\" = quien llama). Lista vacía = todo el equipo del proyecto."),
+        checklist: z.array(z.object({ texto: z.string().min(1), bloqueante: z.boolean().default(false).describe("Si es true, la tarea no se puede completar sin palomearlo") })).optional(),
+        requiere_entregable: z.boolean().optional().describe("La tarea pide subir un resultado (texto, documento o imagen) al completarla"),
+        instrucciones_entregable: z.string().optional(),
+        fase: z.string().optional().describe("Fase del proyecto (nombre, match parcial)"),
       }),
     },
-    async ({ titulo, descripcion, proyecto, asignado_a, fecha_limite }, ctx: ToolCtx) => {
+    async ({ titulo, descripcion, proyecto, asignado_a, fecha_limite, avisar_al_terminar, checklist, requiere_entregable, instrucciones_entregable, fase }, ctx: ToolCtx) => {
       const actingProfileId = requireProfileId(ctx)
       const projectId = await resolveProjectId(proyecto)
       const assigneeId = await resolveAssigneeId(asignado_a)
+      const pingIds = avisar_al_terminar
+        ? await Promise.all(avisar_al_terminar.map(async (n) => /^(yo|m[ií]|a m[ií])$/i.test(n.trim()) ? actingProfileId : (await resolveAssigneeId(n))!))
+        : null
+      if (avisar_al_terminar && !projectId && !pingIds?.length) throw new Error("Para avisar a todo el equipo la tarea necesita un proyecto; indica nombres en avisar_al_terminar.")
+      let phaseId: string | null = null
+      if (fase) {
+        if (!projectId) throw new Error("Para indicar fase la tarea necesita proyecto.")
+        const { data: phases } = await createAdminClient().from("project_phases").select("id, name").eq("project_id", projectId)
+        const q = fase.trim().toLowerCase()
+        const hits = (phases ?? []).filter((p) => p.name.toLowerCase() === q).length ? (phases ?? []).filter((p) => p.name.toLowerCase() === q) : (phases ?? []).filter((p) => p.name.toLowerCase().includes(q))
+        if (hits.length !== 1) throw new Error(hits.length ? `"${fase}" coincide con varias fases: ${hits.map((h) => h.name).join(", ")}.` : `No encontré la fase "${fase}" en ese proyecto.`)
+        phaseId = hits[0].id
+      }
 
       const fd = new FormData()
       fd.set("title", titulo)
@@ -126,9 +144,25 @@ export function registerMcpTools(server: McpServer) {
       if (projectId) fd.set("project_id", projectId)
       if (assigneeId) fd.set("assignee_id", assigneeId)
       if (fecha_limite) fd.set("due_date", fecha_limite)
+      if (phaseId) fd.set("phase_id", phaseId)
+      if (avisar_al_terminar) {
+        fd.set("is_pinged", "true")
+        if (pingIds?.length) fd.set("ping_recipient_ids_json", JSON.stringify([...new Set(pingIds)]))
+      }
+      if (checklist?.length) fd.set("checklist_items_json", JSON.stringify(checklist.map((c) => ({ text: c.texto, is_blocking: c.bloqueante }))))
+      if (requiere_entregable) {
+        fd.set("requires_deliverable", "true")
+        if (instrucciones_entregable) fd.set("deliverable_instructions", instrucciones_entregable)
+      }
 
       await createTask(fd, actingProfileId)
-      return textResult(`Tarea "${titulo}" creada${projectId ? ` en el proyecto` : " (personal, sin proyecto)"}${assigneeId ? ", asignada" : ""}.`)
+      const extras = [
+        avisar_al_terminar ? (pingIds?.length ? "con aviso al terminar" : "con aviso al equipo al terminar") : null,
+        checklist?.length ? `checklist de ${checklist.length}` : null,
+        requiere_entregable ? "pide entregable" : null,
+        phaseId ? `en fase ${fase}` : null,
+      ].filter(Boolean)
+      return textResult(`Tarea "${titulo}" creada${projectId ? ` en el proyecto` : " (personal, sin proyecto)"}${assigneeId ? ", asignada" : ""}${extras.length ? ` · ${extras.join(" · ")}` : ""}.`)
     },
   )
 

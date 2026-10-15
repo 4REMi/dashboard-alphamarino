@@ -330,3 +330,10 @@ proyecto: se guardan en la tabla `ai_activity` (migración 116; `log()` en
 `/actividad-ia` (solo rol admin; link en el sidebar), agrupado por sesión
 (mismo proyecto, IA y solicitante, sin pausas de >30 min) y filtrable por
 proyecto. La migración movió ahí las notas viejas "Meta (vía Claude)".
+
+## crear_tarea completo — 2026-10-15
+
+`crear_tarea` ya acepta lo mismo que la tarea del dashboard: `avisar_al_terminar`
+(nombres; "yo" = quien llama; lista vacía = todo el equipo del proyecto),
+`checklist` (texto + bloqueante), `requiere_entregable` + instrucciones y `fase`
+(nombre dentro del proyecto). `createTask` ahora también guarda `phase_id`.
