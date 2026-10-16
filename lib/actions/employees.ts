@@ -170,13 +170,18 @@ export async function uploadAvatar(id: string, formData: FormData) {
   if (file.size > 3 * 1024 * 1024) throw new Error("Máx 3 MB")
   if (!file.type.startsWith("image/")) throw new Error("Solo imágenes")
 
-  const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg"
-  const path = `avatars/${id}.${ext}`
-
-  const arrayBuffer = await file.arrayBuffer()
+  // Se guarda ya chica (256px, webp): los avatares se muestran de 24–40px
+  // en todas partes y la foto original del celular pesaba megas.
+  const sharp = (await import("sharp")).default
+  const small = await sharp(Buffer.from(await file.arrayBuffer()))
+    .rotate()
+    .resize(256, 256, { fit: "cover" })
+    .webp({ quality: 80 })
+    .toBuffer()
+  const path = `avatars/${id}.webp`
   const { error: uploadError } = await supabase.storage
     .from("workspace-assets")
-    .upload(path, arrayBuffer, { contentType: file.type, upsert: true })
+    .upload(path, small, { contentType: "image/webp", upsert: true })
   if (uploadError) throw new Error(uploadError.message)
 
   const { data: urlData } = supabase.storage.from("workspace-assets").getPublicUrl(path)

@@ -336,10 +336,17 @@ export async function getProjects(includeArchived = false) {
   const activeCycles = ((cyclesRes.data ?? []) as { id: string; project_id: string; start_date: string; end_date: string; is_active: boolean; review_pending: boolean | null; next_cycle_id: string | null }[])
   const activeIds = activeCycles.filter((c) => c.is_active).map((c) => c.id)
   const spendByCycle: Record<string, number> = {}
-  if (activeIds.length) {
-    const { data: stats } = await supabase.from("meta_ad_daily_stats").select("cycle_id, spend").in("cycle_id", activeIds).range(0, 19999)
-    for (const r of stats ?? []) spendByCycle[r.cycle_id as string] = (spendByCycle[r.cycle_id as string] ?? 0) + Number(r.spend ?? 0)
-  }
+  // Todo lo que depende del primer lote va junto en un solo viaje (antes
+  // eran tres esperas en fila: gasto, versiones/ciclos y alcance).
+  const [statsRes, revisedRes, assetCycleRes, conceptCycleRes, offerLinksRes, customLinksRes] = await Promise.all([
+    activeIds.length ? supabase.from("meta_ad_daily_stats").select("cycle_id, spend").in("cycle_id", activeIds).range(0, 19999).then((r) => r, () => ({ data: null })) : Promise.resolve({ data: [] as { cycle_id: string; spend: number }[] }),
+    projectIds.length ? supabase.from("creative_assets").select("revises_asset_id").in("project_id", projectIds).not("revises_asset_id", "is", null).then((r) => r, () => ({ data: null })) : Promise.resolve({ data: [] }),
+    activeIds.length ? supabase.from("creative_asset_cycles").select("asset_id").in("cycle_id", activeIds).then((r) => r, () => ({ data: null })) : Promise.resolve({ data: [] as { asset_id: string }[] }),
+    activeIds.length ? supabase.from("creative_concept_cycles").select("concept_id").in("cycle_id", activeIds).then((r) => r, () => ({ data: null })) : Promise.resolve({ data: [] as { concept_id: string }[] }),
+    projectIds.length ? supabase.from("project_service_offers").select("project_id").in("project_id", projectIds).then((r) => r, () => ({ data: null })) : Promise.resolve({ data: [] }),
+    projectIds.length ? supabase.from("project_custom_deliverables").select("project_id").in("project_id", projectIds).then((r) => r, () => ({ data: null })) : Promise.resolve({ data: [] }),
+  ])
+  for (const r of (statsRes.data ?? []) as { cycle_id: string; spend: number }[]) spendByCycle[r.cycle_id] = (spendByCycle[r.cycle_id] ?? 0) + Number(r.spend ?? 0)
 
   const logMap: Record<string, string> = {}
   for (const l of logsRes.data ?? []) {
@@ -369,11 +376,7 @@ export async function getProjects(includeArchived = false) {
   // nueva, y — si el proyecto tiene ciclo activo — solo lo del ciclo activo
   // (antes sumaba la historia completa: v1 ya corregidas y ciclos pasados).
   const activeCycleBy = new Map(activeCycles.filter((c) => c.is_active).map((c) => [c.project_id, c.id]))
-  const [{ data: revisedRows }, { data: assetCycleRows }, { data: conceptCycleRows }] = await Promise.all([
-    supabase.from("creative_assets").select("revises_asset_id").in("project_id", projectIds).not("revises_asset_id", "is", null).then((r) => r, () => ({ data: null })),
-    activeIds.length ? supabase.from("creative_asset_cycles").select("asset_id").in("cycle_id", activeIds).then((r) => r, () => ({ data: null })) : Promise.resolve({ data: [] as { asset_id: string }[] }),
-    activeIds.length ? supabase.from("creative_concept_cycles").select("concept_id").in("cycle_id", activeIds).then((r) => r, () => ({ data: null })) : Promise.resolve({ data: [] as { concept_id: string }[] }),
-  ])
+  const revisedRows = revisedRes.data, assetCycleRows = assetCycleRes.data, conceptCycleRows = conceptCycleRes.data
   const superseded = new Set(((revisedRows ?? []) as { revises_asset_id: string }[]).map((r) => r.revises_asset_id))
   const inActiveCycle = new Set(((assetCycleRows ?? []) as { asset_id: string }[]).map((r) => r.asset_id))
   const conceptsInActive = new Set(((conceptCycleRows ?? []) as { concept_id: string }[]).map((r) => r.concept_id))
@@ -434,10 +437,7 @@ export async function getProjects(includeArchived = false) {
   }
   // ¿Tiene alcance definido? (ofertas o entregables propios), aunque el
   // periodo actual todavía no se haya generado.
-  const [{ data: offerLinks }, { data: customLinks }] = await Promise.all([
-    supabase.from("project_service_offers").select("project_id").in("project_id", projectIds).then((r) => r, () => ({ data: null })),
-    supabase.from("project_custom_deliverables").select("project_id").in("project_id", projectIds).then((r) => r, () => ({ data: null })),
-  ])
+  const offerLinks = offerLinksRes.data, customLinks = customLinksRes.data
   const withScope = new Set([...(offerLinks ?? []), ...(customLinks ?? [])].map((r) => (r as { project_id: string }).project_id))
 
   const staleBefore = new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10)

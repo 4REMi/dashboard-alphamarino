@@ -6,6 +6,7 @@ import { ProjectCard } from "@/components/projects/project-card"
 import { SIGNAL_FILTER_LABEL, matchesSignal, type SignalFilter } from "@/lib/utils/project-signals"
 import { ArchivedProjectsSection } from "@/components/projects/archived-projects-section"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { AvatarImg } from "@/components/ui/avatar-img"
 import { getProjectTypeIcon } from "@/lib/project-type-icons"
 import { phaseColor } from "@/lib/phase-colors"
 import { LayoutGrid, List } from "lucide-react"
@@ -94,7 +95,7 @@ function ProjectRow({ project, canViewFinancials }: {
           {members.map((m, i) => (
             <Avatar key={m.id} className="w-6 h-6 border-2 border-card" style={{ marginLeft: i === 0 ? 0 : "-6px" }}>
               {m.avatar_url
-                ? <img src={m.avatar_url} alt={m.full_name} className="h-full w-full object-cover" />
+                ? <AvatarImg src={m.avatar_url} alt={m.full_name} size={28} className="h-full w-full object-cover" />
                 : <AvatarFallback className="text-[9px] bg-muted">{initials(m.full_name)}</AvatarFallback>}
             </Avatar>
           ))}

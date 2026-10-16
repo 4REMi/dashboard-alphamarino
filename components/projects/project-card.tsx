@@ -6,6 +6,7 @@ import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { AvatarImg } from "@/components/ui/avatar-img"
 import { CalendarDays, DollarSign, AlertTriangle } from "lucide-react"
 import { formatDate, formatCurrency } from "@/lib/utils"
 import { cn } from "@/lib/utils"
@@ -186,7 +187,7 @@ export function ProjectCard({ project, canViewFinancials = false }: ProjectCardP
                     style={{ marginLeft: i === 0 ? 0 : "-6px", zIndex: shown.length - i }}
                   >
                     {m.avatar_url ? (
-                      <img src={m.avatar_url} alt={m.full_name} className="h-full w-full object-cover" />
+                      <AvatarImg src={m.avatar_url} alt={m.full_name} size={28} className="h-full w-full object-cover" />
                     ) : (
                       <AvatarFallback className="text-[9px] bg-muted">{initials(m.full_name)}</AvatarFallback>
                     )}
