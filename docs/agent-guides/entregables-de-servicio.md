@@ -191,3 +191,8 @@ sección "Entregables personalizados".
 
 ## Por MCP
 Claude puede ver el periodo actual (`entregables_proyecto`; con `completo: true` todo el alcance: continuos, hitos cumplidos e historial de periodos), palomear avance (`marcar_entregable`), ajustar cantidad/texto del periodo (`ajustar_entregable`) y agregar extras (`agregar_entregable_extra`). Mismas funciones y permisos que el Hub; queda en la bitácora.
+
+**Bug corregido (2026-10-16):** `getScopeOverview` leía ofertas y entregables
+propios con la sesión del navegador; desde el MCP (sin sesión) salían vacíos y
+`entregables_proyecto` decía "no tiene entregables" aunque sí existían. Ahora
+usa el mismo cliente que el resto de la función.

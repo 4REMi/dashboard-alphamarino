@@ -234,12 +234,19 @@ export async function getScopeOverview(projectId: string, actingProfileId?: stri
   if (!projectRow) throw new Error("Project not found")
   const project = projectRow as { scope_period_mode: string | null; scope_period_anchor: string | null; scope_period_weeks: number | null; start_date: string | null; created_at: string }
 
-  const [attached, customDeliverables, { data: cycles }, { data: attachRows }] = await Promise.all([
-    getProjectServiceOffers(projectId),
-    getProjectCustomDeliverables(projectId),
+  // Con el mismo cliente de arriba: getProjectServiceOffers/
+  // getProjectCustomDeliverables usan la sesión del navegador, que en el MCP
+  // no existe — ahí regresaban vacío y el proyecto parecía no tener alcance.
+  const [{ data: attachedData, error: attachedErr }, { data: customData, error: customErr }, { data: cycles }, { data: attachRows }] = await Promise.all([
+    supabase.from("project_service_offers").select("*, service_offer:service_offers(*)").eq("project_id", projectId).order("created_at"),
+    supabase.from("project_custom_deliverables").select("*").eq("project_id", projectId).order("created_at"),
     supabase.from("paid_media_cycles").select("start_date, end_date").eq("project_id", projectId),
     supabase.from("project_service_offers").select("service_offer_id, created_at").eq("project_id", projectId),
   ])
+  if (attachedErr) throw attachedErr
+  if (customErr) throw customErr
+  const attached = (attachedData ?? []) as ProjectServiceOffer[]
+  const customDeliverables = (customData ?? []) as ProjectCustomDeliverable[]
   const hasCycles = (cycles ?? []).length > 0
   const { rule, isDefault } = resolveRule(project, hasCycles)
 
