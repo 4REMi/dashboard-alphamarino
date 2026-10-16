@@ -980,6 +980,30 @@ export async function deleteProjectPhase(phaseId: string, projectId: string, tas
   revalidatePath(`/projects/${projectId}`)
 }
 
+// Borrado masivo: cada fase con su propio destino para las tareas (otra
+// fase que NO se esté borrando, null = sin fase, "delete"). Admin/subadmin.
+export async function deleteProjectPhases(projectId: string, items: { phaseId: string; tasksTo: string | null | "delete" }[]) {
+  const authClient = await createClient()
+  const { data: { user } } = await authClient.auth.getUser()
+  if (!user) throw new Error("Not authenticated")
+  const supabase = createAdminClient()
+  const { data: me } = await supabase.from("profiles").select("role").eq("id", user.id).single()
+  if (me?.role !== "admin" && me?.role !== "subadmin") throw new Error("Permission denied")
+  const ids = items.map((i) => i.phaseId)
+  const { data: owned } = await supabase.from("project_phases").select("id").eq("project_id", projectId).in("id", ids)
+  if ((owned ?? []).length !== ids.length) throw new Error("Alguna fase no pertenece al proyecto")
+  if (items.some((i) => i.tasksTo && i.tasksTo !== "delete" && ids.includes(i.tasksTo))) throw new Error("No puedes mover tareas a una fase que también se va a quitar")
+  for (const i of items) {
+    if (i.tasksTo === "delete") await supabase.from("tasks").delete().eq("phase_id", i.phaseId)
+    else await supabase.from("tasks").update({ phase_id: i.tasksTo }).eq("phase_id", i.phaseId)
+  }
+  const { error } = await supabase.from("project_phases").delete().in("id", ids)
+  if (error) throw error
+  const { data: rest } = await supabase.from("project_phases").select("id").eq("project_id", projectId).order("phase_order")
+  await Promise.all((rest ?? []).map((r, idx) => supabase.from("project_phases").update({ phase_order: idx }).eq("id", r.id)))
+  revalidatePath(`/projects/${projectId}`)
+}
+
 // Nuevo orden de las fases (ids en el orden deseado). Admin/subadmin.
 export async function reorderProjectPhases(projectId: string, orderedIds: string[]) {
   const authClient = await createClient()

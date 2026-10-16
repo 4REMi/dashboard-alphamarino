@@ -235,3 +235,9 @@ se crean y se asignan por puesto igual, pero nadie recibe el aviso
 (`notifyTeam` en `importPhasesToProject` / `applyPhaseSetToProject` /
 `copyTaskSetsToProject`; crear proyecto sigue avisando siempre.) Reordenar o
 quitar fases nunca avisa.
+
+**Quitar varias fases (2026-10-16):** en "Editar fases" cada fase tiene
+checkbox; al marcar una o más aparece un panel con un selector por cada fase
+con tareas (mover a una fase que se queda / dejar sin fase / eliminarlas) y el
+botón "Quitar N fases" (`deleteProjectPhases`). Si se eliminan tareas pide
+confirmación.
