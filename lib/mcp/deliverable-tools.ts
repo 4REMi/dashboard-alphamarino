@@ -2,7 +2,7 @@ import { resolveProject } from "@/lib/mcp/resolve-project"
 import { z } from "zod"
 import type { McpServer, AuthInfo } from "@modelcontextprotocol/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { getScopeOverview, updateDeliverableFulfilled, updatePeriodExpectedQuantity, updatePeriodText, addCustomDeliverable } from "@/lib/actions/service-deliverables"
+import { getScopeOverview, updateDeliverableFulfilled, updatePeriodExpectedQuantity, updatePeriodText, addCustomDeliverable, deleteCustomDeliverable, detachServiceOfferFromProject } from "@/lib/actions/service-deliverables"
 import { submitDeliverable } from "@/lib/actions/deliverables"
 import { updateTaskStatus } from "@/lib/actions/tasks"
 import type { ProjectDeliverablePeriod, DeliverableCadence } from "@/lib/types"
@@ -267,6 +267,66 @@ export function registerDeliverableTools(server: McpServer) {
       await addCustomDeliverable(p.id, texto, cadence, cadence === "continuous" ? null : cantidad ?? null, pid)
       await log(p.id, pid, `Entregable extra agregado: ${desc}`)
       return text(`✅ ${desc}. Usa entregables_proyecto para verlo en el periodo.`)
+    },
+  )
+
+  server.registerTool(
+    "quitar_entregable",
+    {
+      title: "Quitar entregable propio del proyecto",
+      description: "Quita un entregable propio (agregado con agregar_entregable_extra o al crear el proyecto), p. ej. si quedó duplicado o se cargó por error. Se indica por número de entregables_proyecto o parte de su texto. Borra la definición y sus filas sin avance; lo ya entregado queda como historial. Los entregables que vienen de una oferta no se quitan aquí: usa quitar_oferta_de_proyecto o ajustar_entregable. Sin confirmar: true solo muestra qué quitaría. Solo admin/subadmin.",
+      inputSchema: z.object({ proyecto: z.string().min(1), entregable: z.string().min(1), confirmar: z.boolean().default(false) }),
+    },
+    async ({ proyecto, entregable, confirmar }, ctx: ToolCtx) => {
+      const pid = profileId(ctx)
+      const p = await project(proyecto)
+      const ov = await getScopeOverview(p.id, pid)
+      const live = ov.lines.filter((l) => !l.removed)
+      let line: (typeof live)[number] | undefined
+      if (/^\d+$/.test(entregable.trim())) {
+        const { rows } = await currentRows(p.id, pid)
+        const r = pickRow(rows, entregable)
+        line = live.find((l) => l.key === r.deliverable_key)
+      } else {
+        const q = entregable.trim().toLowerCase()
+        const hits = live.filter((l) => l.text.toLowerCase().includes(q))
+        const own = hits.filter((l) => l.customId)
+        if (own.length > 1) throw new Error(`"${entregable}" coincide con varios entregables propios: ${own.map((l) => l.text).join(", ")}. Usa el número de entregables_proyecto para quitar uno a la vez.`)
+        line = own[0] ?? hits[0]
+      }
+      if (!line) throw new Error(`No encontré "${entregable}" en el alcance de ${p.name}.`)
+      if (!line.customId) throw new Error(`"${line.text}" viene de la oferta ${line.offerName ?? ""}; no es un entregable propio. Para quitarlo, quita la oferta (quitar_oferta_de_proyecto) o ajusta su cantidad del periodo (ajustar_entregable).`)
+      const dupes = live.filter((l) => l.customId && l.text.trim().toLowerCase() === line!.text.trim().toLowerCase()).length
+      const desc = `${p.name} · quitar entregable propio "${line.text}"${dupes > 1 ? ` (hay ${dupes} con el mismo texto; se quita solo uno)` : ""}`
+      if (!confirmar) return text(`Quitaría:\n${desc}\n\nNo se cambió nada. Si es correcto, vuelve a llamar con confirmar: true.`)
+      await deleteCustomDeliverable(line.customId, p.id, pid, true)
+      await log(p.id, pid, `Entregable propio quitado: "${line.text}"`)
+      return text(`✅ ${desc}.`)
+    },
+  )
+
+  server.registerTool(
+    "quitar_oferta_de_proyecto",
+    {
+      title: "Quitar oferta de un proyecto",
+      description: "Desasigna una oferta del catálogo de un proyecto (p. ej. asignada dos veces o por error). Sus entregables dejan de generarse; lo ya entregado queda como historial. Sin confirmar: true solo muestra el plan. Solo admin/subadmin.",
+      inputSchema: z.object({ proyecto: z.string().min(1), oferta: z.string().min(1), confirmar: z.boolean().default(false) }),
+    },
+    async ({ proyecto, oferta, confirmar }, ctx: ToolCtx) => {
+      const pid = profileId(ctx)
+      const p = await project(proyecto)
+      const { data } = await db().from("project_service_offers").select("service_offer_id, service_offer:service_offers(name)").eq("project_id", p.id)
+      const rows = (data ?? []) as unknown as { service_offer_id: string; service_offer: { name: string } | null }[]
+      const q = oferta.trim().toLowerCase()
+      const hits = rows.filter((r) => (r.service_offer?.name ?? "").toLowerCase().includes(q))
+      if (!hits.length) throw new Error(`${p.name} no tiene asignada una oferta que coincida con "${oferta}". Asignadas: ${rows.map((r) => r.service_offer?.name).join(", ") || "ninguna"}.`)
+      if (new Set(hits.map((h) => h.service_offer_id)).size > 1) throw new Error(`"${oferta}" coincide con varias ofertas: ${hits.map((h) => h.service_offer?.name).join(", ")}.`)
+      const name = hits[0].service_offer?.name ?? oferta
+      const desc = `${p.name} · quitar oferta "${name}"`
+      if (!confirmar) return text(`Quitaría:\n${desc}\n\nNo se cambió nada. Si es correcto, vuelve a llamar con confirmar: true.`)
+      await detachServiceOfferFromProject(p.id, hits[0].service_offer_id, pid)
+      await log(p.id, pid, `Oferta quitada: "${name}"`)
+      return text(`✅ ${desc}.`)
     },
   )
 }

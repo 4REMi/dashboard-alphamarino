@@ -94,8 +94,8 @@ export async function attachServiceOfferToProject(projectId: string, offerId: st
   revalidateProject(projectId)
 }
 
-export async function detachServiceOfferFromProject(projectId: string, offerId: string): Promise<void> {
-  const profile = await requireProfile()
+export async function detachServiceOfferFromProject(projectId: string, offerId: string, actingProfileId?: string): Promise<void> {
+  const profile = await requireProfile(actingProfileId)
   if (!isAdminOrSubadmin(profile.role)) throw new Error("Permission denied")
 
   const admin = createAdminClient()
@@ -152,8 +152,8 @@ export async function addCustomDeliverable(
   return data as ProjectCustomDeliverable
 }
 
-export async function deleteCustomDeliverable(customDeliverableId: string, projectId: string): Promise<void> {
-  const profile = await requireProfile()
+export async function deleteCustomDeliverable(customDeliverableId: string, projectId: string, actingProfileId?: string, purgeUnfulfilled = false): Promise<void> {
+  const profile = await requireProfile(actingProfileId)
   if (!isAdminOrSubadmin(profile.role)) throw new Error("Permission denied")
 
   const admin = createAdminClient()
@@ -166,6 +166,12 @@ export async function deleteCustomDeliverable(customDeliverableId: string, proje
     .eq("id", customDeliverableId)
     .eq("project_id", projectId)
   if (error) throw error
+  // Duplicados / cargados por error: también se borran sus filas sin avance
+  // (lo que sí se entregó se queda como historial).
+  if (purgeUnfulfilled) {
+    await admin.from("project_deliverable_periods").delete()
+      .eq("project_id", projectId).eq("deliverable_key", customDeliverableId).eq("fulfilled_quantity", 0)
+  }
   revalidateProject(projectId)
 }
 

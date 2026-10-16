@@ -196,3 +196,10 @@ Claude puede ver el periodo actual (`entregables_proyecto`; con `completo: true`
 propios con la sesión del navegador; desde el MCP (sin sesión) salían vacíos y
 `entregables_proyecto` decía "no tiene entregables" aunque sí existían. Ahora
 usa el mismo cliente que el resto de la función.
+
+**Quitar por MCP (2026-10-16):** `quitar_entregable` quita un entregable propio
+(por número de `entregables_proyecto` o texto; si hay varios iguales pide el
+número) y borra sus filas sin avance — pensado para duplicados o cargas por
+error. Lo de una oferta no se quita ahí: `quitar_oferta_de_proyecto` la
+desasigna. Ambos con vista previa y solo admin/subadmin; lo ya entregado queda
+como historial.
