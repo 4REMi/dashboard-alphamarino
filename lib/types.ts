@@ -228,6 +228,10 @@ export interface Task {
   id: string
   project_id: string | null
   title: string
+  // La columna existe en la tabla (se actualiza en cada cambio); se usa como
+  // "cuándo se terminó" aproximado y para detectar tareas sin movimiento.
+  updated_at?: string
+  completed_at?: string | null // migración 117
   description: string | null
   status: TaskStatus
   priority: TaskPriority // kept for DB compat, unused in UI

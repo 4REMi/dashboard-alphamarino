@@ -241,3 +241,16 @@ checkbox; al marcar una o más aparece un panel con un selector por cada fase
 con tareas (mover a una fase que se queda / dejar sin fase / eliminarlas) y el
 botón "Quitar N fases" (`deleteProjectPhases`). Si se eliminan tareas pide
 confirmación.
+
+## Equipo → persona (admin) — 2026-10-16
+
+`components/tasks/team-member-view.tsx`. Pestañas **Pendientes** (agrupadas:
+Vencidas / Esta semana / Después / Sin fecha) y **Hechas** (últimos 14 días,
+con "Reabrir"). Marcar como hecha ya no la desaparece: se queda tachada con
+"Deshacer" y pasa a Hechas. Clic en la tarea abre el mismo `TaskDetailModal`
+de los proyectos (con el proyecto de esa tarea): editar todo, reasignar,
+fecha, checklist, entregable. Cada fila muestra proyecto, checklist x/y, si
+pide entregable, aviso, "sin movimiento N d" (≥7 días) y la primera línea de
+la descripción. En el resumen, el número rojo es solo de **vencidas**.
+Fechas: migración 117 (`tasks.updated_at` automático y `completed_at` al pasar
+a Done; se limpia al reabrir).

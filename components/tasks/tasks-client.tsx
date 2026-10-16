@@ -5,6 +5,7 @@ import { useState } from "react"
 import { TaskTable } from "@/components/tasks/task-table"
 import { TaskForm } from "@/components/tasks/task-form"
 import { StandupDump } from "@/components/tasks/standup-dump"
+import { TeamMemberView } from "@/components/tasks/team-member-view"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip"
@@ -158,6 +159,8 @@ export function TasksClient({ tasks, employees, projects, sops, deliverablesByTa
   // check that voice/Telegram-assigned tasks actually landed on the right
   // person, without opening every project one by one.
   const teamPendingByAssignee = new Map<string, number>()
+  const teamOverdueByAssignee = new Map<string, number>()
+  const todayIso = new Date().toISOString().slice(0, 10)
   for (const task of tasks) {
     if (task.status === "Done" || !task.assignee_id) continue
     if (task.assignee_id === currentUserId) {
@@ -165,6 +168,7 @@ export function TasksClient({ tasks, employees, projects, sops, deliverablesByTa
       else myPendingByProject.set(task.project_id, (myPendingByProject.get(task.project_id) ?? 0) + 1)
     } else {
       teamPendingByAssignee.set(task.assignee_id, (teamPendingByAssignee.get(task.assignee_id) ?? 0) + 1)
+      if (task.due_date && task.due_date < todayIso) teamOverdueByAssignee.set(task.assignee_id, (teamOverdueByAssignee.get(task.assignee_id) ?? 0) + 1)
     }
   }
   const teammates = employees.filter((e) => e.id !== currentUserId)
@@ -273,8 +277,11 @@ export function TasksClient({ tasks, employees, projects, sops, deliverablesByTa
                     </span>
                     <span className="text-xs font-medium">{emp.full_name}</span>
                     {count > 0 && (
-                      <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[10px] font-semibold flex items-center justify-center leading-none">
-                        {count > 99 ? "99+" : count}
+                      <span className="text-[11px] tabular-nums text-muted-foreground">{count}</span>
+                    )}
+                    {(teamOverdueByAssignee.get(emp.id) ?? 0) > 0 && (
+                      <span title="Vencidas" className="min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[10px] font-semibold flex items-center justify-center leading-none">
+                        {teamOverdueByAssignee.get(emp.id)}
                       </span>
                     )}
                   </button>
@@ -294,87 +301,16 @@ export function TasksClient({ tasks, employees, projects, sops, deliverablesByTa
   // cache revalidation, which breaks across a mixed-project list like this
   // one. This view exists to verify assignment, not to edit from here. ────
   if (selectedEmployee !== null) {
-    const employee = employees.find((e) => e.id === selectedEmployee)
-    const employeeTasks = tasks
-      .filter((task) => task.assignee_id === selectedEmployee && task.status !== "Done" && !hiddenTaskIds.has(task.id))
-      .sort((a, b) => (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999"))
-    const today = new Date().toISOString().slice(0, 10)
-
     return (
-      <div className="space-y-6">
-        <div>
-          <Button variant="ghost" size="sm" onClick={backToOverview} className="-ml-2 mb-1 text-muted-foreground">
-            <ChevronLeft className="w-4 h-4 mr-1" />
-            Tareas
-          </Button>
-          <h1 className="text-2xl font-bold">{employee?.full_name ?? "Equipo"}</h1>
-          <p className="text-muted-foreground text-sm mt-1">{employeeTasks.length} tarea{employeeTasks.length !== 1 ? "s" : ""} pendiente{employeeTasks.length !== 1 ? "s" : ""} — verifica asignación, marca como hecha o elimina lo que se haya dictado mal.</p>
-        </div>
-
-        {employeeTasks.length === 0 ? (
-          <div className="text-center py-16 text-muted-foreground">
-            <p className="text-lg">Sin tareas pendientes.</p>
-          </div>
-        ) : (
-          <div className="border rounded-xl overflow-hidden bg-card">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50">
-                <tr>
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Tarea</th>
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Proyecto</th>
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Estado</th>
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Vence</th>
-                  <th className="w-10 px-4 py-2.5" />
-                </tr>
-              </thead>
-              <tbody>
-                {employeeTasks.map((task) => {
-                  const isOverdue = task.due_date && task.due_date < today
-                  const projectName = task.project_id
-                    ? projects.find((p) => p.id === task.project_id)?.name ?? "—"
-                    : "Sin proyecto"
-                  return (
-                    <tr key={task.id} className="border-t">
-                      <td className="px-4 py-2.5">{task.title}</td>
-                      <td className="px-4 py-2.5 text-muted-foreground">{projectName}</td>
-                      <td className="px-4 py-2.5">
-                        <Badge variant={task.status === "In Progress" ? "info" : "secondary"}>
-                          {task.status === "In Progress" ? tStatus("inProgress") : tStatus("todo")}
-                        </Badge>
-                      </td>
-                      <td className={cn("px-4 py-2.5", isOverdue ? "text-destructive font-medium" : "text-muted-foreground")}>
-                        {task.due_date ? formatDate(task.due_date) : "—"}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => handleCompleteEmployeeTask(task)}
-                            disabled={completingTaskId === task.id}
-                            title="Marcar como hecha"
-                            className="p-1 rounded text-muted-foreground hover:text-success hover:bg-success/10 transition-colors disabled:opacity-50"
-                          >
-                            <Check className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteEmployeeTask(task)}
-                            disabled={deletingTaskId === task.id}
-                            title="Eliminar tarea"
-                            className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      <TeamMemberView
+        employee={employees.find((e) => e.id === selectedEmployee)}
+        tasks={tasks}
+        employees={employees}
+        projects={projects}
+        sops={sops}
+        deliverablesByTaskId={deliverablesByTaskId}
+        onBack={backToOverview}
+      />
     )
   }
 

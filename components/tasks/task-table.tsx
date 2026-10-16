@@ -776,7 +776,7 @@ function ChecklistEditor({
 
 // ─── Task Detail Modal ────────────────────────────────────────────────────────
 
-function TaskDetailModal({
+export function TaskDetailModal({
   task,
   projectId,
   employees,
