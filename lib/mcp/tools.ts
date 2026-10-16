@@ -201,7 +201,7 @@ export function registerMcpTools(server: McpServer) {
     "agregar_nota_proyecto",
     {
       title: "Agregar nota a la bitácora de un proyecto",
-      description: "Agrega una entrada a la bitácora (log) de un proyecto — para dejar constancia de algo, no es una tarea. Silenciosa por default; opcionalmente puede avisar por Telegram.",
+      description: "Agrega una entrada a la bitácora (log) de un proyecto. Úsala SOLO cuando el usuario pida explícitamente dejar algo en la bitácora (\"anótalo en la bitácora\", \"deja nota\"). Nunca la uses por iniciativa propia para registrar lo que hiciste con otras herramientas: eso ya queda en Actividad de IA. Silenciosa por default; opcionalmente puede avisar por Telegram.",
       inputSchema: z.object({
         proyecto: z.string().min(1),
         nota: z.string().min(1),
@@ -243,7 +243,7 @@ export function registerMcpTools(server: McpServer) {
     "captura_rapida",
     {
       title: "Captura rápida",
-      description: "Convierte un texto libre (stand-up, resumen de llamada, lista de pendientes de varios proyectos y personas) en tareas y notas de bitácora, con la misma IA que la Captura rápida del dashboard. Paso 1: manda `texto` → regresa la vista previa numerada para mostrarla al usuario y los `items`. Paso 2: manda esos `items` (ajustados si el usuario pidió cambios) con confirmar: true → crea todo. Nunca crea nada en el paso 1.",
+      description: "Las notas de bitácora (tipo nota) solo van si el usuario pidió explícitamente dejar algo en la bitácora; si no, quítalas de items antes de confirmar. Convierte un texto libre (stand-up, resumen de llamada, lista de pendientes de varios proyectos y personas) en tareas y notas de bitácora, con la misma IA que la Captura rápida del dashboard. Paso 1: manda `texto` → regresa la vista previa numerada para mostrarla al usuario y los `items`. Paso 2: manda esos `items` (ajustados si el usuario pidió cambios) con confirmar: true → crea todo. Nunca crea nada en el paso 1.",
       inputSchema: z.object({
         texto: z.string().optional(),
         items: z.array(CaptureItem).max(40).optional(),

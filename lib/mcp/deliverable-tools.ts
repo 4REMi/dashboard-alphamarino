@@ -74,7 +74,9 @@ function pickRow(rows: ProjectDeliverablePeriod[], ref: string): ProjectDelivera
 }
 
 async function log(projectId: string, pid: string, body: string) {
-  await db().from("project_log_entries").insert({ project_id: projectId, author_id: pid, body: `**Entregables:** ${body}`, category: "Interno" })
+  // A Actividad de IA (solo admin), no a la bitácora: la bitácora solo
+  // recibe lo que el usuario pide explícitamente (agregar_nota_proyecto).
+  await db().from("ai_activity").insert({ project_id: projectId, actor: "claude_mcp", requested_by: pid, platform: "entregables", summary: body })
 }
 
 const CADENCIA = { una_vez: "once", por_periodo: "monthly", cada_3_periodos: "quarterly", cada_6_periodos: "biannual", continuo: "continuous" } as const

@@ -16,6 +16,7 @@ export type AiActivityRow = {
 }
 
 const ACTOR: Record<string, string> = { claude_mcp: "Claude (MCP)", agente: "Agente" }
+const PLATFORM: Record<string, string> = { meta: "Meta", entregables: "Entregables" }
 const GAP_MS = 30 * 60_000
 
 // Sesión = mismo proyecto, misma IA y quien la pidió, sin pausas de >30 min.
@@ -70,7 +71,7 @@ export function AiActivityFeed({ rows }: { rows: AiActivityRow[] }) {
                   <span className="flex-1 min-w-0">
                     <span className="block text-sm font-medium truncate">{last.project?.name ?? "Sin proyecto"}{g.length > 1 && <span className="text-muted-foreground font-normal"> · {g.length} cambios</span>}</span>
                     <span className="block text-xs text-muted-foreground truncate">
-                      {ACTOR[last.actor] ?? last.actor}{last.platform ? ` · ${last.platform === "meta" ? "Meta" : last.platform}` : ""}{last.requester ? ` · pidió ${last.requester.full_name}` : ""} · {g.length > 1 ? `${time(first.created_at)}–${time(last.created_at)}` : time(last.created_at)}
+                      {ACTOR[last.actor] ?? last.actor}{last.platform ? ` · ${PLATFORM[last.platform] ?? last.platform}` : ""}{last.requester ? ` · pidió ${last.requester.full_name}` : ""} · {g.length > 1 ? `${time(first.created_at)}–${time(last.created_at)}` : time(last.created_at)}
                     </span>
                   </span>
                   {g.length > 1 && <ChevronRight className={cn("w-4 h-4 text-muted-foreground transition-transform", isOpen && "rotate-90")} />}

@@ -337,3 +337,9 @@ proyecto. La migración movió ahí las notas viejas "Meta (vía Claude)".
 (nombres; "yo" = quien llama; lista vacía = todo el equipo del proyecto),
 `checklist` (texto + bloqueante), `requiere_entregable` + instrucciones y `fase`
 (nombre dentro del proyecto). `createTask` ahora también guarda `phase_id`.
+
+**Bitácora solo explícita (2026-10-16):** ninguna herramienta MCP escribe en la
+bitácora por su cuenta. Meta y entregables (marcar, ajustar, agregar, quitar)
+van a `ai_activity`. La bitácora solo recibe `agregar_nota_proyecto` y notas de
+`captura_rapida`, y las descripciones indican usarlas únicamente cuando el
+usuario lo pide.
