@@ -290,3 +290,13 @@ Código: `supabase/migrations/099_cycle_repairs.sql` (`apply_cycle_repair`,
 activo, solo creativos del ciclo activo (`creative_asset_cycles` o
 `creative_assets.cycle_id`). Guiones con cambios pedidos: solo briefs de
 conceptos del ciclo activo. Ver `getProjects` en `lib/actions/projects.ts`.
+
+## Cerrar sin abrir el siguiente ciclo (2026-10-18)
+
+El repaso trae el interruptor **"Abrir el siguiente ciclo"** (encendido por
+defecto). Apagado: el ciclo se cierra con su repaso (métricas y decisiones de
+conceptos se guardan igual) y el proyecto queda **sin ciclo activo** — para
+pausas, clientes que pagan por campaña o el último mes de un cliente. Lo
+marcado "continúa" queda en `paid_media_cycles.carry_over_pending` (migración
+118) y `openNewCycle` lo pasa solo al próximo ciclo que se abra (y fija
+`next_cycle_id`). Sin ciclo activo no hay alertas de ciclo.

@@ -227,6 +227,9 @@ export async function completeCycleReview(input: {
   decisions: ConceptDecision[]
   assetIds: string[]
   nextCycle: { start: string; end: string } | null
+  // false = cerrar sin abrir el siguiente: lo que continúa queda en espera
+  // (carry_over_pending) y entra solo al abrir el próximo ciclo.
+  openNext?: boolean
 }): Promise<void> {
   const supabase = await assertAdmin()
   const { projectId, cycleId } = input
@@ -240,6 +243,33 @@ export async function completeCycleReview(input: {
   // uno nuevo.
   const { data: otherActive } = await supabase
     .from("paid_media_cycles").select("id").eq("project_id", projectId).eq("is_active", true).neq("id", cycleId).maybeSingle()
+
+  if (!otherActive && input.openNext === false) {
+    for (const d of input.decisions) {
+      if (d.continues) {
+        await supabase.from("creative_concepts").update({ status: d.evergreen ? "Evergreen" : "Active" }).eq("id", d.conceptId)
+      } else {
+        const { data: current } = await supabase.from("creative_concepts").select("insight").eq("id", d.conceptId).single()
+        const reason = d.reason?.trim()
+        const insight = reason ? [current?.insight, `Terminó al cierre de ciclo: ${reason}`].filter(Boolean).join("\n") : current?.insight ?? null
+        await supabase.from("creative_concepts").update({ status: "Archived", insight }).eq("id", d.conceptId)
+      }
+    }
+    const pending = { conceptIds: input.decisions.filter((d) => d.continues).map((d) => d.conceptId), assetIds: input.assetIds }
+    const closeOnly = (summary: typeof input.summary, withPending: boolean) => supabase.from("paid_media_cycles")
+      .update({ ...summary, is_active: false, review_pending: false, ...(withPending ? { carry_over_pending: pending } : {}) })
+      .eq("id", cycleId)
+    let { error } = await closeOnly(input.summary, true)
+    if (error && /carry_over_pending/.test(error.message)) throw new Error("Falta correr la migración 118 para cerrar sin abrir el siguiente ciclo.")
+    if (error && /channel_breakdown/.test(error.message)) {
+      const { channel_breakdown: _omit, ...totals } = input.summary
+      void _omit
+      ;({ error } = await closeOnly(totals, true))
+    }
+    if (error) throw error
+    revalidatePath(`/projects/${projectId}`)
+    return
+  }
 
   let next: { id: string }
   if (otherActive) {

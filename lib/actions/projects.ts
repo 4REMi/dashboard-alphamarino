@@ -1205,14 +1205,36 @@ export async function openNewCycle(projectId: string, startDate: string, endDate
   await assertNoCycleOverlap(supabase, projectId, startDate, resolvedEndDate)
 
   // Open new cycle. cycle_month kept in sync with start_date for backward compat.
-  const { error } = await supabase.from("paid_media_cycles").insert({
+  const { data: opened, error } = await supabase.from("paid_media_cycles").insert({
     project_id: projectId,
     cycle_month: startDate,
     start_date: startDate,
     end_date: resolvedEndDate,
     is_active: true,
-  })
+  }).select("id").single()
   if (error) throw error
+
+  // Si el último ciclo se cerró con repaso pero sin abrir el siguiente, lo
+  // que quedó "continúa" en espera entra ahora a este ciclo.
+  const { data: waiting } = await supabase.from("paid_media_cycles")
+    .select("id, carry_over_pending").eq("project_id", projectId).eq("is_active", false)
+    .is("next_cycle_id", null).not("carry_over_pending", "is", null)
+    .order("end_date", { ascending: false }).limit(1).maybeSingle()
+    .then((r) => r, () => ({ data: null }))
+  const pending = (waiting?.carry_over_pending ?? null) as { conceptIds?: string[]; assetIds?: string[] } | null
+  if (waiting && pending && opened) {
+    if (pending.conceptIds?.length) {
+      await supabase.from("creative_concept_cycles").upsert(
+        pending.conceptIds.map((id) => ({ concept_id: id, cycle_id: opened.id, project_id: projectId })),
+        { onConflict: "concept_id,cycle_id", ignoreDuplicates: true })
+    }
+    if (pending.assetIds?.length) {
+      await supabase.from("creative_asset_cycles").upsert(
+        pending.assetIds.map((id) => ({ asset_id: id, cycle_id: opened.id, project_id: projectId })),
+        { onConflict: "asset_id,cycle_id", ignoreDuplicates: true })
+    }
+    await supabase.from("paid_media_cycles").update({ next_cycle_id: opened.id, carry_over_pending: null }).eq("id", waiting.id)
+  }
   revalidatePath(`/projects/${projectId}`)
 }
 

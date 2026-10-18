@@ -58,6 +58,7 @@ export function CycleReviewModal({ projectId, cycleId, mode, onClose }: {
   const [assetIds, setAssetIds] = useState<Set<string>>(new Set())
   const [nextStart, setNextStart] = useState("")
   const [nextEnd, setNextEnd] = useState("")
+  const [openNext, setOpenNext] = useState(true)
   const [isPending, startTransition] = useTransition()
   const [saveError, setSaveError] = useState<string | null>(null)
   const [manualOpen, setManualOpen] = useState<ManualCampaign | null>(null)
@@ -190,7 +191,8 @@ export function CycleReviewModal({ projectId, cycleId, mode, onClose }: {
             summary: { ...channelTotals(draftsToRows(channels)), channel_breakdown: draftsToRows(channels) },
             decisions: Object.values(decisions) as ConceptDecision[],
             assetIds: finalAssets,
-            nextCycle: data.otherActiveCycle ? null : { start: nextStart, end: nextEnd },
+            nextCycle: data.otherActiveCycle || !openNext ? null : { start: nextStart, end: nextEnd },
+            openNext: !!data.otherActiveCycle || openNext,
           })
         }
         router.refresh()
@@ -461,9 +463,20 @@ export function CycleReviewModal({ projectId, cycleId, mode, onClose }: {
                   Ya hay un ciclo activo ({formatCycleRange(data.otherActiveCycle.start_date, data.otherActiveCycle.end_date)}): lo que continúa se agrega a ese ciclo.
                 </p>
               ) : (
-                <div>
-                  <p className="text-sm font-medium mb-1">Siguiente ciclo</p>
-                  <div className="flex items-end gap-3">
+                <div className="space-y-2">
+                  <button type="button" role="switch" aria-checked={openNext} onClick={() => setOpenNext((v) => !v)}
+                    className="w-full flex items-center gap-3 rounded-lg border border-border px-3 py-2.5 text-left hover:bg-muted/40">
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-sm font-medium">Abrir el siguiente ciclo</span>
+                      <span className="block text-xs text-muted-foreground">{openNext
+                        ? "Se abre al cerrar este, con las fechas de abajo."
+                        : "El proyecto queda sin ciclo activo. Lo que continúa se pasa solo cuando abras el próximo."}</span>
+                    </span>
+                    <span className={cn("relative h-5 w-9 rounded-full transition-colors shrink-0", openNext ? "bg-primary" : "bg-muted-foreground/30")}>
+                      <span className={cn("absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform", openNext && "translate-x-4")} />
+                    </span>
+                  </button>
+                  {openNext && <div className="flex items-end gap-3">
                     <label className="text-xs">
                       <span className="text-muted-foreground">Inicio</span>
                       <input type="date" value={nextStart} onChange={(e) => { setNextStart(e.target.value); setNextEnd(addOneMonthMinusOneDay(e.target.value)) }}
@@ -474,7 +487,7 @@ export function CycleReviewModal({ projectId, cycleId, mode, onClose }: {
                       <input type="date" value={nextEnd} onChange={(e) => setNextEnd(e.target.value)}
                         className="mt-0.5 block rounded-md border border-input bg-background px-2.5 py-1.5 text-sm" />
                     </label>
-                  </div>
+                  </div>}
                 </div>
               )}
               <p className="text-xs text-muted-foreground">
@@ -503,9 +516,9 @@ export function CycleReviewModal({ projectId, cycleId, mode, onClose }: {
             {step < lastStep ? (
               <Button type="button" size="sm" onClick={() => setStep((s) => s + 1)} disabled={!data || (step === 1 && pendingManual.length > 0) || (step === 2 && undecided.length > 0)}>Siguiente</Button>
             ) : (
-              <Button type="button" size="sm" onClick={handleSubmit} disabled={!data || isPending || (mode !== "edit" && !data.otherActiveCycle && (!nextStart || !nextEnd))}>
+              <Button type="button" size="sm" onClick={handleSubmit} disabled={!data || isPending || (mode !== "edit" && !data.otherActiveCycle && openNext && (!nextStart || !nextEnd))}>
                 {isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
-                {mode === "edit" ? "Guardar cambios" : data?.otherActiveCycle ? "Cerrar y traspasar" : "Cerrar y abrir siguiente ciclo"}
+                {mode === "edit" ? "Guardar cambios" : data?.otherActiveCycle ? "Cerrar y traspasar" : openNext ? "Cerrar y abrir siguiente ciclo" : "Cerrar ciclo"}
               </Button>
             )}
           </div>
