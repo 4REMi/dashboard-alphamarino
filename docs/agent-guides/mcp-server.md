@@ -343,3 +343,10 @@ bitácora por su cuenta. Meta y entregables (marcar, ajustar, agregar, quitar)
 van a `ai_activity`. La bitácora solo recibe `agregar_nota_proyecto` y notas de
 `captura_rapida`, y las descripciones indican usarlas únicamente cuando el
 usuario lo pide.
+
+**meta_estado_cliente con embudo (2026-10-19):** además de gasto/resultados/CTR,
+pide `reach, inline_link_clicks, outbound_clicks` y las acciones del embudo
+(landing_page_view → view_content → add_to_cart → initiate_checkout →
+purchase, tomando `omni_` primero). Por campaña y conjunto muestra CPM, CTR de
+enlace, clics salientes y el embudo; con `detalle: true` también por anuncio,
+más frecuencia (solo por anuncio: el alcance no se puede sumar entre anuncios).

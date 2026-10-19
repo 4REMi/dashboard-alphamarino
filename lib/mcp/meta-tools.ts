@@ -124,16 +124,17 @@ export function registerMetaTools(server: McpServer) {
     "meta_estado_cliente",
     {
       title: "Meta: estado del cliente",
-      description: "Lee EN VIVO la cuenta de Meta de un proyecto: campañas → conjuntos → anuncios con id, estado, presupuesto (y dónde vive: campaña=CBO o conjunto=ABO), gasto, resultados y costo por resultado. Periodo: ciclo activo (por defecto), ciclo_anterior, o desde/hasta; en periodos pasados lista solo lo que gastó en ese rango aunque hoy esté pausado. Úsalo antes de cualquier cambio para obtener los ids. Solo admin/subadmin.",
+      description: "Lee EN VIVO la cuenta de Meta de un proyecto: campañas → conjuntos → anuncios con id, estado, presupuesto (y dónde vive: campaña=CBO o conjunto=ABO), gasto, resultados, costo por resultado, CPM, CTR y clics al sitio, más el embudo (vistas de página → ver contenido → carrito → pago → compras) por campaña y conjunto; con detalle: true también por anuncio, con frecuencia. Periodo: ciclo activo (por defecto), ciclo_anterior, o desde/hasta; en periodos pasados lista solo lo que gastó en ese rango aunque hoy esté pausado. Úsalo antes de cualquier cambio para obtener los ids. Solo admin/subadmin.",
       inputSchema: z.object({
         proyecto: z.string(),
         incluir_inactivos: z.boolean().default(false).describe("Incluir lo pausado/archivado"),
         periodo: z.enum(["ciclo_activo", "ciclo_anterior"]).optional().describe("Por defecto el ciclo activo"),
         desde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("Rango libre YYYY-MM-DD (tiene prioridad sobre periodo)"),
         hasta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        detalle: z.boolean().default(false).describe("Embudo, CPM y frecuencia también por anuncio"),
       }),
     },
-    async ({ proyecto, incluir_inactivos: inc, periodo, desde, hasta }, ctx: ToolCtx) => {
+    async ({ proyecto, incluir_inactivos: inc, periodo, desde, hasta, detalle }, ctx: ToolCtx) => {
       await requireEditor(ctx)
       const c = await client(proyecto, { periodo, desde, hasta })
       // Periodo pasado: lo que corrió entonces suele estar pausado hoy → se
@@ -146,15 +147,45 @@ export function registerMetaTools(server: McpServer) {
         all<Obj & { objective?: string }>(`${act}/campaigns`, { fields: "id,name,status,effective_status,objective,daily_budget,lifetime_budget", ...(incluir_inactivos ? {} : { effective_status: JSON.stringify(["ACTIVE", "IN_PROCESS", "WITH_ISSUES"]) }) }),
         all<Obj & { campaign_id: string; optimization_goal?: string }>(`${act}/adsets`, { fields: "id,name,status,effective_status,campaign_id,daily_budget,lifetime_budget,optimization_goal", ...filter }),
         all<Obj & { adset_id: string }>(`${act}/ads`, { fields: "id,name,status,effective_status,adset_id", ...filter }),
-        all<{ ad_id: string; spend: string; impressions: string; clicks: string; actions?: { action_type: string; value: string }[] }>(`${act}/insights`, { level: "ad", fields: "ad_id,spend,impressions,clicks,actions", time_range: JSON.stringify({ since: c.since, until: c.until }), use_unified_attribution_setting: "true" }),
+        all<{ ad_id: string; spend: string; impressions: string; clicks: string; reach?: string; inline_link_clicks?: string; outbound_clicks?: { action_type: string; value: string }[]; actions?: { action_type: string; value: string }[] }>(`${act}/insights`, { level: "ad", fields: "ad_id,spend,impressions,reach,clicks,inline_link_clicks,outbound_clicks,actions", time_range: JSON.stringify({ since: c.since, until: c.until }), use_unified_attribution_setting: "true" }),
       ])
       const RESULT = ["lead", "onsite_conversion.lead_grouped", "offsite_conversion.fb_pixel_lead", "onsite_conversion.messaging_conversation_started_7d", "omni_purchase", "purchase", "offsite_conversion.fb_pixel_purchase", "complete_registration", "schedule"]
-      const ins = new Map(insights.map((r) => {
-        const res = RESULT.map((t) => Number(r.actions?.find((a) => a.action_type === t)?.value ?? 0)).find((v) => v > 0) ?? 0
-        return [r.ad_id, { spend: Number(r.spend ?? 0), results: res, ctr: Number(r.impressions) ? (Number(r.clicks) / Number(r.impressions)) * 100 : 0 }]
+      // Embudo: primer tipo de acción que Meta reporte para cada paso (omni_ incluye web + app).
+      const FUNNEL: [string, string[]][] = [
+        ["lpv", ["landing_page_view", "omni_landing_page_view"]],
+        ["vc", ["omni_view_content", "offsite_conversion.fb_pixel_view_content", "view_content"]],
+        ["atc", ["omni_add_to_cart", "offsite_conversion.fb_pixel_add_to_cart", "add_to_cart"]],
+        ["ic", ["omni_initiated_checkout", "offsite_conversion.fb_pixel_initiate_checkout", "initiate_checkout"]],
+        ["pur", ["omni_purchase", "offsite_conversion.fb_pixel_purchase", "purchase"]],
+      ]
+      const act1 = (r: { actions?: { action_type: string; value: string }[] }, types: string[]) => types.map((t) => Number(r.actions?.find((a) => a.action_type === t)?.value ?? 0)).find((v) => v > 0) ?? 0
+      type Row = { spend: number; results: number; impressions: number; reach: number; clicks: number; link: number; outbound: number; lpv: number; vc: number; atc: number; ic: number; pur: number }
+      const ins = new Map<string, Row>(insights.map((r) => {
+        const row: Row = {
+          spend: Number(r.spend ?? 0), results: act1(r, RESULT), impressions: Number(r.impressions ?? 0), reach: Number(r.reach ?? 0),
+          clicks: Number(r.clicks ?? 0), link: Number(r.inline_link_clicks ?? 0),
+          outbound: (r.outbound_clicks ?? []).reduce((s, a) => s + Number(a.value ?? 0), 0),
+          lpv: 0, vc: 0, atc: 0, ic: 0, pur: 0,
+        }
+        for (const [k, types] of FUNNEL) row[k as "lpv"] = act1(r, types)
+        return [r.ad_id, row]
       }))
+      const zero = (): Row => ({ spend: 0, results: 0, impressions: 0, reach: 0, clicks: 0, link: 0, outbound: 0, lpv: 0, vc: 0, atc: 0, ic: 0, pur: 0 })
+      const total = (ids: string[]) => ids.reduce((s, id) => { const x = ins.get(id); if (x) for (const k of Object.keys(s) as (keyof Row)[]) s[k] += x[k]; return s }, zero())
+      const n = (v: number) => v.toLocaleString("es-MX", { maximumFractionDigits: 0 })
+      // Métricas derivadas + embudo en una línea; solo pasos con datos.
+      const funnel = (x: Row, freq: boolean) => {
+        const parts = [
+          x.impressions ? `CPM ${m((x.spend / x.impressions) * 1000)}` : null,
+          x.impressions ? `CTR enlace ${((x.link / x.impressions) * 100).toFixed(2)}%` : null,
+          x.outbound ? `${n(x.outbound)} clics salientes` : x.link ? `${n(x.link)} clics al enlace` : null,
+          freq && x.reach ? `frecuencia ${(x.impressions / x.reach).toFixed(2)}` : null,
+        ].filter(Boolean)
+        const steps = ([["vistas pág.", x.lpv], ["ver contenido", x.vc], ["carrito", x.atc], ["pago", x.ic], ["compras", x.pur]] as [string, number][]).filter(([, v]) => v > 0)
+        return [parts.join(" · "), steps.length ? `embudo: ${steps.map(([l, v]) => `${n(v)} ${l}`).join(" → ")}` : ""].filter(Boolean).join(" | ")
+      }
       const m = (n: number) => new Intl.NumberFormat("es-MX", { style: "currency", currency: c.currency }).format(n)
-      const sum = (ids: string[]) => ids.reduce((s, id) => { const x = ins.get(id); if (x) { s.spend += x.spend; s.results += x.results } return s }, { spend: 0, results: 0 })
+      const sum = (ids: string[]) => total(ids)
       const perf = (s: { spend: number; results: number }) => `gasto ${m(s.spend)} · ${s.results} res.${s.results ? ` · ${m(s.spend / s.results)} c/u` : ""}`
       const budget = (o: Obj) => o.daily_budget ? `${money(o.daily_budget, c.currency)}/día` : o.lifetime_budget ? `${money(o.lifetime_budget, c.currency)} total` : null
 
@@ -165,13 +196,15 @@ export function registerMetaTools(server: McpServer) {
         const sets = adsets.filter((s) => s.campaign_id === camp.id && (!past || ads.some((a) => a.adset_id === s.id && spent(a.id))))
         const campAds = ads.filter((a) => sets.some((s) => s.id === a.adset_id) && (!past || spent(a.id)))
         if (past && !campAds.length) continue
-        lines.push(`\n■ CAMPAÑA ${camp.name} [${camp.id}] · ${camp.effective_status}${budget(camp) ? ` · presupuesto ${budget(camp)} (CBO)` : ""} · ${camp.objective ?? ""}\n  ${perf(sum(campAds.map((a) => a.id)))}`)
+        const ct = sum(campAds.map((a) => a.id))
+        lines.push(`\n■ CAMPAÑA ${camp.name} [${camp.id}] · ${camp.effective_status}${budget(camp) ? ` · presupuesto ${budget(camp)} (CBO)` : ""} · ${camp.objective ?? ""}\n  ${perf(ct)}${ct.impressions ? `\n  ${funnel(ct, false)}` : ""}`)
         for (const set of sets) {
           const setAds = ads.filter((a) => a.adset_id === set.id && (!past || spent(a.id)))
-          lines.push(`  ▸ CONJUNTO ${set.name} [${set.id}] · ${set.effective_status}${budget(set) ? ` · presupuesto ${budget(set)} (ABO)` : ""} · ${perf(sum(setAds.map((a) => a.id)))}`)
+          const st = sum(setAds.map((a) => a.id))
+          lines.push(`  ▸ CONJUNTO ${set.name} [${set.id}] · ${set.effective_status}${budget(set) ? ` · presupuesto ${budget(set)} (ABO)` : ""} · ${perf(st)}${st.impressions ? `\n    ${funnel(st, false)}` : ""}`)
           for (const ad of setAds) {
             const x = ins.get(ad.id)
-            lines.push(`     · ANUNCIO ${ad.name} [${ad.id}] · ${ad.effective_status}${x ? ` · ${m(x.spend)} · ${x.results} res.${x.results ? ` · ${m(x.spend / x.results)} c/u` : ""} · CTR ${x.ctr.toFixed(2)}%` : " · sin gasto"}`)
+            lines.push(`     · ANUNCIO ${ad.name} [${ad.id}] · ${ad.effective_status}${x ? ` · ${m(x.spend)} · ${x.results} res.${x.results ? ` · ${m(x.spend / x.results)} c/u` : ""} · CTR ${x.impressions ? ((x.clicks / x.impressions) * 100).toFixed(2) : "0.00"}%${detalle && x.impressions ? `\n       ${funnel(x, true)}` : ""}` : " · sin gasto"}`)
           }
         }
       }
