@@ -8,7 +8,7 @@ import { AutoTextarea } from "@/components/ui/auto-textarea"
 import { processStandup } from "@/lib/actions/standup"
 import { createTask } from "@/lib/actions/tasks"
 import { addLogEntry } from "@/lib/actions/projects"
-import { Loader2, Sparkles, X, Check, ClipboardList, MessageSquare, Lock, Users, ChevronDown, ChevronRight, Plus, ListChecks, Bell } from "lucide-react"
+import { Loader2, Sparkles, X, Check, ClipboardList, MessageSquare, Lock, Users, ChevronDown, ChevronRight, Plus, ListChecks, Bell, Paperclip } from "lucide-react"
 import type { Profile, Sop } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { PingRecipientsPicker } from "@/components/tasks/ping-recipients-picker"
@@ -45,6 +45,9 @@ interface EditableItem {
   // equipo del proyecto (default), no vacío = solo esas personas.
   isPinged: boolean
   pingRecipientIds: string[]
+  // Pide entregable al completarla (+ instrucciones opcionales).
+  requiresDeliverable: boolean
+  deliverableInstructions: string
   // Avisar de la nota — solo nota_proyecto. Mismo patrón que ping: sin
   // marcar es silenciosa (default, igual que el resto del dashboard);
   // marcada sin destinatarios específicos avisa a todo el equipo del
@@ -146,6 +149,8 @@ export function StandupDump({ projects, employees, sops, currentUserId, onClose,
           checklistItems: [],
           isPinged: r.pingear && !!r.projectIdGuess,
           pingRecipientIds: r.pingRecipientIdsGuess,
+          requiresDeliverable: r.requiereEntregable ?? false,
+          deliverableInstructions: r.instruccionesEntregable ?? "",
           notifyTeam: false,
           notifyRecipientIds: [],
         })))
@@ -173,6 +178,8 @@ export function StandupDump({ projects, employees, sops, currentUserId, onClose,
           checklistItems: [],
           isPinged: r.pingear && !!r.projectIdGuess,
           pingRecipientIds: r.pingRecipientIdsGuess,
+          requiresDeliverable: r.requiereEntregable ?? false,
+          deliverableInstructions: r.instruccionesEntregable ?? "",
           notifyTeam: false,
           notifyRecipientIds: [],
         }))
@@ -221,7 +228,8 @@ export function StandupDump({ projects, employees, sops, currentUserId, onClose,
         const pinged = it.isPinged && !!it.projectId
         fd.set("is_pinged", String(pinged))
         fd.set("ping_recipient_ids_json", pinged ? JSON.stringify(it.pingRecipientIds) : "")
-        fd.set("requires_deliverable", "false")
+        fd.set("requires_deliverable", String(it.requiresDeliverable))
+        if (it.requiresDeliverable && it.deliverableInstructions.trim()) fd.set("deliverable_instructions", it.deliverableInstructions.trim())
         fd.set("is_personal", String(!!it.projectId && it.isPersonal))
         if (it.dueDate) fd.set("due_date", it.dueDate)
         if (it.assigneeId) fd.set("assignee_id", it.assigneeId)
@@ -528,7 +536,7 @@ export function StandupDump({ projects, employees, sops, currentUserId, onClose,
                         >
                           {expandedKeys.has(it.key) ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
                           Más detalles
-                          {(it.description.trim() || it.sopId || it.checklistItems.length > 0 || it.isPinged) && !expandedKeys.has(it.key) && (
+                          {(it.description.trim() || it.sopId || it.checklistItems.length > 0 || it.isPinged || it.requiresDeliverable) && !expandedKeys.has(it.key) && (
                             <span className="w-1.5 h-1.5 rounded-full bg-violet-500" title="Tiene detalles adicionales" />
                           )}
                         </button>
@@ -547,6 +555,10 @@ export function StandupDump({ projects, employees, sops, currentUserId, onClose,
                             projectId={it.projectId}
                             isPinged={it.isPinged}
                             pingRecipientIds={it.pingRecipientIds}
+                            requiresDeliverable={it.requiresDeliverable}
+                            deliverableInstructions={it.deliverableInstructions}
+                            onChangeRequiresDeliverable={(requiresDeliverable) => updateItem(it.key, { requiresDeliverable })}
+                            onChangeDeliverableInstructions={(deliverableInstructions) => updateItem(it.key, { deliverableInstructions })}
                             onChangeDescription={(description) => updateItem(it.key, { description })}
                             onChangeSopId={(sopId) => updateItem(it.key, { sopId })}
                             onChangeChecklist={(checklistItems) => updateItem(it.key, { checklistItems })}
@@ -599,6 +611,7 @@ export function StandupDump({ projects, employees, sops, currentUserId, onClose,
 
 function TaskDetailsEditor({
   description, sopId, checklistItems, sops, projectId, isPinged, pingRecipientIds,
+  requiresDeliverable, deliverableInstructions, onChangeRequiresDeliverable, onChangeDeliverableInstructions,
   onChangeDescription, onChangeSopId, onChangeChecklist, onChangeIsPinged, onChangePingRecipientIds,
 }: {
   description: string
@@ -608,6 +621,10 @@ function TaskDetailsEditor({
   projectId: string
   isPinged: boolean
   pingRecipientIds: string[]
+  requiresDeliverable: boolean
+  deliverableInstructions: string
+  onChangeRequiresDeliverable: (v: boolean) => void
+  onChangeDeliverableInstructions: (v: string) => void
   onChangeDescription: (v: string) => void
   onChangeSopId: (v: string) => void
   onChangeChecklist: (v: ChecklistDraft[]) => void
@@ -670,6 +687,28 @@ function TaskDetailsEditor({
             />
           )}
         </>
+      )}
+
+      <button
+        type="button"
+        onClick={() => onChangeRequiresDeliverable(!requiresDeliverable)}
+        className={cn(
+          "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md border text-xs transition-colors",
+          requiresDeliverable
+            ? "border-violet-300 bg-violet-50 text-violet-700 dark:bg-violet-950/30 dark:border-violet-800 dark:text-violet-300"
+            : "border-input bg-background text-muted-foreground hover:bg-muted/60"
+        )}
+      >
+        <Paperclip className="w-3.5 h-3.5" />
+        {requiresDeliverable ? "Pide entregable — hay que subir el resultado al completarla" : "Sin entregable"}
+      </button>
+      {requiresDeliverable && (
+        <input
+          value={deliverableInstructions}
+          onChange={(e) => onChangeDeliverableInstructions(e.target.value)}
+          placeholder="Qué se entrega (opcional): ej. el brief en PDF, link del video…"
+          className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+        />
       )}
 
       <div className="space-y-1">

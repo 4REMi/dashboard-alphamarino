@@ -15,6 +15,8 @@ export interface StandupItem {
   pingear: boolean                 // tarea: avisar al completarla
   pingRecipientIdsGuess: string[]  // vacío = equipo del proyecto
   pingNamesRaw: string[]
+  requiereEntregable: boolean      // tarea: pide subir un resultado al completarla
+  instruccionesEntregable: string | null
 }
 
 // "Captura rápida" en /tasks — un solo texto libre puede describir pendientes

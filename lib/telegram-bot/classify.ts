@@ -22,6 +22,8 @@ export interface Movimiento {
   asignado?: string
   pingear?: boolean          // tarea: avisar cuando se complete
   avisar_a?: string[]        // tarea: a quién avisar (vacío = equipo del proyecto)
+  requiere_entregable?: boolean // tarea: hay que subir un resultado al completarla
+  instrucciones_entregable?: string
   personal?: boolean
   // cliente
   empresa?: string
@@ -159,6 +161,8 @@ const STANDUP_TOOL: Anthropic.Tool = {
             descripcion: { type: "string", description: "Para 'nota_proyecto': el cuerpo de la nota. Para 'tarea', a tu criterio según qué tanto da el texto: (a) pendiente simple o corto (\"mandar factura a X\") → vacío o una línea de contexto; (b) pendiente largo o con varias partes (explica un proceso, objetivos, condiciones, pasos, con quién coordinar) → desarróllalo: 1–2 líneas de contexto (qué y para qué) y luego pasos numerados (\"1. …\"), con lo que hay que validar antes y qué dejar al terminar si aplica. Usa solo hechos del texto; puedes ordenar y explicitar pasos lógicos, pero no inventes cifras, fechas, nombres ni requisitos. Texto plano, sin markdown de negritas. No repitas el título." },
             pingear: { type: "boolean", description: "Solo 'tarea': true si el usuario pide que le avisen/confirmen cuando se termine, o que se avise a alguien al completarla. Si no lo pide, false." },
             avisar_a: { type: "array", items: { type: "string" }, description: "Solo 'tarea' con pingear: nombres de quién debe enterarse al completarla. Vacío = todo el equipo del proyecto." },
+            requiere_entregable: { type: "boolean", description: "Solo 'tarea': true si el usuario pide que se entregue/suba/adjunte un resultado al completarla (\"como entregable\", \"que suba el archivo/link/documento\", \"que lo adjunte\"). Si no lo pide, false." },
+            instrucciones_entregable: { type: "string", description: "Solo 'tarea' con requiere_entregable: qué se debe entregar, si el texto lo dice (ej. \"el brief en PDF\", \"link del video\"). Si no, vacío." },
             proyecto: { type: "string", description: "Nombre del proyecto mencionado (tal cual lo dice el usuario). Puede faltar en una 'tarea' (queda sin proyecto); una 'nota_proyecto' SIEMPRE debe tener proyecto." },
             asignado: { type: "string", description: "Nombre de la persona a la que se le asigna la tarea, SOLO si se menciona explícitamente un nombre propio. Si no se menciona a nadie, déjalo vacío." },
             fecha: { type: "string", description: "Fecha límite en formato YYYY-MM-DD, solo si se menciona." },

@@ -238,6 +238,8 @@ export function registerMcpTools(server: McpServer) {
     pingear: z.boolean().optional().describe("Solo tareas con proyecto: avisar por Telegram cuando se complete"),
     avisar_al_terminar: z.array(z.string()).optional().describe("Solo tareas pingeadas: nombres a avisar (vacío = equipo del proyecto)"),
     avisar_a: z.string().optional().describe("Solo notas: 'equipo' o un nombre"),
+    requiere_entregable: z.boolean().optional().describe("Solo tareas: pide subir un resultado al completarla"),
+    instrucciones_entregable: z.string().optional(),
   })
   server.registerTool(
     "captura_rapida",
@@ -270,6 +272,8 @@ export function registerMcpTools(server: McpServer) {
           descripcion: it.tipo === "tarea" && it.descripcion ? it.descripcion : undefined,
           pingear: it.pingear && !!it.projectIdGuess ? true : undefined,
           avisar_al_terminar: it.pingear && it.pingRecipientIdsGuess.length ? it.pingRecipientIdsGuess.map((id) => uName(id)).filter((x): x is string => !!x) : undefined,
+          requiere_entregable: it.requiereEntregable || undefined,
+          instrucciones_entregable: it.instruccionesEntregable ?? undefined,
           _proyectoMencionado: it.projectNameRaw, _responsableMencionado: it.assigneeNameRaw,
         }))
         const lines = out.map((it, i) => {
@@ -279,6 +283,7 @@ export function registerMcpTools(server: McpServer) {
           if (it._responsableMencionado && !it.responsable) warn.push(`"${it._responsableMencionado}" no encontrado en el equipo`)
           const extra = [
             it.descripcion ? `   Descripción: ${it.descripcion}` : "",
+            it.requiere_entregable ? `   📎 Pide entregable${it.instrucciones_entregable ? `: ${it.instrucciones_entregable}` : ""}` : "",
             it.pingear ? `   🔔 Ping al completar: ${it.avisar_al_terminar?.length ? it.avisar_al_terminar.join(", ") : "equipo del proyecto"}` : "",
           ].filter(Boolean).join("\n")
           return `${i + 1}. ${it.tipo === "tarea" ? "☐ Tarea" : "📝 Nota"}: ${it.texto}\n   ${it.proyecto ?? "sin proyecto"}${it.responsable ? ` · ${it.responsable}` : ""}${it.fecha_limite ? ` · vence ${it.fecha_limite}` : ""}${extra ? `\n${extra}` : ""}${warn.length ? `\n   ⚠️ ${warn.join("; ")}` : ""}`
@@ -288,7 +293,7 @@ export function registerMcpTools(server: McpServer) {
       }
 
       if (!confirmar) {
-        return textResult(`Crearía ${items.length} elemento(s):\n${items.map((it, i) => `${i + 1}. ${it.tipo === "tarea" ? "☐" : "📝"} ${it.texto} · ${it.proyecto ?? "sin proyecto"}${it.responsable ? ` · ${it.responsable}` : ""}${it.fecha_limite ? ` · vence ${it.fecha_limite}` : ""}${it.pingear ? " · 🔔 ping" : ""}${it.descripcion ? " · con descripción" : ""}`).join("\n")}\n\nNo se creó nada. Si es correcto, vuelve a llamar con confirmar: true.`)
+        return textResult(`Crearía ${items.length} elemento(s):\n${items.map((it, i) => `${i + 1}. ${it.tipo === "tarea" ? "☐" : "📝"} ${it.texto} · ${it.proyecto ?? "sin proyecto"}${it.responsable ? ` · ${it.responsable}` : ""}${it.fecha_limite ? ` · vence ${it.fecha_limite}` : ""}${it.pingear ? " · 🔔 ping" : ""}${it.requiere_entregable ? " · 📎 entregable" : ""}${it.descripcion ? " · con descripción" : ""}`).join("\n")}\n\nNo se creó nada. Si es correcto, vuelve a llamar con confirmar: true.`)
       }
       const done: string[] = [], failed: string[] = []
       for (const [i, it] of items.entries()) {
@@ -308,6 +313,10 @@ export function registerMcpTools(server: McpServer) {
             if (assigneeId) fd.set("assignee_id", assigneeId)
             if (it.fecha_limite) fd.set("due_date", it.fecha_limite)
             if (it.descripcion?.trim()) fd.set("description", it.descripcion.trim())
+            if (it.requiere_entregable) {
+              fd.set("requires_deliverable", "true")
+              if (it.instrucciones_entregable?.trim()) fd.set("deliverable_instructions", it.instrucciones_entregable.trim())
+            }
             const pinged = !!it.pingear && !!projectId
             fd.set("is_pinged", String(pinged))
             if (pinged && it.avisar_al_terminar?.length) {

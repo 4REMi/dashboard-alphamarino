@@ -30,6 +30,8 @@ export async function interpretStandup(db: SupabaseClient, text: string): Promis
       pingear: m.tipo === "tarea" && !!m.pingear,
       pingRecipientIdsGuess: m.tipo === "tarea" && m.pingear ? (m.avisar_a ?? []).map((n) => findByName(profileList, n)?.id).filter((x): x is string => !!x) : [],
       pingNamesRaw: m.tipo === "tarea" && m.pingear ? m.avisar_a ?? [] : [],
+      requiereEntregable: m.tipo === "tarea" && !!m.requiere_entregable,
+      instruccionesEntregable: m.tipo === "tarea" && m.requiere_entregable ? m.instrucciones_entregable?.trim() || null : null,
     }
   })
 }

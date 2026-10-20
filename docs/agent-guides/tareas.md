@@ -254,3 +254,9 @@ pide entregable, aviso, "sin movimiento N d" (≥7 días) y la primera línea de
 la descripción. En el resumen, el número rojo es solo de **vencidas**.
 Fechas: migración 117 (`tasks.updated_at` automático y `completed_at` al pasar
 a Done; se limpia al reabrir).
+
+**Entregable en Captura rápida (2026-10-20):** la IA marca `requiere_entregable`
+(+ instrucciones) cuando el texto pide que se entregue/suba/adjunte un
+resultado; en "Más detalles" hay un botón "Pide entregable" con campo de qué
+se entrega. Antes siempre se creaban sin entregable. Igual en el MCP
+`captura_rapida` (📎 en la vista previa).
