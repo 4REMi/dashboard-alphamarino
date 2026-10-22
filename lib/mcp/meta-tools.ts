@@ -211,6 +211,13 @@ export function registerMetaTools(server: McpServer) {
       const orphanSets = adsets.filter((s) => !campIds.has(s.campaign_id))
       if (orphanSets.length) lines.push(`\n(${orphanSets.length} conjunto(s) activos en campañas pausadas; usa incluir_inactivos: true para verlos completos)`)
       if (!campaigns.length) lines.push("\nNo hay campañas activas." + (incluir_inactivos ? "" : " Usa incluir_inactivos: true para ver las pausadas."))
+      // Otros canales (campañas manuales) + total combinado del periodo.
+      const { manualSummary, manualBlock, fmtMoney } = await import("@/lib/mcp/manual-tools")
+      const manual = manualBlock(await manualSummary(c.projectId, c.since, c.until), c.currency)
+      if (manual.lines.length) {
+        const metaSpend = [...ins.values()].reduce((s, x) => s + x.spend, 0)
+        lines.push(...manual.lines, `Total combinado (Meta + manuales): ${fmtMoney(metaSpend + manual.spend, c.currency)} — detalle con campanas_manuales.`)
+      }
       return text(lines.join("\n"))
     },
   )

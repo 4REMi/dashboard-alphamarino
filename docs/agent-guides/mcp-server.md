@@ -350,3 +350,11 @@ pide `reach, inline_link_clicks, outbound_clicks` y las acciones del embudo
 purchase, tomando `omni_` primero). Por campaña y conjunto muestra CPM, CTR de
 enlace, clics salientes y el embudo; con `detalle: true` también por anuncio,
 más frecuencia (solo por anuncio: el alcance no se puede sumar entre anuncios).
+
+**Campañas manuales en el MCP (2026-10-22):** `campanas_manuales`
+(`lib/mcp/manual-tools.ts`, solo lectura, admin/subadmin) lista las campañas
+de otros canales registradas a mano en el proyecto con lo del periodo (misma
+cuenta que el dashboard: última captura en el rango − última anterior) y
+avisa si una activa lleva 7+ días sin captura. `meta_estado_cliente` agrega al
+final "Otros canales" por canal y el **total combinado** Meta + manuales,
+aclarando que lo manual son capturas, no datos en vivo.

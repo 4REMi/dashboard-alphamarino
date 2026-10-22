@@ -14,6 +14,7 @@ import { registerMetaEditTools } from "@/lib/mcp/meta-edit-tools"
 import { registerProjectTools } from "@/lib/mcp/project-tools"
 import { registerDeliverableTools } from "@/lib/mcp/deliverable-tools"
 import { registerCustomerTools } from "@/lib/mcp/customer-tools"
+import { registerManualTools } from "@/lib/mcp/manual-tools"
 import { getProjectContext } from "@/lib/project-context"
 import { interpretStandup } from "@/lib/standup-core"
 
@@ -101,6 +102,7 @@ export function registerMcpTools(server: McpServer) {
   registerProjectTools(server)
   registerDeliverableTools(server)
   registerCustomerTools(server)
+  registerManualTools(server)
 
   server.registerTool(
     "crear_tarea",
