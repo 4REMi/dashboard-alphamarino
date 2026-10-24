@@ -1,7 +1,7 @@
 import { z } from "zod"
 import type { McpServer } from "@modelcontextprotocol/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { client, get, post, own, log, text, requireEditor, confirmHint, cleanStoryForCopy, type ToolCtx } from "@/lib/mcp/meta-tools"
+import { client, get, post, own, log, text, requireEditor, confirmHint, cleanStoryForCopy, ctaForAdset, deliveryCheck, type ToolCtx } from "@/lib/mcp/meta-tools"
 
 // Modificar lo que ya existe en Meta: contenido de un anuncio (texto,
 // título, CTA, URL/UTMs o el video/imagen), intereses y públicos para la
@@ -10,7 +10,7 @@ import { client, get, post, own, log, text, requireEditor, confirmHint, cleanSto
 
 const ASSET_BASE = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/creative-assets/`
 const db = () => createAdminClient()
-const CTAS = ["LEARN_MORE", "SIGN_UP", "BOOK_TRAVEL", "BOOK_NOW", "CONTACT_US", "GET_QUOTE", "APPLY_NOW", "SHOP_NOW", "SUBSCRIBE", "WHATSAPP_MESSAGE", "MESSAGE_PAGE", "CALL_NOW", "GET_OFFER"] as const
+const CTAS = ["LEARN_MORE", "SIGN_UP", "BOOK_TRAVEL", "BOOK_NOW", "CONTACT_US", "GET_QUOTE", "APPLY_NOW", "SHOP_NOW", "SUBSCRIBE", "WHATSAPP_MESSAGE", "MESSAGE_PAGE", "INSTAGRAM_MESSAGE", "CALL_NOW", "GET_OFFER"] as const
 
 async function uploadImage(act: string, url: string): Promise<string> {
   const buf = Buffer.from(await (await fetch(url)).arrayBuffer())
@@ -39,7 +39,7 @@ export function registerMetaEditTools(server: McpServer) {
     "meta_editar_anuncio",
     {
       title: "Meta: editar anuncio",
-      description: "Cambia el contenido de un anuncio existente: texto principal, título, CTA, URL de destino, parámetros UTM y/o el video o imagen (asset_id del Creative Tracker). Solo cambia lo indicado. Meta no edita creativos: se crea uno igual con los cambios y se asigna al anuncio (vuelve a revisión; las estadísticas se conservan). Sin confirmar: true solo muestra antes → después.",
+      description: "Cambia el contenido de un anuncio existente: texto principal, título, CTA, URL de destino, parámetros UTM y/o el video o imagen (asset_id del Creative Tracker). Solo cambia lo indicado. Meta no edita creativos: se crea uno igual con los cambios y se asigna al anuncio (vuelve a revisión; las estadísticas se conservan). En conjuntos de mensajes el CTA se pone solo según el destino (Instagram → INSTAGRAM_MESSAGE, Messenger → MESSAGE_PAGE, WhatsApp → WHATSAPP_MESSAGE); llamarla sin cambios sobre un anuncio con CTA equivocado lo corrige. Sin confirmar: true solo muestra antes → después.",
       inputSchema: z.object({
         proyecto: z.string(),
         ad_id: z.string(),
@@ -57,8 +57,9 @@ export function registerMetaEditTools(server: McpServer) {
       const c = await client(a.proyecto)
       const o = await own(c, a.ad_id)
       if (o.kind !== "anuncio") throw new Error("ad_id no es un anuncio.")
-      if ([a.texto, a.titulo, a.cta, a.url, a.url_tags, a.asset_id].every((x) => x == null)) throw new Error("No indicaste nada que cambiar.")
-      const ad = await get<{ creative?: { id: string } }>(a.ad_id, { fields: "creative{id}" })
+      const ad = await get<{ creative?: { id: string }; adset_id?: string }>(a.ad_id, { fields: "creative{id},adset_id" })
+      // En conjuntos de mensajes el CTA lo dicta el destino (y se corrige si estaba mal).
+      const forcedCta = ad.adset_id ? await ctaForAdset(ad.adset_id, a.cta ?? null) : null
       if (!ad.creative?.id) throw new Error("El anuncio no tiene creativo.")
       const cr = await get<{ name?: string; object_story_spec?: Record<string, any>; asset_feed_spec?: unknown; url_tags?: string }>(ad.creative.id, { fields: "name,object_story_spec,asset_feed_spec,url_tags" })
       const spec = JSON.parse(JSON.stringify(cr.object_story_spec ?? {})) as Record<string, any>
@@ -66,6 +67,8 @@ export function registerMetaEditTools(server: McpServer) {
       if (!key) throw new Error(cr.asset_feed_spec ? "Es un anuncio dinámico (varias versiones): edítalo en Ads Manager." : "Este anuncio usa una publicación existente: su contenido se edita en la publicación.")
       const d = spec[key]
       const before = { texto: d.message ?? null, titulo: (key === "video_data" ? d.title : d.name) ?? null, cta: d.call_to_action?.type ?? null, url: (key === "link_data" ? d.link : null) ?? d.call_to_action?.value?.link ?? null, tags: cr.url_tags ?? null }
+      const fixesCta = !!forcedCta && before.cta !== forcedCta.type
+      if ([a.texto, a.titulo, a.cta, a.url, a.url_tags, a.asset_id].every((x) => x == null) && !fixesCta) throw new Error("No indicaste nada que cambiar.")
 
       // Media nueva (se sube solo al confirmar).
       let asset: { id: string; file_type: string | null; file_path: string | null; thumbnail_path: string | null; asset_url: string | null; project_id: string } | null = null
@@ -80,7 +83,7 @@ export function registerMetaEditTools(server: McpServer) {
       }
 
       const after = {
-        texto: a.texto ?? before.texto, titulo: a.titulo ?? before.titulo, cta: a.cta ?? before.cta,
+        texto: a.texto ?? before.texto, titulo: a.titulo ?? before.titulo, cta: forcedCta?.type ?? a.cta ?? before.cta,
         url: a.url ?? before.url, tags: a.url_tags != null ? a.url_tags || null : before.tags,
       }
       const row = (k: string, b: string | null, n: string | null) => `  ${k}: ${b === n ? clip(b) : `${clip(b)} → ${clip(n)}`}`
@@ -107,7 +110,10 @@ export function registerMetaEditTools(server: McpServer) {
       }
       if (a.texto != null) block.message = a.texto
       if (a.titulo != null) { if (target === "video_data") block.title = a.titulo; else block.name = a.titulo }
-      if (a.cta || a.url) {
+      if (forcedCta) {
+        block.call_to_action = { type: forcedCta.type, value: { ...forcedCta.value } }
+        if (target === "link_data" && forcedCta.value.link) block.link = forcedCta.value.link
+      } else if (a.cta || a.url) {
         const v = { ...(block.call_to_action?.value ?? {}) }
         if (a.url) v.link = a.url
         block.call_to_action = { type: a.cta ?? block.call_to_action?.type ?? "LEARN_MORE", value: v }
@@ -123,7 +129,7 @@ export function registerMetaEditTools(server: McpServer) {
       await post(a.ad_id, { creative: JSON.stringify({ creative_id: creative.id }) })
       if (asset) await db().from("creative_asset_meta_ads").insert({ creative_asset_id: asset.id, project_id: c.projectId, meta_ad_id: a.ad_id, linked_by: profileId }).then(() => {}, () => {})
       await log(c, profileId, `Anuncio editado:\n${desc}`)
-      return text(`✅ Anuncio actualizado (creativo nuevo ${creative.id}). Meta lo revisa de nuevo.\n${desc}`)
+      return text(`✅ Anuncio actualizado (creativo nuevo ${creative.id}). Meta lo revisa de nuevo.\n${desc}${await deliveryCheck(a.ad_id)}`)
     },
   )
 

@@ -358,3 +358,15 @@ cuenta que el dashboard: última captura en el rango − última anterior) y
 avisa si una activa lleva 7+ días sin captura. `meta_estado_cliente` agrega al
 final "Otros canales" por canal y el **total combinado** Meta + manuales,
 aclarando que lo manual son capturas, no datos en vivo.
+
+**CTA de anuncios de mensajes y problemas de entrega (2026-10-24):** bug real —
+un anuncio de una campaña de mensajes a Instagram se creó con `MESSAGE_PAGE`
+(Messenger); Meta lo dejó ACTIVE pero no lo entregaba. Ahora el CTA sale del
+`destination_type` del conjunto (`ctaForAdset` en `meta-tools.ts`):
+INSTAGRAM_DIRECT → INSTAGRAM_MESSAGE `{app_destination: INSTAGRAM_DIRECT, link:
+instagram.com}`, MESSENGER → MESSAGE_PAGE, WHATSAPP → WHATSAPP_MESSAGE. Un CTA
+pedido que no corresponde (o uno de mensajes en un conjunto que no es de
+mensajes) se rechaza. `meta_editar_anuncio` corrige el CTA aunque no se pida
+otro cambio. Tras crear/editar se relee el anuncio y se reporta `issues_info`.
+`meta_estado_cliente` pide `issues_info` de conjuntos y anuncios: 🔴 en la
+línea y un bloque "PROBLEMAS DE ENTREGA" arriba aunque el estado diga ACTIVE.

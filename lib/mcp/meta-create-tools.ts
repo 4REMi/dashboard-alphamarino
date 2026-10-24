@@ -1,7 +1,7 @@
 import { z } from "zod"
 import type { McpServer } from "@modelcontextprotocol/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { client, get, post, own, log, text, requireEditor, confirmHint, applyPlacements, describePlacements, PLACEMENT_KEYS, cleanStoryForCopy, type ToolCtx } from "@/lib/mcp/meta-tools"
+import { client, get, post, own, log, text, requireEditor, confirmHint, applyPlacements, describePlacements, PLACEMENT_KEYS, cleanStoryForCopy, ctaForAdset, deliveryCheck, type ToolCtx } from "@/lib/mcp/meta-tools"
 
 // Crear desde cero en Meta: campaña → conjunto → anuncio (con un creativo
 // del Creative Tracker). Mismas reglas que meta-tools.ts: solo admin/
@@ -18,7 +18,7 @@ const OBJECTIVES = {
 } as const
 type Objetivo = keyof typeof OBJECTIVES
 
-const CTAS = ["LEARN_MORE", "SIGN_UP", "BOOK_TRAVEL", "BOOK_NOW", "CONTACT_US", "GET_QUOTE", "APPLY_NOW", "SHOP_NOW", "SUBSCRIBE", "WHATSAPP_MESSAGE", "MESSAGE_PAGE", "CALL_NOW", "GET_OFFER"] as const
+const CTAS = ["LEARN_MORE", "SIGN_UP", "BOOK_TRAVEL", "BOOK_NOW", "CONTACT_US", "GET_QUOTE", "APPLY_NOW", "SHOP_NOW", "SUBSCRIBE", "WHATSAPP_MESSAGE", "MESSAGE_PAGE", "INSTAGRAM_MESSAGE", "CALL_NOW", "GET_OFFER"] as const
 
 const toMinor = (n: number) => String(Math.round(n * 100))
 
@@ -442,7 +442,7 @@ export function registerMetaCreateTools(server: McpServer) {
         instagram_id: z.string().optional(),
         texto: z.string().min(1).describe("Texto principal"),
         titulo: z.string().optional(),
-        cta: z.enum(CTAS).default("LEARN_MORE"),
+        cta: z.enum(CTAS).optional().describe("En conjuntos de mensajes se pone solo según el destino (Instagram → INSTAGRAM_MESSAGE, Messenger → MESSAGE_PAGE, WhatsApp → WHATSAPP_MESSAGE); omítelo. Fuera de mensajes, default LEARN_MORE."),
         url: z.string().url().optional().describe("Destino (sitio). Requerido salvo formulario o mensajes"),
         form_id: z.string().optional().describe("Formulario instantáneo (leads)"),
         saludo: z.string().max(300).optional().describe("Anuncios de mensajes: primer mensaje que ve la persona"),
@@ -461,11 +461,14 @@ export function registerMetaCreateTools(server: McpServer) {
       if (!fileUrl) throw new Error("El asset no tiene archivo.")
       const isVideo = asset.file_type === "video" || /\.(mp4|mov|webm|m4v)(\?|$)/i.test(fileUrl)
       const thumbUrl = asset.thumbnail_path ? ASSET_BASE + asset.thumbnail_path : null
-      const messaging = ["WHATSAPP_MESSAGE", "MESSAGE_PAGE"].includes(a.cta)
+      // CTA según el destino del conjunto (bloquea si el pedido no corresponde).
+      const forcedCta = await ctaForAdset(set.id, a.cta ?? null)
+      const ctaType = forcedCta?.type ?? a.cta ?? "LEARN_MORE"
+      const messaging = !!forcedCta
       if (!a.form_id && !messaging && !a.url) throw new Error("Falta url (o form_id para formulario instantáneo).")
       const concept = (asset.concept as unknown as { name: string | null } | null)?.name ?? "sin concepto"
 
-      const desc = `Anuncio "${a.nombre}" en "${set.name}" · ${isVideo ? "video" : "imagen"} del concepto "${concept}" · CTA ${a.cta}${a.form_id ? " · formulario" : a.url ? ` · ${a.url}` : ""} · PAUSADO\n  Texto: ${a.texto.slice(0, 160)}${a.texto.length > 160 ? "…" : ""}${a.titulo ? `\n  Título: ${a.titulo}` : ""}`
+      const desc = `Anuncio "${a.nombre}" en "${set.name}" · ${isVideo ? "video" : "imagen"} del concepto "${concept}" · CTA ${ctaType}${forcedCta ? " (según el destino del conjunto)" : ""}${a.form_id ? " · formulario" : a.url ? ` · ${a.url}` : ""} · PAUSADO\n  Texto: ${a.texto.slice(0, 160)}${a.texto.length > 160 ? "…" : ""}${a.titulo ? `\n  Título: ${a.titulo}` : ""}`
       if (!a.confirmar) return text(`Crearía en ${c.name}:\n- ${desc}${confirmHint}`)
 
       const act = `act_${c.account}`
@@ -477,7 +480,9 @@ export function registerMetaCreateTools(server: McpServer) {
         if (!h) throw new Error("Meta no regresó el hash de la imagen")
         return h
       }
-      const cta: Record<string, unknown> = { type: a.cta, value: a.form_id ? { lead_gen_form_id: a.form_id } : a.cta === "WHATSAPP_MESSAGE" ? { app_destination: "WHATSAPP" } : a.url ? { link: a.url } : {} }
+      const cta: Record<string, unknown> = forcedCta
+        ? { type: forcedCta.type, value: { ...forcedCta.value } }
+        : { type: ctaType, value: a.form_id ? { lead_gen_form_id: a.form_id } : a.url ? { link: a.url } : {} }
       const spec: Record<string, unknown> = { page_id: a.page_id, ...(a.instagram_id ? { instagram_user_id: a.instagram_id } : {}) }
       if (isVideo) {
         const v = await post(`${act}/advideos`, { file_url: fileUrl, name: a.nombre }) as { id: string }
@@ -496,14 +501,16 @@ export function registerMetaCreateTools(server: McpServer) {
         if (a.saludo || a.preguntas?.length) video_data.page_welcome_message = welcomeJson(null, a.saludo, a.preguntas)
         spec.video_data = video_data
       } else {
-        spec.link_data = { image_hash: await imageHash(fileUrl), message: a.texto, ...(a.titulo ? { name: a.titulo } : {}), link: a.url ?? `https://facebook.com/${a.page_id}`, call_to_action: cta,
+        spec.link_data = { image_hash: await imageHash(fileUrl), message: a.texto, ...(a.titulo ? { name: a.titulo } : {}), link: forcedCta?.value.link ?? a.url ?? `https://facebook.com/${a.page_id}`, call_to_action: cta,
           ...(a.saludo || a.preguntas?.length ? { page_welcome_message: welcomeJson(null, a.saludo, a.preguntas) } : {}) }
       }
       const creative = await post(`${act}/adcreatives`, { name: a.nombre, object_story_spec: JSON.stringify(spec) }) as { id: string }
       const ad = await post(`${act}/ads`, { name: a.nombre, adset_id: set.id, creative: JSON.stringify({ creative_id: creative.id }), status: "PAUSED" }) as { id: string }
       await db().from("creative_asset_meta_ads").insert({ creative_asset_id: asset.id, project_id: c.projectId, meta_ad_id: ad.id, linked_by: profileId })
       await log(c, profileId, `Anuncio creado (pausado): ${desc} · id ${ad.id}`)
-      return text(`✅ Anuncio creado pausado [ad_id ${ad.id}] y vinculado al concepto "${concept}". Revísalo en Ads Manager y actívalo (campaña, conjunto y anuncio) con meta_cambiar_estado.`)
+      // Releer: Meta puede aceptar el anuncio y aun así reportar problemas.
+      const issues = await deliveryCheck(ad.id)
+      return text(`✅ Anuncio creado pausado [ad_id ${ad.id}] · CTA ${ctaType} y vinculado al concepto "${concept}". Revísalo en Ads Manager y actívalo (campaña, conjunto y anuncio) con meta_cambiar_estado.${issues}`)
     },
   )
 }

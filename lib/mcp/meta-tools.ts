@@ -117,6 +117,49 @@ export async function log(c: Client, profileId: string, body: string) {
   await db().from("ai_activity").insert({ project_id: c.projectId, actor: "claude_mcp", requested_by: profileId, platform: "meta", summary: body })
 }
 
+// ── CTA de anuncios de mensajes ───────────────────────────────────────────
+// El CTA de un anuncio de mensajes lo dicta el destino del CONJUNTO, no se
+// elige a mano: un MESSAGE_PAGE (Messenger) en un conjunto de Instagram Direct
+// Meta lo acepta y lo deja ACTIVE, pero no lo entrega ("CTA no admitido").
+export const MESSAGING_CTA: Record<string, { type: string; value: Record<string, string> }> = {
+  INSTAGRAM_DIRECT: { type: "INSTAGRAM_MESSAGE", value: { app_destination: "INSTAGRAM_DIRECT", link: "https://www.instagram.com/" } },
+  MESSENGER: { type: "MESSAGE_PAGE", value: { app_destination: "MESSENGER" } },
+  WHATSAPP: { type: "WHATSAPP_MESSAGE", value: { app_destination: "WHATSAPP" } },
+}
+const MESSAGING_TYPES = new Set(Object.values(MESSAGING_CTA).map((x) => x.type))
+const DEST_LABEL: Record<string, string> = { INSTAGRAM_DIRECT: "Instagram Direct", MESSENGER: "Messenger", WHATSAPP: "WhatsApp" }
+
+// CTA forzado para el conjunto (null si no es de mensajes). Rechaza un CTA
+// pedido que no corresponde al destino, y un CTA de mensajes en un conjunto
+// que no es de mensajes.
+export async function ctaForAdset(adsetId: string, requested?: string | null): Promise<{ type: string; value: Record<string, string> } | null> {
+  const set = await get<{ destination_type?: string }>(adsetId, { fields: "destination_type" })
+  const forced = set.destination_type ? MESSAGING_CTA[set.destination_type] ?? null : null
+  if (forced) {
+    if (requested && requested !== forced.type) {
+      throw new Error(`El conjunto envía a ${DEST_LABEL[set.destination_type!]}: el CTA tiene que ser ${forced.type}, no ${requested}. Omite cta y se pone el correcto.`)
+    }
+    return forced
+  }
+  if (requested && MESSAGING_TYPES.has(requested)) {
+    throw new Error(`${requested} es un CTA de mensajes, pero el conjunto no es de mensajes (destino ${set.destination_type ?? "sitio/otro"}).`)
+  }
+  return null
+}
+
+// "ACTIVE" no significa que entregue: Meta reporta los problemas en
+// issues_info. Texto vacío si no hay nada.
+export type MetaIssue = { error_summary?: string; error_message?: string; level?: string }
+export const issuesText = (issues?: MetaIssue[] | null) =>
+  (issues ?? []).map((i) => i.error_summary || i.error_message).filter(Boolean).join("; ")
+
+export async function deliveryCheck(id: string): Promise<string> {
+  const r = await get<{ effective_status?: string; issues_info?: MetaIssue[] }>(id, { fields: "effective_status,issues_info" }).catch(() => null)
+  if (!r) return ""
+  const t = issuesText(r.issues_info)
+  return t ? `\n⚠️ Meta reporta problemas (${r.effective_status}): ${t}` : ""
+}
+
 export const confirmHint = "\n\nNo se cambió nada. Si es correcto, vuelve a llamar con confirmar: true."
 
 export function registerMetaTools(server: McpServer) {
@@ -145,8 +188,8 @@ export function registerMetaTools(server: McpServer) {
       const filter: Record<string, string> = incluir_inactivos ? {} : { effective_status: JSON.stringify(["ACTIVE", "IN_PROCESS", "WITH_ISSUES", "CAMPAIGN_PAUSED", "ADSET_PAUSED"]) }
       const [campaigns, adsets, ads, insights] = await Promise.all([
         all<Obj & { objective?: string }>(`${act}/campaigns`, { fields: "id,name,status,effective_status,objective,daily_budget,lifetime_budget", ...(incluir_inactivos ? {} : { effective_status: JSON.stringify(["ACTIVE", "IN_PROCESS", "WITH_ISSUES"]) }) }),
-        all<Obj & { campaign_id: string; optimization_goal?: string }>(`${act}/adsets`, { fields: "id,name,status,effective_status,campaign_id,daily_budget,lifetime_budget,optimization_goal", ...filter }),
-        all<Obj & { adset_id: string }>(`${act}/ads`, { fields: "id,name,status,effective_status,adset_id", ...filter }),
+        all<Obj & { campaign_id: string; optimization_goal?: string; issues_info?: MetaIssue[] }>(`${act}/adsets`, { fields: "id,name,status,effective_status,campaign_id,daily_budget,lifetime_budget,optimization_goal,issues_info", ...filter }),
+        all<Obj & { adset_id: string; issues_info?: MetaIssue[] }>(`${act}/ads`, { fields: "id,name,status,effective_status,adset_id,issues_info", ...filter }),
         all<{ ad_id: string; spend: string; impressions: string; clicks: string; reach?: string; inline_link_clicks?: string; outbound_clicks?: { action_type: string; value: string }[]; actions?: { action_type: string; value: string }[] }>(`${act}/insights`, { level: "ad", fields: "ad_id,spend,impressions,reach,clicks,inline_link_clicks,outbound_clicks,actions", time_range: JSON.stringify({ since: c.since, until: c.until }), use_unified_attribution_setting: "true" }),
       ])
       const RESULT = ["lead", "onsite_conversion.lead_grouped", "offsite_conversion.fb_pixel_lead", "onsite_conversion.messaging_conversation_started_7d", "omni_purchase", "purchase", "offsite_conversion.fb_pixel_purchase", "complete_registration", "schedule"]
@@ -191,6 +234,7 @@ export function registerMetaTools(server: McpServer) {
 
       const lines: string[] = [`${c.name} · cuenta act_${c.account} · ${c.currency} · ${c.label}: ${c.since} → ${c.until}`]
       const campIds = new Set(campaigns.map((x) => x.id))
+      const problems: string[] = []
       const spent = (id: string) => (ins.get(id)?.spend ?? 0) > 0
       for (const camp of campaigns) {
         const sets = adsets.filter((s) => s.campaign_id === camp.id && (!past || ads.some((a) => a.adset_id === s.id && spent(a.id))))
@@ -201,16 +245,21 @@ export function registerMetaTools(server: McpServer) {
         for (const set of sets) {
           const setAds = ads.filter((a) => a.adset_id === set.id && (!past || spent(a.id)))
           const st = sum(setAds.map((a) => a.id))
-          lines.push(`  ▸ CONJUNTO ${set.name} [${set.id}] · ${set.effective_status}${budget(set) ? ` · presupuesto ${budget(set)} (ABO)` : ""} · ${perf(st)}${st.impressions ? `\n    ${funnel(st, false)}` : ""}`)
+          const setIssue = issuesText(set.issues_info)
+          if (setIssue) problems.push(`conjunto "${set.name}": ${setIssue}`)
+          lines.push(`  ▸ CONJUNTO ${set.name} [${set.id}] · ${setIssue ? `🔴 ${set.effective_status} con problemas: ${setIssue}` : set.effective_status}${budget(set) ? ` · presupuesto ${budget(set)} (ABO)` : ""} · ${perf(st)}${st.impressions ? `\n    ${funnel(st, false)}` : ""}`)
           for (const ad of setAds) {
             const x = ins.get(ad.id)
-            lines.push(`     · ANUNCIO ${ad.name} [${ad.id}] · ${ad.effective_status}${x ? ` · ${m(x.spend)} · ${x.results} res.${x.results ? ` · ${m(x.spend / x.results)} c/u` : ""} · CTR ${x.impressions ? ((x.clicks / x.impressions) * 100).toFixed(2) : "0.00"}%${detalle && x.impressions ? `\n       ${funnel(x, true)}` : ""}` : " · sin gasto"}`)
+            const adIssue = issuesText(ad.issues_info)
+            if (adIssue) problems.push(`anuncio "${ad.name}": ${adIssue}`)
+            lines.push(`     · ANUNCIO ${ad.name} [${ad.id}] · ${adIssue ? `🔴 ${ad.effective_status} pero con problemas: ${adIssue}` : ad.effective_status}${x ? ` · ${m(x.spend)} · ${x.results} res.${x.results ? ` · ${m(x.spend / x.results)} c/u` : ""} · CTR ${x.impressions ? ((x.clicks / x.impressions) * 100).toFixed(2) : "0.00"}%${detalle && x.impressions ? `\n       ${funnel(x, true)}` : ""}` : " · sin gasto"}`)
           }
         }
       }
       const orphanSets = adsets.filter((s) => !campIds.has(s.campaign_id))
       if (orphanSets.length) lines.push(`\n(${orphanSets.length} conjunto(s) activos en campañas pausadas; usa incluir_inactivos: true para verlos completos)`)
       if (!campaigns.length) lines.push("\nNo hay campañas activas." + (incluir_inactivos ? "" : " Usa incluir_inactivos: true para ver las pausadas."))
+      if (problems.length) lines.splice(1, 0, `\n🔴 PROBLEMAS DE ENTREGA (${problems.length}) — Meta los reporta aunque el estado diga ACTIVE:\n${problems.map((x) => `- ${x}`).join("\n")}`)
       // Otros canales (campañas manuales) + total combinado del periodo.
       const { manualSummary, manualBlock, fmtMoney } = await import("@/lib/mcp/manual-tools")
       const manual = manualBlock(await manualSummary(c.projectId, c.since, c.until), c.currency)
