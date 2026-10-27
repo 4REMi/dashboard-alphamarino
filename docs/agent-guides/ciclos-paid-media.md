@@ -300,3 +300,10 @@ pausas, clientes que pagan por campaña o el último mes de un cliente. Lo
 marcado "continúa" queda en `paid_media_cycles.carry_over_pending` (migración
 118) y `openNewCycle` lo pasa solo al próximo ciclo que se abra (y fija
 `next_cycle_id`). Sin ciclo activo no hay alertas de ciclo.
+
+**Ciclo cerrado con repaso pendiente (2026-10-27):** sigue editable en
+"Anuncios en Meta" (sincronizar, elegir campañas, vincular) hasta que se hace
+el repaso — aviso azul en vez del de "solo lectura". La sincronización
+automática (3 veces al día) también lo incluye. Así una campaña de los últimos
+días del ciclo entra antes del repaso. Además, sin ciclo activo la página
+muestra por defecto el ciclo más reciente (antes la sección desaparecía).

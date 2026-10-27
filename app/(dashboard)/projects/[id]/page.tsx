@@ -421,7 +421,14 @@ export default async function ProjectDetailPage({ params, searchParams }: { para
                   <h3 className="text-sm font-semibold">Anuncios en Meta</h3>
                   <span className="text-xs text-muted-foreground">{formatCycleRange(viewCycle.start_date, viewCycle.end_date)}{viewCycle.is_active ? " · activo" : ""}</span>
                 </div>
-                {!viewCycle.is_active && (
+                {!viewCycle.is_active && (viewCycle as { review_pending?: boolean | null }).review_pending ? (
+                  // Cerrado pero sin repaso: todavía se puede sincronizar y
+                  // vincular para que el repaso cuadre (p. ej. una campaña de
+                  // los últimos días que no alcanzó a sincronizarse).
+                  <div className="rounded-lg border border-sky-200 bg-sky-50 dark:border-sky-900 dark:bg-sky-950/30 px-3 py-2 text-xs text-sky-900 dark:text-sky-200">
+                    Ciclo cerrado con repaso pendiente: todavía puedes sincronizar campañas y vincular anuncios para que el repaso esté completo. Al hacer el repaso queda en solo lectura.
+                  </div>
+                ) : !viewCycle.is_active && (
                   // Ciclo pasado: lo que corrió en ese ciclo, con sus métricas
                   // de esas fechas. Solo lectura (sin sincronizar ni vincular).
                   <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30 px-3 py-2 text-xs text-amber-900 dark:text-amber-200 flex items-center gap-2 flex-wrap">
@@ -439,7 +446,7 @@ export default async function ProjectDetailPage({ params, searchParams }: { para
                     savedCampaignIds={paidMediaContext?.synced_campaign_ids ?? null}
                     hasCredentials={!!(integrations as ProjectIntegration[]).find((i) => i.platform === "meta")}
                     currency={(integrations as ProjectIntegration[]).find((i) => i.platform === "meta")?.currency ?? null}
-                    canEdit={isAdminOrSubadmin && viewCycle.is_active}
+                    canEdit={isAdminOrSubadmin && (viewCycle.is_active || !!(viewCycle as { review_pending?: boolean | null }).review_pending)}
                   />
                 </div>
                 <ManualCampaignsPanel key={`manual-${viewCycle.id}`} projectId={project.id} cycleId={viewCycle.id} />

@@ -440,7 +440,9 @@ export async function runScheduledMetaSync(cronSecret: string): Promise<{ synced
   const { data: cycles, error } = await admin
     .from("paid_media_cycles")
     .select("id, project_id, project:projects(status)")
-    .eq("is_active", true)
+    // También los cerrados con repaso pendiente: lo de los últimos días del
+    // ciclo sigue entrando hasta que se hace el repaso.
+    .or("is_active.eq.true,review_pending.eq.true")
   if (error) throw error
 
   let synced = 0, failed = 0
