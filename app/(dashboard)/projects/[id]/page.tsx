@@ -117,8 +117,11 @@ export default async function ProjectDetailPage({ params, searchParams }: { para
 
   const activeCycle   = (cycles as PaidMediaCycle[]).find((c) =>  c.is_active) ?? null
   // Ciclo que se está viendo (?ciclo=…): el Creative Tracker, "Anuncios en
-  // Meta" y las campañas manuales siguen el mismo ciclo. Por default, el activo.
-  const viewCycle     = (cycles as PaidMediaCycle[]).find((c) => c.id === ciclo) ?? activeCycle
+  // Meta" y las campañas manuales siguen el mismo ciclo. Por default, el activo;
+  // sin ciclo activo (se cerró sin abrir el siguiente), el más reciente — el
+  // mismo que preselecciona el Creative Tracker. Antes quedaba null y
+  // "Anuncios en Meta" no aparecía hasta elegir otro ciclo y regresar.
+  const viewCycle     = (cycles as PaidMediaCycle[]).find((c) => c.id === ciclo) ?? activeCycle ?? (cycles as PaidMediaCycle[])[0] ?? null
 
   // Fetch initial creatives + meta campaigns + integrations for active cycle
   const [initialConcepts, initialAssets, integrations, brandBrains, brandLines, importedMetaCreatives, initialCreativeCards] = isPaidMedia
