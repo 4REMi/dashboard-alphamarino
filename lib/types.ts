@@ -719,6 +719,8 @@ export interface CycleChannelRow {
   spend: number | null
   results: number | null
   roas: number | null
+  // El canal tenía campañas manuales sin corte al cierre del ciclo.
+  incomplete?: boolean
 }
 
 export const PAID_MEDIA_PLATFORMS = [

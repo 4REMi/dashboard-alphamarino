@@ -1,7 +1,8 @@
 "use client"
 
-import { Plus, X } from "lucide-react"
+import { Plus, X, Lock } from "lucide-react"
 import { PAID_MEDIA_PLATFORMS, type CycleChannelRow } from "@/lib/types"
+import { cn } from "@/lib/utils"
 
 // Resumen manual del ciclo desglosado por canal. Los totales (inversión,
 // resultados, CPA, ROAS ponderado por inversión) se calculan de las filas —
@@ -63,14 +64,38 @@ export function initialDrafts(
   ]
 }
 
+// Canales cuyo número NO se escribe a mano: Meta (sync) y los que tienen
+// campañas manuales registradas (suma de sus capturas). Así un total no se
+// puede "forzar" en la fila: si no cuadra, se corrige en la campaña.
+export interface LockedChannel { spend: number; results: number | null; source: string; lockResults: boolean }
+
+// Reemplaza (o agrega) las filas bloqueadas con su número de origen.
+export function applyLocked(drafts: ChannelDraft[], locked: Record<string, LockedChannel>): ChannelDraft[] {
+  const r2 = (v: number) => String(Math.round(v * 100) / 100)
+  const pending = new Map(Object.entries(locked))
+  const next = drafts.map((d) => {
+    const l = locked[d.channel.trim()]
+    if (!l) return d
+    pending.delete(d.channel.trim())
+    return { ...d, spend: r2(l.spend), results: l.lockResults ? (l.results === null ? "" : r2(l.results)) : d.results }
+  })
+  return [...next, ...[...pending].map(([channel, l]) => ({ channel, spend: r2(l.spend), results: l.lockResults && l.results !== null ? r2(l.results) : "", roas: "" }))]
+}
+
 const fmt$ = (v: number | null) => (v === null ? "—" : `$${v.toLocaleString("en-US", { maximumFractionDigits: 2 })}`)
 
-export function ChannelSummaryEditor({ drafts, onChange }: { drafts: ChannelDraft[]; onChange: (d: ChannelDraft[]) => void }) {
+export function ChannelSummaryEditor({ drafts, onChange, locked = {}, onFixLocked }: {
+  drafts: ChannelDraft[]
+  onChange: (d: ChannelDraft[]) => void
+  locked?: Record<string, LockedChannel>
+  // Lleva a donde se corrige el origen (p. ej. la lista de campañas manuales).
+  onFixLocked?: () => void
+}) {
   const totals = channelTotals(draftsToRows(drafts))
   const used = new Set(drafts.map((d) => d.channel))
   const set = (i: number, patch: Partial<ChannelDraft>) => onChange(drafts.map((d, j) => (j === i ? { ...d, ...patch } : d)))
   const input = "w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-  const nextChannel = PAID_MEDIA_PLATFORMS.find((p) => !used.has(p)) ?? "Otro"
+  const nextChannel = PAID_MEDIA_PLATFORMS.find((p) => !used.has(p) && !locked[p]) ?? "Otro"
 
   return (
     <div className="max-w-3xl">
@@ -78,23 +103,43 @@ export function ChannelSummaryEditor({ drafts, onChange }: { drafts: ChannelDraf
         <span>Canal</span><span>Inversión</span><span>Resultados</span><span>ROAS</span><span />
       </div>
       <div className="space-y-2">
-        {drafts.map((d, i) => (
-          <div key={i} className="grid grid-cols-[1.4fr_1fr_1fr_1fr_24px] gap-2 items-center">
-            <input list="cycle-channels" value={d.channel} onChange={(e) => set(i, { channel: e.target.value })} className={input} placeholder="Canal" />
-            <input type="number" step="any" min="0" value={d.spend} onChange={(e) => set(i, { spend: e.target.value })} className={input} />
-            <input type="number" step="any" min="0" value={d.results} onChange={(e) => set(i, { results: e.target.value })} className={input} />
-            <input type="number" step="any" min="0" value={d.roas} onChange={(e) => set(i, { roas: e.target.value })} className={input} placeholder="opcional" />
-            <button type="button" onClick={() => onChange(drafts.filter((_, j) => j !== i))} className="text-muted-foreground hover:text-red-600" title="Quitar canal">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        ))}
+        {drafts.map((d, i) => {
+          const l = locked[d.channel.trim()]
+          const ro = "bg-muted/50 text-foreground cursor-not-allowed border-transparent"
+          // Una fila a mano con el mismo nombre que un canal bloqueado duplicaría su gasto.
+          const dup = !l && drafts.some((o, j) => j !== i && o.channel.trim() === d.channel.trim())
+          return (
+            <div key={i}>
+              <div className="grid grid-cols-[1.4fr_1fr_1fr_1fr_24px] gap-2 items-center">
+                <input list="cycle-channels" value={d.channel} readOnly={!!l} onChange={(e) => set(i, { channel: e.target.value })} className={cn(input, l && ro)} placeholder="Canal" />
+                <input type="number" step="any" min="0" value={d.spend} readOnly={!!l} onChange={(e) => set(i, { spend: e.target.value })} className={cn(input, l && ro)} />
+                <input type="number" step="any" min="0" value={d.results} readOnly={!!l?.lockResults} onChange={(e) => set(i, { results: e.target.value })} className={cn(input, l?.lockResults && ro)} placeholder={l?.lockResults ? "—" : undefined} />
+                <input type="number" step="any" min="0" value={d.roas} onChange={(e) => set(i, { roas: e.target.value })} className={input} placeholder="opcional" />
+                {l ? (
+                  <span title="Viene de su origen; no se edita aquí"><Lock className="w-3.5 h-3.5 text-muted-foreground" /></span>
+                ) : (
+                  <button type="button" onClick={() => onChange(drafts.filter((_, j) => j !== i))} className="text-muted-foreground hover:text-red-600" title="Quitar canal">
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+              {l ? (
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  🔒 {l.source}
+                  {onFixLocked && l.source.includes("campaña") && <> · <button type="button" onClick={onFixLocked} className="text-primary hover:underline">¿No cuadra? Revisa las campañas</button></>}
+                </p>
+              ) : d.channel.trim() && (
+                <p className="mt-0.5 text-[11px] text-muted-foreground">✎ a mano{dup ? " · ⚠ este canal está repetido" : ""}</p>
+              )}
+            </div>
+          )
+        })}
       </div>
       <datalist id="cycle-channels">
-        {PAID_MEDIA_PLATFORMS.map((p) => <option key={p} value={p} />)}
+        {PAID_MEDIA_PLATFORMS.filter((p) => !locked[p]).map((p) => <option key={p} value={p} />)}
       </datalist>
       <button type="button" onClick={() => onChange([...drafts, { channel: nextChannel, spend: "", results: "", roas: "" }])} className="mt-2 inline-flex items-center gap-1 text-xs text-primary hover:underline">
-        <Plus className="w-3.5 h-3.5" /> Agregar canal
+        <Plus className="w-3.5 h-3.5" /> {Object.keys(locked).length ? "Agregar canal sin campañas registradas" : "Agregar canal"}
       </button>
       <div className="mt-3 grid grid-cols-4 gap-2">
         {[

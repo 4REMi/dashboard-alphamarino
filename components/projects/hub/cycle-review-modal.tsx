@@ -1,11 +1,11 @@
 "use client"
 
-import { useEffect, useMemo, useState, useTransition } from "react"
+import { useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { getManualCampaigns, endManualCampaign, type ManualCampaign } from "@/lib/actions/manual-campaigns"
 import { isoToday } from "@/lib/utils/manual-campaign-calc"
 import { ManualCampaignModal } from "./manual-campaigns/manual-campaign-modal"
-import { ChannelSummaryEditor, channelTotals, draftsToRows, initialDrafts, type ChannelDraft } from "./channel-summary-editor"
+import { ChannelSummaryEditor, channelTotals, draftsToRows, initialDrafts, applyLocked, type ChannelDraft, type LockedChannel } from "./channel-summary-editor"
 import { Loader2, Star, Radio, Check } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -69,27 +69,34 @@ export function CycleReviewModal({ projectId, cycleId, mode, onClose }: {
   const pendingManual = mode === "edit" || !data ? [] : data.manualCampaigns.filter(
     (m) => m.status !== "ended" && (!m.lastSnapshotDate || m.lastSnapshotDate < closeDate),
   )
+  // Filas bloqueadas: Meta (sync) y cada canal con campañas manuales (suma
+  // de sus capturas en el ciclo).
+  function lockedFrom(d: CycleReviewData): Record<string, LockedChannel> {
+    const out: Record<string, LockedChannel> = {}
+    if (d.syncedSpend) out["Meta Ads"] = { spend: d.syncedSpend, results: null, source: "del sync de Meta", lockResults: false }
+    const by = new Map<string, { spend: number; results: number | null; n: number }>()
+    for (const m of d.manualCampaigns) {
+      const cur = by.get(m.channel) ?? { spend: 0, results: null, n: 0 }
+      cur.n++
+      if (m.cycleTotals) {
+        cur.spend += m.cycleTotals.spend
+        if (m.cycleTotals.results !== null) cur.results = (cur.results ?? 0) + m.cycleTotals.results
+      }
+      by.set(m.channel, cur)
+    }
+    for (const [ch, v] of by) out[ch] = { spend: v.spend, results: v.results, source: `suma de ${v.n} campaña${v.n === 1 ? "" : "s"} manual${v.n === 1 ? "" : "es"}`, lockResults: true }
+    return out
+  }
+  const locked = useMemo(() => (data && mode !== "edit" ? lockedFrom(data) : {}), [data, mode])
+  const manualRef = useRef<HTMLDivElement>(null)
+  // Al cambiar las capturas, las filas bloqueadas se recalculan solas.
+  useEffect(() => {
+    if (mode !== "edit" && Object.keys(locked).length) setChannels((rows) => applyLocked(rows, locked))
+  }, [locked, mode])
+
   function reloadManual() {
     getManualCampaigns(projectId, cycleId).then((mc) => {
       setData((d) => (d ? { ...d, manualCampaigns: mc } : d))
-      // Actualiza las filas de canal que vienen de campañas manuales.
-      const byChannel = new Map<string, { spend: number; results: number | null }>()
-      for (const m of mc) if (m.cycleTotals) {
-        const cur = byChannel.get(m.channel) ?? { spend: 0, results: null }
-        cur.spend += m.cycleTotals.spend
-        if (m.cycleTotals.results !== null) cur.results = (cur.results ?? 0) + m.cycleTotals.results
-        byChannel.set(m.channel, cur)
-      }
-      setChannels((rows) => {
-        const r2 = (v: number) => String(Math.round(v * 100) / 100)
-        const next = rows.map((r) => {
-          const v = byChannel.get(r.channel)
-          if (!v) return r
-          byChannel.delete(r.channel)
-          return { ...r, spend: r2(v.spend), results: v.results === null ? r.results : r2(v.results) }
-        })
-        return [...next, ...[...byChannel].map(([channel, v]) => ({ channel, spend: r2(v.spend), results: v.results === null ? "" : r2(v.results), roas: "" }))]
-      })
     })
   }
   function endManual(m: ManualCampaign) {
@@ -103,9 +110,11 @@ export function CycleReviewModal({ projectId, cycleId, mode, onClose }: {
     getCycleReviewData(projectId, cycleId).then((d) => {
       setData(d)
       const c = d.cycle
-      setChannels(initialDrafts(c.channel_breakdown, c, d.syncedSpend, d.manualCampaigns
+      const base = initialDrafts(c.channel_breakdown, c, d.syncedSpend, d.manualCampaigns
         .filter((m) => m.cycleTotals)
-        .map((m) => ({ channel: m.channel, spend: m.cycleTotals!.spend, results: m.cycleTotals!.results }))))
+        .map((m) => ({ channel: m.channel, spend: m.cycleTotals!.spend, results: m.cycleTotals!.results })))
+      // Aunque haya un desglose guardado, lo que viene de su origen manda.
+      setChannels(mode === "edit" ? base : applyLocked(base, lockedFrom(d)))
       // Sugerencias: continúa lo que corre en Meta o ya era Evergreen; en
       // modo corrección, lo que ya está en el ciclo siguiente.
       const initial: Record<string, Omit<ConceptDecision, "continues"> & { continues: boolean | null }> = {}
@@ -188,7 +197,8 @@ export function CycleReviewModal({ projectId, cycleId, mode, onClose }: {
           await completeCycleReview({
             projectId,
             cycleId,
-            summary: { ...channelTotals(draftsToRows(channels)), channel_breakdown: draftsToRows(channels) },
+            summary: { ...channelTotals(draftsToRows(channels)), channel_breakdown: draftsToRows(channels).map((r) => (
+              pendingManual.some((m) => m.channel === r.channel) ? { ...r, incomplete: true } : r)) },
             decisions: Object.values(decisions) as ConceptDecision[],
             assetIds: finalAssets,
             nextCycle: data.otherActiveCycle || !openNext ? null : { start: nextStart, end: nextEnd },
@@ -250,15 +260,10 @@ export function CycleReviewModal({ projectId, cycleId, mode, onClose }: {
                   </div>
                 ))}
               </div>
-              <div>
-                <p className="text-sm font-medium">Resumen del ciclo por canal</p>
-                <p className="text-xs text-muted-foreground mb-2">Meta viene del sync; el resto de canales (Google, TikTok…) se captura a mano. Los totales se calculan solos.</p>
-                <ChannelSummaryEditor drafts={channels} onChange={setChannels} />
-              </div>
               {data.manualCampaigns.length > 0 && (
-                <div>
-                  <p className="text-sm font-medium">Campañas manuales</p>
-                  <p className="text-xs text-muted-foreground mb-2">Captura sus números al cierre ({closeDate}) o márcalas como terminadas. Su gasto ya se suma a su canal arriba.</p>
+                <div ref={manualRef}>
+                  <p className="text-sm font-medium">1 · Cierra las campañas manuales</p>
+                  <p className="text-xs text-muted-foreground mb-2">Primero, porque de aquí salen los totales de sus canales. Captura sus números al cierre ({closeDate}) o márcalas como terminadas.</p>
                   <div className="space-y-1.5 max-w-3xl">
                     {data.manualCampaigns.map((m) => {
                       const pending = pendingManual.includes(m)
@@ -279,8 +284,16 @@ export function CycleReviewModal({ projectId, cycleId, mode, onClose }: {
                       )
                     })}
                   </div>
+                  {pendingManual.length > 0 && (
+                    <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">⚠ {pendingManual.length} campaña{pendingManual.length === 1 ? "" : "s"} sin corte al cierre — su gasto puede estar incompleto. Puedes seguir, pero el resumen quedará marcado.</p>
+                  )}
                 </div>
               )}
+              <div>
+                <p className="text-sm font-medium">{data.manualCampaigns.length ? "2 · " : ""}Resumen del ciclo por canal</p>
+                <p className="text-xs text-muted-foreground mb-2">🔒 Meta viene del sync y cada canal con campañas manuales es la suma de ellas — si no cuadra, se corrige en la campaña, no aquí. Solo los canales sin campañas registradas se escriben a mano.</p>
+                <ChannelSummaryEditor drafts={channels} onChange={setChannels} locked={locked} onFixLocked={() => manualRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })} />
+              </div>
               {manualOpen && (
                 <ManualCampaignModal projectId={projectId} cycleId={cycleId} campaign={manualOpen} onClose={() => { setManualOpen(null); reloadManual() }} />
               )}
@@ -514,7 +527,7 @@ export function CycleReviewModal({ projectId, cycleId, mode, onClose }: {
               <span className="text-xs text-amber-700">Faltan {undecided.length} concepto{undecided.length !== 1 ? "s" : ""} por decidir</span>
             )}
             {step < lastStep ? (
-              <Button type="button" size="sm" onClick={() => setStep((s) => s + 1)} disabled={!data || (step === 1 && pendingManual.length > 0) || (step === 2 && undecided.length > 0)}>Siguiente</Button>
+              <Button type="button" size="sm" onClick={() => setStep((s) => s + 1)} disabled={!data || (step === 2 && undecided.length > 0)}>Siguiente</Button>
             ) : (
               <Button type="button" size="sm" onClick={handleSubmit} disabled={!data || isPending || (mode !== "edit" && !data.otherActiveCycle && openNext && (!nextStart || !nextEnd))}>
                 {isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}

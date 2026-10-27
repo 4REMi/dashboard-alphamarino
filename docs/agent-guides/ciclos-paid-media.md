@@ -307,3 +307,14 @@ el repaso — aviso azul en vez del de "solo lectura". La sincronización
 automática (3 veces al día) también lo incluye. Así una campaña de los últimos
 días del ciclo entra antes del repaso. Además, sin ciclo activo la página
 muestra por defecto el ciclo más reciente (antes la sección desaparecía).
+
+**Resumen por canal sin totales "forzados" (2026-10-27):** en el paso 1 del
+repaso las campañas manuales van primero ("1 · Cierra las campañas
+manuales") y el resumen después. Las filas de Meta (sync) y de cada canal con
+campañas manuales quedan 🔒 bloqueadas (`applyLocked` en
+`channel-summary-editor.tsx`): su inversión — y en canales manuales también
+resultados — sale de su origen; si no cuadra se corrige capturando en la
+campaña ("¿No cuadra? Revisa las campañas"). Solo canales sin campañas
+registradas se escriben a mano (✎). Una campaña activa sin corte al cierre ya
+**no bloquea** "Siguiente": avisa ⚠ y la fila de su canal se guarda con
+`incomplete: true` en `channel_breakdown`. ROAS sigue siendo opcional a mano.
