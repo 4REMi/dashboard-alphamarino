@@ -34,6 +34,7 @@ import {
   Wallet,
   ScanSearch,
   Bot,
+  FileSignature,
 } from "lucide-react"
 import { useState } from "react"
 import Image from "next/image"
@@ -83,6 +84,7 @@ export function Sidebar({ profile, logoUrl, myPendingTaskCount = 0, mobileOpen =
     { href: "/", icon: LayoutDashboard, label: t("dashboard") },
     { href: "/customers", icon: Users, label: t("clients") },
     { href: "/services", icon: Tag, label: "Ofertas", adminOnly: true },
+    { href: "/cotizaciones", icon: FileSignature, label: "Cotizaciones", adminOnly: true },
     { href: "/projects", icon: FolderKanban, label: t("projects") },
     { href: "/tasks", icon: CheckSquare, label: t("tasks"), badge: myPendingTaskCount },
     { href: "/finances", icon: DollarSign, label: t("finances"), permission: "view_global_finances" },
