@@ -304,6 +304,8 @@ export async function regenerateReport(id: string, notes: string, refreshData: b
   if (!current) throw new Error("Reporte no encontrado")
   const data = refreshData ? await buildReportData(current.project_id, current.start_date, current.end_date) : current.data
   const sections = await draftSections(data, notes, contextBlock(await getProjectContext(current.project_id, { since: current.start_date, until: current.end_date })))
+  // Los ajustes de tablas (nombres, filas ocultas) son del usuario: se conservan.
+  if (current.sections?.tablas) sections.tablas = current.sections.tablas
   const { data: row, error } = await supabase.from("paid_media_reports")
     .update({ data, sections, notes: notes.trim() || null, updated_at: new Date().toISOString() }).eq("id", id).select("*").single()
   if (error) throw new Error(error.message)

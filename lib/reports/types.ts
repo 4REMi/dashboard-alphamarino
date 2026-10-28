@@ -58,6 +58,36 @@ export interface ReportSections {
   contexto: string
   siguientes_pasos: string[]
   nota_cierre: string
+  // Ajustes de presentación de las tablas que salen del dashboard. Los
+  // números no se editan (vienen de su origen); solo nombres más claros,
+  // filas ocultas o la tabla completa oculta.
+  tablas?: ReportTablesConfig
+}
+
+export interface ReportTableConfig {
+  ocultar?: boolean
+  nombres?: Record<string, string>   // clave de la fila → nombre a mostrar
+  ocultas?: string[]                 // claves de filas ocultas
+}
+export interface ReportTablesConfig { campanas?: ReportTableConfig; entregables?: ReportTableConfig }
+
+export const campaignKey = (c: ReportCampaign) => `${c.canal}|${c.nombre}`
+export const deliverableKey = (e: { texto: string }) => e.texto
+
+// Filas visibles con su nombre a mostrar.
+export function visibleCampaigns(data: ReportData, s: ReportSections) {
+  const cfg = s.tablas?.campanas
+  if (cfg?.ocultar || data.campanas.length <= 1) return []
+  return data.campanas
+    .filter((c) => !cfg?.ocultas?.includes(campaignKey(c)))
+    .map((c) => ({ ...c, nombre: cfg?.nombres?.[campaignKey(c)]?.trim() || c.nombre }))
+}
+export function visibleDeliverables(data: ReportData, s: ReportSections) {
+  const cfg = s.tablas?.entregables
+  if (cfg?.ocultar) return []
+  return data.entregables
+    .filter((e) => !cfg?.ocultas?.includes(deliverableKey(e)))
+    .map((e) => ({ ...e, texto: cfg?.nombres?.[deliverableKey(e)]?.trim() || e.texto }))
 }
 
 export interface PaidMediaReport {

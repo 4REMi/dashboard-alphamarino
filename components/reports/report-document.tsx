@@ -1,4 +1,4 @@
-import type { ReportData, ReportSections, ReportRow } from "@/lib/reports/types"
+import { visibleCampaigns, visibleDeliverables, type ReportData, type ReportSections, type ReportRow } from "@/lib/reports/types"
 
 // El reporte en web, con el diseño canónico de Alpha Marino (negro +
 // #1565C0, Unbounded en títulos, Poppins en cuerpo). Es lo mismo que se
@@ -44,6 +44,8 @@ export function ReportDocument({ data, sections, onPick, active }: { data: Repor
     title: "Clic para editar",
     className: "cursor-pointer rounded-sm transition-colors hover:bg-[#EBF2FB] hover:outline hover:outline-1 hover:outline-[#1565C0]/40" + (active === field ? " bg-[#EBF2FB] outline outline-2 outline-[#1565C0]" : ""),
   } : {}
+  const campanas = visibleCampaigns(data, sections)
+  const entregables = visibleDeliverables(data, sections)
   const items = (k: "que_funciono" | "que_no_funciono" | "siguientes_pasos") => sections[k].map((t, i) => ({ t, i })).filter((x) => x.t)
   const fmt = (v: number) => `$${v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${data.moneda}`
   return (
@@ -75,15 +77,15 @@ export function ReportDocument({ data, sections, onPick, active }: { data: Repor
         </section>
       ))}
       {data.consolidado && (<section className="break-inside-avoid"><H2>Consolidado — todos los canales</H2><Metrics rows={data.consolidado} /></section>)}
-      {data.campanas.length > 1 && (
-        <section className="break-inside-avoid">
+      {campanas.length > 0 && (
+        <section className="break-inside-avoid" {...pick("tabla_campanas")}>
           <H2>Por campaña</H2>
           <table className="w-full border-collapse text-[12.5px]">
             <thead><tr style={{ background: ACCENT }} className="text-white">
               {["Campaña", "Gasto", "Resultados", "Costo por resultado"].map((h, i) => <th key={h} className={`px-3 py-2 font-bold ${i ? "text-right" : "text-left"}`} style={T}>{h}</th>)}
             </tr></thead>
             <tbody>
-              {data.campanas.map((c, i) => (
+              {campanas.map((c, i) => (
                 <tr key={c.nombre + i} style={{ background: i % 2 === 0 ? "#EBF2FB" : "#FFFFFF" }}>
                   <td className="border border-[#DEDEDE] px-3 py-1.5 font-semibold" style={{ color: ACCENT }}>{c.nombre}{c.canal !== "Meta Ads" && <span className="text-[#7A7A7A] font-normal"> · {c.canal}</span>}</td>
                   <td className="border border-[#DEDEDE] px-3 py-1.5 text-right">{fmt(c.gasto)}</td>
@@ -125,12 +127,12 @@ export function ReportDocument({ data, sections, onPick, active }: { data: Repor
       <H2>Oportunidades de mejora</H2>
       <ul className="list-none space-y-1.5">{items("que_no_funciono").map(({ t, i }) => <li key={i} {...pick(`que_no_funciono:${i}`)}><span className="block pl-5 -indent-4">–&nbsp;&nbsp;{t}</span></li>)}</ul>
 
-      {data.entregables.length > 0 && (
-        <>
+      {entregables.length > 0 && (
+        <div {...pick("tabla_entregables")}>
           <H1>Entregables del período</H1>
           <table className="w-full border-collapse text-[12.5px]">
             <tbody>
-              {data.entregables.map((e, i) => (
+              {entregables.map((e, i) => (
                 <tr key={i} style={{ background: i % 2 === 0 ? "#F2F2F2" : "#FFFFFF" }}>
                   <td className="border border-[#DEDEDE] px-3 py-1.5">{e.texto}</td>
                   <td className="border border-[#DEDEDE] px-3 py-1.5 text-right font-bold w-[20%]" style={{ color: e.hecho >= e.esperado ? "#1B5E20" : "#0A0A0A" }}>{e.hecho}/{e.esperado}</td>
@@ -138,7 +140,7 @@ export function ReportDocument({ data, sections, onPick, active }: { data: Repor
               ))}
             </tbody>
           </table>
-        </>
+        </div>
       )}
 
       <H1>Contexto del período</H1>

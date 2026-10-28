@@ -2,7 +2,7 @@ import {
   Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, ImageRun,
   AlignmentType, HeadingLevel, BorderStyle, WidthType, ShadingType, VerticalAlign, LevelFormat,
 } from "docx"
-import type { ReportData, ReportSections, ReportRow } from "@/lib/reports/types"
+import { visibleCampaigns, visibleDeliverables, type ReportData, type ReportSections, type ReportRow } from "@/lib/reports/types"
 
 // Adaptado del script canónico de Alpha Marino (reporte_base_script.js):
 // mismos design tokens, helpers y orden de secciones. Los datos salen del
@@ -106,9 +106,10 @@ export async function buildReportDocx(data: ReportData, s: ReportSections): Prom
   }
   if (data.consolidado) children.push(h2("Consolidado — Todos los Canales"), metricsTable(data.consolidado), sp(200))
 
-  if (data.campanas.length > 1) {
+  const campanas = visibleCampaigns(data, s)
+  if (campanas.length) {
     children.push(h2("Por campaña"), headerTable(["Campaña", "Gasto", "Resultados", "Costo por resultado"], [0.46, 0.18, 0.16, 0.2],
-      data.campanas.map((c) => [c.nombre, fmt(c.gasto), c.resultados.toLocaleString("en-US"), c.costoPorResultado !== null ? fmt(c.costoPorResultado) : "—"])), sp(200))
+      campanas.map((c) => [c.nombre, fmt(c.gasto), c.resultados.toLocaleString("en-US"), c.costoPorResultado !== null ? fmt(c.costoPorResultado) : "—"])), sp(200))
   }
 
   if (data.creativos.length) {
@@ -139,9 +140,10 @@ export async function buildReportDocx(data: ReportData, s: ReportSections): Prom
   s.que_no_funciono.filter(Boolean).forEach((t) => children.push(bullet(t)))
   children.push(sp(200))
 
-  if (data.entregables.length) {
+  const entregables = visibleDeliverables(data, s)
+  if (entregables.length) {
     children.push(h1("Entregables del Período"), headerTable(["Entregable", "Entregado"], [0.75, 0.25],
-      data.entregables.map((e) => [e.texto, `${e.hecho}/${e.esperado}`])), sp(200))
+      entregables.map((e) => [e.texto, `${e.hecho}/${e.esperado}`])), sp(200))
   }
 
   children.push(h1("Contexto del Período"), p(s.contexto), sp(200))

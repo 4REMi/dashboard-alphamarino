@@ -318,3 +318,12 @@ campaña ("¿No cuadra? Revisa las campañas"). Solo canales sin campañas
 registradas se escriben a mano (✎). Una campaña activa sin corte al cierre ya
 **no bloquea** "Siguiente": avisa ⚠ y la fila de su canal se guarda con
 `incomplete: true` en `channel_breakdown`. ROAS sigue siendo opcional a mano.
+
+**Reportes: tablas "Por campaña" y "Entregables" editables en presentación
+(2026-10-28):** en el editor del reporte hay un bloque por tabla para darle a
+cada fila un nombre más claro (vacío = el original; se muestra "Original: …"),
+ocultar filas (ojo) u ocultar la tabla completa. Los números no se editan.
+Se guarda en `sections.tablas` (`ReportTablesConfig` en `lib/reports/types.ts`,
+claves `canal|nombre` y texto del entregable); `visibleCampaigns` /
+`visibleDeliverables` lo aplican en la vista, el PDF y el DOCX, y
+`regenerateReport` lo conserva al reescribir o actualizar datos.

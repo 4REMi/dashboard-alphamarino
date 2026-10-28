@@ -3,9 +3,9 @@
 import { useRef, useState, useTransition } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Download, Printer, RefreshCw, Sparkles, Check, Plus, X, Loader2, Trash2 } from "lucide-react"
+import { ArrowLeft, Download, Printer, RefreshCw, Sparkles, Check, Plus, X, Loader2, Trash2, Eye, EyeOff, RotateCcw } from "lucide-react"
 import { saveReportSections, regenerateReport, setReportDelivered, deleteReport } from "@/lib/actions/reports"
-import type { PaidMediaReport, ReportSections } from "@/lib/reports/types"
+import { campaignKey, deliverableKey, type PaidMediaReport, type ReportSections, type ReportTableConfig } from "@/lib/reports/types"
 import { ReportDocument } from "@/components/reports/report-document"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
 import { cn } from "@/lib/utils"
@@ -34,7 +34,10 @@ export function ReportEditor({ initial }: { initial: PaidMediaReport }) {
   // Clic en la vista previa → lleva a su caja de texto y la enfoca.
   function jumpToField(field: string) {
     setActive(field)
-    const el = asideRef.current?.querySelector<HTMLTextAreaElement>(`textarea[data-field="${field}"]`)
+    const el = asideRef.current?.querySelector<HTMLElement>(`textarea[data-field="${field}"]`)
+      // Tablas: se enfoca la primera caja de nombre de esa sección.
+      ?? asideRef.current?.querySelector<HTMLElement>(`section[data-field="${field}"] input`)
+      ?? asideRef.current?.querySelector<HTMLElement>(`section[data-field="${field}"]`)
     if (!el) return
     el.scrollIntoView({ behavior: "smooth", block: "center" })
     el.focus({ preventScroll: true })
@@ -144,7 +147,17 @@ export function ReportEditor({ initial }: { initial: PaidMediaReport }) {
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Nota de cierre (opcional)</p>
             <AutoTextarea {...bind("nota_cierre")} value={sections.nota_cierre} onChange={(e) => set({ nota_cierre: e.target.value })} rows={2} className={input} />
           </section>
-          <p className="text-[11px] text-muted-foreground">Las tablas, campañas, creativos y entregables salen del dashboard. Para corregir un número, corrígelo en su origen y usa &quot;Actualizar datos&quot;.</p>
+          {report.data.campanas.length > 1 && (
+            <TableEditor label="Tabla por campaña" field="tabla_campanas" onFocus={() => focusField("tabla_campanas")}
+              rows={report.data.campanas.map((c) => ({ key: campaignKey(c), original: c.nombre, extra: c.canal !== "Meta Ads" ? c.canal : null }))}
+              cfg={sections.tablas?.campanas ?? {}} onChange={(campanas) => set({ tablas: { ...sections.tablas, campanas } })} />
+          )}
+          {report.data.entregables.length > 0 && (
+            <TableEditor label="Entregables del período" field="tabla_entregables" onFocus={() => focusField("tabla_entregables")}
+              rows={report.data.entregables.map((e) => ({ key: deliverableKey(e), original: e.texto, extra: `${e.hecho}/${e.esperado}` }))}
+              cfg={sections.tablas?.entregables ?? {}} onChange={(entregables) => set({ tablas: { ...sections.tablas, entregables } })} />
+          )}
+          <p className="text-[11px] text-muted-foreground">Los números de las tablas salen del dashboard: aquí solo cambias cómo se llaman o qué se muestra. Para corregir un número, corrígelo en su origen y usa &quot;Actualizar datos&quot;.</p>
         </aside>
 
         <div ref={previewRef} className="overflow-y-auto bg-neutral-200 dark:bg-neutral-800 py-6">
@@ -155,5 +168,55 @@ export function ReportEditor({ initial }: { initial: PaidMediaReport }) {
         </div>
       </div>
     </div>
+  )
+}
+
+// Tabla que viene del dashboard: nombre más claro por fila, ocultar filas u
+// ocultar la tabla completa. Los números no se tocan.
+function TableEditor({ label, field, rows, cfg, onChange, onFocus }: {
+  label: string; field: string
+  rows: { key: string; original: string; extra: string | null }[]
+  cfg: ReportTableConfig; onChange: (c: ReportTableConfig) => void; onFocus: () => void
+}) {
+  const hidden = new Set(cfg.ocultas ?? [])
+  const setName = (k: string, v: string) => onChange({ ...cfg, nombres: { ...cfg.nombres, [k]: v } })
+  const toggleRow = (k: string) => onChange({ ...cfg, ocultas: hidden.has(k) ? [...hidden].filter((x) => x !== k) : [...hidden, k] })
+  return (
+    <section data-field={field}>
+      <div className="flex items-center mb-1.5">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex-1">{label}</p>
+        <button type="button" onClick={() => { onChange({ ...cfg, ocultar: !cfg.ocultar }); onFocus() }}
+          className="text-[11px] inline-flex items-center gap-1 text-muted-foreground hover:text-foreground">
+          {cfg.ocultar ? <><EyeOff className="w-3.5 h-3.5" />Oculta en el reporte</> : <><Eye className="w-3.5 h-3.5" />Visible</>}
+        </button>
+      </div>
+      {!cfg.ocultar && (
+        <div className="space-y-1.5">
+          {rows.map((r) => {
+            const off = hidden.has(r.key)
+            const renamed = !!cfg.nombres?.[r.key]?.trim()
+            return (
+              <div key={r.key} className={cn("flex items-start gap-1.5", off && "opacity-50")}>
+                <div className="flex-1 min-w-0">
+                  <input value={cfg.nombres?.[r.key] ?? ""} onChange={(e) => setName(r.key, e.target.value)} onFocus={onFocus} disabled={off}
+                    placeholder={r.original}
+                    className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring placeholder:text-foreground/70" />
+                  {(renamed || r.extra) && (
+                    <p className="mt-0.5 text-[10px] text-muted-foreground truncate">{renamed ? `Original: ${r.original}` : ""}{renamed && r.extra ? " · " : ""}{r.extra ?? ""}</p>
+                  )}
+                </div>
+                {renamed && !off && (
+                  <button type="button" onClick={() => setName(r.key, "")} title="Volver al nombre original" className="mt-1.5 text-muted-foreground hover:text-foreground"><RotateCcw className="w-3.5 h-3.5" /></button>
+                )}
+                <button type="button" onClick={() => toggleRow(r.key)} title={off ? "Mostrar fila" : "Ocultar fila"} className="mt-1.5 text-muted-foreground hover:text-foreground">
+                  {off ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            )
+          })}
+          <p className="text-[10px] text-muted-foreground">Escribe un nombre más claro (vacío = el original). El ojo oculta la fila.</p>
+        </div>
+      )}
+    </section>
   )
 }
