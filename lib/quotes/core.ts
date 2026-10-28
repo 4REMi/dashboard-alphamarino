@@ -29,6 +29,7 @@ export interface QuoteLead {
   ai_summary: string | null; form_answers: string | null; notes: string | null
   proposal_type: string | null; price: number | null; status: QuoteStatus
   proposal_pdf_url: string | null; proposal_slides_url: string | null; proposal_generated_at: string | null
+  sent_at: string | null; closed_at: string | null
   last_error: string | null
 }
 
@@ -115,4 +116,34 @@ export function contextForMake(l: QuoteLead): string {
 export function checkSecret(provided: string | null): boolean {
   const expected = process.env.QUOTES_WEBHOOK_SECRET
   return !!expected && !!provided && provided === expected
+}
+
+// Etapas del tablero: "Por cotizar" junta nuevo + lista.
+export const STAGES = [
+  { key: "por_cotizar", label: "Por cotizar", statuses: ["nuevo", "lista"] as QuoteStatus[], dropStatus: "lista" as QuoteStatus },
+  { key: "generando", label: "Generando", statuses: ["generando", "error"] as QuoteStatus[], dropStatus: null },
+  { key: "generada", label: "Propuesta lista", statuses: ["generada"] as QuoteStatus[], dropStatus: "generada" as QuoteStatus },
+  { key: "enviada", label: "Enviada", statuses: ["enviada"] as QuoteStatus[], dropStatus: "enviada" as QuoteStatus },
+  { key: "cerradas", label: "Cerradas", statuses: ["ganada", "perdida"] as QuoteStatus[], dropStatus: null },
+] as const
+
+export const FOLLOW_UP_DAYS = 7
+export const daysSince = (d: string | null) => (d ? Math.floor((Date.now() - Date.parse(d)) / 86_400_000) : 0)
+// Enviada y sin respuesta hace FOLLOW_UP_DAYS+ días.
+export const needsFollowUp = (l: QuoteLead) => l.status === "enviada" && daysSince(l.sent_at ?? l.updated_at) >= FOLLOW_UP_DAYS
+// Falta lo mínimo para generar.
+export const missingInfo = (l: QuoteLead) => !l.proposal_type || l.price == null
+
+export function quoteKpis(leads: QuoteLead[]) {
+  const month = new Date().toISOString().slice(0, 7)
+  const since30 = Date.now() - 30 * 86_400_000
+  const closed30 = leads.filter((l) => (l.status === "ganada" || l.status === "perdida") && l.closed_at && Date.parse(l.closed_at) >= since30)
+  return {
+    abiertas: leads.filter((l) => l.status !== "ganada" && l.status !== "perdida").length,
+    porCotizar: leads.filter((l) => l.status === "nuevo" || l.status === "lista").length,
+    cotizadoMes: leads.filter((l) => l.proposal_generated_at?.startsWith(month)).reduce((s, l) => s + (l.price ?? 0), 0),
+    sinRespuesta: leads.filter(needsFollowUp).length,
+    ganadas30: closed30.filter((l) => l.status === "ganada").length,
+    cerradas30: closed30.length,
+  }
 }

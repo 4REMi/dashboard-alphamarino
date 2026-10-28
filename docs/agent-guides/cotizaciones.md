@@ -33,8 +33,28 @@ Plantillas con Slides hoy: **Web · Informativo** ($27,000 default) y **Web ·
 eCommerce** ($37,000). Otras ofertas = "otra:<nombre>", sin plantilla: se
 cotizan a mano hasta que exista su plantilla.
 
+## Interfaz (2026-10-28)
+Ancho completo. Arriba 5 números (`quoteKpis`): abiertas, por cotizar,
+cotizado este mes, enviadas sin respuesta 7+ días, cierre 30 días. Tablero por
+etapa (`STAGES`: Por cotizar = nuevo+lista, Generando = generando+error,
+Propuesta lista, Enviada, Cerradas con zonas "Ganada"/"Perdida") — se arrastra
+para cambiar de etapa — o vista Lista. El detalle abre en un panel lateral de
+560 px (pantalla completa en celular): contacto con tel/WhatsApp/correo,
+etapa, bloque de propuesta (tipo, precio, generar, PDF/Slides), contexto en
+solo lectura con "Editar", notas (se guardan al salir) e historial.
+⚠ "seguimiento" en enviadas de 7+ días; "falta info" sin tipo o precio.
+
 ## Estados
 nuevo → lista → generando → generada → enviada → ganada / perdida (+ error).
+`sent_at` / `closed_at` (migración 120) se fijan al mover de etapa.
+
+## MCP (`lib/mcp/quote-tools.ts`, solo admin)
+`cotizaciones` (por etapa + números), `detalle_cotizacion`,
+`nueva_cotizacion`, `editar_cotizacion` (contexto, tipo/precio, etapa, links
+pdf/slides), `generar_propuesta` (dispara Make; vista previa del contexto).
+Para ofertas sin plantilla, Claude arma la presentación en la conversación y
+guarda su link con `editar_cotizacion`. Lógica compartida en
+`lib/quotes/server.ts`.
 No se sincroniza de regreso a GHL (decisión del dueño, por ahora).
 
 ## Variables de entorno
