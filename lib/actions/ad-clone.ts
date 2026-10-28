@@ -282,6 +282,27 @@ export async function startClone(
     ad_snapshot:       ad,
   })
 
+  return beginClone(supabase, user.id, savedAd, brandBrainId, videoUrl)
+}
+
+// Clon de guion de un post orgánico (o cualquier fila ya guardada): usa la
+// fila existente en vez de volver a guardarla (los orgánicos no tienen
+// ad_archive_id y startClone crearía un duplicado).
+export async function startCloneFromSavedAd(savedAdId: string, brandBrainId: string): Promise<{ cloneId: string; shareToken: string }> {
+  const { supabase, user } = await assertAuth()
+  const { data: savedAd, error } = await supabase.from("saved_ads").select("*").eq("id", savedAdId).single()
+  if (error || !savedAd) throw new Error("No se encontró la publicación guardada")
+  return beginClone(supabase, user.id, savedAd, brandBrainId, null)
+}
+
+async function beginClone(
+  supabase: Awaited<ReturnType<typeof assertAuth>>["supabase"],
+  userId: string,
+  savedAd: { id: string; cached_video_url?: string | null; video_url?: string | null },
+  brandBrainId: string,
+  videoUrl: string | null,
+): Promise<{ cloneId: string; shareToken: string }> {
+  const user = { id: userId }
   // 2. Create ad_clones row
   const { data: clone, error: cloneErr } = await supabase
     .from("ad_clones")

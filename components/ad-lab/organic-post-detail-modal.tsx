@@ -2,7 +2,11 @@
 
 import { useState } from "react"
 import type { SavedAd } from "@/lib/types"
-import { X, ChevronLeft, ChevronRight, Heart, MessageCircle, ExternalLink, Wand2, Layers } from "lucide-react"
+import { X, ChevronLeft, ChevronRight, Heart, MessageCircle, ExternalLink, Wand2, Layers, FileText, ScanSearch, ImageIcon } from "lucide-react"
+import { CloneModal } from "@/components/ad-lab/clone-modal"
+import { ExtractScriptModal } from "@/components/ad-lab/extract-script-modal"
+import { ConceptAnalysisModal } from "@/components/ad-lab/concept-analysis-modal"
+import type { MetaAdResult } from "@/lib/types"
 import { CarouselCloneModal } from "@/components/ad-lab/carousel-clone-modal"
 import { ImageCloneModal } from "@/components/ad-lab/image-clone-modal"
 
@@ -34,6 +38,9 @@ export function OrganicPostDetailModal({ post, onClose }: Props) {
   const [slideIndex, setSlideIndex] = useState(0)
   const [showClone, setShowClone] = useState(false)
   const [showCarouselClone, setShowCarouselClone] = useState(false)
+  const [showScriptClone, setShowScriptClone] = useState(false)
+  const [showExtract, setShowExtract] = useState(false)
+  const [showAnalysis, setShowAnalysis] = useState(false)
 
   const currentImageUrl = isCarousel
     ? slides[slideIndex]
@@ -42,6 +49,33 @@ export function OrganicPostDetailModal({ post, onClose }: Props) {
 
   function prev() { setSlideIndex((i) => (i - 1 + slides.length) % slides.length) }
   function next() { setSlideIndex((i) => (i + 1) % slides.length) }
+
+  // Video: mismas herramientas que un anuncio de Meta (clonar guion, extraer
+  // script, analizar concepto). Antes solo había "Clonar imagen".
+  if (showScriptClone && videoUrl) {
+    const ad = {
+      ad_archive_id: post.ad_archive_id ?? `saved:${post.id}`, page_id: post.page_id ?? null, page_name: post.page_name,
+      snapshot: { body: { text: post.caption ?? "" }, cards: [{ video_hd_url: videoUrl, video_preview_image_url: currentImageUrl ?? undefined, original_image_url: currentImageUrl ?? undefined }] },
+    } as unknown as MetaAdResult
+    return <CloneModal ad={ad} savedAdId={post.id} onClose={() => setShowScriptClone(false)} />
+  }
+  if (showExtract && videoUrl) {
+    return <ExtractScriptModal videoUrl={videoUrl} titulo={`@${post.page_name}`} onClose={() => setShowExtract(false)} />
+  }
+  if (showAnalysis) {
+    return (
+      <ConceptAnalysisModal
+        open
+        onClose={() => setShowAnalysis(false)}
+        onClone={() => { setShowAnalysis(false); if (videoUrl) setShowScriptClone(true); else setShowClone(true) }}
+        ad={{
+          adArchiveId: post.ad_archive_id ?? `saved:${post.id}`, pageId: post.page_id ?? null, pageName: post.page_name,
+          body: post.caption ?? null, title: null, caption: null, cta: null, linkUrl: post.post_url ?? null,
+          videoUrl, imageUrl: currentImageUrl, isActive: false, startDate: null,
+        }}
+      />
+    )
+  }
 
   if (showCarouselClone) {
     return <CarouselCloneModal savedAdId={post.id} pageName={post.page_name} slides={slides} onClose={() => setShowCarouselClone(false)} />
@@ -139,15 +173,52 @@ export function OrganicPostDetailModal({ post, onClose }: Props) {
             </div>
           </div>
 
-          <div className="px-5 py-4 border-t border-border flex-shrink-0">
-            <button
-              onClick={() => setShowClone(true)}
-              disabled={!currentImageUrl}
-              className="w-full flex items-center justify-center gap-2 h-10 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
-            >
-              <Wand2 className="w-4 h-4" />
-              {isCarousel ? `Clonar esta slide (${slideIndex + 1}/${slides.length})` : "Clonar imagen"}
-            </button>
+          <div className="px-5 py-4 border-t border-border flex-shrink-0 space-y-2">
+            {videoUrl ? (
+              <>
+                <button
+                  onClick={() => setShowScriptClone(true)}
+                  title="Transcribe el video y adapta el guion a tu marca"
+                  className="w-full flex items-center justify-center gap-2 h-10 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+                >
+                  <Wand2 className="w-4 h-4" />
+                  Clonar guion
+                </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => setShowExtract(true)} title="Extraer el guion original, sin adaptarlo"
+                    className="h-9 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted inline-flex items-center justify-center gap-2 transition-colors">
+                    <FileText className="w-4 h-4" />Extraer script
+                  </button>
+                  <button onClick={() => setShowAnalysis(true)} title="Ángulo, persona, dolor, gancho, estructura y cómo adaptarlo"
+                    className="h-9 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted inline-flex items-center justify-center gap-2 transition-colors">
+                    <ScanSearch className="w-4 h-4" />Analizar concepto
+                  </button>
+                </div>
+                {currentImageUrl && (
+                  <button onClick={() => setShowClone(true)} title="Clonar la portada del video como imagen estática"
+                    className="w-full h-9 rounded-xl text-xs text-muted-foreground hover:text-foreground hover:bg-muted inline-flex items-center justify-center gap-1.5 transition-colors">
+                    <ImageIcon className="w-3.5 h-3.5" />Clonar la portada como imagen
+                  </button>
+                )}
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => setShowClone(true)}
+                  disabled={!currentImageUrl}
+                  className="w-full flex items-center justify-center gap-2 h-10 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                >
+                  <Wand2 className="w-4 h-4" />
+                  {isCarousel ? `Clonar esta slide (${slideIndex + 1}/${slides.length})` : "Clonar imagen"}
+                </button>
+                {currentImageUrl && (
+                  <button onClick={() => setShowAnalysis(true)}
+                    className="w-full h-9 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted inline-flex items-center justify-center gap-2 transition-colors">
+                    <ScanSearch className="w-4 h-4" />Analizar concepto
+                  </button>
+                )}
+              </>
+            )}
             {isCarousel && (
               <button
                 onClick={() => setShowCarouselClone(true)}

@@ -29,3 +29,13 @@ se resalta el momento en reproducción) / Aprendizajes / Marca / Transcripción.
 - **Clonar con este ángulo:** mismo flujo que "Clonar" del detalle (si el
   anuncio no está guardado, primero pide board).
 - Copiar gancho / copiar resumen.
+
+## Posts orgánicos con video (2026-10-28)
+
+En Discovery orgánico, un post con video ya no ofrece solo "Clonar imagen":
+trae **Clonar guion** (transcribe y adapta a la marca; `CloneModal` con
+`savedAdId` → `startCloneFromSavedAd`, que usa la fila guardada en vez de
+crear un duplicado — los orgánicos no tienen `ad_archive_id`), **Extraer
+script** y **Analizar concepto**, más "Clonar la portada como imagen" como
+opción secundaria. Los posts de imagen/carrusel siguen igual y suman
+"Analizar concepto".

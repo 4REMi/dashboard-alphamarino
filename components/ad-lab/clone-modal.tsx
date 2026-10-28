@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react"
 import type { AdCloneLine, AdCloneStatus, BrandBrain, MetaAdResult, BrandLine } from "@/lib/types"
-import { startClone, pollClone, updateAdaptedLines } from "@/lib/actions/ad-clone"
+import { startClone, startCloneFromSavedAd, pollClone, updateAdaptedLines } from "@/lib/actions/ad-clone"
 import { checkAnguloCompatibility } from "@/lib/actions/image-clone"
 import { getBrandBrains, getBrandLines } from "@/lib/actions/brand-brains"
 import { getConceptsByBrandBrain } from "@/lib/actions/creatives"
@@ -15,6 +15,9 @@ import {
 interface Props {
   ad: MetaAdResult
   onClose: () => void
+  // Publicación ya guardada (p. ej. orgánica de Instagram): el clon usa esa
+  // fila en vez de guardar el anuncio de nuevo.
+  savedAdId?: string
 }
 
 type Step = 1 | 2 | 3
@@ -27,7 +30,7 @@ const STATUS_LABEL: Record<AdCloneStatus, string> = {
   error:        "Error",
 }
 
-export function CloneModal({ ad, onClose }: Props) {
+export function CloneModal({ ad, onClose, savedAdId }: Props) {
   const [step, setStep]                     = useState<Step>(1)
   const [brains, setBrains]                 = useState<Pick<BrandBrain, "id" | "name">[]>([])
   const [selectedBrainId, setSelectedBrainId] = useState("")
@@ -164,7 +167,7 @@ export function CloneModal({ ad, onClose }: Props) {
     if (angulo.trim()) saveAngulo(angulo)
     startTransition(async () => {
       try {
-        const result = await startClone(ad, selectedBrainId)
+        const result = await (savedAdId ? startCloneFromSavedAd(savedAdId, selectedBrainId) : startClone(ad, selectedBrainId))
         setCloneId(result.cloneId)
         setShareToken(result.shareToken)
         setCloneStatus("transcribing")
