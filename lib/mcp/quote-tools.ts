@@ -154,7 +154,7 @@ export function registerQuoteTools(server: McpServer) {
 
   server.registerTool("generar_propuesta", {
     title: "Generar propuesta (Make)",
-    description: "Dispara el escenario Cotizador de Make para un lead con tipo con plantilla (web_informativo / web_ecommerce): arma Slides + PDF y lo manda al correo (1–3 min); el lead pasa de inmediato a "Propuesta lista". Cuesta operaciones de Make e IA. Sin confirmar: true muestra el contexto que se enviará.",
+    description: "Dispara el escenario Cotizador de Make para un lead con tipo con plantilla (web_informativo / web_ecommerce): arma Slides + PDF y lo manda al correo (1–3 min); el lead pasa de inmediato a Propuesta lista. Cuesta operaciones de Make e IA. Sin confirmar: true muestra el contexto que se enviará.",
     inputSchema: z.object({ lead: z.string().min(1), confirmar: z.boolean().default(false) }),
   }, async ({ lead, confirmar }, ctx: ToolCtx) => {
     await requireAdmin(ctx)
