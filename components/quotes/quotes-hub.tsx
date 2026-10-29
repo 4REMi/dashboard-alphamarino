@@ -221,6 +221,7 @@ function LeadPanel({ lead, onClose, onLocal, onMove, onDeleted }: { lead: QuoteL
   const [error, setError] = useState<string | null>(null)
   const [saving, startSave] = useTransition()
   const [generating, startGen] = useTransition()
+  const [sent, setSent] = useState(false)
   useEffect(() => { if (!editing) setDraft(lead) }, [lead, editing])
   const input = "w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
   const typeIsOther = !!lead.proposal_type && !hasTemplate(lead.proposal_type)
@@ -234,7 +235,7 @@ function LeadPanel({ lead, onClose, onLocal, onMove, onDeleted }: { lead: QuoteL
   function generate() {
     setError(null)
     startGen(async () => {
-      try { await generateQuoteProposal(lead.id); onLocal({ status: "generando", last_error: null }) }
+      try { await generateQuoteProposal(lead.id); onLocal({ status: "generada", last_error: null, proposal_generated_at: new Date().toISOString() }); setSent(true) }
       catch (e) { setError(e instanceof Error ? e.message : String(e)) }
     })
   }
@@ -302,7 +303,7 @@ function LeadPanel({ lead, onClose, onLocal, onMove, onDeleted }: { lead: QuoteL
                 {generating || lead.status === "generando" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
                 {lead.status === "generando" ? "Generando en Make…" : lead.proposal_pdf_url ? "Generar de nuevo" : "Generar propuesta"}
               </Button>
-              {lead.status === "generando" && <span className="text-xs text-muted-foreground">Tarda 1–3 min; también llega a tu correo.</span>}
+              {(sent || (lead.status === "generada" && !lead.proposal_pdf_url)) && <span className="text-xs text-muted-foreground">{sent ? "Enviada a Make: " : ""}el PDF llega a tu correo en 1–3 min. Si quieres, pega aquí su link.</span>}
             </div>
           )}
           {(lead.proposal_pdf_url || lead.proposal_slides_url) && (

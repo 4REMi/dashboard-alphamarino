@@ -154,7 +154,7 @@ export function registerQuoteTools(server: McpServer) {
 
   server.registerTool("generar_propuesta", {
     title: "Generar propuesta (Make)",
-    description: "Dispara el escenario Cotizador de Make para un lead con tipo con plantilla (web_informativo / web_ecommerce): arma Slides + PDF y lo manda al correo; el link regresa al hub en 1–3 min. Cuesta operaciones de Make e IA. Sin confirmar: true muestra el contexto que se enviará.",
+    description: "Dispara el escenario Cotizador de Make para un lead con tipo con plantilla (web_informativo / web_ecommerce): arma Slides + PDF y lo manda al correo (1–3 min); el lead pasa de inmediato a "Propuesta lista". Cuesta operaciones de Make e IA. Sin confirmar: true muestra el contexto que se enviará.",
     inputSchema: z.object({ lead: z.string().min(1), confirmar: z.boolean().default(false) }),
   }, async ({ lead, confirmar }, ctx: ToolCtx) => {
     await requireAdmin(ctx)
@@ -164,6 +164,6 @@ export function registerQuoteTools(server: McpServer) {
     if (!confirmar) return text(`Generaría la propuesta ${typeLabel(l.proposal_type)} de ${l.company || l.name} por ${money(price)} con este contexto:\n\n${contextForMake({ ...l, price })}\n\nNo se envió nada. Si es correcto, vuelve a llamar con confirmar: true.`)
     await generateProposal(db(), l.id)
     revalidatePath("/cotizaciones")
-    return text(`✅ Enviada a Make. En 1–3 min el PDF aparece en el hub (y llega a tu correo). Consulta con detalle_cotizacion.`)
+    return text(`✅ Enviada a Make y marcada como "Propuesta lista". El PDF llega a tu correo en 1–3 min; su link se puede guardar con editar_cotizacion (pdf_url).`)
   })
 }

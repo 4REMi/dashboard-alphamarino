@@ -63,7 +63,11 @@ export async function generateProposal(db: SupabaseClient, id: string): Promise<
     body: JSON.stringify({ texto: contextForMake({ ...lead, price }), imagen_mime: "image/png", imagen_data: BLANK_PNG, lead_id: lead.id, origen: "dashboard" }),
   })
   if (!res.ok) throw new Error(`Make respondió ${res.status}`)
-  const patch = { status: "generando" as QuoteStatus, price, last_error: null, updated_at: new Date().toISOString() }
+  // Sin esperar el aviso de regreso de Make: en cuanto Make acepta, la
+  // propuesta se da por generada (el PDF llega por correo; el link se puede
+  // pegar a mano). Si algún día Make avisa, solo completa los links.
+  const now = new Date().toISOString()
+  const patch = { status: "generada" as QuoteStatus, price, last_error: null, proposal_generated_at: now, updated_at: now }
   await db.from("quote_leads").update(patch).eq("id", id)
   return { ...lead, ...patch }
 }

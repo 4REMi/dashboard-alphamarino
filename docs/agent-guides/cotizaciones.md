@@ -59,3 +59,9 @@ No se sincroniza de regreso a GHL (decisión del dueño, por ahora).
 
 ## Variables de entorno
 `QUOTES_WEBHOOK_SECRET`, `MAKE_QUOTE_WEBHOOK_URL`, `MAKE_QUOTE_WEBHOOK_APIKEY`.
+
+**Sin esperar a Make (2026-10-29):** al generar, en cuanto Make acepta la
+solicitud el lead pasa directo a "Propuesta lista" (`generada`, con
+`proposal_generated_at`). El PDF llega por correo y su link se pega a mano
+(o lo completa el callback de Make si algún día se agrega). Ya no se queda en
+"Generando".
