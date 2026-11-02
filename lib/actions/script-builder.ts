@@ -91,9 +91,9 @@ BEATS DEL CUERPO: ${m.beats.map((b, i) => `${i + 1}. ${b}`).join(" → ")}
 GUION HASTA AHORA:
 ${sofar}
 
-Escribe SOLO el beat ${beatIndex + 1} "${beat}". Debe continuar con naturalidad lo anterior y cumplir la función del beat dentro de la mecánica. 1–3 frases habladas. Da 2 opciones distintas en ${ctx.language}.
+Escribe SOLO el beat ${beatIndex + 1} "${beat}". Debe continuar con naturalidad lo anterior y cumplir la función del beat dentro de la mecánica. 1–3 frases habladas NUEVAS: no repitas lo que ya se dijo; "spoken" contiene solo este beat. Da 2 opciones distintas. Todo (spoken, visual, overlay) en ${ctx.language}.
 {"options":[{"spoken":"","visual":"qué se ve","overlay":"texto en pantalla opcional"}]}`, "generateBeat")
-  return (r.options ?? []).slice(0, 2)
+  return (r.options ?? []).slice(0, 2).map((o) => ({ ...o, spoken: stripRepeated(o.spoken, [hook.spoken, ...previous.map((p) => p.spoken)]) }))
 }
 
 export async function generateCloses(conceptId: string, brainId: string, mechanic: MechanicKey, hook: ScriptHook, body: ScriptPart[]): Promise<ScriptPart[]> {
@@ -106,7 +106,22 @@ export async function generateCloses(conceptId: string, brainId: string, mechani
 MECÁNICA: ${m.label}
 GUION: HOOK "${hook.spoken}" → ${body.map((p, i) => `${m.beats[i]}: "${p.spoken}"`).join(" → ")}
 ESTRATEGIA DE CIERRE PARA ${ctx.stage.label.toUpperCase()}: ${ctx.stage.close}
-Usa los CTAs de la marca si encajan. 1–2 frases. Da 3 opciones distintas en ${ctx.language}.
+Escribe SOLO el cierre: 1–2 frases NUEVAS que vienen después del último beat. NO repitas ni resumas el hook ni el cuerpo; "spoken" contiene únicamente las frases del cierre. Usa los CTAs de la marca si encajan. Da 3 opciones distintas. Todo (spoken, visual, overlay) en ${ctx.language}.
 {"options":[{"spoken":"","visual":"","overlay":"texto/CTA en pantalla"}]}`, "generateCloses")
-  return (r.options ?? []).slice(0, 3)
+  return (r.options ?? []).slice(0, 3).map((o) => ({ ...o, spoken: stripRepeated(o.spoken, [hook.spoken, ...body.map((p) => p.spoken)]) }))
+}
+
+// Red de seguridad: si el modelo antepone lo que ya se dijo (hook/beats
+// anteriores) a la parte nueva, se quita. Compara sin mayúsculas, acentos ni
+// puntuación.
+function stripRepeated(text: string, prior: string[]): string {
+  const norm = (x: string) => x.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim()
+  const sentences = text.match(/[^.!?…]+[.!?…]*\s*/g) ?? [text]
+  const priorNorm = prior.map(norm).filter(Boolean)
+  const kept = sentences.filter((sen) => {
+    const n = norm(sen)
+    return !n || !priorNorm.some((p) => p.includes(n) && n.length > 6)
+  })
+  const out = kept.join("").trim()
+  return out || text.trim()
 }
