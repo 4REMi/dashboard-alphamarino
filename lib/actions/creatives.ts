@@ -1,5 +1,7 @@
 "use server"
 
+import { CONCEPT_NAME_RULE } from "@/lib/ai/concept-naming"
+
 import { getProjectContext, contextBlock } from "@/lib/project-context"
 import { parseAiJson } from "@/lib/utils/ai-json"
 import { revalidatePath } from "next/cache"
@@ -1272,7 +1274,7 @@ Debes devolver ÚNICAMENTE un array JSON válido con exactamente 5 objetos. Sin 
 Cada objeto debe tener exactamente estos campos:
 - organizing_principle: "Pain-First" o "Desire-First"
 - angle_type: uno de los 10 ángulos disponibles
-- name: nombre corto del concepto (3-6 palabras, en español)
+- name: ${CONCEPT_NAME_RULE}
 - target_persona: descripción concisa del buyer persona objetivo
 - product_service: el producto o servicio que se promueve en este concepto
 - pain_point: el dolor o problema concreto que activa este anuncio
@@ -1573,7 +1575,7 @@ async function draftConceptFromCreative(creative: {
 Responde ÚNICAMENTE con un JSON válido con exactamente estos campos (sin markdown, sin texto extra):
 - organizing_principle: "Pain-First" o "Desire-First"
 - angle_type: uno de: ${ANGULOS_DISPONIBLES}
-- name: nombre corto del concepto (3-6 palabras, en español)
+- name: ${CONCEPT_NAME_RULE}
 - target_persona: a quién le habla este anuncio, inferido de lo que ves/lees
 - product_service: qué producto o servicio promueve
 - pain_point: qué dolor o problema activa
@@ -1661,7 +1663,7 @@ export async function autofillConcept(
   const systemPrompt = `Eres un estratega de publicidad digital. A partir de una idea escrita en lenguaje natural, rellena los campos de un concepto creativo para performance marketing.
 
 Devuelve ÚNICAMENTE un objeto JSON válido con estos campos (todos strings):
-- name: nombre corto del concepto (3-6 palabras)
+- name: ${CONCEPT_NAME_RULE}
 - organizing_principle: "Pain-First" o "Desire-First"
 - target_persona: descripción del buyer persona
 - angle_type: EXACTAMENTE uno de: Desired Outcome, Objection, Feature / Benefit, Use Case, Consequence, Misconception, Education, Acceptance, Failed Solutions, Identity

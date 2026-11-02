@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { aaiPost, aaiGet } from "@/lib/actions/ad-clone"
 import { describeVideo, type VideoDescription } from "@/lib/ai/video-understanding"
 import { parseAiJson } from "@/lib/utils/ai-json"
+import { CONCEPT_NAME_RULE } from "@/lib/ai/concept-naming"
 
 // Embudo "Subir y clasificar": un video suelto (sin brief) se transcribe,
 // la IA lo "ve" (Gemini) y Claude lo compara contra los conceptos del
@@ -104,9 +105,10 @@ Reglas:
 - "matches": hasta 3 conceptos existentes donde el video encaje, con confidence 0-100 honesto (más de 70 solo si el mensaje central y la persona coinciden de verdad) y una razón de una frase.
 - "new_concept": SIEMPRE propón uno nuevo como alternativa, basado en lo que el video realmente dice y muestra. angle_type debe ser EXACTAMENTE uno de: ${ANGULOS.join(", ")}. funnel_stage: TOF, MOF o BOF. organizing_principle: Pain-First o Desire-First. brand_line_id: el id de la línea que mejor aplique o null.
 - "summary": una frase de qué es el video.
+- new_concept.name y breakdown.concepto.nombre: ${CONCEPT_NAME_RULE}
 - "breakdown": desarma el creativo para el equipo. ESCRIBE CORTO (se lee en una interfaz; respeta los límites de palabras). "t" de la estructura en formato m:ss-m:ss cubriendo todo el video (en imágenes una sola entrada "imagen"). "como_mejorarlo": qué cambiar en ESTE creativo o en su siguiente versión.
 Responde SOLO JSON: {"summary":"","matches":[{"concept_id":"","confidence":0,"reason":""}],"new_concept":{"name":"","angle_type":"","organizing_principle":"","target_persona":"","pain_point":"","why_it_works":"","transformation":"","funnel_stage":"","brand_line_id":null},
-"breakdown":{"resumen":"máx. 25 palabras","concepto":{"nombre":"máx. 8","angle_type":"","organizing_principle":"","target_persona":"máx. 20","pain_point":"máx. 20","objection":"máx. 15","why_it_works":"máx. 25","transformation":"máx. 15","funnel_stage":"","awareness_stage":3},
+"breakdown":{"resumen":"máx. 25 palabras","concepto":{"nombre":"Dolor × Persona — Ángulo","angle_type":"","organizing_principle":"","target_persona":"máx. 20","pain_point":"máx. 20","objection":"máx. 15","why_it_works":"máx. 25","transformation":"máx. 15","funnel_stage":"","awareness_stage":3},
 "gancho":{"texto":"primeros 3 s, literal","tipo":"pregunta|afirmación polémica|dato|demostración|historia|otro","por_que_atrapa":"máx. 20"},
 "estructura":[{"t":"0:00-0:05","momento":"gancho|problema|demostración|prueba social|oferta|CTA|otro","que_pasa":"máx. 18"}],
 "mecanica":"máx. 18","formato":"máx. 10",

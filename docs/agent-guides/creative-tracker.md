@@ -245,3 +245,14 @@ el modal del concepto, sin pasar por el panel del cliente:
   (`autoApproveBriefScripts`, ahora acepta claves específicas).
 - **"Aprobar todo"** en la cabecera de Assets: aprueba todas las piezas vigentes
   y todos los guiones de los briefs del concepto (pide confirmación).
+
+## Nombres de concepto (2026-11-02)
+
+Toda IA que propone un concepto ("Rellenar con IA", borradores, desde
+creativos de Meta, clasificar un asset, Análisis de Ad Lab) usa la misma regla
+(`CONCEPT_NAME_RULE`, `lib/ai/concept-naming.ts`), basada en el Creative
+Strategy Engine de Motion: un concepto = Dolor/Deseo × Persona expresado con
+un ángulo. Formato de control: **"<Dolor o deseo> × <Persona> — <Ángulo>"**,
+concreto y buscable; sin hook, formato ni etapa de awareness (van en sus
+campos). Ej.: "Miedo a empezar de cero × Principiante absoluto — Tu primera
+clase es de prueba y sin compromiso" en vez de "Primera Clase Sin Experiencia".
