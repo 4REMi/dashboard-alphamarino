@@ -285,3 +285,12 @@ en la página pública del brief se ven discretas debajo de cada línea. CRUD:
 editar sección y notas, agregar línea (debajo o al final), borrar y reordenar
 líneas (al pasar el mouse), y borrar el guion completo del brief
 (`deleteBriefReference`). Guardar regresa el guion a "pendiente".
+
+**Duración objetivo del guion (2026-11-02):** lo primero del paso 0 es un
+control de 10–90 s (atajos 15/30/45/60). A ~2.5 palabras/s (≈150 por minuto,
+ritmo de anuncio) se arma un presupuesto (`wordBudget` en
+`lib/scripts/framework.ts`): hook ~15 %, cierre ~20 % y el resto repartido entre
+los beats de la mecánica. Cada generador recibe su máximo de palabras. Las
+opciones muestran palabras y segundos; el guion en vivo tiene un medidor
+contra el objetivo (verde / ámbar >100 % / rojo >115 %), y la revisión avisa si
+un guion se pasa más de 15 %.

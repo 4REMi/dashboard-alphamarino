@@ -3,7 +3,7 @@
 import Anthropic from "@anthropic-ai/sdk"
 import { createClient } from "@/lib/supabase/server"
 import { parseAiJson } from "@/lib/utils/ai-json"
-import { MECHANICS, MECHANIC_KEYS, TRIGGERS, AWARENESS, type MechanicKey, type ScriptHook, type ScriptPart } from "@/lib/scripts/framework"
+import { MECHANICS, MECHANIC_KEYS, TRIGGERS, AWARENESS, wordBudget, type MechanicKey, type ScriptHook, type ScriptPart } from "@/lib/scripts/framework"
 
 // Constructor de guiones paso a paso: cada función propone opciones para UN
 // paso; nada escribe el guion completo de un jalón. Contexto = concepto
@@ -59,9 +59,10 @@ export async function suggestMechanics(conceptId: string, brainId: string): Prom
   return (r.mechanics ?? []).filter((m) => (MECHANIC_KEYS as string[]).includes(m.key)).slice(0, 3) as { key: MechanicKey; why: string }[]
 }
 
-export async function generateHooks(conceptId: string, brainId: string, mechanic: MechanicKey, opts: { like?: ScriptHook; avoid?: string[] } = {}): Promise<ScriptHook[]> {
+export async function generateHooks(conceptId: string, brainId: string, mechanic: MechanicKey, opts: { like?: ScriptHook; avoid?: string[]; targetSeconds?: number } = {}): Promise<ScriptHook[]> {
   const ctx = await context(conceptId, brainId)
   const m = MECHANICS[mechanic]
+  const budget = wordBudget(opts.targetSeconds ?? 30, m.beats.length)
   const r = await ask<{ hooks: ScriptHook[] }>(
     `Eres redactor experto en hooks de video para paid media. El hook solo tiene un trabajo: detener el scroll en 1–3 segundos con una respuesta psicológica o emocional. ${RULES}\nResponde SOLO JSON.`,
     `${ctx.text}
@@ -72,15 +73,17 @@ DISPARADORES: ${TRIGGERS.join(", ")}.
 ${opts.like ? `Haz variaciones cercanas a este hook que gustó (mismo espíritu, distinta redacción y disparador): "${opts.like.spoken}"` : ""}
 ${opts.avoid?.length ? `Evita estos hooks ya vistos: ${opts.avoid.map((h) => `"${h}"`).join(" | ")}` : ""}
 
+DURACIÓN DEL VIDEO: ${opts.targetSeconds ?? 30} s en total. Cada hook (lo que se dice) debe tener como MÁXIMO ${budget.hook} palabras.
 Escribe 6 hooks, cada uno con un disparador DISTINTO (puedes combinar dos en uno, ej. "Identity call-out + Pain agitation"). En ${ctx.language}.
 {"hooks":[{"trigger":"","spoken":"primeras palabras en cámara","visual":"qué pasa en el primer cuadro","overlay":"texto en pantalla (corto)","why":"una frase: por qué detiene a esta persona"}]}`, "generateHooks")
   return (r.hooks ?? []).slice(0, 6)
 }
 
-export async function generateBeat(conceptId: string, brainId: string, mechanic: MechanicKey, hook: ScriptHook, beatIndex: number, previous: ScriptPart[]): Promise<ScriptPart[]> {
+export async function generateBeat(conceptId: string, brainId: string, mechanic: MechanicKey, hook: ScriptHook, beatIndex: number, previous: ScriptPart[], targetSeconds = 30): Promise<ScriptPart[]> {
   const ctx = await context(conceptId, brainId)
   const m = MECHANICS[mechanic]
   const beat = m.beats[beatIndex]
+  const budget = wordBudget(targetSeconds, m.beats.length)
   const sofar = [`HOOK: "${hook.spoken}" (visual: ${hook.visual})`, ...previous.map((p, i) => `${m.beats[i]}: "${p.spoken}"`)].join("\n")
   const r = await ask<{ options: ScriptPart[] }>(
     `Eres guionista de anuncios de video de performance (UGC / VO, 20–45 s). ${RULES}\nResponde SOLO JSON.`,
@@ -91,14 +94,15 @@ BEATS DEL CUERPO: ${m.beats.map((b, i) => `${i + 1}. ${b}`).join(" → ")}
 GUION HASTA AHORA:
 ${sofar}
 
-Escribe SOLO el beat ${beatIndex + 1} "${beat}". Debe continuar con naturalidad lo anterior y cumplir la función del beat dentro de la mecánica. 1–3 frases habladas NUEVAS: no repitas lo que ya se dijo; "spoken" contiene solo este beat. Da 2 opciones distintas. Todo (spoken, visual, overlay) en ${ctx.language}.
+Escribe SOLO el beat ${beatIndex + 1} "${beat}". Debe continuar con naturalidad lo anterior y cumplir la función del beat dentro de la mecánica. Video de ${targetSeconds} s en total: este beat debe tener como MÁXIMO ${budget.beat} palabras habladas. Frases NUEVAS: no repitas lo que ya se dijo; "spoken" contiene solo este beat. Da 2 opciones distintas. Todo (spoken, visual, overlay) en ${ctx.language}.
 {"options":[{"spoken":"","visual":"qué se ve","overlay":"texto en pantalla opcional"}]}`, "generateBeat")
   return (r.options ?? []).slice(0, 2).map((o) => ({ ...o, spoken: stripRepeated(o.spoken, [hook.spoken, ...previous.map((p) => p.spoken)]) }))
 }
 
-export async function generateCloses(conceptId: string, brainId: string, mechanic: MechanicKey, hook: ScriptHook, body: ScriptPart[]): Promise<ScriptPart[]> {
+export async function generateCloses(conceptId: string, brainId: string, mechanic: MechanicKey, hook: ScriptHook, body: ScriptPart[], targetSeconds = 30): Promise<ScriptPart[]> {
   const ctx = await context(conceptId, brainId)
   const m = MECHANICS[mechanic]
+  const budget = wordBudget(targetSeconds, m.beats.length)
   const r = await ask<{ options: ScriptPart[] }>(
     `Eres guionista de anuncios de video de performance. ${RULES}\nResponde SOLO JSON.`,
     `${ctx.text}
@@ -106,7 +110,7 @@ export async function generateCloses(conceptId: string, brainId: string, mechani
 MECÁNICA: ${m.label}
 GUION: HOOK "${hook.spoken}" → ${body.map((p, i) => `${m.beats[i]}: "${p.spoken}"`).join(" → ")}
 ESTRATEGIA DE CIERRE PARA ${ctx.stage.label.toUpperCase()}: ${ctx.stage.close}
-Escribe SOLO el cierre: 1–2 frases NUEVAS que vienen después del último beat. NO repitas ni resumas el hook ni el cuerpo; "spoken" contiene únicamente las frases del cierre. Usa los CTAs de la marca si encajan. Da 3 opciones distintas. Todo (spoken, visual, overlay) en ${ctx.language}.
+Video de ${targetSeconds} s en total: el cierre debe tener como MÁXIMO ${budget.close} palabras habladas. Escribe SOLO el cierre: frases NUEVAS que vienen después del último beat. NO repitas ni resumas el hook ni el cuerpo; "spoken" contiene únicamente las frases del cierre. Usa los CTAs de la marca si encajan. Da 3 opciones distintas. Todo (spoken, visual, overlay) en ${ctx.language}.
 {"options":[{"spoken":"","visual":"","overlay":"texto/CTA en pantalla"}]}`, "generateCloses")
   return (r.options ?? []).slice(0, 3).map((o) => ({ ...o, spoken: stripRepeated(o.spoken, [hook.spoken, ...body.map((p) => p.spoken)]) }))
 }

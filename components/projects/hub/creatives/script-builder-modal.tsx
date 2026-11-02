@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
 import { suggestMechanics, generateHooks, generateBeat, generateCloses } from "@/lib/actions/script-builder"
 import { saveScriptDrafts, addScriptDraftsToBrief } from "@/lib/actions/creatives"
-import { MECHANICS, MECHANIC_KEYS, AWARENESS, lintScript, estimateSeconds, type MechanicKey, type ScriptHook, type ScriptPart } from "@/lib/scripts/framework"
+import { MECHANICS, MECHANIC_KEYS, AWARENESS, lintScript, estimateSeconds, wordBudget, wordCount, WORDS_PER_SECOND, type MechanicKey, type ScriptHook, type ScriptPart } from "@/lib/scripts/framework"
 import type { AdCloneLine, BrandBrain, CreativeBrief, CreativeConcept } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -33,6 +33,9 @@ const STEPS = ["Base", "Mecánica", "Hooks", "Cuerpo", "Cierre", "Revisión"] as
 
 export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBrandBrainId, existingBrief, onClose, onCreated }: Props) {
   const [step, setStep] = useState(0)
+  // Duración objetivo: lo primero que se define; reparte un presupuesto de
+  // palabras entre hook, beats y cierre que la IA tiene que respetar.
+  const [targetSeconds, setTargetSeconds] = useState(30)
   const [brainId, setBrainId] = useState(existingBrief?.brand_brain_id ?? projectBrandBrainId ?? brandBrains[0]?.id ?? "")
   const [mechOptions, setMechOptions] = useState<{ key: MechanicKey; why: string }[]>([])
   const [mechanic, setMechanic] = useState<MechanicKey | null>(null)
@@ -51,6 +54,7 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
   const beats = mechanic ? MECHANICS[mechanic].beats : []
   const brain = brandBrains.find((b) => b.id === brainId)
   const primary = picked[0] ?? null
+  const budget = wordBudget(targetSeconds, beats.length || 3)
 
   async function run<T>(label: string, fn: () => Promise<T>): Promise<T | null> {
     setBusy(label); setError(null)
@@ -65,20 +69,20 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
   }
   async function loadHooks(opts: { like?: ScriptHook } = {}) {
     if (!mechanic) return null
-    const r = await run(opts.like ? "Variaciones de ese hook…" : "Escribiendo 6 hooks…", () => generateHooks(concept.id, brainId, mechanic, { like: opts.like, avoid: hookOptions.map((h) => h.spoken) }))
+    const r = await run(opts.like ? "Variaciones de ese hook…" : "Escribiendo 6 hooks…", () => generateHooks(concept.id, brainId, mechanic, { like: opts.like, avoid: hookOptions.map((h) => h.spoken), targetSeconds }))
     const keyed = r?.map(withKey) ?? null
     if (keyed) { setHookOptions(keyed); setStep(2) }
     return keyed
   }
   async function loadBeat(i: number, prev = body.slice(0, i), hook = primary, mech = mechanic) {
     if (!hook || !mech) return null
-    const r = await run(`Escribiendo "${MECHANICS[mech].beats[i]}"…`, () => generateBeat(concept.id, brainId, mech, hook, i, prev))
+    const r = await run(`Escribiendo "${MECHANICS[mech].beats[i]}"…`, () => generateBeat(concept.id, brainId, mech, hook, i, prev, targetSeconds))
     if (r) setBeatOptions((o) => ({ ...o, [i]: r }))
     return r
   }
   async function loadCloses(b = body, hook = primary, mech = mechanic) {
     if (!hook || !mech) return null
-    const r = await run("Escribiendo cierres…", () => generateCloses(concept.id, brainId, mech, hook, b))
+    const r = await run("Escribiendo cierres…", () => generateCloses(concept.id, brainId, mech, hook, b, targetSeconds))
     if (r) setCloseOptions(r)
     return r
   }
@@ -103,7 +107,7 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
     }
     let hooks = picked
     if (!hooks.length) {
-      const hs = hookOptions.length ? hookOptions : (await run("Escribiendo 6 hooks…", () => generateHooks(concept.id, brainId, mech!, {})))?.map(withKey)
+      const hs = hookOptions.length ? hookOptions : (await run("Escribiendo 6 hooks…", () => generateHooks(concept.id, brainId, mech!, { targetSeconds })))?.map(withKey)
       if (!hs?.length) return
       setHookOptions(hs); hooks = [hs[0]]; setPicked(hooks)
     }
@@ -139,7 +143,7 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
     ...(close ? [line("Cierre", close)] : []),
   ]
   const bodyText = [...body.map((p) => p.spoken), close?.spoken ?? ""].join(" ")
-  const lint = useMemo(() => lintScript({ hooks: picked, body, close, brandName: brain?.name }), [picked, body, close, brain])
+  const lint = useMemo(() => lintScript({ hooks: picked, body, close, brandName: brain?.name, targetSeconds }), [picked, body, close, brain, targetSeconds])
   const complete = picked.length > 0 && body.length === beats.length && beats.length > 0 && !!close
 
   async function save() {
@@ -175,7 +179,7 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
           <div className="flex items-start gap-3">
             <div className="flex-1 min-w-0">
               <DialogTitle className="text-base font-semibold truncate">Guion de video · {concept.name}</DialogTitle>
-              <p className="text-xs text-muted-foreground">{stage.label}{mechanic ? ` · ${MECHANICS[mechanic].label}` : ""}{brain ? ` · ${brain.name}` : ""}</p>
+              <p className="text-xs text-muted-foreground">{targetSeconds} s · {stage.label}{mechanic ? ` · ${MECHANICS[mechanic].label}` : ""}{brain ? ` · ${brain.name}` : ""}</p>
             </div>
             <Button size="sm" variant="outline" onClick={buildAll} disabled={!!busy || !brainId}><Wand2 className="w-4 h-4" />Armar todo con IA</Button>
           </div>
@@ -201,6 +205,21 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
 
             {step === 0 && (
               <div className="space-y-4 max-w-2xl">
+                <div className="rounded-xl border border-border p-4 space-y-3">
+                  <div className="flex items-baseline gap-2">
+                    <p className="text-sm font-semibold flex-1">¿Cuánto debe durar el video?</p>
+                    <span className="text-2xl font-semibold tabular-nums">{targetSeconds} s</span>
+                  </div>
+                  <input type="range" min={10} max={90} step={5} value={targetSeconds} onChange={(e) => setTargetSeconds(Number(e.target.value))}
+                    className="w-full accent-primary" aria-label="Duración objetivo" />
+                  <div className="flex flex-wrap gap-1.5">
+                    {[15, 30, 45, 60].map((v) => (
+                      <button key={v} type="button" onClick={() => setTargetSeconds(v)}
+                        className={cn("h-7 px-2.5 rounded-full text-xs border", targetSeconds === v ? "bg-foreground text-background border-foreground" : "border-border text-muted-foreground hover:text-foreground")}>{v} s</button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">≈ {budget.total} palabras a ritmo de anuncio (~{Math.round(WORDS_PER_SECOND * 60)} por minuto): hook ~{budget.hook} · cada beat ~{budget.beat} · cierre ~{budget.close}. La IA escribe cada parte dentro de ese límite.</p>
+                </div>
                 <p className="text-sm text-muted-foreground">Todo el guion sale de esta base. Si algo no está bien, corrígelo en el concepto antes de seguir.</p>
                 <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                   {([["Concepto", concept.name], ["Persona", concept.target_persona], ["Dolor / deseo", concept.pain_point], ["Objeción", concept.objection], ["Transformación", concept.transformation], ["Etapa de awareness", `${stage.label} — ${stage.hook}`]] as [string, string | null][]).map(([k, v]) => (
@@ -250,7 +269,7 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
 
             {step === 2 && (
               <div className="space-y-3">
-                <p className="text-sm text-muted-foreground">Elige uno o varios. Con varios se arma un guion por hook con el mismo cuerpo, para testear hooks en Meta. <span className="text-foreground">{stage.label}:</span> {stage.hook}</p>
+                <p className="text-sm text-muted-foreground">Elige uno o varios. Con varios se arma un guion por hook con el mismo cuerpo, para testear hooks en Meta. <span className="text-foreground">{stage.label}:</span> {stage.hook} <span className="whitespace-nowrap">· máx. ~{budget.hook} palabras</span></p>
                 <div className="grid sm:grid-cols-2 gap-2">
                   {hookOptions.map((h, i) => {
                     const on = picked.some((p) => p.key === h.key)
@@ -264,6 +283,7 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
                           </button>
                         </div>
                         <p className="text-sm font-medium leading-snug">“{h.spoken}”</p>
+                        <p className="text-[10px] text-muted-foreground tabular-nums">{wordCount(h.spoken)} palabras · ~{estimateSeconds(h.spoken)} s</p>
                         <p className="text-[11px] text-muted-foreground">🎬 {h.visual}</p>
                         {h.overlay && <p className="text-[11px] text-muted-foreground">📝 {h.overlay}</p>}
                         {h.why && <p className="text-[11px] italic text-muted-foreground">{h.why}</p>}
@@ -281,7 +301,7 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
 
             {step === 3 && mechanic && (
               <div className="space-y-4">
-                <p className="text-sm text-muted-foreground">{MECHANICS[mechanic].label}: el cuerpo se arma beat por beat. Elige una opción por beat; puedes editarla en el guion de la derecha.</p>
+                <p className="text-sm text-muted-foreground">{MECHANICS[mechanic].label}: el cuerpo se arma beat por beat. Elige una opción por beat; puedes editarla en el guion de la derecha. Cada beat: máx. ~{budget.beat} palabras.</p>
                 {beats.map((b, i) => {
                   const chosen = body[i]
                   const opts = beatOptions[i]
@@ -299,6 +319,7 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
                             <button key={j} type="button" onClick={() => pickBeat(i, o)}
                               className={cn(card, "space-y-1", chosen?.spoken === o.spoken ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border hover:border-foreground/30")}>
                               <span className="block text-sm">“{o.spoken}”</span>
+                              <span className="block text-[10px] text-muted-foreground tabular-nums">{wordCount(o.spoken)} palabras · ~{estimateSeconds(o.spoken)} s</span>
                               <span className="block text-[11px] text-muted-foreground">🎬 {o.visual}{o.overlay ? ` · 📝 ${o.overlay}` : ""}</span>
                             </button>
                           ))}
@@ -315,12 +336,13 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
 
             {step === 4 && (
               <div className="space-y-3">
-                <p className="text-sm text-muted-foreground"><span className="text-foreground">{stage.label}:</span> {stage.close}</p>
+                <p className="text-sm text-muted-foreground"><span className="text-foreground">{stage.label}:</span> {stage.close} · máx. ~{budget.close} palabras</p>
                 <div className="grid gap-2">
                   {closeOptions.map((o, j) => (
                     <button key={j} type="button" onClick={() => setClose(o)}
                       className={cn(card, "space-y-1", close?.spoken === o.spoken ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border hover:border-foreground/30")}>
                       <span className="block text-sm">“{o.spoken}”</span>
+                              <span className="block text-[10px] text-muted-foreground tabular-nums">{wordCount(o.spoken)} palabras · ~{estimateSeconds(o.spoken)} s</span>
                       <span className="block text-[11px] text-muted-foreground">🎬 {o.visual}{o.overlay ? ` · 📝 ${o.overlay}` : ""}</span>
                     </button>
                   ))}
@@ -356,8 +378,21 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
           <aside className="border-t lg:border-t-0 lg:border-l border-border bg-muted/20 lg:overflow-y-auto p-4 space-y-3 min-w-0">
             <div className="flex items-center gap-2">
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex-1">Guion</p>
-              {primary && <span className="text-[11px] text-muted-foreground inline-flex items-center gap-1"><Clock className="w-3 h-3" />~{estimateSeconds(`${primary.spoken} ${bodyText}`)} s</span>}
+              <span className="text-[11px] text-muted-foreground inline-flex items-center gap-1"><Clock className="w-3 h-3" />objetivo {targetSeconds} s</span>
             </div>
+            {primary && (() => {
+              const secs = estimateSeconds(`${primary.spoken} ${bodyText}`)
+              const ratio = secs / targetSeconds
+              const tone = ratio > 1.15 ? "bg-red-500" : ratio > 1 ? "bg-amber-500" : "bg-emerald-500"
+              return (
+                <div className="space-y-1">
+                  <div className="h-1.5 rounded-full bg-muted overflow-hidden"><div className={cn("h-full rounded-full transition-all", tone)} style={{ width: `${Math.min(100, ratio * 100)}%` }} /></div>
+                  <p className={cn("text-[11px] tabular-nums", ratio > 1.15 ? "text-red-600" : ratio > 1 ? "text-amber-600" : "text-muted-foreground")}>
+                    ~{secs} s de {targetSeconds} s{ratio > 1.15 ? " · se pasa: recorta o elige opciones más cortas" : ratio < 1 && complete ? " · queda espacio" : ""}
+                  </p>
+                </div>
+              )
+            })()}
             {!primary && <p className="text-sm text-muted-foreground">El guion aparece aquí conforme eliges cada parte.</p>}
             {picked.map((h, i) => (
               <Block key={h.key ?? `h${i}`} title={`Hook${picked.length > 1 ? ` ${i + 1}` : ""} · ${h.trigger}`} part={h}

@@ -32,12 +32,31 @@ export const AWARENESS: Record<number, { label: string; hook: string; close: str
 export interface ScriptHook { key?: string; trigger: string; spoken: string; visual: string; overlay: string; why?: string }
 export interface ScriptPart { spoken: string; visual: string; overlay?: string }
 
-// ~2.5 palabras por segundo hablando a ritmo de anuncio.
-export const estimateSeconds = (text: string) => Math.round(text.trim().split(/\s+/).filter(Boolean).length / 2.5)
+// Velocidad de habla promedio de un anuncio: ~150 palabras/min = 2.5 por segundo.
+export const WORDS_PER_SECOND = 2.5
+export const wordCount = (text: string) => text.trim().split(/\s+/).filter(Boolean).length
+export const estimateSeconds = (text: string) => Math.round(wordCount(text) / WORDS_PER_SECOND)
+
+// Presupuesto de palabras por parte para una duración objetivo:
+// hook ~15 %, cierre ~20 %, el resto repartido entre los beats del cuerpo.
+export function wordBudget(targetSeconds: number, beats: number) {
+  const total = Math.round(targetSeconds * WORDS_PER_SECOND)
+  const hook = Math.max(6, Math.round(total * 0.15))
+  const close = Math.max(6, Math.round(total * 0.2))
+  const beat = Math.max(6, Math.round((total - hook - close) / Math.max(1, beats)))
+  return { total, hook, close, beat }
+}
 
 // Revisión con las reglas de Hook Writing. Ayuda, no bloquea.
-export function lintScript(input: { hooks: ScriptHook[]; body: ScriptPart[]; close: ScriptPart | null; brandName?: string | null }): { level: "warn" | "info"; text: string; fix: string }[] {
+export function lintScript(input: { hooks: ScriptHook[]; body: ScriptPart[]; close: ScriptPart | null; brandName?: string | null; targetSeconds?: number }): { level: "warn" | "info"; text: string; fix: string }[] {
   const out: { level: "warn" | "info"; text: string; fix: string }[] = []
+  if (input.targetSeconds) {
+    const rest = [...input.body.map((b) => b.spoken), input.close?.spoken ?? ""].join(" ")
+    for (const [i, h] of input.hooks.entries()) {
+      const secs = estimateSeconds(`${h.spoken} ${rest}`)
+      if (secs > input.targetSeconds * 1.15) out.push({ level: "warn", text: `Guion ${i + 1} dura ~${secs} s (objetivo ${input.targetSeconds} s).`, fix: "Recorta el beat más largo o elige opciones más cortas." })
+    }
+  }
   const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
   const adWords = /^(descubre|conoce|te presentamos|presentamos|introducing|discover|¿?buscas|¿?estas buscando|¿?quieres)/
   for (const [i, h] of input.hooks.entries()) {
