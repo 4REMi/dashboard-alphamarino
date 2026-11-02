@@ -132,12 +132,11 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
   }, [step, body.length])
 
   // ── Guion armado ─────────────────────────────────────────────────────
-  const label = (name: string, p: { visual?: string; overlay?: string }) =>
-    [name, p.visual && `🎬 ${p.visual}`, p.overlay && `📝 ${p.overlay}`].filter(Boolean).join(" · ")
+  const line = (section: string, p: ScriptPart): AdCloneLine => ({ speaker: section, original: "", adapted: p.spoken, visual: p.visual || null, overlay: p.overlay || null })
   const scriptFor = (h: ScriptHook): AdCloneLine[] => [
-    { speaker: label(`Hook · ${h.trigger}`, h), original: "", adapted: h.spoken },
-    ...body.map((p, i) => ({ speaker: label(beats[i] ?? "Cuerpo", p), original: "", adapted: p.spoken })),
-    ...(close ? [{ speaker: label("Cierre", close), original: "", adapted: close.spoken }] : []),
+    line(`Hook · ${h.trigger}`, h),
+    ...body.map((p, i) => line(beats[i] ?? "Cuerpo", p)),
+    ...(close ? [line("Cierre", close)] : []),
   ]
   const bodyText = [...body.map((p) => p.spoken), close?.spoken ?? ""].join(" ")
   const lint = useMemo(() => lintScript({ hooks: picked, body, close, brandName: brain?.name }), [picked, body, close, brain])

@@ -1239,6 +1239,21 @@ export interface AdCloneLine {
   speaker: string | null
   original: string
   adapted: string
+  // Notas de producción (constructor de guiones): qué se ve y texto en
+  // pantalla. Van aparte del texto hablado.
+  visual?: string | null
+  overlay?: string | null
+}
+
+// Sección + notas de una línea. Los guiones guardados antes metían las notas
+// en speaker ("Hook · 🎬 … · 📝 …"): se separan para mostrarlas igual.
+export function lineParts(l: AdCloneLine): { section: string | null; visual: string | null; overlay: string | null } {
+  if (l.visual != null || l.overlay != null || !l.speaker?.includes("·")) return { section: l.speaker, visual: l.visual ?? null, overlay: l.overlay ?? null }
+  const parts = l.speaker.split(" · ")
+  const visual = parts.find((x) => x.startsWith("🎬"))?.replace(/^🎬\s*/, "") ?? null
+  const overlay = parts.find((x) => x.startsWith("📝"))?.replace(/^📝\s*/, "") ?? null
+  const section = parts.filter((x) => !x.startsWith("🎬") && !x.startsWith("📝")).join(" · ") || null
+  return { section, visual, overlay }
 }
 
 export interface AdClone {

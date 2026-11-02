@@ -275,3 +275,13 @@ disparador repetido) y guardar al brief. "Armar todo con IA" completa lo que
 falte con la opción recomendada. Acciones: `lib/actions/script-builder.ts`;
 conocimiento del framework: `lib/scripts/framework.ts`. Solo video.
 Se guarda como `AdCloneLine[]` con `speaker` = sección + 🎬 visual + 📝 texto.
+
+**Vista rápida del guion (2026-11-02):** las notas de producción van aparte de
+la etiqueta: `AdCloneLine.visual` (🎬 qué se ve) y `.overlay` (📝 texto en
+pantalla). `lineParts()` (`lib/types.ts`) también separa el formato viejo
+(todo metido en `speaker`). En la vista rápida las notas están ocultas por
+defecto (botón "Notas de toma") y la sección se muestra corta, sin mayúsculas;
+en la página pública del brief se ven discretas debajo de cada línea. CRUD:
+editar sección y notas, agregar línea (debajo o al final), borrar y reordenar
+líneas (al pasar el mouse), y borrar el guion completo del brief
+(`deleteBriefReference`). Guardar regresa el guion a "pendiente".

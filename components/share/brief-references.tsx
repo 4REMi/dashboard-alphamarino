@@ -7,7 +7,7 @@ import { CopyScriptButton } from "@/components/share/copy-script-button"
 import { cn } from "@/lib/utils"
 import { Pencil, Check, X, Trash2, BadgeCheck, ChevronLeft, ChevronRight, Sparkles, Loader2, CopyCheck } from "lucide-react"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
-import type { AdCloneLine } from "@/lib/types"
+import { lineParts, type AdCloneLine } from "@/lib/types"
 
 interface Reference {
   id: string
@@ -237,13 +237,16 @@ function StatusPill({ status, text }: { status: string; text?: string }) {
 // Una línea del guion. Modo normal: número + texto adaptado a todo lo
 // ancho. Comparar: original (gris, sin tachar para que se lea) | adaptado.
 function ScriptLine({ i, line, compare, children, onUseOriginal }: { i: number; line: AdCloneLine; compare: boolean; children: React.ReactNode; onUseOriginal?: () => void }) {
+  // Sección corta arriba y notas de toma discretas abajo (antes iban todas
+  // en la etiqueta, en mayúsculas).
+  const parts = lineParts(line)
   return (
     <div className={cn("grid gap-x-5 px-5 py-3", compare ? "md:grid-cols-2" : "grid-cols-[28px_1fr]")}>
       {!compare && <span className="w-6 h-6 mt-0.5 rounded-full bg-gray-100 text-gray-500 text-[11px] font-bold flex items-center justify-center">{i + 1}</span>}
       {compare && (
         <div className="mb-2 md:mb-0">
           <span className="text-[10px] font-bold text-gray-400 mr-1.5">{i + 1}</span>
-          {line.speaker && <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mr-1.5">{line.speaker}</span>}
+          {parts.section && <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mr-1.5">{parts.section}</span>}
           <span className="text-sm text-gray-500 leading-relaxed">{line.original}</span>
           {onUseOriginal && line.original?.trim() && line.original !== line.adapted && (
             <button type="button" onClick={onUseOriginal} title="Usar la línea original tal cual"
@@ -254,8 +257,14 @@ function ScriptLine({ i, line, compare, children, onUseOriginal }: { i: number; 
         </div>
       )}
       <div className="min-w-0">
-        {!compare && line.speaker && <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-0.5">{line.speaker}</p>}
+        {!compare && parts.section && <p className="text-[11px] font-medium text-gray-400 mb-0.5">{parts.section}</p>}
         {children}
+        {!compare && (parts.visual || parts.overlay) && (
+          <div className="mt-1 space-y-0.5 text-xs text-gray-400">
+            {parts.visual && <p>🎬 {parts.visual}</p>}
+            {parts.overlay && <p>📝 {parts.overlay}</p>}
+          </div>
+        )}
       </div>
     </div>
   )

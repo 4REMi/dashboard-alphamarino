@@ -1177,7 +1177,7 @@ export async function deleteBrief(id: string, projectId: string): Promise<void> 
 export async function updateBriefScript(
   briefId: string,
   adId: string,
-  lines: { speaker: string | null; original: string; adapted: string }[]
+  lines: AdCloneLine[]
 ): Promise<void> {
   const supabase = await createClient()
   const { role } = await getRole()
