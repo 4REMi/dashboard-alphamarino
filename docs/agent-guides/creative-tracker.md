@@ -256,3 +256,22 @@ un ángulo. Formato de control: **"<Dolor o deseo> × <Persona> — <Ángulo>"**
 concreto y buscable; sin hook, formato ni etapa de awareness (van en sus
 campos). Ej.: "Miedo a empezar de cero × Principiante absoluto — Tu primera
 clase es de prueba y sin compromiso" en vez de "Primera Clase Sin Experiencia".
+
+## Constructor de guion de video paso a paso (2026-11-02)
+
+"Agregar guión → Guión con IA" abre `ScriptBuilderModal`
+(`components/projects/hub/creatives/script-builder-modal.tsx`). Basado en
+runneth (Creative Strategy Engine, Hook Writing, Creative Mechanics). Pasos:
+0 Base (concepto: Dolor × Persona — Ángulo, awareness, Brand Brain) → 1
+Mecánica (la IA sugiere 3 de las 8: Reframe, Implied Answer, Social Witness,
+Overheard, Borrowed Enemy, Trojan Horse, Contrast Without Comment, This and
+a…; cada una define los beats del cuerpo) → 2 Hooks (6 con disparadores
+distintos según la etapa; cada uno DICE / SE VE / TEXTO; se eligen uno o
+varios = un guion por hook con el mismo cuerpo) → 3 Cuerpo (beat por beat, 2
+opciones cada uno; cambiar un beat invalida los siguientes) → 4 Cierre (3
+opciones según la etapa) → 5 Revisión (duración ~2.5 palabras/s y
+`lintScript`: abre con la marca, frases de anuncio, sin datos concretos,
+disparador repetido) y guardar al brief. "Armar todo con IA" completa lo que
+falte con la opción recomendada. Acciones: `lib/actions/script-builder.ts`;
+conocimiento del framework: `lib/scripts/framework.ts`. Solo video.
+Se guarda como `AdCloneLine[]` con `speaker` = sección + 🎬 visual + 📝 texto.

@@ -4,6 +4,7 @@ import { useState, useTransition } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { ScriptBuilderModal } from "./script-builder-modal"
 import { Brain, Sparkles, Copy, Check, Loader2, ExternalLink, RotateCcw, PenLine, ChevronLeft } from "lucide-react"
 import type { CreativeConcept, BrandBrain, CreativeBrief, AdCloneLine } from "@/lib/types"
 import {
@@ -25,7 +26,7 @@ interface Props {
   onCreated: (brief: CreativeBrief) => void
 }
 
-type Step = "choice" | "config" | "manual" | "preview" | "success"
+type Step = "choice" | "builder" | "config" | "manual" | "preview" | "success"
 
 export function QuickScriptModal({ concept, projectId, brandBrains, projectBrandBrainId, existingBrief, onClose, onCreated }: Props) {
   const [step, setStep] = useState<Step>("choice")
@@ -195,6 +196,15 @@ export function QuickScriptModal({ concept, projectId, brandBrains, projectBrand
   }
 
   // ── Choice ──
+  // Guión con IA = constructor paso a paso (mecánica → hooks → beats → cierre).
+  if (step === "builder") {
+    return (
+      <ScriptBuilderModal concept={concept} projectId={projectId} brandBrains={brandBrains}
+        projectBrandBrainId={projectBrandBrainId} existingBrief={existingBrief}
+        onClose={onClose} onCreated={onCreated} />
+    )
+  }
+
   if (step === "choice") {
     return (
       <Dialog open onOpenChange={onClose}>
@@ -208,13 +218,13 @@ export function QuickScriptModal({ concept, projectId, brandBrains, projectBrand
           <div className="space-y-2">
             <button
               type="button"
-              onClick={() => setStep("config")}
+              onClick={() => setStep("builder")}
               className="w-full flex items-start gap-3 text-left px-4 py-3 rounded-lg border border-border hover:border-violet-300 hover:bg-violet-50/40 transition-all"
             >
               <Sparkles className="w-4 h-4 text-violet-500 flex-shrink-0 mt-0.5" />
               <div>
                 <p className="text-sm font-semibold">Guión con IA</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Genera 3 variantes desde cero usando la estrategia del concepto.</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Paso a paso: mecánica, 6 hooks, cuerpo por beats y cierre. Tú eliges en cada paso (o “Armar todo con IA”).</p>
               </div>
             </button>
             <button
