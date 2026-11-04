@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
 import { suggestMechanics, generateHooks, generateBeat, generateCloses } from "@/lib/actions/script-builder"
 import { saveScriptDrafts, addScriptDraftsToBrief } from "@/lib/actions/creatives"
-import { MECHANICS, MECHANIC_KEYS, AWARENESS, lintScript, estimateSeconds, wordBudget, wordCount, WORDS_PER_SECOND, type MechanicKey, type ScriptHook, type ScriptPart } from "@/lib/scripts/framework"
+import { MECHANICS, MECHANIC_KEYS, AWARENESS, lintScript, estimateSeconds, wordBudget, wordCount, spokenBeats, WORDS_PER_SECOND, type MechanicKey, type ScriptHook, type ScriptPart, type BeatMode } from "@/lib/scripts/framework"
 import type { AdCloneLine, BrandBrain, CreativeBrief, CreativeConcept } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -25,6 +25,8 @@ interface Props {
   onClose: () => void
   onCreated: (brief: CreativeBrief) => void
 }
+
+const MODE_LABEL: Record<BeatMode, string> = { spoken: "hablado", visual: "solo visual, sin voz", chat: "mensajes de chat" }
 
 let seq = 0
 const withKey = (h: ScriptHook): ScriptHook => ({ ...h, key: `h${Date.now().toString(36)}${seq++}` })
@@ -54,7 +56,9 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
   const beats = mechanic ? MECHANICS[mechanic].beats : []
   const brain = brandBrains.find((b) => b.id === brainId)
   const primary = picked[0] ?? null
-  const budget = wordBudget(targetSeconds, beats.length || 3)
+  // Mecánicas sin voz (Contrast): la duración la marcan las tomas, no las palabras.
+  const silent = !!mechanic && spokenBeats(mechanic) === 0
+  const budget = mechanic ? wordBudget(targetSeconds, spokenBeats(mechanic), MECHANICS[mechanic].close === "natural") : wordBudget(targetSeconds, 3)
 
   async function run<T>(label: string, fn: () => Promise<T>): Promise<T | null> {
     setBusy(label); setError(null)
@@ -76,7 +80,7 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
   }
   async function loadBeat(i: number, prev = body.slice(0, i), hook = primary, mech = mechanic) {
     if (!hook || !mech) return null
-    const r = await run(`Escribiendo "${MECHANICS[mech].beats[i]}"…`, () => generateBeat(concept.id, brainId, mech, hook, i, prev, targetSeconds))
+    const r = await run(`Escribiendo "${MECHANICS[mech].beats[i].name}"…`, () => generateBeat(concept.id, brainId, mech, hook, i, prev, targetSeconds))
     if (r) setBeatOptions((o) => ({ ...o, [i]: r }))
     return r
   }
@@ -136,10 +140,10 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
   }, [step, body.length])
 
   // ── Guion armado ─────────────────────────────────────────────────────
-  const line = (section: string, p: ScriptPart): AdCloneLine => ({ speaker: section, original: "", adapted: p.spoken, visual: p.visual || null, overlay: p.overlay || null })
+  const line = (section: string, p: ScriptPart): AdCloneLine => ({ speaker: section, original: "", adapted: p.spoken.trim() || "(sin voz)", visual: p.visual || null, overlay: p.overlay || null })
   const scriptFor = (h: ScriptHook): AdCloneLine[] => [
     line(`Hook · ${h.trigger}`, h),
-    ...body.map((p, i) => line(beats[i] ?? "Cuerpo", p)),
+    ...body.map((p, i) => line(beats[i]?.name ?? "Cuerpo", p)),
     ...(close ? [line("Cierre", close)] : []),
   ]
   const bodyText = [...body.map((p) => p.spoken), close?.spoken ?? ""].join(" ")
@@ -248,11 +252,12 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
                       <span className="flex items-center gap-2 text-sm font-semibold">{MECHANICS[m.key].label}{i === 0 && <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300">Recomendada</span>}</span>
                       <span className="block text-xs text-muted-foreground mt-0.5">{MECHANICS[m.key].desc}</span>
                       <span className="block text-xs mt-1.5">{m.why}</span>
-                      <span className="block text-[11px] text-muted-foreground mt-1.5">Cuerpo: {MECHANICS[m.key].beats.join(" → ")}</span>
+                      <span className="block text-[11px] text-muted-foreground mt-1.5">Cuerpo: {MECHANICS[m.key].beats.map((b) => `${b.name}${b.mode !== "spoken" ? ` (${MODE_LABEL[b.mode]})` : ""}`).join(" → ")} · Cierre {MECHANICS[m.key].close === "natural" ? "natural, sin CTA hablado" : "con CTA"}</span>
+                      <span className="block text-[11px] text-muted-foreground">Mejor en: {MECHANICS[m.key].stages.map((n) => AWARENESS[n]?.label).join(", ")}{!MECHANICS[m.key].stages.includes(concept.awareness_stage ?? 2) && <span className="text-amber-600"> · fuera de la etapa de este concepto</span>}</span>
                     </button>
                   ))}
                 </div>
-                <button type="button" onClick={() => setShowAllMech((v) => !v)} className="text-xs text-muted-foreground hover:text-foreground">{showAllMech ? "Ocultar" : "Ver"} las 8 mecánicas</button>
+                <button type="button" onClick={() => setShowAllMech((v) => !v)} className="block text-xs text-muted-foreground hover:text-foreground">{showAllMech ? "Ocultar" : "Ver"} las 8 mecánicas</button>
                 {showAllMech && (
                   <div className="grid sm:grid-cols-2 gap-2">
                     {MECHANIC_KEYS.filter((k) => !mechOptions.some((m) => m.key === k)).map((k) => (
@@ -282,8 +287,8 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
                             {on ? <><Check className="w-3 h-3" />Elegido</> : "Elegir"}
                           </button>
                         </div>
-                        <p className="text-sm font-medium leading-snug">“{h.spoken}”</p>
-                        <p className="text-[10px] text-muted-foreground tabular-nums">{wordCount(h.spoken)} palabras · ~{estimateSeconds(h.spoken)} s</p>
+                        <p className="text-sm font-medium leading-snug">{h.spoken ? `“${h.spoken}”` : <span className="text-muted-foreground">Sin voz · el hook es visual</span>}</p>
+                        {h.spoken && <p className="text-[10px] text-muted-foreground tabular-nums">{wordCount(h.spoken)} palabras · ~{estimateSeconds(h.spoken)} s</p>}
                         <p className="text-[11px] text-muted-foreground">🎬 {h.visual}</p>
                         {h.overlay && <p className="text-[11px] text-muted-foreground">📝 {h.overlay}</p>}
                         {h.why && <p className="text-[11px] italic text-muted-foreground">{h.why}</p>}
@@ -301,8 +306,9 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
 
             {step === 3 && mechanic && (
               <div className="space-y-4">
-                <p className="text-sm text-muted-foreground">{MECHANICS[mechanic].label}: el cuerpo se arma beat por beat. Elige una opción por beat; puedes editarla en el guion de la derecha. Cada beat: máx. ~{budget.beat} palabras.</p>
-                {beats.map((b, i) => {
+                <p className="text-sm text-muted-foreground">{MECHANICS[mechanic].label}: el cuerpo se arma beat por beat. Elige una opción por beat; puedes editarla en el guion de la derecha. {silent ? "Mecánica sin voz: la duración la marcan las tomas." : `Beats hablados: máx. ~${budget.beat} palabras.`} Reglas: {MECHANICS[mechanic].rules.join(" ")}</p>
+                {beats.map((bt, i) => {
+                  const b = bt.name
                   const chosen = body[i]
                   const opts = beatOptions[i]
                   if (i > body.length) return <p key={b} className="text-sm text-muted-foreground/60">{i + 1}. {b}</p>
@@ -310,22 +316,25 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
                     <div key={b} className="space-y-2">
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-semibold">{i + 1}. {b}</p>
+                        {bt.mode !== "spoken" && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-muted">{MODE_LABEL[bt.mode]}</span>}
+
                         {chosen && <Check className="w-4 h-4 text-emerald-600" />}
                         {(opts || chosen) && <button type="button" onClick={() => loadBeat(i)} disabled={!!busy} className="ml-auto text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1"><RefreshCw className="w-3 h-3" />Otras opciones</button>}
                       </div>
+                      <p className="text-[11px] text-muted-foreground -mt-1">{bt.guide}</p>
                       {opts && (
                         <div className="grid sm:grid-cols-2 gap-2">
                           {opts.map((o, j) => (
                             <button key={j} type="button" onClick={() => pickBeat(i, o)}
                               className={cn(card, "space-y-1", chosen?.spoken === o.spoken ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border hover:border-foreground/30")}>
-                              <span className="block text-sm">“{o.spoken}”</span>
-                              <span className="block text-[10px] text-muted-foreground tabular-nums">{wordCount(o.spoken)} palabras · ~{estimateSeconds(o.spoken)} s</span>
-                              <span className="block text-[11px] text-muted-foreground">🎬 {o.visual}{o.overlay ? ` · 📝 ${o.overlay}` : ""}</span>
+                              {o.spoken && <span className="block text-sm">“{o.spoken}”</span>}
+                              {o.spoken && <span className="block text-[10px] text-muted-foreground tabular-nums">{wordCount(o.spoken)} palabras · ~{estimateSeconds(o.spoken)} s</span>}
+                              <span className={cn("block whitespace-pre-line", o.spoken ? "text-[11px] text-muted-foreground" : "text-sm")}>🎬 {o.visual}{o.overlay ? ` · 📝 ${o.overlay}` : ""}</span>
                             </button>
                           ))}
                         </div>
                       )}
-                      {chosen && !opts && <p className="text-sm text-muted-foreground pl-1">“{chosen.spoken}”</p>}
+                      {chosen && !opts && <p className="text-sm text-muted-foreground pl-1">{chosen.spoken ? `“${chosen.spoken}”` : `🎬 ${chosen.visual}`}</p>}
                       {!opts && !chosen && i === body.length && !busy && <Button size="sm" variant="outline" onClick={() => loadBeat(i)}><Sparkles className="w-4 h-4" />Proponer</Button>}
                     </div>
                   )
@@ -336,14 +345,16 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
 
             {step === 4 && (
               <div className="space-y-3">
-                <p className="text-sm text-muted-foreground"><span className="text-foreground">{stage.label}:</span> {stage.close} · máx. ~{budget.close} palabras</p>
+                <p className="text-sm text-muted-foreground">{mechanic && MECHANICS[mechanic].close === "natural"
+                  ? <><span className="text-foreground">Cierre natural ({MECHANICS[mechanic].label}):</span> {MECHANICS[mechanic].closeGuide}</>
+                  : <><span className="text-foreground">{stage.label}:</span> {stage.close} · máx. ~{budget.close} palabras</>}</p>
                 <div className="grid gap-2">
                   {closeOptions.map((o, j) => (
                     <button key={j} type="button" onClick={() => setClose(o)}
                       className={cn(card, "space-y-1", close?.spoken === o.spoken ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border hover:border-foreground/30")}>
-                      <span className="block text-sm">“{o.spoken}”</span>
-                              <span className="block text-[10px] text-muted-foreground tabular-nums">{wordCount(o.spoken)} palabras · ~{estimateSeconds(o.spoken)} s</span>
-                      <span className="block text-[11px] text-muted-foreground">🎬 {o.visual}{o.overlay ? ` · 📝 ${o.overlay}` : ""}</span>
+                      {o.spoken && <span className="block text-sm">“{o.spoken}”</span>}
+                              {o.spoken && <span className="block text-[10px] text-muted-foreground tabular-nums">{wordCount(o.spoken)} palabras · ~{estimateSeconds(o.spoken)} s</span>}
+                      <span className={cn("block whitespace-pre-line", o.spoken ? "text-[11px] text-muted-foreground" : "text-sm")}>🎬 {o.visual}{o.overlay ? ` · 📝 ${o.overlay}` : ""}</span>
                     </button>
                   ))}
                 </div>
@@ -380,7 +391,8 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex-1">Guion</p>
               <span className="text-[11px] text-muted-foreground inline-flex items-center gap-1"><Clock className="w-3 h-3" />objetivo {targetSeconds} s</span>
             </div>
-            {primary && (() => {
+            {primary && silent && <p className="text-[11px] text-muted-foreground">Sin voz: la duración la marcan las tomas, no las palabras.</p>}
+            {primary && !silent && (() => {
               const secs = estimateSeconds(`${primary.spoken} ${bodyText}`)
               const ratio = secs / targetSeconds
               const tone = ratio > 1.15 ? "bg-red-500" : ratio > 1 ? "bg-amber-500" : "bg-emerald-500"
@@ -399,7 +411,7 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
                 onRemove={() => setPicked((p) => p.filter((x) => x.key !== h.key))}
                 onChange={(v) => setPicked((p) => p.map((x) => (x.key === h.key ? { ...x, ...v } : x)))} />
             ))}
-            {body.map((p, i) => <Block key={`b${i}`} title={beats[i]} part={p} onChange={(v) => setBody((b) => b.map((x, j) => (j === i ? { ...x, ...v } : x)))} />)}
+            {body.map((p, i) => <Block key={`b${i}`} title={`${beats[i]?.name ?? "Cuerpo"}${beats[i] && beats[i].mode !== "spoken" ? ` · ${MODE_LABEL[beats[i].mode]}` : ""}`} part={p} onChange={(v) => setBody((b) => b.map((x, j) => (j === i ? { ...x, ...v } : x)))} />)}
             {close && <Block title="Cierre" part={close} onChange={(v) => setClose({ ...close, ...v })} />}
           </aside>
         </div>
@@ -415,7 +427,7 @@ function Block({ title, part, onChange, onRemove }: { title: string; part: Scrip
         <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex-1 truncate">{title}</p>
         {onRemove && <button type="button" onClick={onRemove} className="text-muted-foreground hover:text-foreground" aria-label="Quitar"><X className="w-3 h-3" /></button>}
       </div>
-      <AutoTextarea value={part.spoken} onChange={(e) => onChange({ spoken: e.target.value })} rows={1}
+      <AutoTextarea value={part.spoken} onChange={(e) => onChange({ spoken: e.target.value })} rows={1} placeholder="Sin voz"
         className="w-full bg-transparent text-sm leading-snug resize-none focus:outline-none" />
       <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><span title="Qué se ve">🎬</span>
         <input value={part.visual} onChange={(e) => onChange({ visual: e.target.value })} placeholder="Qué se ve" className="flex-1 min-w-0 bg-transparent focus:outline-none" /></label>

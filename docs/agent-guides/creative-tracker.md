@@ -294,3 +294,18 @@ los beats de la mecánica. Cada generador recibe su máximo de palabras. Las
 opciones muestran palabras y segundos; el guion en vivo tiene un medidor
 contra el objetivo (verde / ámbar >100 % / rojo >115 %), y la revisión avisa si
 un guion se pasa más de 15 %.
+
+**Mecánicas completas en el constructor (2026-11-04):** cada mecánica
+(`MECHANICS` en `lib/scripts/framework.ts`) trae la ficha completa de la
+biblioteca Creative Mechanics: por qué funciona, etapas de awareness donde
+funciona mejor, forma del hook que la abre, beats reales con **modo**
+(`spoken` / `visual` sin voz / `chat` = mensajes "Nombre: mensaje"), tipo de
+cierre (`cta` o `natural`: Implied Answer, Social Witness, Overheard, Trojan,
+Contrast y This and a… cierran sin CTA hablado) y reglas (p. ej. Borrowed Enemy
+nunca nombra al competidor; Trojan Horse muestra el producto solo en el último
+20 %; Contrast sin voz). `mechanicBrief()` la pasa completa a cada prompt. Los
+6 hooks comparten la forma de entrada de la mecánica y varían el disparador.
+La sugerencia prioriza mecánicas de la etapa del concepto y la UI marca las
+que están fuera de etapa. Beats solo visuales no gastan palabras (el
+presupuesto se reparte entre los hablados); en mecánicas sin voz la duración
+la marcan las tomas. Las líneas sin voz se guardan como "(sin voz)" con su toma.

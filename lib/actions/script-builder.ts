@@ -3,7 +3,7 @@
 import Anthropic from "@anthropic-ai/sdk"
 import { createClient } from "@/lib/supabase/server"
 import { parseAiJson } from "@/lib/utils/ai-json"
-import { MECHANICS, MECHANIC_KEYS, TRIGGERS, AWARENESS, wordBudget, type MechanicKey, type ScriptHook, type ScriptPart } from "@/lib/scripts/framework"
+import { MECHANICS, MECHANIC_KEYS, TRIGGERS, AWARENESS, wordBudget, spokenBeats, mechanicBrief, type MechanicKey, type ScriptHook, type ScriptPart } from "@/lib/scripts/framework"
 
 // Constructor de guiones paso a paso: cada función propone opciones para UN
 // paso; nada escribe el guion completo de un jalón. Contexto = concepto
@@ -36,6 +36,9 @@ ${line ? `LÍNEA DE PRODUCTO: ${line.name} — ${line.description ?? ""} · USPs
   return { text, stage, brandName: b.name as string, language: (b.language as string) || "español" }
 }
 
+const budgetFor = (k: MechanicKey, secs: number) => wordBudget(secs, spokenBeats(k), MECHANICS[k].close === "natural")
+const STAGE_NAMES: Record<number, string> = { 1: "Unaware", 2: "Problem-aware", 3: "Solution-aware", 4: "Product-aware", 5: "Most-aware" }
+
 const RULES = `REGLAS (Hook Writing, runneth):
 - Escribe en la voz del cliente, no de la marca; lenguaje real, nada corporativo ni clínico.
 - Detalles y cifras concretas. Que parezca escrito para una sola persona.
@@ -52,22 +55,24 @@ async function ask<T>(system: string, user: string, ctxName: string): Promise<T>
 
 export async function suggestMechanics(conceptId: string, brainId: string): Promise<{ key: MechanicKey; why: string }[]> {
   const ctx = await context(conceptId, brainId)
-  const catalog = MECHANIC_KEYS.map((k) => `- ${k}: ${MECHANICS[k].label} — ${MECHANICS[k].desc}`).join("\n")
+  const catalog = MECHANIC_KEYS.map((k) => `- ${k}: ${MECHANICS[k].label} — ${MECHANICS[k].desc} Por qué funciona: ${MECHANICS[k].why} Mejor en: ${MECHANICS[k].stages.map((n) => STAGE_NAMES[n]).join(", ")}.`).join("\n")
   const r = await ask<{ mechanics: { key: string; why: string }[] }>(
     `Eres estratega creativo de paid media. Eliges la MECÁNICA creativa (el patrón que conecta hook → cuerpo → cierre) que mejor transmite el ángulo de un concepto en video. Responde SOLO JSON.`,
-    `${ctx.text}\n\nMECÁNICAS:\n${catalog}\n\nElige las 3 mejores para este concepto y etapa, de la más a la menos recomendable. "why": una frase concreta de por qué encaja con ESTE ángulo y persona.\n{"mechanics":[{"key":"","why":""}]}`, "suggestMechanics")
+    `${ctx.text}\n\nMECÁNICAS:\n${catalog}\n\nElige las 3 mejores para este concepto, de la más a la menos recomendable. Prioriza las que funcionan en la etapa de awareness del concepto; usa una fuera de etapa solo si el ángulo lo pide claramente y dilo en el why. "why": una frase concreta de por qué encaja con ESTE ángulo y persona.\n{"mechanics":[{"key":"","why":""}]}`, "suggestMechanics")
   return (r.mechanics ?? []).filter((m) => (MECHANIC_KEYS as string[]).includes(m.key)).slice(0, 3) as { key: MechanicKey; why: string }[]
 }
 
 export async function generateHooks(conceptId: string, brainId: string, mechanic: MechanicKey, opts: { like?: ScriptHook; avoid?: string[]; targetSeconds?: number } = {}): Promise<ScriptHook[]> {
   const ctx = await context(conceptId, brainId)
   const m = MECHANICS[mechanic]
-  const budget = wordBudget(opts.targetSeconds ?? 30, m.beats.length)
+  const budget = budgetFor(mechanic, opts.targetSeconds ?? 30)
   const r = await ask<{ hooks: ScriptHook[] }>(
     `Eres redactor experto en hooks de video para paid media. El hook solo tiene un trabajo: detener el scroll en 1–3 segundos con una respuesta psicológica o emocional. ${RULES}\nResponde SOLO JSON.`,
     `${ctx.text}
 
-MECÁNICA ELEGIDA: ${m.label} — ${m.desc} (el hook es la entrada a esta mecánica).
+${mechanicBrief(mechanic)}
+EL HOOK ABRE ESTA MECÁNICA: los 6 deben tener la forma "${m.hookShape}" — lo que varía entre ellos es el disparador psicológico, no la forma.
+${m.beats.every((b) => b.mode === "visual") ? 'Esta mecánica NO lleva voz: en cada hook "spoken" va VACÍO (""); el hook vive en "visual" y en un "overlay" corto que no juzgue.' : ""}
 ESTRATEGIA DE HOOK PARA ${ctx.stage.label.toUpperCase()}: ${ctx.stage.hook}
 DISPARADORES: ${TRIGGERS.join(", ")}.
 ${opts.like ? `Haz variaciones cercanas a este hook que gustó (mismo espíritu, distinta redacción y disparador): "${opts.like.spoken}"` : ""}
@@ -83,36 +88,49 @@ export async function generateBeat(conceptId: string, brainId: string, mechanic:
   const ctx = await context(conceptId, brainId)
   const m = MECHANICS[mechanic]
   const beat = m.beats[beatIndex]
-  const budget = wordBudget(targetSeconds, m.beats.length)
-  const sofar = [`HOOK: "${hook.spoken}" (visual: ${hook.visual})`, ...previous.map((p, i) => `${m.beats[i]}: "${p.spoken}"`)].join("\n")
+  const budget = budgetFor(mechanic, targetSeconds)
+  const sofar = [`HOOK: "${hook.spoken}" (visual: ${hook.visual})`, ...previous.map((p, i) => `${m.beats[i].name}: ${p.spoken ? `"${p.spoken}"` : "(sin voz)"} — visual: ${p.visual}`)].join("\n")
+  const modeRule = beat.mode === "visual"
+    ? `Este beat es SOLO VISUAL: "spoken" debe ir VACÍO (""), sin voz en off. Describe la toma en "visual" con detalle filmable y, si ayuda, un texto en pantalla MUY corto en "overlay" que NO juzgue ni explique.`
+    : beat.mode === "chat"
+      ? `Este beat son MENSAJES de un chat/DM: en "spoken" escribe los mensajes, uno por línea, con el formato "Nombre: mensaje" (lenguaje de amigos, informal, sin claims de marketing; máximo ${budget.beat} palabras). En "visual" describe la pantalla (app, hilo, capturas).`
+      : `Beat hablado: máximo ${budget.beat} palabras habladas.`
   const r = await ask<{ options: ScriptPart[] }>(
-    `Eres guionista de anuncios de video de performance (UGC / VO, 20–45 s). ${RULES}\nResponde SOLO JSON.`,
+    `Eres guionista de anuncios de video de performance (UGC / VO). ${RULES}\nResponde SOLO JSON.`,
     `${ctx.text}
 
-MECÁNICA: ${m.label} — ${m.desc}
-BEATS DEL CUERPO: ${m.beats.map((b, i) => `${i + 1}. ${b}`).join(" → ")}
+${mechanicBrief(mechanic)}
 GUION HASTA AHORA:
 ${sofar}
 
-Escribe SOLO el beat ${beatIndex + 1} "${beat}". Debe continuar con naturalidad lo anterior y cumplir la función del beat dentro de la mecánica. Video de ${targetSeconds} s en total: este beat debe tener como MÁXIMO ${budget.beat} palabras habladas. Frases NUEVAS: no repitas lo que ya se dijo; "spoken" contiene solo este beat. Da 2 opciones distintas. Todo (spoken, visual, overlay) en ${ctx.language}.
+Escribe SOLO el beat ${beatIndex + 1} "${beat.name}": ${beat.guide}
+Debe continuar con naturalidad lo anterior. Video de ${targetSeconds} s en total. ${modeRule}
+No repitas lo que ya se dijo. Respeta las reglas de la mecánica. Da 2 opciones distintas. Todo (spoken, visual, overlay) en ${ctx.language}.
 {"options":[{"spoken":"","visual":"qué se ve","overlay":"texto en pantalla opcional"}]}`, "generateBeat")
-  return (r.options ?? []).slice(0, 2).map((o) => ({ ...o, spoken: stripRepeated(o.spoken, [hook.spoken, ...previous.map((p) => p.spoken)]) }))
+  return (r.options ?? []).slice(0, 2).map((o) => ({
+    ...o,
+    spoken: beat.mode === "visual" ? "" : stripRepeated(o.spoken ?? "", [hook.spoken, ...previous.map((p) => p.spoken)]),
+  }))
 }
 
 export async function generateCloses(conceptId: string, brainId: string, mechanic: MechanicKey, hook: ScriptHook, body: ScriptPart[], targetSeconds = 30): Promise<ScriptPart[]> {
   const ctx = await context(conceptId, brainId)
   const m = MECHANICS[mechanic]
-  const budget = wordBudget(targetSeconds, m.beats.length)
+  const budget = budgetFor(mechanic, targetSeconds)
+  const natural = m.close === "natural"
+  const silent = m.beats.every((b) => b.mode === "visual")
   const r = await ask<{ options: ScriptPart[] }>(
     `Eres guionista de anuncios de video de performance. ${RULES}\nResponde SOLO JSON.`,
     `${ctx.text}
 
-MECÁNICA: ${m.label}
-GUION: HOOK "${hook.spoken}" → ${body.map((p, i) => `${m.beats[i]}: "${p.spoken}"`).join(" → ")}
-ESTRATEGIA DE CIERRE PARA ${ctx.stage.label.toUpperCase()}: ${ctx.stage.close}
-Video de ${targetSeconds} s en total: el cierre debe tener como MÁXIMO ${budget.close} palabras habladas. Escribe SOLO el cierre: frases NUEVAS que vienen después del último beat. NO repitas ni resumas el hook ni el cuerpo; "spoken" contiene únicamente las frases del cierre. Usa los CTAs de la marca si encajan. Da 3 opciones distintas. Todo (spoken, visual, overlay) en ${ctx.language}.
+${mechanicBrief(mechanic)}
+GUION: HOOK "${hook.spoken}" → ${body.map((p, i) => `${m.beats[i].name}: ${p.spoken ? `"${p.spoken}"` : `(sin voz) ${p.visual}`}`).join(" → ")}
+${natural
+  ? `CIERRE NATURAL (lo pide la mecánica): ${m.closeGuide} NO hay CTA hablado ni frase de venta.${silent ? ' "spoken" debe ir VACÍO (""): esta mecánica no lleva voz.' : ` Si hay voz, máximo ${budget.close} palabras y que suene natural, no a anuncio.`} Si hace falta, el CTA va solo como texto corto en "overlay".`
+  : `ESTRATEGIA DE CIERRE PARA ${ctx.stage.label.toUpperCase()}: ${ctx.stage.close}`}
+Video de ${targetSeconds} s en total${natural ? "" : `: el cierre debe tener como MÁXIMO ${budget.close} palabras habladas`}. Escribe SOLO el cierre: frases NUEVAS que vienen después del último beat. NO repitas ni resumas el hook ni el cuerpo; "spoken" contiene únicamente las frases del cierre. ${natural ? "" : "Usa los CTAs de la marca si encajan."} Da 3 opciones distintas. Todo (spoken, visual, overlay) en ${ctx.language}.
 {"options":[{"spoken":"","visual":"","overlay":"texto/CTA en pantalla"}]}`, "generateCloses")
-  return (r.options ?? []).slice(0, 3).map((o) => ({ ...o, spoken: stripRepeated(o.spoken, [hook.spoken, ...body.map((p) => p.spoken)]) }))
+  return (r.options ?? []).slice(0, 3).map((o) => ({ ...o, spoken: silent ? "" : stripRepeated(o.spoken ?? "", [hook.spoken, ...body.map((p) => p.spoken)]) }))
 }
 
 // Red de seguridad: si el modelo antepone lo que ya se dijo (hook/beats
