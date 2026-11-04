@@ -20,4 +20,12 @@ const handler = createMcpHandler(
 // valid key before it ever reaches a tool.
 const authHandler = withMcpAuth(handler, verifyMcpToken, { required: true })
 
-export { authHandler as GET, authHandler as POST, authHandler as DELETE }
+// GET abriría un stream SSE de notificaciones del servidor que no usamos:
+// quedaba abierto hasta que Vercel lo cortaba a los 300 s ("Task timed
+// out"). El spec de Streamable HTTP permite responder 405 a GET; los
+// clientes entonces solo usan POST.
+function GET() {
+  return new Response("Method Not Allowed", { status: 405, headers: { Allow: "POST, DELETE" } })
+}
+
+export { GET, authHandler as POST, authHandler as DELETE }

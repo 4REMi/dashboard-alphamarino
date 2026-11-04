@@ -309,3 +309,9 @@ La sugerencia prioriza mecánicas de la etapa del concepto y la UI marca las
 que están fuera de etapa. Beats solo visuales no gastan palabras (el
 presupuesto se reparte entre los hablados); en mecánicas sin voz la duración
 la marcan las tomas. Las líneas sin voz se guardan como "(sin voz)" con su toma.
+
+**Constructor: salida estructurada y errores claros (2026-11-04):** las
+llamadas de IA del constructor usan *tool use* forzado con esquema (no JSON en
+texto), así no se rompen por bloques de código o comillas. Las acciones
+devuelven `{ ok, data | error }` (`BuilderResult`) porque en producción Next
+oculta el mensaje de los errores lanzados; la UI muestra el mensaje real.

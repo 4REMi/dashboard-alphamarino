@@ -377,3 +377,7 @@ reportan los dos, etiquetados: **CTR (todos)** = todos los clics / impresiones
 **CTR enlace** = clics al destino / impresiones ("— (sin clics a enlace)" si no
 hay, típico en campañas de mensajes o interacción). Antes campaña/conjunto solo
 daban el de enlace y el anuncio decía "CTR" sin aclarar cuál.
+
+**GET /api/mcp → 405 (2026-11-04):** el GET abría un stream SSE que no usamos
+y Vercel lo cortaba a los 300 s ("Task timed out" cada 5 min en los logs).
+Ahora responde 405 (permitido por Streamable HTTP); los clientes usan POST.

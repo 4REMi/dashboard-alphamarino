@@ -5,7 +5,7 @@ import { Loader2, Sparkles, Check, RefreshCw, Wand2, ChevronRight, AlertTriangle
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
-import { suggestMechanics, generateHooks, generateBeat, generateCloses } from "@/lib/actions/script-builder"
+import { suggestMechanics, generateHooks, generateBeat, generateCloses, type BuilderResult } from "@/lib/actions/script-builder"
 import { saveScriptDrafts, addScriptDraftsToBrief } from "@/lib/actions/creatives"
 import { MECHANICS, MECHANIC_KEYS, AWARENESS, lintScript, estimateSeconds, wordBudget, wordCount, spokenBeats, WORDS_PER_SECOND, type MechanicKey, type ScriptHook, type ScriptPart, type BeatMode } from "@/lib/scripts/framework"
 import type { AdCloneLine, BrandBrain, CreativeBrief, CreativeConcept } from "@/lib/types"
@@ -62,31 +62,38 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
 
   async function run<T>(label: string, fn: () => Promise<T>): Promise<T | null> {
     setBusy(label); setError(null)
-    try { return await fn() } catch (e) { setError(e instanceof Error ? e.message : String(e)); return null } finally { setBusy(null) }
+    try { return await fn() } catch { setError("No se pudo completar. Intenta de nuevo."); return null } finally { setBusy(null) }
+  }
+  // Acciones de IA: devuelven { ok, data | error } para mostrar el mensaje real.
+  async function runAi<T>(label: string, fn: () => Promise<BuilderResult<T>>): Promise<T | null> {
+    const r = await run(label, fn)
+    if (!r) return null
+    if (!r.ok) { setError(r.error); return null }
+    return r.data
   }
 
   // ── Acciones por paso ────────────────────────────────────────────────
   async function loadMechanics() {
-    const r = await run("Eligiendo mecánicas…", () => suggestMechanics(concept.id, brainId))
+    const r = await runAi("Eligiendo mecánicas…", () => suggestMechanics(concept.id, brainId))
     if (r) { setMechOptions(r); setStep(1) }
     return r
   }
   async function loadHooks(opts: { like?: ScriptHook } = {}) {
     if (!mechanic) return null
-    const r = await run(opts.like ? "Variaciones de ese hook…" : "Escribiendo 6 hooks…", () => generateHooks(concept.id, brainId, mechanic, { like: opts.like, avoid: hookOptions.map((h) => h.spoken), targetSeconds }))
+    const r = await runAi(opts.like ? "Variaciones de ese hook…" : "Escribiendo 6 hooks…", () => generateHooks(concept.id, brainId, mechanic, { like: opts.like, avoid: hookOptions.map((h) => h.spoken), targetSeconds }))
     const keyed = r?.map(withKey) ?? null
     if (keyed) { setHookOptions(keyed); setStep(2) }
     return keyed
   }
   async function loadBeat(i: number, prev = body.slice(0, i), hook = primary, mech = mechanic) {
     if (!hook || !mech) return null
-    const r = await run(`Escribiendo "${MECHANICS[mech].beats[i].name}"…`, () => generateBeat(concept.id, brainId, mech, hook, i, prev, targetSeconds))
+    const r = await runAi(`Escribiendo "${MECHANICS[mech].beats[i].name}"…`, () => generateBeat(concept.id, brainId, mech, hook, i, prev, targetSeconds))
     if (r) setBeatOptions((o) => ({ ...o, [i]: r }))
     return r
   }
   async function loadCloses(b = body, hook = primary, mech = mechanic) {
     if (!hook || !mech) return null
-    const r = await run("Escribiendo cierres…", () => generateCloses(concept.id, brainId, mech, hook, b, targetSeconds))
+    const r = await runAi("Escribiendo cierres…", () => generateCloses(concept.id, brainId, mech, hook, b, targetSeconds))
     if (r) setCloseOptions(r)
     return r
   }
@@ -111,7 +118,7 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
     }
     let hooks = picked
     if (!hooks.length) {
-      const hs = hookOptions.length ? hookOptions : (await run("Escribiendo 6 hooks…", () => generateHooks(concept.id, brainId, mech!, { targetSeconds })))?.map(withKey)
+      const hs = hookOptions.length ? hookOptions : (await runAi("Escribiendo 6 hooks…", () => generateHooks(concept.id, brainId, mech!, { targetSeconds })))?.map(withKey)
       if (!hs?.length) return
       setHookOptions(hs); hooks = [hs[0]]; setPicked(hooks)
     }
