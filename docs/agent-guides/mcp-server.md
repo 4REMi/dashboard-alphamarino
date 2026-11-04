@@ -370,3 +370,10 @@ mensajes) se rechaza. `meta_editar_anuncio` corrige el CTA aunque no se pida
 otro cambio. Tras crear/editar se relee el anuncio y se reporta `issues_info`.
 `meta_estado_cliente` pide `issues_info` de conjuntos y anuncios: 🔴 en la
 línea y un bloque "PROBLEMAS DE ENTREGA" arriba aunque el estado diga ACTIVE.
+
+**CTR en meta_estado_cliente (2026-11-04):** en campaña, conjunto y anuncio se
+reportan los dos, etiquetados: **CTR (todos)** = todos los clics / impresiones
+(el de Ads Manager por defecto, el principal; sirve para cualquier objetivo) y
+**CTR enlace** = clics al destino / impresiones ("— (sin clics a enlace)" si no
+hay, típico en campañas de mensajes o interacción). Antes campaña/conjunto solo
+daban el de enlace y el anuncio decía "CTR" sin aclarar cuál.
