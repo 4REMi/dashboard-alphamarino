@@ -371,7 +371,7 @@ otro cambio. Tras crear/editar se relee el anuncio y se reporta `issues_info`.
 `meta_estado_cliente` pide `issues_info` de conjuntos y anuncios: 🔴 en la
 línea y un bloque "PROBLEMAS DE ENTREGA" arriba aunque el estado diga ACTIVE.
 
-**CTR en meta_estado_cliente (2026-11-04):** en campaña, conjunto y anuncio se
+**CTR e impresiones en meta_estado_cliente (2026-11-04):** impresiones en los tres niveles (y alcance por anuncio con detalle); en campaña, conjunto y anuncio se
 reportan los dos, etiquetados: **CTR (todos)** = todos los clics / impresiones
 (el de Ads Manager por defecto, el principal; sirve para cualquier objetivo) y
 **CTR enlace** = clics al destino / impresiones ("— (sin clics a enlace)" si no

@@ -167,7 +167,7 @@ export function registerMetaTools(server: McpServer) {
     "meta_estado_cliente",
     {
       title: "Meta: estado del cliente",
-      description: "Lee EN VIVO la cuenta de Meta de un proyecto: campañas → conjuntos → anuncios con id, estado, presupuesto (y dónde vive: campaña=CBO o conjunto=ABO), gasto, resultados, costo por resultado, CPM, CTR (todos: todos los clics, el de Ads Manager por defecto) y CTR enlace (solo clics al destino), clics al sitio, más el embudo (vistas de página → ver contenido → carrito → pago → compras) por campaña y conjunto; con detalle: true también por anuncio, con frecuencia. Periodo: ciclo activo (por defecto), ciclo_anterior, o desde/hasta; en periodos pasados lista solo lo que gastó en ese rango aunque hoy esté pausado. Úsalo antes de cualquier cambio para obtener los ids. Solo admin/subadmin.",
+      description: "Lee EN VIVO la cuenta de Meta de un proyecto: campañas → conjuntos → anuncios con id, estado, presupuesto (y dónde vive: campaña=CBO o conjunto=ABO), gasto, resultados, costo por resultado, impresiones, CPM, CTR (todos: todos los clics, el de Ads Manager por defecto) y CTR enlace (solo clics al destino), clics al sitio, más el embudo (vistas de página → ver contenido → carrito → pago → compras) por campaña y conjunto; con detalle: true también por anuncio, con frecuencia. Periodo: ciclo activo (por defecto), ciclo_anterior, o desde/hasta; en periodos pasados lista solo lo que gastó en ese rango aunque hoy esté pausado. Úsalo antes de cualquier cambio para obtener los ids. Solo admin/subadmin.",
       inputSchema: z.object({
         proyecto: z.string(),
         incluir_inactivos: z.boolean().default(false).describe("Incluir lo pausado/archivado"),
@@ -221,6 +221,8 @@ export function registerMetaTools(server: McpServer) {
       const ctrs = (x: Row) => x.impressions ? [`CTR (todos) ${pct(x.clicks, x.impressions)}`, `CTR enlace ${x.link ? pct(x.link, x.impressions) : "— (sin clics a enlace)"}`] : []
       const funnel = (x: Row, freq: boolean) => {
         const parts = [
+          x.impressions ? `${n(x.impressions)} impresiones` : null,
+          freq && x.reach ? `alcance ${n(x.reach)}` : null,
           x.impressions ? `CPM ${m((x.spend / x.impressions) * 1000)}` : null,
           // CTR (todos) = todos los clics / impresiones — el de Ads Manager por defecto, sirve
           // para cualquier objetivo. CTR enlace solo cuenta clics al destino: en campañas de
@@ -257,7 +259,7 @@ export function registerMetaTools(server: McpServer) {
             const x = ins.get(ad.id)
             const adIssue = issuesText(ad.issues_info)
             if (adIssue) problems.push(`anuncio "${ad.name}": ${adIssue}`)
-            lines.push(`     · ANUNCIO ${ad.name} [${ad.id}] · ${adIssue ? `🔴 ${ad.effective_status} pero con problemas: ${adIssue}` : ad.effective_status}${x ? ` · ${m(x.spend)} · ${x.results} res.${x.results ? ` · ${m(x.spend / x.results)} c/u` : ""}${x.impressions ? ` · ${ctrs(x).join(" · ")}` : ""}${detalle && x.impressions ? `\n       ${funnel(x, true)}` : ""}` : " · sin gasto"}`)
+            lines.push(`     · ANUNCIO ${ad.name} [${ad.id}] · ${adIssue ? `🔴 ${ad.effective_status} pero con problemas: ${adIssue}` : ad.effective_status}${x ? ` · ${m(x.spend)} · ${x.results} res.${x.results ? ` · ${m(x.spend / x.results)} c/u` : ""}${x.impressions ? ` · ${n(x.impressions)} impr. · ${ctrs(x).join(" · ")}` : ""}${detalle && x.impressions ? `\n       ${funnel(x, true)}` : ""}` : " · sin gasto"}`)
           }
         }
       }
