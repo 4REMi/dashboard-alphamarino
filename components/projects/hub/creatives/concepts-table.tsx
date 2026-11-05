@@ -1,7 +1,7 @@
 "use client"
 
 import { ScriptQuickView } from "./script-quick-view"
-import { useState, useTransition } from "react"
+import { useEffect, useState, useTransition } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -94,6 +94,13 @@ function scriptReviewEntries(brief: CreativeBrief): ScriptReviewEntry[] {
       const label = titles[key] || `Guión ${Object.keys(raw).length > 1 ? `#${i + 1}` : ""}`.trim()
       return { key, label, status: r?.client_status ?? "pending_review", feedback: r?.client_feedback ?? null }
     })
+}
+
+// Briefs del concepto que todavía no tienen ningún creativo ligado
+// (creative_assets.brief_id). Es lo que el editor tiene pendiente de producir.
+export function briefsWithoutAssets(conceptBriefs: CreativeBrief[], conceptAssets: CreativeAsset[]): CreativeBrief[] {
+  const linked = new Set(conceptAssets.map((a) => a.brief_id).filter(Boolean))
+  return conceptBriefs.filter((b) => !linked.has(b.id))
 }
 
 const SCRIPT_STATUS_STYLE: Record<ScriptReviewEntry["status"], { label: string; className: string }> = {
@@ -311,6 +318,7 @@ function ConceptDetailModal({
   concept,
   conceptAssets,
   conceptBriefs,
+  focusBriefId,
   projectId,
   isAdminOrSubadmin,
   canManageAssets,
@@ -329,6 +337,7 @@ function ConceptDetailModal({
   concept: CreativeConcept
   conceptAssets: CreativeAsset[]
   conceptBriefs: CreativeBrief[]
+  focusBriefId?: string | null
   projectId: string
   cycleId: string | null
   isAdminOrSubadmin: boolean
@@ -352,6 +361,13 @@ function ConceptDetailModal({
   const [moveQuery, setMoveQuery] = useState("")
   const [editingBriefId, setEditingBriefId] = useState<string | null>(null)
   const [briefTitleDraft, setBriefTitleDraft] = useState("")
+  const noAssetIds = new Set(briefsWithoutAssets(conceptBriefs, conceptAssets).map((b) => b.id))
+  // Desde el aviso "Sin creativo" del renglón: llevar al editor directo al brief.
+  useEffect(() => {
+    if (!focusBriefId) return
+    const t = setTimeout(() => document.getElementById(`brief-${focusBriefId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 150)
+    return () => clearTimeout(t)
+  }, [focusBriefId])
   const angleEntry  = ANGLE_GUIDE.find((a) => a.name === concept.angle_type)
   const liveRollup  = conceptLiveRollup(conceptAssets.map((a) => a.id), assetLinkStatus)
   const archivedButLive = concept.status === "Archived" && liveRollup.anyActive
@@ -563,7 +579,7 @@ function ConceptDetailModal({
                 {conceptBriefs.length > 0 ? (
                   <div className="space-y-1.5">
                     {conceptBriefs.map((b) => (
-                      <div key={b.id} className="text-xs py-2 px-3 rounded-lg bg-muted/30 border group">
+                      <div key={b.id} id={`brief-${b.id}`} className={cn("text-xs py-2 px-3 rounded-lg bg-muted/30 border group", focusBriefId === b.id && "ring-2 ring-violet-400 bg-violet-50/60 dark:bg-violet-950/30")}>
                         {editingBriefId === b.id ? (
                           <div className="flex items-center gap-1.5">
                             <input
@@ -618,6 +634,21 @@ function ConceptDetailModal({
                           </div>
                         )}
                         <BriefScriptStatus brief={b} canEdit={isAdminOrSubadmin} projectId={projectId} onRefresh={onRefresh} />
+                        <div className="mt-1.5 flex items-center gap-2">
+                          {noAssetIds.has(b.id) ? (
+                            <>
+                              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded border bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950 dark:text-violet-300 dark:border-violet-800">Sin creativo todavía</span>
+                              {canManageAssets && (
+                                <button type="button" onClick={() => onNewAsset({ briefId: b.id })} className="text-[10px] font-semibold inline-flex items-center gap-0.5 text-violet-700 hover:text-violet-900 dark:text-violet-300">
+                                  <Upload className="w-2.5 h-2.5" />Subir creativo de este brief
+                                </button>
+                              )}
+                            </>
+                          ) : (() => {
+                            const n = pieces.filter((p) => p.current.brief_id === b.id).length
+                            return <span className="text-[10px] text-muted-foreground inline-flex items-center gap-0.5"><Check className="w-2.5 h-2.5" />{n} creativo{n !== 1 ? "s" : ""} ligado{n !== 1 ? "s" : ""}</span>
+                          })()}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1194,6 +1225,7 @@ function MecanismoCell({
 
 export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleId, isAdminOrSubadmin, canManageAssets = isAdminOrSubadmin, onRefresh, onUpdateAsset, assetLinkStatus, brandBrains = [], brandLines = [], projectBrandBrainId }: ConceptsTableProps) {
   const [detailConcept, setDetailConcept]   = useState<CreativeConcept | null>(null)
+  const [focusBriefId, setFocusBriefId]     = useState<string | null>(null)
   const [editConcept,   setEditConcept]     = useState<CreativeConcept | null>(null)
   const [createForLineId, setCreateForLineId] = useState<string | null | undefined>(undefined)
   // undefined = cerrado; null = línea General
@@ -1400,7 +1432,8 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
             canManageAssets={canManageAssets}
             selected={selectedIds.has(c.id)}
             onToggleSelect={() => toggleSelect(c.id)}
-            onClick={() => setDetailConcept(c)}
+            onClick={() => { setFocusBriefId(null); setDetailConcept(c) }}
+            onOpenBrief={(id) => { setFocusBriefId(id); setDetailConcept(c) }}
             onNewBrief={() => setBriefForConcept(c)}
             onNewAsset={() => setNewAssetFor({ conceptId: c.id })}
           />
@@ -1416,7 +1449,8 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
             canManageAssets={canManageAssets}
             selected={selectedIds.has(c.id)}
             onToggleSelect={() => toggleSelect(c.id)}
-            onClick={() => setDetailConcept(c)}
+            onClick={() => { setFocusBriefId(null); setDetailConcept(c) }}
+            onOpenBrief={(id) => { setFocusBriefId(id); setDetailConcept(c) }}
             onNewBrief={() => setBriefForConcept(c)}
             onNewAsset={() => setNewAssetFor({ conceptId: c.id })}
           />
@@ -1596,6 +1630,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
           concept={detailConcept}
           conceptAssets={assets.filter((a) => a.concept_id === detailConcept.id)}
           conceptBriefs={briefs.filter((b) => b.concept_id === detailConcept.id)}
+          focusBriefId={focusBriefId}
           projectId={projectId}
           cycleId={cycleId}
           isAdminOrSubadmin={isAdminOrSubadmin}
@@ -1760,6 +1795,7 @@ const ATTENTION_TONES = {
   urgent: { className: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300", Icon: MessageSquare },
   warn:   { className: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300", Icon: EyeOff },
   wait:   { className: "bg-muted text-muted-foreground", Icon: Clock },
+  todo:   { className: "bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300", Icon: FileText },
 } as const
 
 function AttentionPill({ tone, title, children }: { tone: keyof typeof ATTENTION_TONES; title?: string; children: React.ReactNode }) {
@@ -1774,7 +1810,8 @@ function AttentionPill({ tone, title, children }: { tone: keyof typeof ATTENTION
 
 // Lo que antes vivía en el bloque "Requiere tu atención", ahora en el
 // renglón de cada concepto, y solo cuando hay algo pendiente.
-function ConceptAttentionNotes({ conceptAssets, conceptBriefs }: { conceptAssets: CreativeAsset[]; conceptBriefs: CreativeBrief[] }) {
+function ConceptAttentionNotes({ conceptAssets, conceptBriefs, onOpenBrief }: { conceptAssets: CreativeAsset[]; conceptBriefs: CreativeBrief[]; onOpenBrief?: (briefId: string) => void }) {
+  const noAsset = briefsWithoutAssets(conceptBriefs, conceptAssets)
   // Solo la versión vigente de cada pieza — una versión anterior ya
   // reemplazada no es algo pendiente.
   const current = buildPieces(conceptAssets).map((p) => p.current)
@@ -1788,9 +1825,18 @@ function ConceptAttentionNotes({ conceptAssets, conceptBriefs }: { conceptAssets
   if (scriptChanges > 0) notes.push({ tone: "urgent", text: `${scriptChanges} guión${scriptChanges !== 1 ? "es" : ""} con cambios pedidos` })
   if (unpublished > 0) notes.push({ tone: "warn", text: `${unpublished} asset${unpublished !== 1 ? "s" : ""} sin publicar` })
   if (scriptPending > 0) notes.push({ tone: "wait", text: `${scriptPending} guión${scriptPending !== 1 ? "es" : ""} en revisión del cliente` })
-  if (notes.length === 0) return null
+  if (notes.length === 0 && noAsset.length === 0) return null
   return (
     <div className="flex flex-wrap gap-1 mt-1">
+      {noAsset.map((b) => {
+        const n = scriptReviewEntries(b).length
+        return (
+          <button type="button" key={b.id} onClick={(e) => { e.stopPropagation(); onOpenBrief?.(b.id) }} className="hover:opacity-80"
+            title="Este brief aún no tiene creativo ligado — clic para ver el brief y su guion">
+            <AttentionPill tone="todo">Sin creativo: {b.title || b.brand_brain?.name || "Brief"}{n > 0 ? ` · ${n} guión${n !== 1 ? "es" : ""}` : ""} →</AttentionPill>
+          </button>
+        )
+      })}
       {notes.map((n) => <AttentionPill key={n.text} tone={n.tone}>{n.text}</AttentionPill>)}
     </div>
   )
@@ -1807,8 +1853,10 @@ function ConceptRow({
   onClick,
   onNewBrief,
   onNewAsset,
+  onOpenBrief,
   assetLinkStatus,
 }: {
+  onOpenBrief?: (briefId: string) => void
   concept: CreativeConcept
   conceptAssets: CreativeAsset[]
   conceptBriefs: CreativeBrief[]
@@ -1856,7 +1904,7 @@ function ConceptRow({
       </td>
       <td className="px-3 py-3">
         <div className="text-sm font-medium">{concept.name || "—"}</div>
-        <ConceptAttentionNotes conceptAssets={conceptAssets} conceptBriefs={conceptBriefs} />
+        <ConceptAttentionNotes conceptAssets={conceptAssets} conceptBriefs={conceptBriefs} onOpenBrief={onOpenBrief} />
       </td>
       <td className="px-3 py-3">
         <div className="text-xs line-clamp-2">{concept.target_persona || "—"}</div>

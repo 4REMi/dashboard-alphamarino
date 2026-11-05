@@ -315,3 +315,9 @@ llamadas de IA del constructor usan *tool use* forzado con esquema (no JSON en
 texto), así no se rompen por bloques de código o comillas. Las acciones
 devuelven `{ ok, data | error }` (`BuilderResult`) porque en producción Next
 oculta el mensaje de los errores lanzados; la UI muestra el mensaje real.
+
+## Briefs sin creativo — 2026-11-05
+
+Un brief está "sin creativo" si ningún `creative_assets.brief_id` apunta a él (`briefsWithoutAssets` en concepts-table.tsx; derivado, sin campo en BD).
+- Renglón del concepto: pastilla violeta clicable "Sin creativo: <brief> · N guiones →" por cada brief pendiente; abre el concepto con ese brief resaltado y centrado.
+- Dentro del concepto, cada brief muestra "Sin creativo todavía" + "Subir creativo de este brief" (crea el asset ya ligado), o "N creativos ligados".
