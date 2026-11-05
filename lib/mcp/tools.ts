@@ -16,6 +16,7 @@ import { registerDeliverableTools } from "@/lib/mcp/deliverable-tools"
 import { registerCustomerTools } from "@/lib/mcp/customer-tools"
 import { registerManualTools } from "@/lib/mcp/manual-tools"
 import { registerQuoteTools } from "@/lib/mcp/quote-tools"
+import { registerDomainTools } from "@/lib/mcp/domain-tools"
 import { getProjectContext } from "@/lib/project-context"
 import { interpretStandup } from "@/lib/standup-core"
 
@@ -105,6 +106,7 @@ export function registerMcpTools(server: McpServer) {
   registerCustomerTools(server)
   registerManualTools(server)
   registerQuoteTools(server)
+  registerDomainTools(server)
 
   server.registerTool(
     "crear_tarea",

@@ -381,3 +381,12 @@ daban el de enlace y el anuncio decía "CTR" sin aclarar cuál.
 **GET /api/mcp → 405 (2026-11-04):** el GET abría un stream SSE que no usamos
 y Vercel lo cortaba a los 300 s ("Task timed out" cada 5 min en los logs).
 Ahora responde 405 (permitido por Streamable HTTP); los clientes usan POST.
+
+## Dominios y renovaciones — 2026-11-05
+
+`lib/mcp/domain-tools.ts`. Permiso `view_domains` (igual que /finances/domains).
+
+- `dominios` — lista/busca (dominio o cliente), `vencen_en_dias` incluye vencidos.
+- `renovar_dominio` — mismo flujo que el botón Renovar (`lib/finance/domains.ts` `renewDomainCore`, compartido con la server action): fecha (default hoy MX), `cobrar_dominio` / `cobrar_mantenimiento` (crean ingresos MXN→USD), `extender_un_anio` (desde la fecha de renovación actual). Dos pasos con `confirmar`.
+- `crear_dominio` / `editar_dominio` — dos pasos; solo cambia lo indicado; cliente vacío = propio.
+- `renovaciones` — próximos N días (default 30) + vencidos: dominios (si `view_domains`) y gastos anuales activos de `recurring_expenses` por aniversario de `start_date` (si `view_global_finances`).
