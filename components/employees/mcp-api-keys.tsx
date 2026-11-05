@@ -2,8 +2,16 @@
 
 import { useEffect, useState, useTransition } from "react"
 import { Button } from "@/components/ui/button"
-import { createMcpApiKey, listMcpApiKeys, revokeMcpApiKey, type McpApiKeySummary } from "@/lib/actions/mcp-keys"
-import { Plus, Loader2, Copy, Check, Trash2, KeyRound } from "lucide-react"
+import {
+  createMcpApiKey,
+  listMcpApiKeys,
+  revokeMcpApiKey,
+  listMcpOAuthConnections,
+  revokeMcpOAuthConnection,
+  type McpApiKeySummary,
+  type McpOAuthConnectionSummary,
+} from "@/lib/actions/mcp-keys"
+import { Plus, Loader2, Copy, Check, Trash2, KeyRound, Link2 } from "lucide-react"
 
 function formatDate(iso: string | null) {
   if (!iso) return "nunca"
@@ -20,6 +28,7 @@ function mcpEndpointUrl() {
 
 export function McpApiKeys({ profileId }: { profileId: string }) {
   const [keys, setKeys] = useState<McpApiKeySummary[]>([])
+  const [connections, setConnections] = useState<McpOAuthConnectionSummary[]>([])
   const [newKeyName, setNewKeyName] = useState("")
   const [revealedKey, setRevealedKey] = useState<string | null>(null)
   const [copied, setCopied] = useState<"key" | "url" | null>(null)
@@ -28,7 +37,21 @@ export function McpApiKeys({ profileId }: { profileId: string }) {
 
   useEffect(() => {
     listMcpApiKeys().then(setKeys).catch(() => {})
+    listMcpOAuthConnections().then(setConnections).catch(() => {})
   }, [profileId])
+
+  function handleRevokeConnection(id: string) {
+    if (!confirm("¿Revocar esta conexión? La app conectada (ej. ChatGPT) perderá el acceso de inmediato.")) return
+    setError(null)
+    startTransition(async () => {
+      try {
+        await revokeMcpOAuthConnection(id)
+        setConnections(await listMcpOAuthConnections())
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "No se pudo revocar la conexión")
+      }
+    })
+  }
 
   function handleCreate() {
     setError(null)
@@ -127,6 +150,31 @@ export function McpApiKeys({ profileId }: { profileId: string }) {
           ))}
         </div>
       )}
+
+      <div className="space-y-1.5 border-t pt-2">
+        <p className="text-xs font-medium">Conexiones OAuth</p>
+        <p className="text-xs text-muted-foreground">
+          Apps conectadas con &quot;Conectar&quot; vía OAuth (ChatGPT, etc.), sin key. Revocar una corta su acceso al instante.
+        </p>
+        {connections.length === 0 ? (
+          <p className="text-xs text-muted-foreground italic">Ninguna conexión activa.</p>
+        ) : (
+          connections.map((c) => (
+            <div key={c.id} className="flex items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <Link2 className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                <span className="font-medium truncate">{c.client_name}</span>
+                <span className="text-muted-foreground flex-shrink-0">
+                  · conectada {formatDate(c.created_at)} · usada {formatDate(c.last_used_at)}
+                </span>
+              </div>
+              <Button size="sm" variant="ghost" onClick={() => handleRevokeConnection(c.id)} disabled={isPending} className="text-muted-foreground hover:text-destructive flex-shrink-0 h-6 px-1.5" title="Revocar conexión">
+                <Trash2 className="w-3.5 h-3.5" />
+              </Button>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   )
 }

@@ -37,6 +37,7 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/share") ||
     pathname.startsWith("/legal") ||
     pathname.startsWith("/_next") ||
+    pathname.startsWith("/.well-known") ||
     pathname.startsWith("/api")
   ) {
     return supabaseResponse
@@ -46,6 +47,12 @@ export async function proxy(request: NextRequest) {
   if (!user) {
     const url = request.nextUrl.clone()
     url.pathname = "/login"
+    // Consentimiento OAuth del MCP: al entrar, regresar a la misma
+    // autorización (con todos sus parámetros) en vez de al inicio.
+    if (pathname.startsWith("/oauth/")) {
+      url.search = ""
+      url.searchParams.set("next", `${pathname}${request.nextUrl.search}`)
+    }
     return NextResponse.redirect(url)
   }
 

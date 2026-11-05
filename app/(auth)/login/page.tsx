@@ -7,7 +7,7 @@ import { LoginForm } from "./login-form"
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ code?: string; error?: string }>
+  searchParams: Promise<{ code?: string; error?: string; next?: string }>
 }) {
   const params = await searchParams
 
@@ -19,5 +19,7 @@ export default async function LoginPage({
   }
 
   const settings = await getWorkspaceSettings().catch(() => ({ logo_url: null }))
-  return <LoginForm logoUrl={settings.logo_url} />
+  // Solo rutas internas ("/algo", nunca "//host" ni URLs absolutas).
+  const next = params.next && /^\/(?![/\\])/.test(params.next) ? params.next : "/"
+  return <LoginForm logoUrl={settings.logo_url} next={next} />
 }

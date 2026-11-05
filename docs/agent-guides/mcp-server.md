@@ -3,7 +3,7 @@
 **Ruta:** `/api/mcp` (endpoint, no una página) — la UI para generar keys vive en
 `/employees/[id]` (tu propio perfil, sección "API keys de IA (MCP)")
 **Para quién:** cualquier empleado con sesión — cada persona genera su propia key
-**Actualizado:** 2026-10-01
+**Actualizado:** 2026-11-05
 
 ## Qué es y para qué sirve
 
@@ -166,6 +166,23 @@ Bearer token. Se configura una vez, no por conversación.
 **Revocar una key**: mismo lugar, ícono de basura junto a la key — efecto
 inmediato, cualquier cliente que la esté usando deja de poder llamar tools.
 
+**Conectar ChatGPT (OAuth, sin key)**: ChatGPT no deja poner headers, solo OAuth.
+En ChatGPT → "Agregar servidor MCP personalizado":
+- URL del servidor: `https://dashboard-alphamarino.vercel.app/api/mcp`
+- Autenticación: **OAuth**
+- Método de registro: **registro dinámico de clientes (DCR)** — no se captura
+  client ID ni secreto; ChatGPT se registra solo en `/api/oauth/register`.
+
+Al dar "Conectar", ChatGPT abre `/oauth/authorize`: si no hay sesión, pasa por el
+login normal del dashboard y regresa ahí; luego la pantalla "ChatGPT quiere
+acceder a tu cuenta" → **Autorizar**. El token queda ligado a TU perfil, con tus
+mismos permisos (igual que una API key). Cualquier otro cliente MCP con OAuth +
+DCR (Claude, etc.) se conecta igual.
+
+**Revocar una conexión OAuth**: `/employees/[tu-id]` → "API keys de IA (MCP)" →
+"Conexiones OAuth" → ícono de basura. Efecto inmediato: el access token deja de
+validar en la siguiente llamada y el refresh token ya no se canjea.
+
 **Agregar una tool nueva** (expandir la superficie poco a poco, como se acordó):
 1. Reusa una server action REAL que ya exista — nunca dupliques la lógica de
    negocio dentro de `lib/mcp/tools.ts`.
@@ -293,9 +310,45 @@ límite real es el mismo que ya tiene esa persona en el dashboard (ej. si su rol
 no tiene `manage_tasks`, `crear_tarea`/`completar_tarea` le van a fallar con
 "Permission denied", igual que le pasaría en la UI normal).
 
+## OAuth 2.1 (ChatGPT) — 2026-11-05
+
+Servidor de autorización propio, dentro de esta misma app. Se evaluó Supabase
+OAuth 2.1 Server (soporta DCR y el SDK ya trae `auth.oauth.*`), pero emite JWTs
+de sesión de Supabase: el cliente conectado podría pegarle directo a PostgREST
+con la RLS del usuario (varias tablas son amplias porque el permiso fino vive
+en `lib/permissions.ts`), y un JWT revocado sigue vivo hasta que expira. Aquí
+los tokens son opacos, solo valen en `/api/mcp` y se revocan al instante.
+
+- `/.well-known/oauth-protected-resource` (RFC 9728, también con sufijo
+  `/api/mcp`) y `/.well-known/oauth-authorization-server` (RFC 8414). Issuer =
+  origen público del deployment; no hay variables de entorno nuevas.
+- `POST /api/oauth/register` — DCR (RFC 7591). Abierto; registrar no da acceso.
+  `redirect_uris` https (o http en localhost), sin fragmento, máx. 10. Clientes
+  públicos (`none`) o con secreto (`client_secret_post`/`_basic`, hasheado).
+- `/oauth/authorize` — consentimiento; exige sesión (el `proxy.ts` manda a
+  `/login?next=…` y el login regresa ahí). `redirect_uri` debe ser EXACTAMENTE
+  uno de los registrados (si no, error en pantalla, nunca redirige). PKCE S256
+  obligatorio. `resource` (RFC 8707), si viene, debe ser este `/api/mcp`.
+  Respuesta con `iss` (RFC 9207).
+- `POST /api/oauth/token` — `authorization_code` (PKCE obligatorio,
+  `redirect_uri` idéntico) y `refresh_token` (rota en cada uso).
+- Códigos: un solo uso (canje atómico), 5 min; reusar un código revoca los
+  tokens que emitió. Access token 1 h (`amoa_…`), refresh 60 días (`amor_…`).
+  Todo guardado como SHA-256.
+- `verifyMcpToken` acepta los dos tipos: prefijo `amoa_` → `mcp_oauth_grants`;
+  cualquier otro → `mcp_api_keys` (sin cambios). En ambos casos
+  `extra.profileId`, así que las tools no distinguen.
+- Un scope único, `mcp` (= las tools con los permisos del empleado).
+
 ## Dónde vive esto en el código
 
 - `supabase/migrations/081_mcp_api_keys.sql` — tabla `mcp_api_keys`.
+- `supabase/migrations/121_mcp_oauth.sql` — `mcp_oauth_clients`,
+  `mcp_oauth_codes`, `mcp_oauth_grants` (una fila = una conexión).
+- `lib/mcp/oauth.ts` (núcleo: metadata, hashes, PKCE, emisión/rotación de
+  tokens), `lib/mcp/oauth-authorize.ts` (validación de la autorización),
+  `app/oauth/authorize/` (página + server actions), `app/api/oauth/register`,
+  `app/api/oauth/token`, `app/.well-known/*`.
 - `lib/actions/mcp-keys.ts` — CRUD de keys (generar/listar/revocar), sesión normal.
 - `lib/mcp/auth.ts` — `verifyMcpToken`, el verificador de `withMcpAuth`.
 - `lib/mcp/tools.ts` — `registerMcpTools`, las tools + resolución de
@@ -307,7 +360,8 @@ no tiene `manage_tasks`, `crear_tarea`/`completar_tarea` le van a fallar con
   `lib/actions/service-deliverables.ts` (`requireProfile`,
   `attachServiceOfferToProject`) — el permiso admin/subadmin explícito +
   `actingProfileId` opcional que ganaron estas funciones reales.
-- `components/employees/mcp-api-keys.tsx` — UI para generar/revocar, montada en
+- `components/employees/mcp-api-keys.tsx` — UI para generar/revocar keys y ver/revocar
+  conexiones OAuth (`listMcpOAuthConnections`/`revokeMcpOAuthConnection`), montada en
   `app/(dashboard)/employees/[id]/page.tsx` (sección self-only, junto a Telegram).
 - `lib/actions/tasks.ts` (`requireTaskPermission`, `createTask`,
   `updateTaskStatus`) y `lib/actions/projects.ts` (`addLogEntry`) — el parámetro

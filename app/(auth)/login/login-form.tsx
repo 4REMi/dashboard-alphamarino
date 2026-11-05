@@ -11,9 +11,10 @@ import { Anchor } from "lucide-react"
 
 interface Props {
   logoUrl: string | null
+  next?: string
 }
 
-export function LoginForm({ logoUrl }: Props) {
+export function LoginForm({ logoUrl, next = "/" }: Props) {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
@@ -33,7 +34,7 @@ export function LoginForm({ logoUrl }: Props) {
     }
     // Sync profile language preference → NEXT_LOCALE cookie before navigating
     await fetch("/api/sync-locale").catch(() => {})
-    router.push("/")
+    router.push(next)
     router.refresh()
   }
 

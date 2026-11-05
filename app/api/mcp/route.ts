@@ -14,10 +14,13 @@ const handler = createMcpHandler(
   { serverInfo: { name: "alphamarino-dashboard", version: "1.0.0" } },
 )
 
-// withMcpAuth is NOT real OAuth here — verifyMcpToken (lib/mcp/auth.ts)
-// just checks the bearer token against mcp_api_keys and resolves which
-// profile it belongs to. `required: true` rejects any call with no
-// valid key before it ever reaches a tool.
+// verifyMcpToken (lib/mcp/auth.ts) acepta la API key personal
+// (mcp_api_keys) o un access token OAuth (mcp_oauth_grants, emitido por
+// /api/oauth/token — así se conecta ChatGPT) y resuelve el profile en
+// ambos casos. `required: true` rechaza cualquier llamada sin token
+// válido con 401 + WWW-Authenticate apuntando a
+// /.well-known/oauth-protected-resource, que es lo que dispara el flujo
+// OAuth en el cliente.
 const authHandler = withMcpAuth(handler, verifyMcpToken, { required: true })
 
 // GET abriría un stream SSE de notificaciones del servidor que no usamos:
