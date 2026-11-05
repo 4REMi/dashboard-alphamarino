@@ -117,11 +117,43 @@ async function classifyRecibo(
   return toolUse.input as ReciboExtraido
 }
 
+const LUGAR_EMISION = "Aguascalientes, Ags."
+
+// ============================================================
+// Envío a Make (compartido con el MCP: lib/mcp/receipt-tools.ts)
+// ============================================================
+
+export interface ReciboInput { chatId: number | string; fuente: string; datoCrudo: string; fecha: string; recibiDe: string; cantidad: number; concepto: string; formaPago: string }
+
+export async function sendReciboToMake(r: ReciboInput, customers: { id: string; name: string; email: string | null }[]) {
+  const webhookUrl = process.env.MAKE_RECIBOS_WEBHOOK_URL
+  if (!webhookUrl) throw new Error("MAKE_RECIBOS_WEBHOOK_URL no configurado")
+  const cliente = findByName(customers, r.recibiDe)
+  const payload = {
+    // No es columna de la hoja — se manda para que, al final del escenario de
+    // Make, el módulo que regresa el PDF sepa a qué chat de Telegram enviarlo.
+    telegram_chat_id: r.chatId,
+    timestamp_recepcion: new Date().toISOString().slice(0, 16).replace("T", " "),
+    fuente: r.fuente,
+    dato_crudo: r.datoCrudo,
+    lugar_emision: LUGAR_EMISION,
+    fecha_emision: r.fecha,
+    recibi_de: r.recibiDe,
+    cantidad: r.cantidad,
+    monto_escrito: montoALetras(r.cantidad),
+    concepto: r.concepto,
+    forma_pago: r.formaPago,
+    estatus_validacion: "Pendiente",
+    enviado_a: cliente?.email ?? null,
+  }
+  const res = await fetch(webhookUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
+  if (!res.ok) throw new Error(`El webhook de Make.com respondió ${res.status}`)
+  return { payload, cliente }
+}
+
 // ============================================================
 // Handler principal
 // ============================================================
-
-const LUGAR_EMISION = "Aguascalientes, Ags."
 
 export async function handleRecibo(
   chatId: number,
@@ -141,36 +173,11 @@ export async function handleRecibo(
     return
   }
 
-  const webhookUrl = process.env.MAKE_RECIBOS_WEBHOOK_URL
-  if (!webhookUrl) throw new Error("MAKE_RECIBOS_WEBHOOK_URL no configurado")
-
-  const cliente = findByName(customers, extraido.recibi_de)
-  const timestampRecepcion = new Date().toISOString().slice(0, 16).replace("T", " ")
-
-  const payload = {
-    // No es columna de la hoja — se manda para que, al final del escenario de
-    // Make, el módulo que regresa el PDF sepa a qué chat de Telegram enviarlo.
-    telegram_chat_id: chatId,
-    timestamp_recepcion: timestampRecepcion,
-    fuente: `Telegram${context.senderName ? ` ${context.senderName}` : ""}`,
-    dato_crudo: rawText,
-    lugar_emision: LUGAR_EMISION,
-    fecha_emision: extraido.fecha_emision || today,
-    recibi_de: extraido.recibi_de,
-    cantidad: extraido.cantidad,
-    monto_escrito: montoALetras(extraido.cantidad),
-    concepto: extraido.concepto || "",
-    forma_pago: extraido.forma_pago || "",
-    estatus_validacion: "Pendiente",
-    enviado_a: cliente?.email ?? null,
-  }
-
-  const res = await fetch(webhookUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  })
-  if (!res.ok) throw new Error(`El webhook de Make.com respondió ${res.status}`)
+  const { payload, cliente } = await sendReciboToMake({
+    chatId, fuente: `Telegram${context.senderName ? ` ${context.senderName}` : ""}`, datoCrudo: rawText,
+    fecha: extraido.fecha_emision || today, recibiDe: extraido.recibi_de, cantidad: extraido.cantidad,
+    concepto: extraido.concepto || "", formaPago: extraido.forma_pago || "",
+  }, customers)
 
   await sendMessage(
     chatId,

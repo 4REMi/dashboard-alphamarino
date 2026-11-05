@@ -22,7 +22,7 @@ const CAT_LABEL: Record<string, string> = { Payroll: "Nómina", Software: "Softw
 const usd = (n: number) => `USD ${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const today = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Mexico_City" })
 
-async function requireFinance(ctx: ToolCtx): Promise<string> {
+export async function requireFinance(ctx: ToolCtx): Promise<string> {
   const profileId = ctx.http?.authInfo?.extra?.profileId
   if (typeof profileId !== "string") throw new Error("No se pudo identificar quién está llamando esta herramienta")
   const { data } = await db().from("profiles").select("role, permissions").eq("id", profileId).single()

@@ -394,3 +394,7 @@ Ahora responde 405 (permitido por Streamable HTTP); los clientes usan POST.
 ## briefs_concepto (solo lectura) — 2026-11-05
 
 `lib/mcp/brief-tools.ts`. `briefs_concepto(proyecto, concepto?, sin_guion_completo?)`: por concepto, sus briefs (nombre, brief_id, link de editor, notas), cada guion con estado de revisión, feedback, hook (primera línea hablada) y texto completo (sección, hablado, 🎬 visual, 📝 en pantalla), y los `asset_id` ligados a cada brief (`creative_assets.brief_id`, marcando versiones anteriores/revisiones). Marca "SIN CREATIVO" y lista creativos sin brief. Sin `concepto` omite conceptos sin briefs ni creativos.
+
+## generar_recibo — 2026-11-05
+
+`lib/mcp/receipt-tools.ts`. Permiso `view_global_finances`. Mismo flujo que `/recibo` del bot de Telegram (`sendReciboToMake` en `lib/telegram-bot/handlers/recibos.ts`, compartido): manda a `MAKE_RECIBOS_WEBHOOK_URL` con monto en letras determinístico, email del cliente si existe, estatus Pendiente y `fuente: "Claude (MCP)"`. El PDF lo regresa Make al chat `TELEGRAM_ALLOWED_CHAT_ID`. Dos pasos con `confirmar`. Si el comprobante es imagen, Claude extrae los datos antes de llamar.
