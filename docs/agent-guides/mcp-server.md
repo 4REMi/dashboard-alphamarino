@@ -390,3 +390,7 @@ Ahora responde 405 (permitido por Streamable HTTP); los clientes usan POST.
 - `renovar_dominio` — mismo flujo que el botón Renovar (`lib/finance/domains.ts` `renewDomainCore`, compartido con la server action): fecha (default hoy MX), `cobrar_dominio` / `cobrar_mantenimiento` (crean ingresos MXN→USD), `extender_un_anio` (desde la fecha de renovación actual). Dos pasos con `confirmar`.
 - `crear_dominio` / `editar_dominio` — dos pasos; solo cambia lo indicado; cliente vacío = propio.
 - `renovaciones` — próximos N días (default 30) + vencidos: dominios (si `view_domains`) y gastos anuales activos de `recurring_expenses` por aniversario de `start_date` (si `view_global_finances`).
+
+## briefs_concepto (solo lectura) — 2026-11-05
+
+`lib/mcp/brief-tools.ts`. `briefs_concepto(proyecto, concepto?, sin_guion_completo?)`: por concepto, sus briefs (nombre, brief_id, link de editor, notas), cada guion con estado de revisión, feedback, hook (primera línea hablada) y texto completo (sección, hablado, 🎬 visual, 📝 en pantalla), y los `asset_id` ligados a cada brief (`creative_assets.brief_id`, marcando versiones anteriores/revisiones). Marca "SIN CREATIVO" y lista creativos sin brief. Sin `concepto` omite conceptos sin briefs ni creativos.
