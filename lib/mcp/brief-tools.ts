@@ -40,23 +40,44 @@ export function registerBriefTools(server: McpServer) {
       proyecto: z.string().min(1),
       concepto: z.string().optional().describe("Nombre (o parte) del concepto; vacío = todos los que tengan briefs o creativos"),
       sin_guion_completo: z.boolean().default(false).describe("true = solo títulos y estado, sin el texto de los guiones (respuesta corta)"),
+      todos_los_ciclos: z.boolean().default(false).describe("true = incluir conceptos y creativos de ciclos anteriores. Por defecto solo lo que el dashboard muestra: el ciclo activo (o el más reciente) + Evergreen"),
     }),
-  }, async ({ proyecto, concepto, sin_guion_completo }) => {
+  }, async ({ proyecto, concepto, sin_guion_completo, todos_los_ciclos }) => {
     const db = createAdminClient()
     const p = await resolveProject(proyecto)
-    let cq = db.from("creative_concepts").select("id, name, status, proposed_hook, angle_type, target_persona").eq("project_id", p.id).order("created_at")
+    // Mismo alcance que el Creative Tracker (getCreativeConcepts/getCreativeAssets):
+    // ciclo activo ?? el más reciente; sin ciclos = todo.
+    const { data: cycles } = await db.from("paid_media_cycles").select("id, is_active, start_date").eq("project_id", p.id).order("start_date", { ascending: false })
+    const cycle = todos_los_ciclos ? null : (cycles ?? []).find((c) => c.is_active) ?? (cycles ?? [])[0] ?? null
+    let conceptIds: Set<string> | null = null
+    let assetIds: Set<string> | null = null
+    if (cycle) {
+      const [{ data: cc, error: ce }, { data: ac, error: ae }] = await Promise.all([
+        db.from("creative_concept_cycles").select("concept_id").eq("cycle_id", cycle.id),
+        db.from("creative_asset_cycles").select("asset_id").eq("cycle_id", cycle.id),
+      ])
+      if (!ce) conceptIds = new Set((cc ?? []).map((r) => r.concept_id as string))
+      if (!ae) assetIds = new Set((ac ?? []).map((r) => r.asset_id as string))
+    }
+    let cq = db.from("creative_concepts").select("id, name, status, proposed_hook, angle_type, target_persona, cycle_id").eq("project_id", p.id).order("created_at")
     if (concepto?.trim()) cq = cq.ilike("name", `%${concepto.trim()}%`)
-    const [{ data: concepts }, { data: briefs }, { data: assets }] = await Promise.all([
+    const [cRes, { data: briefs }, aRes] = await Promise.all([
       cq,
       db.from("creative_briefs").select("id, concept_id, title, important_notes, adapted_script, script_titles, script_reviews, share_token, brand_brain:brand_brains(name)").eq("project_id", p.id).order("created_at"),
-      db.from("creative_assets").select("id, concept_id, brief_id, file_type, format, hook, production_status, client_status, revises_asset_id, created_at").eq("project_id", p.id).order("created_at"),
+      db.from("creative_assets").select("id, concept_id, brief_id, cycle_id, file_type, format, hook, production_status, client_status, revises_asset_id, created_at").eq("project_id", p.id).order("created_at"),
     ])
+    let concepts = cRes.data
+    let assets = aRes.data
+    if (cycle) {
+      concepts = (concepts ?? []).filter((c) => conceptIds ? conceptIds.has(c.id) : (c.cycle_id === cycle.id || (!c.cycle_id && c.status === "Evergreen")))
+      assets = (assets ?? []).filter((a) => assetIds ? assetIds.has(a.id) : a.cycle_id === cycle.id)
+    }
     if (!concepts?.length) return text(concepto ? `No encontré conceptos que coincidan con "${concepto}" en ${p.name}.` : `${p.name} no tiene conceptos.`)
     const superseded = new Set((assets ?? []).map((a) => a.revises_asset_id).filter(Boolean))
     const assetLine = (a: NonNullable<typeof assets>[number]) =>
       `${a.id} · ${a.file_type ?? a.format ?? "archivo"}${superseded.has(a.id) ? " · versión anterior" : ""}${a.revises_asset_id ? ` · revisión de ${a.revises_asset_id}` : ""} · ${a.production_status}${a.client_status ? ` · cliente: ${REVIEW[a.client_status] ?? a.client_status}` : ""}${a.hook ? ` · hook: "${a.hook}"` : ""}`
 
-    const out: string[] = [`Proyecto: ${p.name}`]
+    const out: string[] = [`Proyecto: ${p.name} · ${cycle ? `ciclo ${cycle.is_active ? "activo" : "más reciente"} (${cycle.start_date}) + Evergreen; usa todos_los_ciclos para el historial` : todos_los_ciclos ? "todos los ciclos" : "sin ciclos"}`]
     for (const c of concepts) {
       const cb = ((briefs ?? []) as unknown as Brief[]).filter((b) => b.concept_id === c.id)
       const ca = (assets ?? []).filter((a) => a.concept_id === c.id)

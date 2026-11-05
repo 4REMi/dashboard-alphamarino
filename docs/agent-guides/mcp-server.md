@@ -393,7 +393,7 @@ Ahora responde 405 (permitido por Streamable HTTP); los clientes usan POST.
 
 ## briefs_concepto (solo lectura) — 2026-11-05
 
-`lib/mcp/brief-tools.ts`. `briefs_concepto(proyecto, concepto?, sin_guion_completo?)`: por concepto, sus briefs (nombre, brief_id, link de editor, notas), cada guion con estado de revisión, feedback, hook (primera línea hablada) y texto completo (sección, hablado, 🎬 visual, 📝 en pantalla), y los `asset_id` ligados a cada brief (`creative_assets.brief_id`, marcando versiones anteriores/revisiones). Marca "SIN CREATIVO" y lista creativos sin brief. Sin `concepto` omite conceptos sin briefs ni creativos.
+`lib/mcp/brief-tools.ts`. `briefs_concepto(proyecto, concepto?, sin_guion_completo?)`: por concepto, sus briefs (nombre, brief_id, link de editor, notas), cada guion con estado de revisión, feedback, hook (primera línea hablada) y texto completo (sección, hablado, 🎬 visual, 📝 en pantalla), y los `asset_id` ligados a cada brief (`creative_assets.brief_id`, marcando versiones anteriores/revisiones). Marca "SIN CREATIVO" y lista creativos sin brief. Sin `concepto` omite conceptos sin briefs ni creativos. Por defecto usa el mismo alcance que el Creative Tracker: ciclo activo (o el más reciente) vía creative_concept_cycles/creative_asset_cycles + Evergreen; `todos_los_ciclos: true` trae el historial.
 
 ## generar_recibo — 2026-11-05
 
