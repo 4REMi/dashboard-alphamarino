@@ -4,6 +4,7 @@ import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import { MobileShell } from "@/components/mobile-shell"
 import { GlobalQuickCapture } from "@/components/tasks/global-quick-capture"
+import { AnalysisJobsToaster } from "@/components/ad-lab/analysis-jobs-toaster"
 import { getWorkspaceSettings } from "@/lib/actions/workspace"
 import { getMyPendingTaskCount } from "@/lib/actions/tasks"
 import type { Profile } from "@/lib/types"
@@ -34,6 +35,7 @@ export default async function DashboardLayout({
     <MobileShell profile={profile} logoUrl={workspaceSettings.logo_url} myPendingTaskCount={myPendingTaskCount}>
       {children}
       <GlobalQuickCapture />
+      <AnalysisJobsToaster />
     </MobileShell>
   )
 }

@@ -39,3 +39,11 @@ crear un duplicado — los orgánicos no tienen `ad_archive_id`), **Extraer
 script** y **Analizar concepto**, más "Clonar la portada como imagen" como
 opción secundaria. Los posts de imagen/carrusel siguen igual y suman
 "Analizar concepto".
+
+## Análisis en segundo plano (2026-11-05)
+
+El análisis ya no vive en el modal sino en `lib/ad-lab/analysis-jobs.ts` (registro a nivel de módulo, por `adArchiveId`).
+- Cerrar el modal mientras analiza (clic fuera, Esc, X) muestra un aviso: "Seguir aquí" o "Cerrar y avisarme". El proceso no se cancela.
+- Reabrir el mismo anuncio se engancha al análisis en curso; no lanza otro.
+- `components/ad-lab/analysis-jobs-toaster.tsx` (montado en el layout del dashboard) muestra abajo a la derecha "Analizando concepto…" y, al terminar con el modal cerrado, "Análisis listo · Ver" / "Falló · Reintentar".
+- Límite: si se recarga o cierra la pestaña, el aviso se pierde; el resultado igual se guarda en `ad_analyses` si el servidor alcanzó a terminar.

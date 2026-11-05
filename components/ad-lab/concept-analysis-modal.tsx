@@ -1,9 +1,10 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, useSyncExternalStore } from "react"
 import { Loader2, Copy, Check, Mic, Eye, Globe, CalendarClock, AlertTriangle, RefreshCw, ChevronDown, Play, Wand2, FolderPlus, ArrowUpRight } from "lucide-react"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
-import { analyzeLibraryAd, getSavedAdAnalysis, getConceptTargets, createConceptFromAnalysis, type ConceptTarget, type LibraryAdAnalysis, type LibraryAdInput, type Point } from "@/lib/actions/ad-analysis"
+import { startAnalysis, subscribeJobs, jobsVersion, getJob, watchJob, unwatchJob, dismissJob } from "@/lib/ad-lab/analysis-jobs"
+import { getConceptTargets, createConceptFromAnalysis, type ConceptTarget, type LibraryAdAnalysis, type LibraryAdInput, type Point } from "@/lib/actions/ad-analysis"
 import { ANGLE_GUIDE } from "@/lib/constants/creatives"
 import { cn } from "@/lib/utils"
 
@@ -67,9 +68,15 @@ function Points({ title, items, tone }: { title: string; items: Point[]; tone: s
 // librería (asignar/crear concepto vive en la tarjeta del embudo).
 export function ConceptAnalysisModal({ ad, open, onClose, initial = null, onClone, mode = "library" }: { ad: LibraryAdInput; open: boolean; onClose: () => void; initial?: LibraryAdAnalysis | null; onClone?: () => void; mode?: "library" | "asset" }) {
   const isAsset = mode === "asset"
-  const [a, setA] = useState<LibraryAdAnalysis | null>(initial)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const id = ad.adArchiveId
+  // El trabajo vive fuera del modal (lib/ad-lab/analysis-jobs.ts): cerrar no lo
+  // cancela y reabrir se engancha al que sigue corriendo.
+  useSyncExternalStore(subscribeJobs, jobsVersion, () => 0)
+  const job = getJob(id)
+  const a: LibraryAdAnalysis | null = (job?.status === "done" ? job.result : null) ?? initial
+  const busy = job?.status === "running"
+  const error = job?.status === "error" ? job.error : null
+  const [confirmClose, setConfirmClose] = useState(false)
   const [tab, setTab] = useState<Tab>("concepto")
   const [copied, setCopied] = useState(false)
   const [now, setNow] = useState(0)
@@ -77,12 +84,17 @@ export function ConceptAnalysisModal({ ad, open, onClose, initial = null, onClon
   const [hookCopied, setHookCopied] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
 
-  function run(force: boolean) {
-    setBusy(true); setError(null)
-    const p = force ? analyzeLibraryAd(ad) : getSavedAdAnalysis(ad.adArchiveId).then((saved) => saved ?? analyzeLibraryAd(ad))
-    p.then(setA).catch((e) => setError(e instanceof Error ? e.message : String(e))).finally(() => setBusy(false))
+  function run(force: boolean) { startAnalysis(ad, force, mode) }
+  useEffect(() => {
+    if (!open) return
+    watchJob(id)
+    if (!a && !busy) run(false)
+    return () => { unwatchJob(id); const j = getJob(id); if (j && j.status !== "running") dismissJob(id) }
+  }, [open, id]) // eslint-disable-line react-hooks/exhaustive-deps
+  function requestClose() {
+    if (busy) setConfirmClose(true)
+    else onClose()
   }
-  useEffect(() => { if (open && !a && !busy) run(false) }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function seek(t: string) {
     const r = range(t), v = videoRef.current
@@ -101,8 +113,20 @@ export function ConceptAnalysisModal({ ad, open, onClose, initial = null, onClon
   const activeIdx = a ? a.estructura.findIndex((e) => { const r = range(e.t); return !!r && now >= r[0] && now < r[1] }) : -1
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-[min(1120px,96vw)] w-[96vw] h-[90vh] p-0 gap-0 overflow-y-auto md:overflow-hidden flex flex-col">
+    <Dialog open={open} onOpenChange={(o) => !o && requestClose()}>
+      <DialogContent className="max-w-[min(1120px,96vw)] w-[96vw] h-[90vh] p-0 gap-0 overflow-y-auto md:overflow-hidden flex flex-col relative">
+        {confirmClose && busy && (
+          <div className="absolute inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="max-w-sm w-full rounded-xl border bg-background shadow-lg p-5 space-y-3">
+              <p className="text-sm font-semibold flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" />El análisis sigue en curso</p>
+              <p className="text-xs text-muted-foreground">Si cierras, seguirá corriendo en segundo plano y te avisaremos aquí en el dashboard cuando termine. Solo se pierde si recargas o cierras la pestaña.</p>
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => setConfirmClose(false)} className="h-8 px-3 rounded-md border text-xs hover:bg-muted">Seguir aquí</button>
+                <button type="button" onClick={() => { setConfirmClose(false); onClose() }} className="h-8 px-3 rounded-md bg-foreground text-background text-xs font-medium hover:opacity-90">Cerrar y avisarme</button>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[320px_minmax(0,1fr)]">
           {/* Creativo */}
           <aside className="bg-black flex flex-col min-h-0 min-w-0">
@@ -129,7 +153,7 @@ export function ConceptAnalysisModal({ ad, open, onClose, initial = null, onClon
                   {!isAsset && <button onClick={() => run(true)} disabled={busy} title="Volver a analizar (cuesta transcripción e IA)" className="h-8 px-2.5 rounded-md border border-border text-xs inline-flex items-center gap-1 hover:bg-muted disabled:opacity-50"><RefreshCw className={cn("w-3.5 h-3.5", busy && "animate-spin")} /></button>}
                 </div>
               )}
-              {a && !isAsset && <p className="text-[10px] text-muted-foreground">Analizado {new Date(a.analyzedAt ?? Date.now()).toLocaleDateString("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>}
+              {a && !isAsset && a.analyzedAt && <p className="text-[10px] text-muted-foreground">Analizado {new Date(a.analyzedAt).toLocaleDateString("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>}
             </div>
           </aside>
 
