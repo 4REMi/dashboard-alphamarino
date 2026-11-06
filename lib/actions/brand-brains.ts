@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import type { BrandBrain, BrandBrainAsset, BrandLine } from "@/lib/types"
+import { mirrorUrlToStorage } from "@/lib/brand-brains/storage"
 
 async function assertAuth() {
   const supabase = await createClient()
@@ -36,30 +37,6 @@ export async function getBrandBrain(id: string): Promise<BrandBrain | null> {
   ])
   if (!brainRes.data) return null
   return { ...brainRes.data, assets: assetsRes.data ?? [] } as BrandBrain
-}
-
-// Download a remote URL and upload it to Storage, return public URL or null
-async function mirrorUrlToStorage(
-  brainId: string,
-  sourceUrl: string,
-  filename: string,
-): Promise<string | null> {
-  try {
-    const res = await fetch(sourceUrl, { signal: AbortSignal.timeout(20_000) })
-    if (!res.ok) return null
-    const buffer      = await res.arrayBuffer()
-    const contentType = res.headers.get("content-type") ?? "image/jpeg"
-    const ext         = (contentType.split("/")[1]?.split(";")[0] ?? "jpg").slice(0, 4)
-    const path        = `${brainId}/${filename}.${ext}`
-    const admin       = createAdminClient()
-    const { error }   = await admin.storage.from("brand-brains").upload(path, buffer, { contentType, upsert: true })
-    if (error) { console.error("[brand-brains] mirrorUrlToStorage error:", error.message); return null }
-    const { data: { publicUrl } } = admin.storage.from("brand-brains").getPublicUrl(path)
-    return publicUrl
-  } catch (e) {
-    console.error("[brand-brains] mirrorUrlToStorage exception:", e)
-    return null
-  }
 }
 
 // Upload a single logo file to Storage and return its public URL.

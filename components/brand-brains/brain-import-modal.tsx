@@ -4,6 +4,7 @@ import { useState } from "react"
 import { X, Globe, Loader2, Sparkles, AlertCircle } from "lucide-react"
 import type { BrandBrain } from "@/lib/types"
 import { importBrainFromInstagram, importBrainFromWebsite } from "@/lib/actions/brand-brain-import"
+import { mergeBrainDrafts } from "@/lib/brand-brains/merge-draft"
 
 interface Props {
   onClose:      () => void
@@ -28,25 +29,7 @@ export function BrainImportModal({ onClose, onDraftReady }: Props) {
 
       const results = await Promise.all(tasks)
 
-      // Merge: first source is base, second fills empty fields
-      const draft = results.reduce<Partial<BrandBrain>>((acc, r) => {
-        return {
-          ...r,
-          // Keep non-empty values from previous sources
-          name:            acc.name            || r.name,
-          industry:        acc.industry        || r.industry,
-          tone_of_voice:   acc.tone_of_voice   || r.tone_of_voice,
-          description:     acc.description     || r.description,
-          target_audience: acc.target_audience || r.target_audience,
-          logo_url:        acc.logo_url        || r.logo_url,
-          // Merge arrays, deduplicate
-          usps:         [...new Set([...(acc.usps ?? []),         ...(r.usps ?? [])])],
-          key_benefits: [...new Set([...(acc.key_benefits ?? []), ...(r.key_benefits ?? [])])],
-          pain_points:  [...new Set([...(acc.pain_points ?? []),  ...(r.pain_points ?? [])])],
-          ctas:         [...new Set([...(acc.ctas ?? []),         ...(r.ctas ?? [])])],
-          key_features: [...new Set([...(acc.key_features ?? []), ...(r.key_features ?? [])])],
-        }
-      }, {})
+      const draft = mergeBrainDrafts(results)
 
       onDraftReady(draft)
     } catch (err) {

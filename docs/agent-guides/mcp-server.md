@@ -3,7 +3,7 @@
 **Ruta:** `/api/mcp` (endpoint, no una página) — la UI para generar keys vive en
 `/employees/[id]` (tu propio perfil, sección "API keys de IA (MCP)")
 **Para quién:** cualquier empleado con sesión — cada persona genera su propia key
-**Actualizado:** 2026-11-05
+**Actualizado:** 2026-11-06
 
 ## Qué es y para qué sirve
 
@@ -452,3 +452,11 @@ Ahora responde 405 (permitido por Streamable HTTP); los clientes usan POST.
 ## generar_recibo — 2026-11-05
 
 `lib/mcp/receipt-tools.ts`. Permiso `view_global_finances`. Mismo flujo que `/recibo` del bot de Telegram (`sendReciboToMake` en `lib/telegram-bot/handlers/recibos.ts`, compartido): manda a `MAKE_RECIBOS_WEBHOOK_URL` con monto en letras determinístico, email del cliente si existe, estatus Pendiente y `fuente: "Claude (MCP)"`. El PDF lo regresa Make al chat `TELEGRAM_ALLOWED_CHAT_ID`. Dos pasos con `confirmar`. Si el comprobante es imagen, Claude extrae los datos antes de llamar.
+
+## Brand Brains: importar y crear — 2026-11-06
+
+`lib/mcp/brand-brain-tools.ts`. Permiso `access_brand_brains` (el mismo que deja entrar a `/brand-brains`).
+
+- `importar_brand_brain(instagram?, sitio_web?)` — mismo análisis que el botón "Importar" de `/brand-brains`: Instagram (perfil + 15 posts vía Apify, `APIFY_API_TOKEN`) y/o sitio web (texto + colores del CSS), analizados con Claude. Si vienen los dos, se unen igual que en el modal (`mergeBrainDrafts`, `lib/brand-brains/merge-draft.ts`). **No guarda nada**: devuelve vista previa + `borrador` en JSON y avisa si ya existe un Brand Brain con ese nombre. Con Instagram tarda 1-2 min.
+- `crear_brand_brain(nombre, industria?, idioma?, descripcion?, tono_de_voz?, audiencia?, usps?, beneficios?, dolores?, caracteristicas?, ctas?, colores?, contexto_adicional?, iniciales?, logo_url?, confirmar)` — da de alta el Brand Brain (normalmente con el borrador, ajustado con el usuario). Dos pasos con `confirmar`. `logo_url` (solo https; la foto de perfil de Instagram expira) se copia al bucket `brand-brains` como logo y logo cuadrado. `created_by` = quien llama.
+- El núcleo vive en módulos SIN `"use server"` (`lib/brand-brains/import-core.ts`, `lib/brand-brains/storage.ts`), compartidos con las server actions de la UI (`lib/actions/brand-brain-import.ts`, `createBrandBrain`). Deliberadamente no se agregó `actingProfileId` a esas server actions: una action exportada se puede llamar directo desde el navegador con cualquier id.
