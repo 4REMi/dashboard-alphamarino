@@ -1,5 +1,6 @@
 "use server"
 
+import { assertActingProfile } from "@/lib/trusted-context"
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
@@ -34,6 +35,7 @@ export async function getDeliverablesForTasks(taskIds: string[]) {
 }
 
 export async function submitDeliverable(formData: FormData, actingProfileId?: string) {
+  assertActingProfile(actingProfileId)
   // actingProfileId: solo el servidor MCP (sin cookies), mismo patrón que tasks.ts.
   let user: { id: string } | null = null
   if (actingProfileId) {

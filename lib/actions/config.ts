@@ -1,5 +1,6 @@
 "use server"
 
+import { assertActingProfile } from "@/lib/trusted-context"
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
@@ -66,6 +67,7 @@ export async function getProjectTypeBadges(): Promise<{ id: string; name: string
 }
 
 export async function createProjectType(formData: FormData, actingProfileId?: string) {
+  assertActingProfile(actingProfileId)
   const supabase = await opsClient(actingProfileId)
   const { data, error } = await supabase.from("project_types").insert({
     name: formData.get("name") as string,
@@ -81,6 +83,7 @@ export async function createProjectType(formData: FormData, actingProfileId?: st
 }
 
 export async function updateProjectType(id: string, formData: FormData, actingProfileId?: string) {
+  assertActingProfile(actingProfileId)
   const supabase = await opsClient(actingProfileId)
   const defaultPhaseSetId = formData.get("default_phase_set_id") as string
   const { data, error } = await supabase
@@ -103,6 +106,7 @@ export async function updateProjectType(id: string, formData: FormData, actingPr
 }
 
 export async function deleteProjectType(id: string, actingProfileId?: string) {
+  assertActingProfile(actingProfileId)
   const supabase = await opsClient(actingProfileId)
   const { error } = await supabase.from("project_types").delete().eq("id", id)
   if (error) throw error
@@ -130,6 +134,7 @@ export async function getPhaseSets() {
 }
 
 export async function createPhaseSet(formData: FormData, actingProfileId?: string) {
+  assertActingProfile(actingProfileId)
   const supabase = await opsClient(actingProfileId)
   const projectTypeId = formData.get("project_type_id") as string
   const { data, error } = await supabase.from("phase_sets").insert({
@@ -143,6 +148,7 @@ export async function createPhaseSet(formData: FormData, actingProfileId?: strin
 }
 
 export async function updatePhaseSet(id: string, formData: FormData, actingProfileId?: string) {
+  assertActingProfile(actingProfileId)
   const supabase = await opsClient(actingProfileId)
   const projectTypeId = formData.get("project_type_id") as string
   const { error } = await supabase
@@ -158,6 +164,7 @@ export async function updatePhaseSet(id: string, formData: FormData, actingProfi
 }
 
 export async function deletePhaseSet(id: string, actingProfileId?: string) {
+  assertActingProfile(actingProfileId)
   const supabase = await opsClient(actingProfileId)
   const { error } = await supabase.from("phase_sets").delete().eq("id", id)
   if (error) throw error
@@ -170,6 +177,7 @@ export async function deletePhaseSet(id: string, actingProfileId?: string) {
 // ============================================================
 
 export async function addPhaseToSet(phaseSetId: string, formData: FormData, actingProfileId?: string) {
+  assertActingProfile(actingProfileId)
   const supabase = await opsClient(actingProfileId)
   // Get current max order
   const { data: existing } = await supabase
@@ -193,6 +201,7 @@ export async function addPhaseToSet(phaseSetId: string, formData: FormData, acti
 }
 
 export async function updatePhaseInSet(phaseId: string, formData: FormData, actingProfileId?: string) {
+  assertActingProfile(actingProfileId)
   const supabase = await opsClient(actingProfileId)
   const { error } = await supabase
     .from("phase_set_phases")
@@ -207,6 +216,7 @@ export async function updatePhaseInSet(phaseId: string, formData: FormData, acti
 }
 
 export async function deletePhaseFromSet(phaseId: string, actingProfileId?: string) {
+  assertActingProfile(actingProfileId)
   const supabase = await opsClient(actingProfileId)
   const { error } = await supabase.from("phase_set_phases").delete().eq("id", phaseId)
   if (error) throw error
@@ -215,6 +225,7 @@ export async function deletePhaseFromSet(phaseId: string, actingProfileId?: stri
 }
 
 export async function reorderPhaseInSet(phaseSetId: string, orderedIds: string[], actingProfileId?: string) {
+  assertActingProfile(actingProfileId)
   const supabase = await opsClient(actingProfileId)
   const updates = orderedIds.map((id, i) =>
     supabase.from("phase_set_phases").update({ phase_order: i }).eq("id", id)
@@ -225,6 +236,7 @@ export async function reorderPhaseInSet(phaseSetId: string, orderedIds: string[]
 }
 
 export async function linkPhaseSetToProjectType(projectTypeId: string, phaseSetId: string | null, actingProfileId?: string) {
+  assertActingProfile(actingProfileId)
   const supabase = await opsClient(actingProfileId)
   const { error } = await supabase
     .from("project_types")
@@ -247,6 +259,7 @@ export async function getPositions() {
 }
 
 export async function createPosition(name: string, actingProfileId?: string) {
+  assertActingProfile(actingProfileId)
   const supabase = await opsClient(actingProfileId)
   const { data, error } = await supabase.from("positions").insert({ name }).select().single()
   if (error) throw error
@@ -257,6 +270,7 @@ export async function createPosition(name: string, actingProfileId?: string) {
 }
 
 export async function updatePosition(id: string, name: string, actingProfileId?: string) {
+  assertActingProfile(actingProfileId)
   const supabase = await opsClient(actingProfileId)
   const { error } = await supabase.from("positions").update({ name }).eq("id", id)
   if (error) throw error
@@ -266,6 +280,7 @@ export async function updatePosition(id: string, name: string, actingProfileId?:
 }
 
 export async function deletePosition(id: string, actingProfileId?: string) {
+  assertActingProfile(actingProfileId)
   const supabase = await opsClient(actingProfileId)
   const { error } = await supabase.from("positions").delete().eq("id", id)
   if (error) throw error
@@ -294,6 +309,7 @@ export async function getTaskSets() {
 }
 
 export async function createTaskSet(formData: FormData, actingProfileId?: string) {
+  assertActingProfile(actingProfileId)
   const supabase = await opsClient(actingProfileId)
   const { data, error } = await supabase.from("task_sets").insert({
     name: formData.get("name") as string,
@@ -306,6 +322,7 @@ export async function createTaskSet(formData: FormData, actingProfileId?: string
 }
 
 export async function updateTaskSet(id: string, formData: FormData, actingProfileId?: string) {
+  assertActingProfile(actingProfileId)
   const supabase = await opsClient(actingProfileId)
   const { error } = await supabase.from("task_sets").update({
     name: formData.get("name") as string,
@@ -317,6 +334,7 @@ export async function updateTaskSet(id: string, formData: FormData, actingProfil
 }
 
 export async function deleteTaskSet(id: string, actingProfileId?: string) {
+  assertActingProfile(actingProfileId)
   const supabase = await opsClient(actingProfileId)
   const { error } = await supabase.from("task_sets").delete().eq("id", id)
   if (error) throw error
@@ -325,6 +343,7 @@ export async function deleteTaskSet(id: string, actingProfileId?: string) {
 }
 
 export async function addTaskToSet(taskSetId: string, formData: FormData, actingProfileId?: string) {
+  assertActingProfile(actingProfileId)
   const supabase = await opsClient(actingProfileId)
   const { data: existing } = await supabase
     .from("task_set_tasks")
@@ -355,6 +374,7 @@ export async function addTaskToSet(taskSetId: string, formData: FormData, acting
 }
 
 export async function updateTaskInSet(taskId: string, formData: FormData, actingProfileId?: string) {
+  assertActingProfile(actingProfileId)
   const supabase = await opsClient(actingProfileId)
   const sopIdRaw = formData.get("sop_id") as string
   const positionIdRaw = formData.get("default_position_id") as string
@@ -382,6 +402,7 @@ export async function updateTaskInSet(taskId: string, formData: FormData, acting
 }
 
 export async function deleteTaskFromSet(taskId: string, actingProfileId?: string) {
+  assertActingProfile(actingProfileId)
   const supabase = await opsClient(actingProfileId)
   const { error } = await supabase.from("task_set_tasks").delete().eq("id", taskId)
   if (error) throw error
@@ -390,6 +411,7 @@ export async function deleteTaskFromSet(taskId: string, actingProfileId?: string
 }
 
 export async function reorderTasksInSet(taskSetId: string, orderedIds: string[], actingProfileId?: string) {
+  assertActingProfile(actingProfileId)
   const supabase = await opsClient(actingProfileId)
   const updates = orderedIds.map((id, i) =>
     supabase.from("task_set_tasks").update({ task_order: i }).eq("id", id)
@@ -400,6 +422,7 @@ export async function reorderTasksInSet(taskSetId: string, orderedIds: string[],
 }
 
 export async function linkTaskSetToPhase(phaseId: string, taskSetId: string | null, actingProfileId?: string) {
+  assertActingProfile(actingProfileId)
   const supabase = await opsClient(actingProfileId)
   const { error } = await supabase
     .from("phase_set_phases")
@@ -420,6 +443,7 @@ export async function addChecklistItemToSetTask(
   isBlocking: boolean,
   actingProfileId?: string
 ) {
+  assertActingProfile(actingProfileId)
   const supabase = await opsClient(actingProfileId)
   const { data: existing } = await supabase
     .from("task_set_checklist_items")
@@ -445,6 +469,7 @@ export async function updateSetTaskChecklistItem(
   fields: { text?: string; is_blocking?: boolean },
   actingProfileId?: string
 ) {
+  assertActingProfile(actingProfileId)
   const supabase = await opsClient(actingProfileId)
   const { error } = await supabase
     .from("task_set_checklist_items")
@@ -456,6 +481,7 @@ export async function updateSetTaskChecklistItem(
 }
 
 export async function deleteSetTaskChecklistItem(itemId: string, actingProfileId?: string) {
+  assertActingProfile(actingProfileId)
   const supabase = await opsClient(actingProfileId)
   const { error } = await supabase
     .from("task_set_checklist_items")
@@ -471,6 +497,7 @@ export async function reorderSetTaskChecklistItems(
   orderedIds: string[],
   actingProfileId?: string
 ) {
+  assertActingProfile(actingProfileId)
   const supabase = await opsClient(actingProfileId)
   await Promise.all(
     orderedIds.map((id, index) =>
@@ -569,6 +596,7 @@ export async function importOperationsTemplate(
   actingProfileId?: string,
   dryRun = false,
 ) {
+  assertActingProfile(actingProfileId)
   const supabase = await opsClient(actingProfileId)
 
   let template: ImportTemplate
@@ -793,6 +821,7 @@ export async function importOperationsTemplate(
 
 // Exporta un tipo de proyecto completo en el mismo formato que importa.
 export async function exportOperationsTemplate(projectTypeId: string, actingProfileId?: string): Promise<OperationsTemplate> {
+  assertActingProfile(actingProfileId)
   const supabase = await opsClient(actingProfileId)
   const { data: pt } = await supabase.from("project_types").select("*").eq("id", projectTypeId).single()
   if (!pt) throw new Error("Tipo de proyecto no encontrado")
@@ -894,6 +923,7 @@ async function deepCloneTaskSet(
 /** Deep-copies a PhaseSet (all phases + task sets + tasks + checklist items).
  *  The copy is not linked to any ProjectType — link it manually afterward. */
 export async function clonePhaseSet(phaseSetId: string, actingProfileId?: string) {
+  assertActingProfile(actingProfileId)
   const supabase = await opsClient(actingProfileId)
 
   const { data: source } = await supabase
@@ -935,6 +965,7 @@ export async function clonePhaseSet(phaseSetId: string, actingProfileId?: string
 
 /** Deep-copies a single phase (+ its task set) into a target PhaseSet. */
 export async function clonePhaseIntoPhaseSet(phaseId: string, targetPhaseSetId: string, afterPhaseId?: string | null, actingProfileId?: string) {
+  assertActingProfile(actingProfileId)
   const supabase = await opsClient(actingProfileId)
 
   const { data: source } = await supabase
@@ -1001,6 +1032,7 @@ export async function clonePhaseIntoPhaseSet(phaseId: string, targetPhaseSetId: 
 
 /** Deep-copies a single task (+ its checklist) into a target TaskSet, optionally after a given task. */
 export async function cloneTaskInTaskSet(taskId: string, targetTaskSetId: string, afterTaskId?: string | null, actingProfileId?: string) {
+  assertActingProfile(actingProfileId)
   const supabase = await opsClient(actingProfileId)
 
   const { data: source } = await supabase

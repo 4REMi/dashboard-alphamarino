@@ -1,5 +1,6 @@
 "use server"
 
+import { assertActingProfile } from "@/lib/trusted-context"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { revalidatePath } from "next/cache"
@@ -90,6 +91,7 @@ export async function deleteSop(id: string): Promise<void> {
 
 // Assign a SOP to a task_set_task (template level)
 export async function assignSopToTaskSetTask(taskSetTaskId: string, sopId: string | null, actingProfileId?: string): Promise<void> {
+  assertActingProfile(actingProfileId)
   let supabase = await createClient()
   // Desde MCP (sin sesión): solo admin, igual que el resto de Operations.
   if (actingProfileId) {

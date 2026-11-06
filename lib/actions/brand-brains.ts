@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import type { BrandBrain, BrandBrainAsset, BrandLine } from "@/lib/types"
 import { mirrorUrlToStorage } from "@/lib/brand-brains/storage"
+import { insertBrandLine, autofillBrandLineCore, type NewBrandLineFields, type BrandLineAutofill } from "@/lib/brand-brains/lines-core"
 
 async function assertAuth() {
   const supabase = await createClient()
@@ -274,30 +275,12 @@ export async function getAllBrandLines(): Promise<BrandLine[]> {
 
 export async function createBrandLine(
   brainId: string,
-  fields: { name: string; description?: string | null; usps?: string[]; pain_points?: string[]; keywords?: string[]; color?: string }
+  fields: NewBrandLineFields
 ): Promise<BrandLine> {
   const { supabase } = await assertAuth()
-  const { data: maxPos } = await supabase
-    .from("brand_lines")
-    .select("position")
-    .eq("brand_brain_id", brainId)
-    .order("position", { ascending: false })
-    .limit(1)
-    .single()
-
-  const { data, error } = await supabase.from("brand_lines").insert({
-    brand_brain_id: brainId,
-    name: fields.name,
-    description: fields.description || null,
-    usps: fields.usps ?? [],
-    pain_points: fields.pain_points ?? [],
-    keywords: fields.keywords ?? [],
-    color: fields.color ?? "#6366f1",
-    position: (maxPos?.position ?? -1) + 1,
-  }).select("*").single()
-  if (error) throw error
+  const line = await insertBrandLine(supabase, brainId, fields)
   revalidate(brainId)
-  return data as BrandLine
+  return line
 }
 
 export async function updateBrandLine(
@@ -325,59 +308,7 @@ export async function autofillBrandLine(
   lineName: string,
   brainId: string,
   userDescription?: string,
-): Promise<{ description: string; usps: string[]; pain_points: string[]; keywords: string[] }> {
+): Promise<BrandLineAutofill> {
   const { supabase } = await assertAuth()
-
-  const { data: brain } = await supabase
-    .from("brand_brains")
-    .select("name, industry, language, tone_of_voice, usps, key_benefits, pain_points, target_audience, description")
-    .eq("id", brainId)
-    .single()
-
-  if (!brain) throw new Error("Brand Brain no encontrado")
-
-  const systemPrompt = `Eres un estratega de marca y producto. A partir del nombre de un producto/servicio, una descripción opcional del usuario, y el contexto de la marca, genera la ficha de la línea de producto.
-
-Devuelve ÚNICAMENTE un objeto JSON válido con estos campos:
-- description: string — descripción concisa del producto/servicio (1-2 oraciones)
-- usps: string[] — 3-5 diferenciadores únicos de esta línea (frases cortas)
-- pain_points: string[] — 3-5 dolores del cliente que esta línea resuelve (frases cortas)
-- keywords: string[] — 5-8 palabras clave relevantes para esta línea (palabras sueltas o frases de 2-3 palabras)
-
-Si el usuario proporcionó una descripción, trátala como la fuente de verdad sobre qué es este producto/servicio (especialmente si el nombre es un nombre propio o de marca que el contexto general no explica) y redacta una versión pulida y más específica — no te limites a repetirla.
-
-Todo en ${brain.language ?? "español"}. Sin markdown, sin texto extra. Solo el JSON.`
-
-  const context = `MARCA: ${brain.name}
-- Industria: ${brain.industry ?? "—"}
-- Tono: ${brain.tone_of_voice ?? "—"}
-- USPs de marca: ${(brain.usps ?? []).join(", ") || "—"}
-- Dolores generales: ${(brain.pain_points ?? []).join(", ") || "—"}
-- Audiencia: ${brain.target_audience ?? "—"}
-- Descripción de marca: ${brain.description ?? "—"}
-
-LÍNEA DE PRODUCTO/SERVICIO A RELLENAR: "${lineName}"
-${userDescription?.trim() ? `DESCRIPCIÓN PROPORCIONADA POR EL USUARIO (fuente de verdad, úsala como base): "${userDescription.trim()}"` : ""}
-
-Genera la ficha de esta línea basándote en el contexto de la marca${userDescription?.trim() ? " y la descripción proporcionada" : ""}.`
-
-  const Anthropic = (await import("@anthropic-ai/sdk")).default
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-
-  const message = await client.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 1024,
-    messages: [{ role: "user", content: context }],
-    system: systemPrompt,
-  })
-
-  const text = message.content[0].type === "text" ? message.content[0].text : ""
-
-  try {
-    return JSON.parse(text)
-  } catch {
-    const match = text.match(/\{[\s\S]*\}/)
-    if (match) return JSON.parse(match[0])
-    throw new Error("AI returned invalid JSON")
-  }
+  return autofillBrandLineCore(supabase, lineName, brainId, userDescription)
 }

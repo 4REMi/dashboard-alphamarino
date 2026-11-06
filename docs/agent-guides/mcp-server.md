@@ -37,6 +37,18 @@ más estricto desde el inicio, no una copia de cómo funciona Telegram.
   vía el cliente admin. Cuando se omite (la UI normal, Captura rápida), la
   función se comporta exactamente igual que antes — es un parámetro aditivo, no
   un cambio de comportamiento para nadie más.
+  **Seguridad (2026-11-06)**: toda action exportada de un archivo `"use server"`
+  es un endpoint público, así que el `actingProfileId` que llega como argumento
+  NO se puede creer por sí solo (antes cualquiera podía llamar la action directo
+  con el id de un admin). Ahora la primera línea de cada action que lo recibe es
+  `assertActingProfile(actingProfileId)` (`lib/trusted-context.ts`): el id solo
+  vale si coincide con el perfil que el MCP autenticó en ESA MISMA petición.
+  `app/api/mcp/route.ts` corre toda la petición en `runTrusted("mcp", …)` y
+  `verifyMcpToken` fija el perfil con `setTrustedProfile` al validar el token
+  (API key u OAuth); una llamada desde el navegador no tiene ese contexto y se
+  rechaza con "Not authenticated". Igual para `markTaskDoneFromBot`: exige
+  `assertTrustedSource("telegram")`, que solo abre el webhook del bot tras validar
+  secreto y chat.
 - **Meta Ads** (`lib/mcp/meta-tools.ts`): `meta_estado_cliente` (lee en vivo
   campañas → conjuntos → anuncios con ids, presupuesto CBO/ABO y rendimiento
   del ciclo), `meta_cambiar_estado`, `meta_presupuesto`, `meta_renombrar`,
@@ -189,7 +201,10 @@ validar en la siguiente llamada y el refresh token ya no se canjea.
 2. Si esa action no acepta ya un `actingProfileId` opcional, agrégaselo (ver el
    patrón exacto en `requireTaskPermission`, `lib/actions/tasks.ts`, y en
    `addLogEntry`, `lib/actions/projects.ts`) — nunca le quites su chequeo de
-   permiso normal para el camino con sesión.
+   permiso normal para el camino con sesión. **Obligatorio**: la primera línea de
+   la action debe ser `assertActingProfile(actingProfileId)`. Alternativa (la que
+   usan Brand Brains): poner la lógica en un módulo SIN `"use server"` que reciba
+   el cliente/perfil ya verificado, y que la action con sesión y el MCP lo llamen.
 3. Registra la tool en `registerMcpTools` (`lib/mcp/tools.ts`) con
    `server.registerTool(nombre, {title, description, inputSchema}, handler)` —
    el handler recibe `(args, ctx)`, y el profile que está llamando sale de
@@ -459,4 +474,15 @@ Ahora responde 405 (permitido por Streamable HTTP); los clientes usan POST.
 
 - `importar_brand_brain(instagram?, sitio_web?)` — mismo análisis que el botón "Importar" de `/brand-brains`: Instagram (perfil + 15 posts vía Apify, `APIFY_API_TOKEN`) y/o sitio web (texto + colores del CSS), analizados con Claude. Si vienen los dos, se unen igual que en el modal (`mergeBrainDrafts`, `lib/brand-brains/merge-draft.ts`). **No guarda nada**: devuelve vista previa + `borrador` en JSON y avisa si ya existe un Brand Brain con ese nombre. Con Instagram tarda 1-2 min.
 - `crear_brand_brain(nombre, industria?, idioma?, descripcion?, tono_de_voz?, audiencia?, usps?, beneficios?, dolores?, caracteristicas?, ctas?, colores?, contexto_adicional?, iniciales?, logo_url?, confirmar)` — da de alta el Brand Brain (normalmente con el borrador, ajustado con el usuario). Dos pasos con `confirmar`. `logo_url` (solo https; la foto de perfil de Instagram expira) se copia al bucket `brand-brains` como logo y logo cuadrado. `created_by` = quien llama.
-- El núcleo vive en módulos SIN `"use server"` (`lib/brand-brains/import-core.ts`, `lib/brand-brains/storage.ts`), compartidos con las server actions de la UI (`lib/actions/brand-brain-import.ts`, `createBrandBrain`). Deliberadamente no se agregó `actingProfileId` a esas server actions: una action exportada se puede llamar directo desde el navegador con cualquier id.
+- El núcleo vive en módulos SIN `"use server"` (`lib/brand-brains/import-core.ts`, `lib/brand-brains/storage.ts`, `lib/brand-brains/lines-core.ts`), compartidos con las server actions de la UI (`lib/actions/brand-brain-import.ts`, `createBrandBrain`, `createBrandLine`, `autofillBrandLine`). La UI les pasa su cliente con sesión (RLS); el MCP, el admin tras checar `access_brand_brains`.
+
+## Brand Brains: leer, editar y brand lines — 2026-11-06
+
+También en `lib/mcp/brand-brain-tools.ts`, mismo permiso `access_brand_brains`. Brand Brain y línea se buscan por nombre (exacto o parcial; si hay varias coincidencias pide ser más específico).
+
+- `brand_brains(busqueda?)` — lista con industria, idioma y nombres de sus brand lines.
+- `detalle_brand_brain(brand_brain)` — todos los campos + cada brand line (descripción, USPs, dolores, keywords, color).
+- `editar_brand_brain(brand_brain, nuevo_nombre?, industria?, …, colores?, confirmar)` — solo cambia lo indicado; las listas se REEMPLAZAN completas (leer detalle primero). Texto vacío borra. Dos pasos con antes → después. Logos: siguen solo en la UI.
+- `crear_brand_line(brand_brain, nombre, descripcion?, usps?, dolores?, keywords?, color?, autollenar?, confirmar)` — `autollenar` usa la misma IA que el botón de la UI (`autofillBrandLineCore`; la `descripcion` es la fuente de verdad) y solo llena lo que no mandaste. La vista previa devuelve los campos generados para confirmar exactamente eso. Avisa si ya existe una línea con ese nombre. Posición: al final.
+- `editar_brand_line(brand_brain, linea, nuevo_nombre?, descripcion?, usps?, dolores?, keywords?, color?, confirmar)` — igual que editar_brand_brain.
+- Borrar Brand Brains o líneas sigue siendo solo desde la UI.

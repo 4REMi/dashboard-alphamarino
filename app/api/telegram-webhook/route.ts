@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { handleMessage } from "@/lib/telegram-bot/router"
 import { sendMessage } from "@/lib/telegram-bot/telegram"
 import { tryLinkTelegramAccount } from "@/lib/notifications/link"
+import { runTrusted } from "@/lib/trusted-context"
 
 export async function POST(req: NextRequest) {
   // Verifies the update really came from Telegram (not just anyone who found
@@ -34,10 +35,13 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    await handleMessage(chatId, text ?? "", {
+    // Contexto de confianza (lib/trusted-context.ts): solo aquí, ya validado
+    // el secreto del webhook y el chat permitido, pueden correr las actions
+    // exclusivas del bot (markTaskDoneFromBot).
+    await runTrusted("telegram", () => handleMessage(chatId, text ?? "", {
       senderName: message.from?.first_name as string | undefined,
       photoFileId: photo?.[photo.length - 1]?.file_id,
-    })
+    }))
   } catch (err) {
     await sendMessage(chatId, `⚠️ Error: ${err instanceof Error ? err.message : "desconocido"}`)
   }

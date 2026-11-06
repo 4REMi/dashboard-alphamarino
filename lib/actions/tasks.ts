@@ -1,5 +1,6 @@
 "use server"
 
+import { assertActingProfile, assertTrustedSource } from "@/lib/trusted-context"
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
@@ -117,6 +118,7 @@ function parsePingRecipientIds(formData: FormData): string[] | null {
 }
 
 export async function createTask(formData: FormData, actingProfileId?: string) {
+  assertActingProfile(actingProfileId)
   const projectId = (formData.get("project_id") as string) || null
   await requireTaskPermission(projectId, actingProfileId)
 
@@ -314,6 +316,7 @@ async function finalizeTaskDone(
 }
 
 export async function updateTaskStatus(id: string, status: TaskStatus, projectId: string | null, actingProfileId?: string) {
+  assertActingProfile(actingProfileId)
   const user = await requireTaskPermission(projectId, actingProfileId)
 
   const admin = createAdminClient()
@@ -351,6 +354,10 @@ export async function updateTaskStatus(id: string, status: TaskStatus, projectId
 // resolved which profile is completing it from the chat_id before calling
 // this.
 export async function markTaskDoneFromBot(taskId: string, completedByProfileId: string): Promise<void> {
+  // Solo desde el webhook de Telegram (que ya validó secreto y chat): como
+  // action exportada, sin esto cualquiera podía completar tareas a nombre de
+  // cualquier perfil.
+  assertTrustedSource("telegram")
   const admin = createAdminClient()
   const { data: before } = await admin.from("tasks").select("status, project_id").eq("id", taskId).single()
   await finalizeTaskDone(admin, taskId, completedByProfileId, before?.status === "Done")

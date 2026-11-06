@@ -1,5 +1,6 @@
 "use server"
 
+import { assertActingProfile } from "@/lib/trusted-context"
 import { offersToJson } from "@/lib/utils/offer-json"
 import { revalidatePath } from "next/cache"
 import Anthropic from "@anthropic-ai/sdk"
@@ -232,6 +233,7 @@ export async function importServiceOffers(json: string): Promise<{ offers: Servi
 }
 
 export async function createServiceOffer(formData: FormData, actingProfileId?: string): Promise<ServiceOffer> {
+  assertActingProfile(actingProfileId)
   const profile = await requireOffersPermission(actingProfileId)
   const admin = createAdminClient()
 
@@ -261,6 +263,7 @@ export async function createServiceOffer(formData: FormData, actingProfileId?: s
 }
 
 export async function updateServiceOffer(id: string, formData: FormData, actingProfileId?: string): Promise<ServiceOffer> {
+  assertActingProfile(actingProfileId)
   await requireOffersPermission(actingProfileId)
   const admin = createAdminClient()
 
@@ -290,6 +293,7 @@ export async function updateServiceOffer(id: string, formData: FormData, actingP
 }
 
 export async function archiveServiceOffer(id: string, archived: boolean, actingProfileId?: string): Promise<void> {
+  assertActingProfile(actingProfileId)
   await requireOffersPermission(actingProfileId)
   const admin = createAdminClient()
   const { error } = await admin

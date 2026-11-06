@@ -1,5 +1,6 @@
 "use server"
 
+import { assertActingProfile } from "@/lib/trusted-context"
 import { revalidatePath } from "next/cache"
 import { assertNoCycleOverlap } from "@/lib/utils/cycle-overlap"
 import type { ProjectSignals } from "@/lib/utils/project-signals"
@@ -600,6 +601,7 @@ export async function createProject(
   selectedMemberIds?: string[],
   actingProfileId?: string,
 ): Promise<{ id: string }> {
+  assertActingProfile(actingProfileId)
   // Get authenticated user before switching to admin client. actingProfileId
   // solo lo pasa el servidor MCP (sin cookies), igual que en tasks.ts.
   let user: { id: string } | null = null
@@ -1622,6 +1624,7 @@ export async function addLogEntry(
   notifyOptions?: { team?: boolean; recipientIds?: string[] },
   details?: { eventDate?: string | null; category?: ProjectLogCategory | null; attachments?: LogAttachment[]; pinned?: boolean },
 ) {
+  assertActingProfile(actingProfileId)
   // Solo se mandan las columnas nuevas si se usan (sin migración 110 sigue funcionando).
   const extra: Record<string, unknown> = {}
   if (details?.attachments?.length) extra.attachments = details.attachments.map(({ url: _u, ...a }) => { void _u; return a })

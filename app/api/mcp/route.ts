@@ -1,6 +1,7 @@
 import { createMcpHandler, withMcpAuth } from "mcp-handler"
 import { registerMcpTools } from "@/lib/mcp/tools"
 import { verifyMcpToken } from "@/lib/mcp/auth"
+import { runTrusted } from "@/lib/trusted-context"
 
 // Remote MCP server — any MCP-compatible client (Claude with a remote
 // connector, Claude Desktop configured with this URL, etc.) points here
@@ -31,4 +32,11 @@ function GET() {
   return new Response("Method Not Allowed", { status: 405, headers: { Allow: "POST, DELETE" } })
 }
 
-export { GET, authHandler as POST, authHandler as DELETE }
+// Toda la petición corre dentro del contexto de confianza (lib/trusted-context.ts):
+// verifyMcpToken fija ahí el perfil autenticado, y las server actions que
+// reciben actingProfileId solo lo aceptan si coincide con él.
+function trusted(req: Request) {
+  return runTrusted("mcp", () => authHandler(req))
+}
+
+export { GET, trusted as POST, trusted as DELETE }

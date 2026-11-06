@@ -1,6 +1,7 @@
 import type { AuthInfo } from "@modelcontextprotocol/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { ACCESS_TOKEN_PREFIX, sha256 } from "@/lib/mcp/oauth"
+import { setTrustedProfile } from "@/lib/trusted-context"
 
 // Access token OAuth (ChatGPT y cualquier cliente que se conecte por
 // /oauth/authorize — ver lib/mcp/oauth.ts). Opaco, guardado como hash en
@@ -22,6 +23,7 @@ async function verifyOAuthAccessToken(bearerToken: string): Promise<AuthInfo | u
     () => {},
   )
 
+  setTrustedProfile(grant.profile_id)
   return {
     token: bearerToken,
     clientId: grant.client_id,
@@ -63,6 +65,7 @@ export async function verifyMcpToken(_req: Request, bearerToken?: string): Promi
     () => {},
   )
 
+  setTrustedProfile(key.profile_id)
   return {
     token: bearerToken,
     clientId: key.profile_id,
