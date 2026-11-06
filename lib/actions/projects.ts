@@ -851,55 +851,125 @@ export async function updateProject(id: string, formData: FormData) {
   revalidatePath(`/projects/${id}`)
 }
 
+// Server actions exportadas = endpoints públicos: cada una verifica sesión y
+// rol en el servidor (antes usaban el cliente admin sin revisar nada y
+// cualquiera podía archivar o borrar un proyecto llamándolas directo).
+// Mismos roles que muestra la UI (components/projects/project-actions.tsx):
+// eliminar → solo admin; completar/archivar/reactivar → admin o subadmin.
+async function requireProjectRole(allowed: ("admin" | "subadmin")[]) {
+  const authClient = await createClient()
+  const { data: { user } } = await authClient.auth.getUser()
+  if (!user) throw new Error("Not authenticated")
+  const { data: me } = await createAdminClient().from("profiles").select("role").eq("id", user.id).single()
+  if (!me || !allowed.includes(me.role)) throw new Error("Permission denied")
+}
+
+async function setProjectStatus(id: string, status: ProjectStatus) {
+  await requireProjectRole(["admin", "subadmin"])
+  const { error } = await createAdminClient().from("projects").update({ status }).eq("id", id)
+  if (error) throw error
+  revalidatePath("/projects")
+  revalidatePath(`/projects/${id}`)
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+export interface ProjectDeletionSummary {
+  name: string
+  tasks: number
+  phases: number
+  concepts: number
+  creatives: number
+  briefs: number
+  logEntries: number
+  files: number
+  income: number
+}
+
+// Lo que se pierde al eliminar (para el aviso de confirmación). Solo admin.
+export async function getProjectDeletionSummary(id: string): Promise<ProjectDeletionSummary> {
+  await requireProjectRole(["admin"])
+  if (!UUID_RE.test(id)) throw new Error("Proyecto inválido")
+  const admin = createAdminClient()
+  const { data: project } = await admin.from("projects").select("name").eq("id", id).single()
+  if (!project) throw new Error("Proyecto no encontrado")
+  const count = async (table: string) => {
+    const { count: n } = await admin.from(table).select("id", { count: "exact", head: true }).eq("project_id", id)
+    return n ?? 0
+  }
+  const [tasks, phases, concepts, creatives, briefs, logEntries, income, files] = await Promise.all([
+    count("tasks"), count("project_phases"), count("creative_concepts"), count("creative_assets"),
+    count("creative_briefs"), count("project_log_entries"), count("income"),
+    Promise.all(PROJECT_BUCKETS.map((b) => listStorageFolder(b, id))).then((r) => r.flat().length),
+  ])
+  return { name: project.name, tasks, phases, concepts, creatives, briefs, logEntries, files, income }
+}
+
+// Buckets donde cada proyecto guarda sus archivos bajo la carpeta "<projectId>/"
+// (creativos + miniaturas; imágenes de la bitácora).
+const PROJECT_BUCKETS = ["creative-assets", "project-log"] as const
+
+// Lista recursivamente todos los archivos bajo "<projectId>/" de un bucket.
+async function listStorageFolder(bucket: string, projectId: string): Promise<string[]> {
+  if (!UUID_RE.test(projectId)) return [] // nunca listar la raíz del bucket
+  const storage = createAdminClient().storage.from(bucket)
+  const out: string[] = []
+  const queue = [projectId]
+  while (queue.length) {
+    const prefix = queue.shift()!
+    for (let offset = 0; ; offset += 1000) {
+      const { data, error } = await storage.list(prefix, { limit: 1000, offset })
+      if (error || !data?.length) break
+      for (const item of data) {
+        const path = `${prefix}/${item.name}`
+        if (item.id === null) queue.push(path) // carpeta
+        else out.push(path)
+      }
+      if (data.length < 1000) break
+    }
+  }
+  return out
+}
+
 export async function deleteProject(id: string) {
+  await requireProjectRole(["admin"])
+  if (!UUID_RE.test(id)) throw new Error("Proyecto inválido")
   const supabase = createAdminClient()
+
+  // Se listan los archivos ANTES de borrar, y se borran DESPUÉS: si el
+  // DELETE falla, el proyecto queda intacto con sus archivos.
+  const files = await Promise.all(PROJECT_BUCKETS.map(async (b) => ({ bucket: b, paths: await listStorageFolder(b, id) })))
+
+  // La base borra en cascada tareas, fases, conceptos, creativos, briefs,
+  // bitácora, etc.; ingresos, nómina y reportes de bonos se conservan
+  // (project_id → NULL).
   const { error } = await supabase.from("projects").delete().eq("id", id)
   if (error) throw error
+
+  for (const { bucket, paths } of files) {
+    for (let i = 0; i < paths.length; i += 1000) {
+      const { error: rmErr } = await supabase.storage.from(bucket).remove(paths.slice(i, i + 1000))
+      if (rmErr) console.error(`[deleteProject] no se pudieron borrar archivos de ${bucket}:`, rmErr.message)
+    }
+  }
+
   revalidatePath("/projects")
 }
 
 export async function archiveProject(id: string) {
-  const supabase = createAdminClient()
-  const { error } = await supabase
-    .from("projects")
-    .update({ status: "Archived" })
-    .eq("id", id)
-  if (error) throw error
-  revalidatePath("/projects")
-  revalidatePath(`/projects/${id}`)
+  await setProjectStatus(id, "Archived")
 }
 
 export async function unarchiveProject(id: string) {
-  const supabase = createAdminClient()
-  const { error } = await supabase
-    .from("projects")
-    .update({ status: "Active" })
-    .eq("id", id)
-  if (error) throw error
-  revalidatePath("/projects")
-  revalidatePath(`/projects/${id}`)
+  await setProjectStatus(id, "Active")
 }
 
 export async function completeProject(id: string) {
-  const supabase = createAdminClient()
-  const { error } = await supabase
-    .from("projects")
-    .update({ status: "Completed" })
-    .eq("id", id)
-  if (error) throw error
-  revalidatePath("/projects")
-  revalidatePath(`/projects/${id}`)
+  await setProjectStatus(id, "Completed")
 }
 
 export async function reactivateProject(id: string) {
-  const supabase = createAdminClient()
-  const { error } = await supabase
-    .from("projects")
-    .update({ status: "Active" })
-    .eq("id", id)
-  if (error) throw error
-  revalidatePath("/projects")
-  revalidatePath(`/projects/${id}`)
+  await setProjectStatus(id, "Active")
 }
 
 // ============================================================

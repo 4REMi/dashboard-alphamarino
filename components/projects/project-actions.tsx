@@ -2,7 +2,7 @@
 
 import { useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { archiveProject, completeProject, reactivateProject, deleteProject } from "@/lib/actions/projects"
+import { archiveProject, completeProject, reactivateProject, deleteProject, getProjectDeletionSummary } from "@/lib/actions/projects"
 import { ProjectForm } from "@/components/projects/project-form"
 import { Button } from "@/components/ui/button"
 import type { Project, Customer, ProjectType, ProjectStatus, BrandBrain } from "@/lib/types"
@@ -90,8 +90,32 @@ export function ProjectActions({
           size="sm"
           disabled={isPending}
           onClick={() => {
-            if (!confirm("¿Eliminar permanentemente? Esto borrará todas las tareas, fases e ingresos del proyecto.")) return
-            run(() => deleteProject(projectId), true)
+            startTransition(async () => {
+              let s
+              try {
+                s = await getProjectDeletionSummary(projectId)
+              } catch (e) {
+                alert(e instanceof Error ? e.message : "No se pudo preparar la eliminación")
+                return
+              }
+              const lost = [
+                [s.tasks, "tarea(s)"],
+                [s.phases, "fase(s)"],
+                [s.concepts, "concepto(s)"],
+                [s.creatives, "creativo(s)"],
+                [s.briefs, "brief(s) con sus guiones"],
+                [s.logEntries, "nota(s) de bitácora"],
+                [s.files, "archivo(s) subidos (videos, imágenes, adjuntos)"],
+              ].filter(([n]) => (n as number) > 0).map(([n, label]) => `• ${n} ${label}`)
+              const msg =
+                `¿Eliminar PERMANENTEMENTE "${s.name}"? No se puede deshacer.\n\n` +
+                (lost.length ? `Se borrará:\n${lost.join("\n")}\n\n` : "") +
+                (s.income ? `Se conservan sus ${s.income} ingreso(s), sin proyecto ligado.\n\n` : "") +
+                `Si solo quieres sacarlo de la lista, usa "Archivar".`
+              if (!confirm(msg)) return
+              await deleteProject(projectId)
+              router.push("/projects")
+            })
           }}
           className="text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30"
         >
