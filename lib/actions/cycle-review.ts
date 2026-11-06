@@ -1,5 +1,6 @@
 "use server"
 
+import { requireSessionOrTrusted } from "@/lib/auth/guards"
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { assertNoCycleOverlap } from "@/lib/utils/cycle-overlap"
@@ -69,6 +70,7 @@ export interface CycleReviewData {
 }
 
 export async function getCycleReviewData(projectId: string, cycleId: string): Promise<CycleReviewData> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data: cycle, error } = await supabase.from("paid_media_cycles").select("*").eq("id", cycleId).single()
   if (error || !cycle) throw new Error("No se encontró el ciclo")

@@ -1,5 +1,6 @@
 "use server"
 
+import { requireSessionOrTrusted } from "@/lib/auth/guards"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import type { SupabaseClient } from "@supabase/supabase-js"
@@ -204,6 +205,7 @@ export interface MetaAdAccount {
 }
 
 export async function getMetaAdAccounts(): Promise<{ accounts: MetaAdAccount[]; error?: string }> {
+  await requireSessionOrTrusted()
   const accessToken = process.env.META_SYSTEM_USER_TOKEN
   if (!accessToken) return { accounts: [], error: "META_SYSTEM_USER_TOKEN no configurado" }
 
@@ -230,6 +232,7 @@ export async function getMetaAdAccounts(): Promise<{ accounts: MetaAdAccount[]; 
 }
 
 export async function syncMetaCampaigns(projectId: string, cycleId: string): Promise<{ synced: number; error?: string }> {
+  await requireSessionOrTrusted()
   const accessToken = process.env.META_SYSTEM_USER_TOKEN
   if (!accessToken) return { synced: 0, error: "META_SYSTEM_USER_TOKEN no está configurado en el servidor" }
 
@@ -351,6 +354,7 @@ export async function syncMetaCampaigns(projectId: string, cycleId: string): Pro
 }
 
 export async function getMetaCampaigns(projectId: string, cycleId: string): Promise<MetaCampaign[]> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("meta_campaigns")
@@ -399,6 +403,7 @@ function actionCount(actions: MetaAdInsightRow["actions"], types: string[]): num
 // ads de campañas que a nadie le importan, y evita el volumen de golpe
 // cuando una cuenta tiene 80+ creativos corriendo).
 export async function getMetaCampaignOptions(projectId: string): Promise<{ campaigns: { id: string; name: string; status: string | null }[]; error?: string }> {
+  await requireSessionOrTrusted()
   const accessToken = process.env.META_SYSTEM_USER_TOKEN
   if (!accessToken) return { campaigns: [], error: "META_SYSTEM_USER_TOKEN no está configurado en el servidor" }
 
@@ -424,6 +429,7 @@ export async function getMetaCampaignOptions(projectId: string): Promise<{ campa
 }
 
 export async function syncMetaAds(projectId: string, cycleId: string, campaignIds?: string[]): Promise<{ synced: number; error?: string }> {
+  await requireSessionOrTrusted()
   return runMetaAdsSync(await createClient(), projectId, cycleId, campaignIds)
 }
 
@@ -892,6 +898,7 @@ export interface MetaAdSetSummary {
 }
 
 export async function getMetaAdSets(campaignId: string): Promise<{ adSets: MetaAdSetSummary[]; error?: string }> {
+  await requireSessionOrTrusted()
   const accessToken = process.env.META_SYSTEM_USER_TOKEN
   if (!accessToken) return { adSets: [], error: "META_SYSTEM_USER_TOKEN no configurado" }
 
@@ -979,6 +986,7 @@ async function mapAdNodeToCreative(a: any, accessToken: string): Promise<MetaAdC
 }
 
 export async function getMetaAds(adSetId: string): Promise<{ ads: MetaAdCreative[]; error?: string }> {
+  await requireSessionOrTrusted()
   const accessToken = process.env.META_SYSTEM_USER_TOKEN
   if (!accessToken) return { ads: [], error: "META_SYSTEM_USER_TOKEN no configurado" }
 
@@ -1006,6 +1014,7 @@ export async function getMetaAds(adSetId: string): Promise<{ ads: MetaAdCreative
 // -imported creative (reimportMetaCreative) without repeating the whole
 // campaign -> ad set -> ads picker flow just to fix one broken import.
 export async function getMetaAdById(adId: string): Promise<{ ad: MetaAdCreative | null; error?: string }> {
+  await requireSessionOrTrusted()
   const accessToken = process.env.META_SYSTEM_USER_TOKEN
   if (!accessToken) return { ad: null, error: "META_SYSTEM_USER_TOKEN no configurado" }
 
@@ -1043,6 +1052,7 @@ export interface MetaCampaignSummary {
 // métricas lifetime (date_preset=maximum) — para poder elegir cuáles
 // explorar sin importar cuándo corrieron.
 export async function getMetaCampaignsHistory(accountId: string): Promise<{ campaigns: MetaCampaignSummary[]; error?: string }> {
+  await requireSessionOrTrusted()
   const accessToken = process.env.META_SYSTEM_USER_TOKEN
   if (!accessToken) return { campaigns: [], error: "META_SYSTEM_USER_TOKEN no configurado" }
 
@@ -1229,6 +1239,7 @@ export async function importMetaCreatives(projectId: string, inputs: ImportMetaC
 }
 
 export async function getMetaImportedCreatives(projectId: string): Promise<MetaCampaignCreative[]> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("meta_campaign_creatives")
@@ -1253,6 +1264,7 @@ function storagePathFromPublicUrl(url: string | null): string | null {
 // Delete — a creative imported wrong (or just no longer wanted) had no way
 // to be removed short of a manual SQL DELETE.
 export async function deleteMetaImportedCreative(projectId: string, creativeId: string): Promise<void> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data: row } = await supabase
     .from("meta_campaign_creatives")
@@ -1317,6 +1329,7 @@ export async function reimportMetaCreative(projectId: string, creativeId: string
 // deduplicados por Meta. No se pueden reconstruir sumando días. Se pide en
 // vivo; si falla, el reporte simplemente omite esas dos métricas.
 export async function getMetaRangeReach(projectId: string, since: string, until: string): Promise<{ reach: number; frequency: number } | null> {
+  await requireSessionOrTrusted()
   const accessToken = process.env.META_SYSTEM_USER_TOKEN
   if (!accessToken) return null
   const supabase = await createClient()

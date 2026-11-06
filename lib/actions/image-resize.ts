@@ -1,5 +1,6 @@
 "use server"
 
+import { requireSessionOrTrusted } from "@/lib/auth/guards"
 import { createAdminClient } from "@/lib/supabase/admin"
 
 const REPLICATE_BASE  = "https://api.replicate.com/v1"
@@ -16,6 +17,7 @@ function replicateHeaders() {
 
 /** Submit one resize prediction, retrying on 429 rate-limit responses. Returns prediction ID. */
 export async function submitResizePrediction(imageUrl: string, ratio: string): Promise<string> {
+  await requireSessionOrTrusted()
   const body = JSON.stringify({
     input: {
       prompt:              "",
@@ -59,6 +61,7 @@ export async function pollResizePrediction(predictionId: string): Promise<{
   url?: string
   error?: string
 }> {
+  await requireSessionOrTrusted()
   const token = process.env.REPLICATE_KEY
   if (!token) throw new Error("REPLICATE_KEY no configurado")
 
@@ -81,6 +84,7 @@ export async function pollResizePrediction(predictionId: string): Promise<{
 
 /** Mirror a Replicate output URL to Supabase Storage (they expire). Returns stable public URL. */
 export async function mirrorResizeResult(replicateUrl: string, sessionId: string, ratio: string): Promise<string> {
+  await requireSessionOrTrusted()
   const admin = createAdminClient()
   try {
     const fetched = await fetch(replicateUrl, { signal: AbortSignal.timeout(30_000) })

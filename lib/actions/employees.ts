@@ -1,5 +1,6 @@
 "use server"
 
+import { requireSessionOrTrusted, requireRole } from "@/lib/auth/guards"
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
@@ -7,6 +8,7 @@ import type { Role } from "@/lib/types"
 import type { UserPermissions } from "@/lib/permissions"
 
 export async function updateUserPermissions(userId: string, permissions: UserPermissions) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { error } = await supabase
     .from("profiles")
@@ -88,6 +90,7 @@ export async function updateNotificationPreferences(profileId: string, preferenc
 }
 
 export async function getEmployees() {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("profiles")
@@ -103,6 +106,7 @@ export async function getEmployees() {
 }
 
 export async function getEmployee(id: string) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data, error } = await supabase.from("profiles").select("*").eq("id", id).single()
   if (error) throw error
@@ -110,6 +114,7 @@ export async function getEmployee(id: string) {
 }
 
 export async function createEmployee(formData: FormData) {
+  await requireRole(["admin"])
   const supabase = await createClient()
 
   const email = formData.get("email") as string
@@ -147,6 +152,7 @@ export async function createEmployee(formData: FormData) {
 }
 
 export async function updateEmployee(id: string, formData: FormData) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const role = formData.get("role") as string
   const positionIdRaw = formData.get("position_id") as string
@@ -164,6 +170,7 @@ export async function updateEmployee(id: string, formData: FormData) {
 }
 
 export async function uploadAvatar(id: string, formData: FormData) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const file = formData.get("avatar") as File | null
   if (!file || file.size === 0) throw new Error("No se seleccionó archivo")
@@ -196,6 +203,7 @@ export async function uploadAvatar(id: string, formData: FormData) {
 }
 
 export async function resendPasswordLink(email: string) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: `${(process.env.NEXT_PUBLIC_SITE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/\/$/, '')}/auth/callback`,
@@ -257,6 +265,7 @@ export async function uploadOwnAvatar(formData: FormData) {
 }
 
 export async function deleteEmployee(id: string) {
+  await requireRole(["admin"])
   // Delete from auth.users via admin client (profiles will cascade)
   const adminClient = createAdminClient()
   const { error } = await adminClient.auth.admin.deleteUser(id)

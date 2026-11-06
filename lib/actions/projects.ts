@@ -1,5 +1,6 @@
 "use server"
 
+import { requireSessionOrTrusted, requireRole } from "@/lib/auth/guards"
 import { assertActingProfile } from "@/lib/trusted-context"
 import { revalidatePath } from "next/cache"
 import { assertNoCycleOverlap } from "@/lib/utils/cycle-overlap"
@@ -70,6 +71,7 @@ function resolvePingRecipients(
 // the project so newly-matched tasks get picked up without re-applying (and
 // wiping) the whole phase set.
 export async function reassignUnassignedTasks(projectId: string) {
+  await requireSessionOrTrusted()
   const supabase = createAdminClient()
   const positionToMembers = await buildPositionToMembers(supabase, projectId)
   if (positionToMembers.size === 0) return
@@ -210,6 +212,7 @@ async function copyTaskSetsToProject(
 // getProjects() trae joins pesados (tasks, phases, income) que un
 // selector de "elige un proyecto" no necesita.
 export async function getProjectOptions(): Promise<{ id: string; name: string }[]> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("projects")
@@ -221,6 +224,7 @@ export async function getProjectOptions(): Promise<{ id: string; name: string }[
 }
 
 export async function getProjects(includeArchived = false) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const now = new Date().toISOString().split("T")[0]
 
@@ -526,6 +530,7 @@ export async function getProjects(includeArchived = false) {
 }
 
 export async function getProject(id: string) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
 
   // Try full query; fall back without optional join tables
@@ -707,6 +712,7 @@ export async function importPhasesToProject(
   afterPhaseId: string | null,  // null = prepend, "end" = append, else insert after that phase
   notifyTeam = true,
 ) {
+  await requireRole(["admin", "subadmin"])
   const supabase = createAdminClient()
 
   // Fetch selected template phases
@@ -777,6 +783,7 @@ export async function importPhasesToProject(
 }
 
 export async function applyPhaseSetToProject(projectId: string, phaseSetId: string, notifyTeam = true) {
+  await requireRole(["admin", "subadmin"])
   const supabase = createAdminClient()
 
   // Get phases from the phase set
@@ -818,6 +825,7 @@ export async function applyPhaseSetToProject(projectId: string, phaseSetId: stri
 }
 
 export async function updateProject(id: string, formData: FormData) {
+  await requireRole(["admin", "subadmin"])
   const supabase = createAdminClient()
   const projectTypeId = formData.get("project_type_id") as string
 
@@ -977,6 +985,7 @@ export async function reactivateProject(id: string) {
 // ============================================================
 
 export async function addProjectMember(projectId: string, profileId: string) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { error } = await supabase
     .from("project_members")
@@ -998,6 +1007,7 @@ export async function addProjectMember(projectId: string, profileId: string) {
 }
 
 export async function removeProjectMember(projectId: string, profileId: string) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { error } = await supabase
     .from("project_members")
@@ -1017,6 +1027,7 @@ export async function updateProjectPhaseStatus(
   status: PhaseStatus,
   projectId: string
 ) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const updates: Record<string, unknown> = { status }
   if (status === "in_progress") updates.started_at = new Date().toISOString()
@@ -1089,6 +1100,7 @@ export async function reorderProjectPhases(projectId: string, orderedIds: string
 }
 
 export async function updateProjectPhaseNotes(phaseId: string, notes: string, projectId: string) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { error } = await supabase
     .from("project_phases")
@@ -1112,6 +1124,7 @@ export async function updateProjectPhaseNotes(phaseId: string, notes: string, pr
 // lenguaje natural), no un formulario aparte. Las columnas viejas se
 // dejan intactas en la base — no se tocan ni se limpian aquí.
 export async function upsertPaidMediaContext(projectId: string, formData: FormData) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const platforms = formData.getAll("platforms") as string[]
   const mainObjective = formData.get("main_objective") as string
@@ -1137,6 +1150,7 @@ export async function upsertPaidMediaContext(projectId: string, formData: FormDa
 // Qué campañas sincronizar desde el picker previo al sync — se recuerda
 // por proyecto, no se pregunta cada vez. [] o null = todas (default).
 export async function setSyncedCampaignIds(projectId: string, campaignIds: string[]) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { error } = await supabase
     .from("paid_media_context")
@@ -1151,6 +1165,7 @@ export async function setSyncedCampaignIds(projectId: string, campaignIds: strin
 // solo "campaign_id -> ventana" y nunca crece más que el número de
 // campañas activas de la cuenta.
 export async function setCampaignTrendOverride(projectId: string, campaignId: string, window: string | null) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data: current } = await supabase
     .from("paid_media_context")
@@ -1175,6 +1190,7 @@ export async function setCampaignTrendOverride(projectId: string, campaignId: st
 // ============================================================
 
 export async function getProjectCycles(projectId: string) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   try {
     const { data, error } = await supabase
@@ -1198,6 +1214,7 @@ export async function getProjectCycles(projectId: string) {
 //    cycle exists.
 // 3. Otherwise, today.
 export async function suggestNextCycleStartDate(projectId: string): Promise<string> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
 
   const [{ data: project }, { data: lastCycle }] = await Promise.all([
@@ -1246,6 +1263,7 @@ export async function suggestNextCycleStartDate(projectId: string): Promise<stri
 // hub card — avoids routing through the generic project-edit form for a
 // single field only relevant to paid media projects.
 export async function updateCycleStartDay(projectId: string, day: number | null): Promise<void> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { error } = await supabase
     .from("projects")
@@ -1264,6 +1282,7 @@ function addOneMonthMinusOneDay(startDate: string): string {
 }
 
 export async function openNewCycle(projectId: string, startDate: string, endDate?: string) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) throw new Error(`Formato de fecha inválido: "${startDate}"`)
@@ -1319,6 +1338,7 @@ export async function openNewCycle(projectId: string, startDate: string, endDate
 // recurrentes (reporte mensual, producción creativa) ahora viven en
 // "Alcance del servicio", que varía por proyecto.
 export async function updateCycle(cycleId: string, projectId: string, formData: FormData) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const campaignStatus = formData.get("campaign_status") as string
 
@@ -1343,6 +1363,7 @@ export async function updateCycleManualMetrics(cycleId: string, projectId: strin
   real_results: number | null
   channel_breakdown?: CycleChannelRow[]
 }) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   let { error } = await supabase.from("paid_media_cycles").update(metrics).eq("id", cycleId).eq("project_id", projectId)
   // Sin la migración 100 todavía: se guardan solo los totales.
@@ -1408,6 +1429,7 @@ export async function updateProjectAutoCloseCycles(projectId: string, enabled: b
 // Cerrar SIN repaso: queda "Repaso de cierre pendiente" hasta que alguien
 // lo haga (el repaso es el único camino para abrir el siguiente ciclo).
 export async function closeCycle(cycleId: string, projectId: string) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   await markCycleClosed(supabase, cycleId)
   revalidatePath(`/projects/${projectId}`)
@@ -1429,6 +1451,7 @@ async function markCycleClosed(supabase: SupabaseClient, cycleId: string) {
 const CYCLE_WARNING_DAYS_BEFORE = 4
 
 export async function runDailyCycleCheck(): Promise<{ warned: number; overdueNotified: number; autoClosed: number }> {
+  await requireSessionOrTrusted()
   const admin = createAdminClient()
   const today = new Date().toISOString().slice(0, 10)
   const warningThreshold = (() => {
@@ -1487,6 +1510,7 @@ async function notifyCycleMembers(
 // ============================================================
 
 export async function upsertWebContext(projectId: string, formData: FormData) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { error } = await supabase.from("web_project_context").upsert(
     {
@@ -1505,6 +1529,7 @@ export async function upsertWebContext(projectId: string, formData: FormData) {
 }
 
 export async function incrementRevision(projectId: string) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data: ctx } = await supabase
     .from("web_project_context")
@@ -1529,6 +1554,7 @@ export async function incrementRevision(projectId: string) {
 // Uses the admin client for the profile join so RLS on profiles
 // doesn't hide teammates from employees.
 export async function getProjectMembers(projectId: string) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
 
   // Verify the caller has access to this project via RLS
@@ -1552,6 +1578,7 @@ export async function getProjectMembers(projectId: string) {
 }
 
 export async function getProjectLog(projectId: string) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
 
   // Verify access via RLS first
@@ -1753,6 +1780,7 @@ export async function updateLogEntry(
 }
 
 export async function deleteLogEntry(entryId: string, projectId: string) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { error } = await supabase
     .from("project_log_entries")

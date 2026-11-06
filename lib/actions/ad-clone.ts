@@ -1,5 +1,6 @@
 "use server"
 
+import { requireSessionOrTrusted } from "@/lib/auth/guards"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import Anthropic from "@anthropic-ai/sdk"
@@ -19,6 +20,7 @@ async function assertAuth() {
 // ── AssemblyAI helpers ────────────────────────────────────────
 
 export async function aaiPost(path: string, body: unknown) {
+  await requireSessionOrTrusted()
   const token = process.env.ASSEMBLYAI_API_KEY
   if (!token) throw new Error("ASSEMBLYAI_API_KEY no configurado")
   const res = await fetch(`${ASSEMBLYAI_BASE}${path}`, {
@@ -35,6 +37,7 @@ export async function aaiPost(path: string, body: unknown) {
 }
 
 export async function aaiGet(path: string) {
+  await requireSessionOrTrusted()
   const token = process.env.ASSEMBLYAI_API_KEY
   if (!token) throw new Error("ASSEMBLYAI_API_KEY no configurado")
   const res = await fetch(`${ASSEMBLYAI_BASE}${path}`, {
@@ -66,6 +69,7 @@ export async function adaptWithClaude(
   brandLineOrAngulo?: { name: string; description?: string | null; usps?: string[]; pain_points?: string[]; keywords?: string[] } | string | null,
   concept?: Pick<CreativeConcept, "name" | "angle_type" | "target_persona" | "pain_point" | "why_it_works" | "objection" | "transformation" | "funnel_stage"> | null,
 ): Promise<AdCloneLine[]> {
+  await requireSessionOrTrusted()
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY no configurado")
 
@@ -145,6 +149,7 @@ export async function writeScriptFromConcept(
   brandLine?: { name: string; description?: string | null; usps?: string[]; pain_points?: string[]; keywords?: string[] } | null,
   variantSeed?: string,
 ): Promise<AdCloneLine[]> {
+  await requireSessionOrTrusted()
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY no configurado")
   const client = new Anthropic({ apiKey })

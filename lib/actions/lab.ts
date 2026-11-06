@@ -1,5 +1,6 @@
 "use server"
 
+import { requireSessionOrTrusted } from "@/lib/auth/guards"
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import type {
@@ -436,6 +437,7 @@ export async function promotePhase(
 // ── Canonical tree ────────────────────────────────────────────────────────────
 
 export async function getCanonicalTree(): Promise<CanonicalPhaseSet[]> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
 
   // Fetch both in parallel.

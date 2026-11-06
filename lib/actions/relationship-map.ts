@@ -1,5 +1,6 @@
 "use server"
 
+import { requireSessionOrTrusted } from "@/lib/auth/guards"
 import { getManualCampaigns, type ManualCampaign } from "@/lib/actions/manual-campaigns"
 import { createClient } from "@/lib/supabase/server"
 import { getCreativeConcepts, getCreativeAssets } from "@/lib/actions/creatives"
@@ -102,6 +103,7 @@ export interface RelationshipMapPosition { nodeId: string; x: number; y: number 
 // las posiciones que el usuario tocó; el resto sigue viniendo del layout
 // calculado en buildGraph.
 export async function getRelationshipMapPositions(projectId: string, cycleId: string | null): Promise<RelationshipMapPosition[]> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data } = await supabase
     .from("relationship_map_positions")
@@ -112,6 +114,7 @@ export async function getRelationshipMapPositions(projectId: string, cycleId: st
 }
 
 export async function saveRelationshipMapPosition(projectId: string, cycleId: string | null, nodeId: string, x: number, y: number): Promise<void> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { error } = await supabase
     .from("relationship_map_positions")
@@ -127,6 +130,7 @@ export interface RelationshipMapNote { id: string; x: number; y: number; text: s
 // a diferencia de las posiciones de nodos generados (que solo se mueven,
 // nunca se crean/borran desde aquí).
 export async function getRelationshipMapNotes(projectId: string, cycleId: string | null): Promise<RelationshipMapNote[]> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data } = await supabase
     .from("relationship_map_notes")
@@ -149,24 +153,28 @@ export async function createRelationshipMapNote(projectId: string, cycleId: stri
 }
 
 export async function updateRelationshipMapNoteText(noteId: string, text: string): Promise<void> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { error } = await supabase.from("relationship_map_notes").update({ text, updated_at: new Date().toISOString() }).eq("id", noteId)
   if (error) throw error
 }
 
 export async function updateRelationshipMapNotePosition(noteId: string, x: number, y: number): Promise<void> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { error } = await supabase.from("relationship_map_notes").update({ x, y, updated_at: new Date().toISOString() }).eq("id", noteId)
   if (error) throw error
 }
 
 export async function deleteRelationshipMapNote(noteId: string): Promise<void> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { error } = await supabase.from("relationship_map_notes").delete().eq("id", noteId)
   if (error) throw error
 }
 
 export async function getRelationshipMap(projectId: string, cycleId: string | null): Promise<RelationshipMapData> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
 
   const [concepts, assets, ads, contextRes, reachRes, cycleRes, lifetimeRes, integrationRes, manualCampaigns] = await Promise.all([

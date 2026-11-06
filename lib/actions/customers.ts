@@ -1,5 +1,6 @@
 "use server"
 
+import { requireSessionOrTrusted } from "@/lib/auth/guards"
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { can } from "@/lib/permissions"
@@ -14,6 +15,7 @@ async function assertCanManageCustomers() {
 }
 
 export async function getCustomers() {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("customers")
@@ -80,6 +82,7 @@ export async function importCustomers(
 }
 
 export async function getCustomer(id: string) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("customers")
@@ -108,6 +111,7 @@ export async function createCustomer(formData: FormData) {
 }
 
 export async function updateCustomer(id: string, formData: FormData) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
 
   const { error } = await supabase
@@ -127,6 +131,7 @@ export async function updateCustomer(id: string, formData: FormData) {
 }
 
 export async function updateCustomerStatus(id: string, status: CustomerStatus) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
 
   const { error } = await supabase
@@ -139,6 +144,7 @@ export async function updateCustomerStatus(id: string, status: CustomerStatus) {
 }
 
 export async function deleteCustomer(id: string) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { error } = await supabase.from("customers").delete().eq("id", id)
   if (error) throw error

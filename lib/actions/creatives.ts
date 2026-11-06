@@ -1,5 +1,6 @@
 "use server"
 
+import { requireSessionOrTrusted } from "@/lib/auth/guards"
 import { CONCEPT_NAME_RULE } from "@/lib/ai/concept-naming"
 
 import { getProjectContext, contextBlock } from "@/lib/project-context"
@@ -62,6 +63,7 @@ export async function getConceptsByBrandBrain(
   brandBrainId: string,
   brandLineId?: string | null,
 ): Promise<Pick<CreativeConcept, "id" | "name" | "angle_type" | "target_persona" | "pain_point" | "transformation" | "why_it_works" | "funnel_stage" | "status" | "brand_line_id">[]> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
 
   const { data: project } = await supabase
@@ -92,6 +94,7 @@ export async function getConceptsByBrandBrain(
 // Lightweight list for pickers (e.g. "guardar como asset" from Historial de
 // Meta) — every non-archived concept in the project, regardless of cycle.
 export async function getProjectConceptOptions(projectId: string): Promise<{ id: string; name: string | null; angle_type: string | null }[]> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("creative_concepts")
@@ -108,6 +111,7 @@ export async function getProjectConceptOptions(projectId: string): Promise<{ id:
 // desplegado, migración aún sin correr) → el que llama cae a la lógica
 // anterior por cycle_id en vez de dejar el tracker vacío.
 export async function cycleMemberIds(kind: "concept" | "asset", cycleId: string): Promise<string[] | null> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data, error } = kind === "concept"
     ? await supabase.from("creative_concept_cycles").select("concept_id").eq("cycle_id", cycleId)
@@ -1091,6 +1095,7 @@ El brief debe ser accionable: un editor o diseñador que lo lea debe poder empez
 }
 
 export async function getBrief(briefId: string): Promise<CreativeBrief | null> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data } = await supabase
     .from("creative_briefs")
@@ -1101,6 +1106,7 @@ export async function getBrief(briefId: string): Promise<CreativeBrief | null> {
 }
 
 export async function getBriefsForConcept(conceptId: string): Promise<CreativeBrief[]> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("creative_briefs")
@@ -1112,6 +1118,7 @@ export async function getBriefsForConcept(conceptId: string): Promise<CreativeBr
 }
 
 export async function getBriefsForProject(projectId: string): Promise<CreativeBrief[]> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("creative_briefs")
@@ -1127,6 +1134,7 @@ export async function getBriefsForProject(projectId: string): Promise<CreativeBr
 export async function getClientScriptsForProject(
   projectId: string,
 ): Promise<Pick<CreativeBrief, "id" | "concept_id" | "adapted_script" | "script_reviews">[]> {
+  await requireSessionOrTrusted()
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from("creative_briefs")
@@ -1377,6 +1385,7 @@ Responde ÚNICAMENTE con un JSON válido: {"hook": "...", "copy": "...", "cta": 
 }
 
 export async function getAssetCopies(assetId: string): Promise<AssetCopy[]> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("asset_copies")

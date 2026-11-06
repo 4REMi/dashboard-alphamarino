@@ -1,5 +1,6 @@
 "use server"
 
+import { requireSessionOrTrusted } from "@/lib/auth/guards"
 import { assertActingProfile } from "@/lib/trusted-context"
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
@@ -59,6 +60,7 @@ function revalidateProject(projectId: string) {
 // ============================================================
 
 export async function getAvailableServiceOffers(): Promise<Pick<ServiceOffer, "id" | "category" | "name" | "deliverables">[]> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("service_offers")
@@ -71,6 +73,7 @@ export async function getAvailableServiceOffers(): Promise<Pick<ServiceOffer, "i
 }
 
 export async function getProjectServiceOffers(projectId: string): Promise<ProjectServiceOffer[]> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("project_service_offers")
@@ -122,6 +125,7 @@ export async function detachServiceOfferFromProject(projectId: string, offerId: 
 // ============================================================
 
 export async function getProjectCustomDeliverables(projectId: string): Promise<ProjectCustomDeliverable[]> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("project_custom_deliverables")

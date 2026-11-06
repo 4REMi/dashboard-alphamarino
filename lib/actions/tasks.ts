@@ -1,5 +1,6 @@
 "use server"
 
+import { requireSessionOrTrusted } from "@/lib/auth/guards"
 import { assertActingProfile, assertTrustedSource } from "@/lib/trusted-context"
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
@@ -68,6 +69,7 @@ function revalidateTaskPaths(projectId: string | null) {
 }
 
 export async function getTasks(projectId?: string) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   let query = supabase
     .from("tasks")

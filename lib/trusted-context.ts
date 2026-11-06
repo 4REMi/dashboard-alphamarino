@@ -19,7 +19,7 @@ import { AsyncLocalStorage } from "node:async_hooks"
 //
 // SIN "use server" a propósito: nada de esto debe quedar expuesto.
 
-export type TrustedSource = "mcp" | "telegram"
+export type TrustedSource = "mcp" | "telegram" | "cron"
 interface TrustedStore { source: TrustedSource; profileId?: string }
 
 // En globalThis para que haya una sola instancia aunque Next empaquete este
@@ -44,6 +44,15 @@ export function assertActingProfile(actingProfileId: string | null | undefined):
   if (!actingProfileId) return
   const store = storage.getStore()
   if (!store?.profileId || store.profileId !== actingProfileId) throw new Error("Not authenticated")
+}
+
+// ¿Corre esta petición dentro de un contexto de confianza (MCP autenticado,
+// webhook de Telegram o cron con CRON_SECRET)?
+// En el MCP solo cuenta después de que verifyMcpToken validó el token.
+export function isTrustedContext(): boolean {
+  const store = storage.getStore()
+  if (!store) return false
+  return store.source !== "mcp" || !!store.profileId
 }
 
 export function assertTrustedSource(source: TrustedSource): void {

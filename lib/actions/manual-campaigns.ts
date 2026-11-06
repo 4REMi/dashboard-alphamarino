@@ -1,5 +1,6 @@
 "use server"
 
+import { requireSessionOrTrusted } from "@/lib/auth/guards"
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { totalsForRange, isoToday, isoAddDays, STALE_DAYS, type ManualSnapshot, type ManualTotals } from "@/lib/utils/manual-campaign-calc"
@@ -38,6 +39,7 @@ async function user() {
 }
 
 export async function getManualCampaigns(projectId: string, cycleId: string | null): Promise<ManualCampaign[]> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   let cycle: { start_date: string; end_date: string } | null = null
   if (cycleId) {

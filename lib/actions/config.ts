@@ -1,5 +1,6 @@
 "use server"
 
+import { requireSessionOrTrusted } from "@/lib/auth/guards"
 import { assertActingProfile } from "@/lib/trusted-context"
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
@@ -22,6 +23,7 @@ async function opsClient(actingProfileId?: string) {
 // ============================================================
 
 export async function getProjectTypes() {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data: types, error } = await supabase
     .from("project_types")
@@ -57,6 +59,7 @@ export async function getProjectTypes() {
 // color), no phase_sets join. Safe to fetch eagerly where getProjectTypes()
 // (which does 2 queries + a nested join) would be overkill.
 export async function getProjectTypeBadges(): Promise<{ id: string; name: string; icon: string | null; color: string | null }[]> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("project_types")
@@ -119,6 +122,7 @@ export async function deleteProjectType(id: string, actingProfileId?: string) {
 // ============================================================
 
 export async function getPhaseSets() {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("phase_sets")
@@ -252,6 +256,7 @@ export async function linkPhaseSetToProjectType(projectTypeId: string, phaseSetI
 // ============================================================
 
 export async function getPositions() {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data, error } = await supabase.from("positions").select("*").order("name")
   if (error) return []
@@ -294,6 +299,7 @@ export async function deletePosition(id: string, actingProfileId?: string) {
 // ============================================================
 
 export async function getTaskSets() {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("task_sets")

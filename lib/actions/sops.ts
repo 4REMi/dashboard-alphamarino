@@ -1,5 +1,6 @@
 "use server"
 
+import { requireSessionOrTrusted, requireRole } from "@/lib/auth/guards"
 import { assertActingProfile } from "@/lib/trusted-context"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
@@ -11,6 +12,7 @@ import type { Sop, SopRequest } from "@/lib/types"
 // ============================================================
 
 export async function getSops(): Promise<Sop[]> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("sops")
@@ -21,6 +23,7 @@ export async function getSops(): Promise<Sop[]> {
 }
 
 export async function getSop(id: string): Promise<Sop | null> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("sops")
@@ -59,6 +62,7 @@ export async function createSop(formData: FormData): Promise<Sop> {
 }
 
 export async function updateSop(id: string, formData: FormData): Promise<Sop> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const tagsRaw = (formData.get("tags") as string) ?? ""
   const tags = tagsRaw.split(",").map((t) => t.trim()).filter(Boolean)
@@ -83,6 +87,7 @@ export async function updateSop(id: string, formData: FormData): Promise<Sop> {
 }
 
 export async function deleteSop(id: string): Promise<void> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { error } = await supabase.from("sops").delete().eq("id", id)
   if (error) throw error
@@ -110,6 +115,7 @@ export async function assignSopToTaskSetTask(taskSetTaskId: string, sopId: strin
 
 // Assign or override a SOP on a task (standalone tasks pass projectId = null)
 export async function assignSopToTask(taskId: string, sopId: string | null, projectId: string | null): Promise<void> {
+  await requireRole(["admin", "subadmin"])
   const supabase = createAdminClient()
   const { error } = await supabase
     .from("tasks")
@@ -125,6 +131,7 @@ export async function assignSopToTask(taskId: string, sopId: string | null, proj
 // ============================================================
 
 export async function getSopRequests(): Promise<SopRequest[]> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("sop_requests")
@@ -198,6 +205,7 @@ export async function fulfillSopRequest(requestId: string, sopId: string): Promi
 }
 
 export async function dismissSopRequest(requestId: string): Promise<void> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { error } = await supabase
     .from("sop_requests")

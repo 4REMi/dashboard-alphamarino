@@ -1,5 +1,6 @@
 "use server"
 
+import { requireSessionOrTrusted } from "@/lib/auth/guards"
 import { assertActingProfile } from "@/lib/trusted-context"
 import { offersToJson } from "@/lib/utils/offer-json"
 import { revalidatePath } from "next/cache"
@@ -88,6 +89,7 @@ function parseCurrency(formData: FormData): Currency {
 // ============================================================
 
 export async function getServiceOffers(): Promise<ServiceOffer[]> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("service_offers")
@@ -135,6 +137,7 @@ interface PortableOffer {
 }
 
 export async function exportServiceOffers(): Promise<string> {
+  await requireSessionOrTrusted()
   return offersToJson(await getServiceOffers())
 }
 
@@ -305,6 +308,7 @@ export async function archiveServiceOffer(id: string, archived: boolean, actingP
 }
 
 export async function deleteServiceOffer(id: string): Promise<void> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { error } = await supabase.from("service_offers").delete().eq("id", id)
   if (error) throw error
@@ -312,6 +316,7 @@ export async function deleteServiceOffer(id: string): Promise<void> {
 }
 
 export async function setOfferAddons(offerId: string, addonIds: string[]): Promise<void> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { error: delError } = await supabase.from("service_offer_addons").delete().eq("offer_id", offerId)
   if (delError) throw delError
@@ -329,6 +334,7 @@ export async function setOfferAddons(offerId: string, addonIds: string[]): Promi
 // ============================================================
 
 export async function getServiceAddons(): Promise<ServiceAddon[]> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("service_addons")
@@ -360,6 +366,7 @@ export async function createServiceAddon(formData: FormData): Promise<ServiceAdd
 }
 
 export async function updateServiceAddon(id: string, formData: FormData): Promise<ServiceAddon> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("service_addons")
@@ -379,6 +386,7 @@ export async function updateServiceAddon(id: string, formData: FormData): Promis
 }
 
 export async function archiveServiceAddon(id: string, archived: boolean): Promise<void> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { error } = await supabase
     .from("service_addons")
@@ -389,6 +397,7 @@ export async function archiveServiceAddon(id: string, archived: boolean): Promis
 }
 
 export async function deleteServiceAddon(id: string): Promise<void> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { error } = await supabase.from("service_addons").delete().eq("id", id)
   if (error) throw error
@@ -408,6 +417,7 @@ export async function suggestServiceOffer(input: {
   hint?: string
   projectTypes: { id: string; name: string }[]
 }): Promise<{ description: string; deliverables: ServiceDeliverable[]; project_type_id: string | null }> {
+  await requireSessionOrTrusted()
   if (!input.category.trim() || !input.name.trim()) {
     throw new Error("Escribe al menos la categoría y el nombre antes de autorrellenar")
   }

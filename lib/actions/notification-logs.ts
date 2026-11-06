@@ -1,5 +1,6 @@
 "use server"
 
+import { requireSessionOrTrusted } from "@/lib/auth/guards"
 import { createClient } from "@/lib/supabase/server"
 
 export interface NotificationLogEntry {
@@ -14,6 +15,7 @@ export interface NotificationLogEntry {
 }
 
 export async function getNotificationLogs(limit = 30): Promise<NotificationLogEntry[]> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("notification_log")

@@ -1,10 +1,12 @@
 "use server"
 
+import { requireSessionOrTrusted } from "@/lib/auth/guards"
 import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 import type { ProjectIntegration } from "@/lib/types"
 
 export async function getProjectIntegrations(projectId: string): Promise<ProjectIntegration[]> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("project_integrations")
@@ -16,6 +18,7 @@ export async function getProjectIntegrations(projectId: string): Promise<Project
 }
 
 export async function upsertProjectIntegration(projectId: string, platform: string, accountId: string, extra?: Record<string, unknown>) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const row: Record<string, unknown> = {
     project_id: projectId,
@@ -32,6 +35,7 @@ export async function upsertProjectIntegration(projectId: string, platform: stri
 }
 
 export async function deleteProjectIntegration(projectId: string, platform: string) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { error } = await supabase
     .from("project_integrations")

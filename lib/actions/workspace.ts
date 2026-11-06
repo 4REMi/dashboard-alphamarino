@@ -1,5 +1,6 @@
 "use server"
 
+import { requireSessionOrTrusted } from "@/lib/auth/guards"
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 
@@ -18,6 +19,7 @@ export async function getWorkspaceSettings() {
 }
 
 export async function uploadLogo(formData: FormData) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const file = formData.get("logo") as File | null
 
@@ -56,6 +58,7 @@ export async function uploadLogo(formData: FormData) {
 }
 
 export async function removeLogo() {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { error } = await supabase
     .from("workspace_settings")

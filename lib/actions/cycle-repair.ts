@@ -1,5 +1,6 @@
 "use server"
 
+import { requireSessionOrTrusted } from "@/lib/auth/guards"
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { syncMetaAds } from "@/lib/actions/meta"
@@ -45,6 +46,7 @@ const stateKey = (c: { id: string; start_date: string; end_date: string; is_acti
   `${c.id}|${c.start_date}|${c.end_date}|${c.is_active}`
 
 export async function getCycleRepairState(projectId: string): Promise<RepairState> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const [{ data: cycles }, { data: cc }, { data: ac }, { data: project }, { data: repair }] = await Promise.all([
     supabase.from("paid_media_cycles").select("*").eq("project_id", projectId).order("start_date"),
@@ -108,6 +110,7 @@ export async function getCycleRepairState(projectId: string): Promise<RepairStat
 }
 
 export async function applyCycleRepair(projectId: string, plan: RepairPlan, reason: string): Promise<{ syncErrors: string[] }> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data: before } = await supabase.from("paid_media_cycles").select("id, start_date, end_date, is_active").eq("project_id", projectId)
   const beforeKeys = new Set((before ?? []).map(stateKey))
@@ -142,6 +145,7 @@ export async function applyCycleRepair(projectId: string, plan: RepairPlan, reas
 }
 
 export async function undoCycleRepair(projectId: string, repairId: string): Promise<void> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { error } = await supabase.rpc("undo_cycle_repair", { p_repair: repairId })
   if (error) throw new Error(error.message)

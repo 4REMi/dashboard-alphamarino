@@ -1,5 +1,6 @@
 "use server"
 
+import { requireSessionOrTrusted } from "@/lib/auth/guards"
 import { assertActingProfile } from "@/lib/trusted-context"
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
@@ -8,6 +9,7 @@ import { can } from "@/lib/permissions"
 import type { DeliverableType } from "@/lib/types"
 
 export async function getProjectDeliverables(projectId: string) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("deliverables")
@@ -22,6 +24,7 @@ export async function getProjectDeliverables(projectId: string) {
 // Cross-project lookup — used by the standalone Tasks page, which lists
 // tasks from many projects at once instead of one project's deliverables.
 export async function getDeliverablesForTasks(taskIds: string[]) {
+  await requireSessionOrTrusted()
   if (taskIds.length === 0) return []
   const supabase = await createClient()
   const { data, error } = await supabase

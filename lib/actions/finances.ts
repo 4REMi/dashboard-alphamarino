@@ -1,5 +1,6 @@
 "use server"
 
+import { requireSessionOrTrusted } from "@/lib/auth/guards"
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { normalizeToMonthly } from "@/lib/types"
@@ -12,6 +13,7 @@ import type { ExpenseFrequency, ExpenseCategory } from "@/lib/types"
 // ============================================================
 
 export async function getRecurringExpenses() {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("recurring_expenses")
@@ -22,6 +24,7 @@ export async function getRecurringExpenses() {
 }
 
 export async function createRecurringExpense(formData: FormData) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { error } = await supabase.from("recurring_expenses").insert({
     name: formData.get("name") as string,
@@ -38,6 +41,7 @@ export async function createRecurringExpense(formData: FormData) {
 }
 
 export async function updateRecurringExpense(id: string, formData: FormData) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const active = formData.get("is_active") !== null
   const base = {
@@ -63,6 +67,7 @@ export async function updateRecurringExpense(id: string, formData: FormData) {
 }
 
 export async function deleteRecurringExpense(id: string) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { error } = await supabase.from("recurring_expenses").delete().eq("id", id)
   if (error) throw error
@@ -74,6 +79,7 @@ export async function deleteRecurringExpense(id: string) {
 // ============================================================
 
 export async function getIncome(projectId?: string) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   let query = supabase
     .from("income")
@@ -122,6 +128,7 @@ function buildIncomePayload(formData: FormData) {
 }
 
 export async function createIncome(formData: FormData) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { error } = await supabase.from("income").insert(buildIncomePayload(formData))
   if (error) throw error
@@ -129,6 +136,7 @@ export async function createIncome(formData: FormData) {
 }
 
 export async function updateIncome(id: string, formData: FormData) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { error } = await supabase.from("income").update(buildIncomePayload(formData)).eq("id", id)
   if (error) throw error
@@ -136,6 +144,7 @@ export async function updateIncome(id: string, formData: FormData) {
 }
 
 export async function deleteIncome(id: string) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { error } = await supabase.from("income").delete().eq("id", id)
   if (error) throw error
@@ -144,6 +153,7 @@ export async function deleteIncome(id: string) {
 
 // Proyectos "Active" con monthly_fee que aún no tienen un Income registrado este mes
 export async function getPendingMonthlyFees() {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const now = new Date()
   const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0]
@@ -163,6 +173,7 @@ export async function getPendingMonthlyFees() {
 
 // Registra la cuota mensual de un proyecto como Income (USD, fecha de hoy)
 export async function collectMonthlyFee(formData: FormData) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const projectId = formData.get("project_id") as string
   const projectName = formData.get("project_name") as string
@@ -189,6 +200,7 @@ export async function collectMonthlyFee(formData: FormData) {
 // ============================================================
 
 export async function getProjectExpenses(projectId?: string) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   let query = supabase
     .from("project_expenses")
@@ -201,6 +213,7 @@ export async function getProjectExpenses(projectId?: string) {
 }
 
 export async function createProjectExpense(formData: FormData) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const taxRate = formData.get("tax_rate") as string
   const taxAmount = formData.get("tax_amount") as string
@@ -218,6 +231,7 @@ export async function createProjectExpense(formData: FormData) {
 }
 
 export async function deleteProjectExpense(id: string) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { error } = await supabase.from("project_expenses").delete().eq("id", id)
   if (error) throw error
@@ -229,6 +243,7 @@ export async function deleteProjectExpense(id: string) {
 // ============================================================
 
 export async function getDomains() {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   try {
     const { data, error } = await supabase
@@ -264,6 +279,7 @@ function domainFieldsFromForm(formData: FormData) {
 }
 
 export async function createDomain(formData: FormData) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { error } = await supabase.from("domains").insert(domainFieldsFromForm(formData))
   if (error) throw error
@@ -271,6 +287,7 @@ export async function createDomain(formData: FormData) {
 }
 
 export async function updateDomain(id: string, formData: FormData) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { error } = await supabase
     .from("domains")
@@ -281,6 +298,7 @@ export async function updateDomain(id: string, formData: FormData) {
 }
 
 export async function deleteDomain(id: string) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { error } = await supabase.from("domains").delete().eq("id", id)
   if (error) throw error
@@ -289,6 +307,7 @@ export async function deleteDomain(id: string) {
 
 // Ver lib/finance/domains.ts (misma lógica que el MCP).
 export async function renewDomain(domainId: string, formData: FormData) {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   await renewDomainCore(supabase, domainId, {
     date: formData.get("date") as string,
@@ -306,6 +325,7 @@ export async function renewDomain(domainId: string, formData: FormData) {
 // ============================================================
 
 export async function getFinancialSummary() {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
 
   const now = new Date()
@@ -362,6 +382,7 @@ export async function getFinancialSummary() {
 // ============================================================
 
 export async function getMonthlyChartData() {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
 
   const twelveMonthsAgo = new Date()
@@ -445,6 +466,7 @@ export async function getMonthlyChartData() {
 // ============================================================
 
 export async function getTopClients() {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
 
   const twelveMonthsAgo = new Date()

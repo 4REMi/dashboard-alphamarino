@@ -1,5 +1,6 @@
 "use server"
 
+import { requireSessionOrTrusted } from "@/lib/auth/guards"
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { getManualCampaigns } from "@/lib/actions/manual-campaigns"
@@ -43,6 +44,7 @@ export interface LinkableAsset {
 // subidos, que es lo que hacía este picker inservible en cuentas con
 // historial largo.
 export async function getLinkableAssets(projectId: string, cycleId: string | null): Promise<LinkableAsset[]> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
 
   let query = supabase
@@ -100,6 +102,7 @@ export async function getLinkableAssets(projectId: string, cycleId: string | nul
 // Cuándo se sincronizó este ciclo por última vez (manual o automático) —
 // para la leyenda junto al botón "Sincronizar".
 export async function getLastMetaSync(projectId: string, cycleId: string): Promise<string | null> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
   const { data } = await supabase
     .from("meta_ad_daily_stats")
@@ -129,6 +132,7 @@ export interface AssetMetaLinkStatus {
 // — la mayoría son candidatos para revisión del cliente que nunca se
 // lanzan, así que esto solo marca los que SÍ tienen un link real.
 export async function getAssetMetaLinkStatus(projectId: string, cycleId: string | null): Promise<Record<string, AssetMetaLinkStatus>> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
 
   const { data: links } = await supabase
@@ -247,6 +251,7 @@ export interface AdPerformanceCard {
 // cuenta) — un solo call desde el server component o desde el cliente al
 // sincronizar, sin que cada caller tenga que orquestar 3 fetches.
 export async function getCreativePerformance(projectId: string, cycleId: string): Promise<AdPerformanceCard[]> {
+  await requireSessionOrTrusted()
   const supabase = await createClient()
 
   const [adsRes, statsRes, contextRes, reachRes] = await Promise.all([
