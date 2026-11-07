@@ -10,7 +10,7 @@ import { lineParts, type AdCloneLine } from "@/lib/types"
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] })
 const REVIEW: Record<string, string> = { pending_review: "en revisión del cliente", approved: "aprobado", changes_requested: "cambios pedidos" }
 
-type Brief = { id: string; concept_id: string; title: string | null; important_notes: string | null; adapted_script: Record<string, AdCloneLine[]> | AdCloneLine[] | null; script_titles: Record<string, string> | null; script_reviews: Record<string, { client_status: string | null; client_feedback: string | null }> | null; share_token: string; brand_brain: { name: string } | null }
+type Brief = { id: string; concept_id: string; title: string | null; important_notes: string | null; adapted_script: Record<string, AdCloneLine[]> | AdCloneLine[] | null; script_titles: Record<string, string> | null; script_reviews: Record<string, { client_status: string | null; client_feedback: string | null }> | null; share_token: string; brand_brain: { name: string } | null; brand_line: { name: string } | null }
 
 function scripts(b: Brief) {
   const raw = b.adapted_script
@@ -35,7 +35,7 @@ function renderScript(lines: AdCloneLine[]) {
 export function registerBriefTools(server: McpServer) {
   server.registerTool("briefs_concepto", {
     title: "Briefs y guiones por concepto",
-    description: "Solo lectura. Por cada concepto del proyecto (o solo el indicado): sus briefs con nombre, hook, guiones completos (sección, texto hablado, 🎬 visual, 📝 texto en pantalla), estado de revisión de cada guion y los asset_id de los creativos ligados a cada brief (con versión vigente/anterior). Marca los briefs sin creativo y los creativos sin brief. Útil para cruzar qué video corresponde a qué brief.",
+    description: "Solo lectura. Por cada concepto del proyecto (o solo el indicado): su brand line, sus briefs con nombre, hook, guiones completos (sección, texto hablado, 🎬 visual, 📝 texto en pantalla), estado de revisión de cada guion y los asset_id de los creativos ligados a cada brief (con versión vigente/anterior). Marca los briefs sin creativo y los creativos sin brief. Útil para cruzar qué video corresponde a qué brief.",
     inputSchema: z.object({
       proyecto: z.string().min(1),
       concepto: z.string().optional().describe("Nombre (o parte) del concepto; vacío = todos los que tengan briefs o creativos"),
@@ -59,11 +59,11 @@ export function registerBriefTools(server: McpServer) {
       if (!ce) conceptIds = new Set((cc ?? []).map((r) => r.concept_id as string))
       if (!ae) assetIds = new Set((ac ?? []).map((r) => r.asset_id as string))
     }
-    let cq = db.from("creative_concepts").select("id, name, status, proposed_hook, angle_type, target_persona, cycle_id").eq("project_id", p.id).order("created_at")
+    let cq = db.from("creative_concepts").select("id, name, status, proposed_hook, angle_type, target_persona, cycle_id, brand_line:brand_lines!brand_line_id(name)").eq("project_id", p.id).order("created_at")
     if (concepto?.trim()) cq = cq.ilike("name", `%${concepto.trim()}%`)
     const [cRes, { data: briefs }, aRes] = await Promise.all([
       cq,
-      db.from("creative_briefs").select("id, concept_id, title, important_notes, adapted_script, script_titles, script_reviews, share_token, brand_brain:brand_brains(name)").eq("project_id", p.id).order("created_at"),
+      db.from("creative_briefs").select("id, concept_id, title, important_notes, adapted_script, script_titles, script_reviews, share_token, brand_brain:brand_brains(name), brand_line:brand_lines!brand_line_id(name)").eq("project_id", p.id).order("created_at"),
       db.from("creative_assets").select("id, concept_id, brief_id, cycle_id, file_type, format, hook, production_status, client_status, revises_asset_id, created_at").eq("project_id", p.id).order("created_at"),
     ])
     let concepts = cRes.data
@@ -82,12 +82,13 @@ export function registerBriefTools(server: McpServer) {
       const cb = ((briefs ?? []) as unknown as Brief[]).filter((b) => b.concept_id === c.id)
       const ca = (assets ?? []).filter((a) => a.concept_id === c.id)
       if (!concepto && !cb.length && !ca.length) continue
-      out.push(`\n## ${c.name ?? "Concepto sin nombre"} (${c.status})${c.proposed_hook ? `\nHook del concepto: "${c.proposed_hook}"` : ""}`)
+      const cLine = (c as unknown as { brand_line: { name: string } | null }).brand_line?.name ?? null
+      out.push(`\n## ${c.name ?? "Concepto sin nombre"} (${c.status}) · línea: ${cLine ?? "sin línea"}${c.proposed_hook ? `\nHook del concepto: "${c.proposed_hook}"` : ""}`)
       if (!cb.length) out.push("Sin briefs.")
       for (const b of cb) {
         const linked = ca.filter((a) => a.brief_id === b.id)
         const ss = scripts(b)
-        out.push(`\n### Brief: ${b.title || b.brand_brain?.name || "Brief"} (brief_id ${b.id})`,
+        out.push(`\n### Brief: ${b.title || b.brand_brain?.name || "Brief"} (brief_id ${b.id})${b.brand_line && b.brand_line.name !== cLine ? ` · línea del brief: ${b.brand_line.name}` : ""}`,
           `Estado: ${linked.length ? `${linked.length} creativo(s) ligado(s)` : "SIN CREATIVO todavía"} · ${ss.length} guión(es) · link editor: /share/brief/${b.share_token}`)
         if (b.important_notes) out.push(`Notas: ${b.important_notes}`)
         for (const s of ss) {

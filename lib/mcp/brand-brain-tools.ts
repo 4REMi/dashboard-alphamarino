@@ -8,6 +8,7 @@ import { draftFromInstagram, draftFromWebsite } from "@/lib/brand-brains/import-
 import { mergeBrainDrafts } from "@/lib/brand-brains/merge-draft"
 import { mirrorUrlToStorage } from "@/lib/brand-brains/storage"
 import { insertBrandLine, autofillBrandLineCore } from "@/lib/brand-brains/lines-core"
+import { resolveProject } from "@/lib/mcp/resolve-project"
 
 // Brand Brains y sus brand lines desde el MCP. Permiso: access_brand_brains,
 // el mismo que deja entrar a /brand-brains.
@@ -95,6 +96,38 @@ function linePreview(l: Partial<BrandLine>): string {
     list("Dolores", l.pain_points),
     `Keywords: ${l.keywords?.length ? l.keywords.join(", ") : "—"}`,
   ].join("\n")
+}
+
+interface ConceptRow { id: string; name: string | null; status: string; project: string; assets: number }
+
+// Conceptos creativos de los proyectos de esta marca, agrupados por brand
+// line (null = sin línea). Un concepto ligado a una línea de esta marca
+// cuenta aunque su proyecto tenga otro Brand Brain.
+async function conceptsByLine(brainId: string, lines: BrandLine[]): Promise<Map<string | null, ConceptRow[]>> {
+  const out = new Map<string | null, ConceptRow[]>()
+  const { data: projects } = await db().from("projects").select("id").eq("brand_brain_id", brainId)
+  const projectIds = (projects ?? []).map((p) => p.id as string)
+  const lineIds = lines.map((l) => l.id)
+  const filters = [projectIds.length && `project_id.in.(${projectIds.join(",")})`, lineIds.length && `brand_line_id.in.(${lineIds.join(",")})`].filter(Boolean)
+  if (!filters.length) return out
+  const { data: concepts } = await db().from("creative_concepts")
+    .select("id, name, status, brand_line_id, project:projects(name)")
+    .or(filters.join(","))
+    .order("created_at", { ascending: false })
+  const rows = (concepts ?? []) as unknown as { id: string; name: string | null; status: string; brand_line_id: string | null; project: { name: string } | null }[]
+  const counts = new Map<string, number>()
+  if (rows.length) {
+    const { data: assets } = await db().from("creative_assets").select("concept_id").in("concept_id", rows.map((r) => r.id))
+    for (const a of assets ?? []) counts.set(a.concept_id as string, (counts.get(a.concept_id as string) ?? 0) + 1)
+  }
+  for (const r of rows) {
+    const key = r.brand_line_id && lineIds.includes(r.brand_line_id) ? r.brand_line_id : null
+    if (key === null && r.brand_line_id) continue // ligado a una línea de otra marca
+    const list = out.get(key) ?? []
+    list.push({ id: r.id, name: r.name, status: r.status, project: r.project?.name ?? "—", assets: counts.get(r.id) ?? 0 })
+    out.set(key, list)
+  }
+  return out
 }
 
 function revalidateBrain(id: string) {
@@ -243,16 +276,23 @@ export function registerBrandBrainTools(server: McpServer) {
     "detalle_brand_brain",
     {
       title: "Detalle de un Brand Brain",
-      description: "Todo un Brand Brain (descripción, tono, audiencia, USPs, beneficios, dolores, características, CTAs, colores, contexto) y cada una de sus brand lines con descripción, USPs, dolores y keywords.",
+      description: "Todo un Brand Brain (descripción, tono, audiencia, USPs, beneficios, dolores, características, CTAs, colores, contexto) y cada una de sus brand lines con descripción, USPs, dolores, keywords y los conceptos creativos ligados a ella (proyecto, estado, cuántos creativos), más los conceptos de sus proyectos que no tienen línea.",
       inputSchema: z.object({ brand_brain: z.string().min(1) }),
     },
     async ({ brand_brain }, ctx: ToolCtx) => {
       await requireBrainAccess(ctx)
       const b = await findBrain(brand_brain)
       const lines = await getLines(b.id)
+      const byLine = await conceptsByLine(b.id, lines)
+      const list = (cs: ConceptRow[]) =>
+        cs.slice(0, 25).map((c) => `\n   - ${c.name ?? "Sin nombre"} · ${c.project} · ${c.status} · ${c.assets} creativo(s)`).join("") +
+        (cs.length > 25 ? `\n   … y ${cs.length - 25} más` : "")
+      const render = (cs: ConceptRow[]) => (cs.length ? `\n   Conceptos (${cs.length}):${list(cs)}` : "\n   Conceptos: ninguno.")
+      const unlinked = byLine.get(null) ?? []
       return text(
         `${preview(b)}\nLink: /brand-brains/${b.id}\n\n## Brand lines (${lines.length})` +
-        (lines.length ? lines.map((l, i) => `\n\n${i + 1}. ${linePreview(l)}`).join("") : "\nNinguna todavía."),
+        (lines.length ? lines.map((l, i) => `\n\n${i + 1}. ${linePreview(l)}${render(byLine.get(l.id) ?? [])}`).join("") : "\nNinguna todavía.") +
+        (unlinked.length ? `\n\n## Conceptos sin línea (${unlinked.length})${list(unlinked)}\nSe asignan con asignar_linea_concepto.` : ""),
       )
     },
   )
@@ -402,6 +442,59 @@ export function registerBrandBrainTools(server: McpServer) {
       if (error) throw new Error(error.message)
       revalidateBrain(b.id)
       return text(`✅ Brand line actualizada en ${b.name}.\n${desc}`)
+    },
+  )
+
+  server.registerTool(
+    "asignar_linea_concepto",
+    {
+      title: "Asignar brand line a un concepto",
+      description:
+        "Liga un concepto creativo de un proyecto a una brand line (o lo deja sin línea con linea: \"ninguna\"), igual que el selector de línea del concepto en el Creative Tracker. Solo se pueden usar líneas del Brand Brain del proyecto. Concepto y línea por nombre (o parte). Sin confirmar: true solo muestra el cambio. Solo admin/subadmin.",
+      inputSchema: z.object({
+        proyecto: z.string().min(1),
+        concepto: z.string().min(1).describe("Nombre (o parte) del concepto"),
+        linea: z.string().min(1).describe("Nombre (o parte) de la brand line, o \"ninguna\" para quitarla"),
+        confirmar: z.boolean().default(false),
+      }),
+    },
+    async (a, ctx: ToolCtx) => {
+      // Mismo permiso que editar el concepto en el Creative Tracker (updateConcept).
+      const id = ctx.http?.authInfo?.extra?.profileId
+      if (typeof id !== "string") throw new Error("No se pudo identificar quién está llamando esta herramienta")
+      const { data: me } = await db().from("profiles").select("role").eq("id", id).single()
+      if (me?.role !== "admin" && me?.role !== "subadmin") throw new Error("Solo admin o subadmin pueden editar conceptos.")
+      const p = await resolveProject(a.proyecto)
+      const { data: proj } = await db().from("projects").select("brand_brain_id, brand_brain:brand_brains(name)").eq("id", p.id).single()
+      const brainId = proj?.brand_brain_id as string | null
+      const brainName = (proj?.brand_brain as unknown as { name: string } | null)?.name ?? ""
+
+      const { data: concepts } = await db().from("creative_concepts")
+        .select("id, name, status, brand_line_id, brand_line:brand_lines!brand_line_id(name)")
+        .eq("project_id", p.id)
+      const rows = (concepts ?? []) as unknown as { id: string; name: string | null; status: string; brand_line_id: string | null; brand_line: { name: string } | null }[]
+      const q = a.concepto.trim().toLowerCase()
+      const exact = rows.filter((c) => (c.name ?? "").trim().toLowerCase() === q)
+      const hits = exact.length ? exact : rows.filter((c) => (c.name ?? "").toLowerCase().includes(q))
+      if (!hits.length) throw new Error(`${p.name} no tiene un concepto "${a.concepto}".`)
+      if (hits.length > 1) throw new Error(`"${a.concepto}" coincide con varios conceptos de ${p.name}: ${hits.map((c) => c.name).join(", ")}. Sé más específico.`)
+      const c = hits[0]
+
+      let line: BrandLine | null = null
+      if (!/^(ninguna|sin linea|sin línea|none|null)$/i.test(a.linea.trim())) {
+        if (!brainId) throw new Error(`${p.name} no tiene Brand Brain asignado, así que no hay líneas que usar.`)
+        line = findLine(await getLines(brainId), a.linea, brainName)
+      }
+      if ((line?.id ?? null) === c.brand_line_id) return text(`${c.name} ya está ${line ? `en la línea ${line.name}` : "sin línea"}. No hay nada que cambiar.`)
+
+      const desc = `${p.name} · concepto "${c.name}"\nLínea: ${c.brand_line?.name ?? "sin línea"} → ${line?.name ?? "sin línea"}`
+      if (!a.confirmar) return text(`${desc}\n\nNo se cambió nada. Si es correcto, vuelve a llamar con confirmar: true.`)
+
+      const { error } = await db().from("creative_concepts").update({ brand_line_id: line?.id ?? null }).eq("id", c.id)
+      if (error) throw new Error(error.message)
+      revalidatePath(`/projects/${p.id}`)
+      if (brainId) revalidateBrain(brainId)
+      return text(`✅ Línea del concepto actualizada.\n${desc}`)
     },
   )
 }

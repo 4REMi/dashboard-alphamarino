@@ -511,3 +511,11 @@ También en `lib/mcp/brand-brain-tools.ts`, mismo permiso `access_brand_brains`.
 - `crear_brand_line(brand_brain, nombre, descripcion?, usps?, dolores?, keywords?, color?, autollenar?, confirmar)` — `autollenar` usa la misma IA que el botón de la UI (`autofillBrandLineCore`; la `descripcion` es la fuente de verdad) y solo llena lo que no mandaste. La vista previa devuelve los campos generados para confirmar exactamente eso. Avisa si ya existe una línea con ese nombre. Posición: al final.
 - `editar_brand_line(brand_brain, linea, nuevo_nombre?, descripcion?, usps?, dolores?, keywords?, color?, confirmar)` — igual que editar_brand_brain.
 - Borrar Brand Brains o líneas sigue siendo solo desde la UI.
+
+## Conceptos ↔ brand lines — 2026-11-07
+
+Cada concepto creativo puede estar ligado a una línea (`creative_concepts.brand_line_id`, migración 033; los briefs tienen su propio `brand_line_id`).
+
+- `briefs_concepto` muestra la línea de cada concepto, y la del brief solo si es distinta.
+- `detalle_brand_brain` lista bajo cada línea sus conceptos (proyecto, estado, # creativos; máx. 25 por línea) y al final los conceptos de los proyectos de esa marca que no tienen línea.
+- `asignar_linea_concepto(proyecto, concepto, linea | "ninguna", confirmar)` — igual que el selector de línea del concepto en el Creative Tracker: solo admin/subadmin (mismo permiso que `updateConcept`) y solo líneas del Brand Brain del proyecto. Dos pasos. No cambia la línea de los briefs ya creados (la UI tampoco).
