@@ -4,11 +4,12 @@ import type { McpServer, AuthInfo } from "@modelcontextprotocol/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getExchangeRate } from "@/lib/actions/finances"
 import { can } from "@/lib/permissions"
+import { revalidatePath } from "next/cache"
 import { recurringAppliesToMonth } from "@/lib/utils/recurring-in-month"
 import { normalizeToMonthly, type ExpenseFrequency } from "@/lib/types"
 
-// Herramientas MCP de Finanzas: registrar gasto, listar gastos y resumen del
-// mes. Mismo permiso que la sección /finances (view_global_finances). Mismo
+// Herramientas MCP de Finanzas: registrar gasto, listar gastos, resumen del
+// mes, registrar ingreso, fees pendientes y editar el fee de un proyecto. Mismo permiso que la sección /finances (view_global_finances). Mismo
 // modelo que el bot de Telegram (lib/telegram-bot/handlers/finanzas.ts):
 // todo se guarda en USD; si viene en MXN se convierte con el tipo de cambio
 // del día. Gasto de proyecto → project_expenses; gasto general →
@@ -28,6 +29,17 @@ export async function requireFinance(ctx: ToolCtx): Promise<string> {
   const { data } = await db().from("profiles").select("role, permissions").eq("id", profileId).single()
   if (!can(data as never, "view_global_finances")) throw new Error("No tienes acceso a Finanzas")
   return profileId
+}
+
+const mxn = (n: number) => `MXN ${n.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
+// MXN → USD con el tipo de cambio de la fecha (mismo criterio que el bot).
+async function toUsd(monto: number, moneda: "MXN" | "USD", date: string) {
+  if (moneda === "USD") return { amountUsd: monto, rate: 1, note: "" }
+  const rate = await getExchangeRate(date)
+  if (!rate) throw new Error("No pude obtener el tipo de cambio para esa fecha; intenta de nuevo.")
+  const amountUsd = Math.round((monto / rate) * 100) / 100
+  return { amountUsd, rate, note: ` (≈ ${usd(amountUsd)} a ${rate.toFixed(2)})` }
 }
 
 async function findProject(name: string) {
@@ -169,6 +181,134 @@ export function registerFinanceTools(server: McpServer) {
         `- MRR (fees mensuales de proyectos activos): ${usd(mrr)}`,
         cats ? `Gastos por categoría:\n${cats}` : "",
       ].filter(Boolean).join("\n"))
+    },
+  )
+
+  server.registerTool(
+    "registrar_ingreso",
+    {
+      title: "Registrar ingreso",
+      description: "Registra un ingreso cobrado en Finanzas (lo mismo que un ingreso nuevo en /finances o un ingreso por Telegram). Con `proyecto` queda ligado a ese proyecto y cuenta como su cobro del mes (ya no sale en fees_pendientes). Monto en MXN o USD: se guarda el original y su equivalente en USD con el tipo de cambio de la fecha. Avisa si ese proyecto ya tiene un ingreso en el mismo mes. Requiere acceso a Finanzas.",
+      inputSchema: z.object({
+        monto: z.number().positive(),
+        moneda: z.enum(["MXN", "USD"]).describe("Moneda en que se cobró"),
+        proyecto: z.string().optional(),
+        descripcion: z.string().optional().describe("Por defecto: Cuota mensual - <proyecto> (<mes>) o Ingreso"),
+        fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("YYYY-MM-DD; por defecto hoy"),
+        factura: z.string().optional().describe("Número de factura, si hay"),
+      }),
+    },
+    async ({ monto, moneda, proyecto, descripcion, fecha, factura }, ctx: ToolCtx) => {
+      await requireFinance(ctx)
+      const date = fecha ?? today()
+      const p = proyecto ? await findProject(proyecto) : null
+      const { amountUsd, rate, note } = await toUsd(monto, moneda, date)
+
+      let dupNote = ""
+      if (p) {
+        const r = monthRange(date.slice(0, 7))
+        const { data: dup } = await db().from("income").select("amount, date, description").eq("project_id", p.id).gte("date", r.first).lte("date", r.last)
+        if (dup?.length) dupNote = `\n⚠️ ${p.name} ya tenía ${dup.length} ingreso(s) en ${r.key}: ${dup.map((d) => `${usd(Number(d.amount))} el ${d.date}`).join(", ")}. Si este es un duplicado, bórralo en /finances.`
+      }
+      const monthLabel = new Date(`${date}T12:00:00`).toLocaleDateString("es-MX", { month: "long", year: "numeric" })
+      const desc = descripcion?.trim() || (p ? `Cuota mensual - ${p.name} (${monthLabel})` : "Ingreso")
+
+      const { error } = await db().from("income").insert({
+        project_id: p?.id ?? null,
+        amount: amountUsd,
+        currency: moneda,
+        original_amount: monto,
+        exchange_rate: rate,
+        date,
+        description: desc,
+        invoice_number: factura?.trim() || null,
+      })
+      if (error) throw new Error(error.message)
+      revalidatePath("/finances")
+      const shown = moneda === "MXN" ? mxn(monto) : usd(monto)
+      return text(`✅ Ingreso registrado: ${shown}${note}${p ? ` · ${p.name}` : ""}\n${desc}\n📅 ${date}${dupNote}`)
+    },
+  )
+
+  server.registerTool(
+    "fees_pendientes",
+    {
+      title: "Fees mensuales pendientes",
+      description: "Proyectos activos con fee mensual que todavía no tienen ningún ingreso registrado en el mes (por defecto el actual) — la misma lista de cuotas pendientes de /finances — con el total pendiente. Montos en USD. Requiere acceso a Finanzas.",
+      inputSchema: z.object({ mes: z.string().optional().describe("YYYY-MM") }),
+    },
+    async ({ mes }, ctx: ToolCtx) => {
+      await requireFinance(ctx)
+      const r = monthRange(mes)
+      const [{ data: projects }, { data: inc }] = await Promise.all([
+        db().from("projects").select("id, name, monthly_fee").eq("status", "Active").gt("monthly_fee", 0).order("name"),
+        db().from("income").select("project_id").gte("date", r.first).lte("date", r.last).not("project_id", "is", null),
+      ])
+      const paid = new Set((inc ?? []).map((i) => i.project_id))
+      const pending = (projects ?? []).filter((p) => !paid.has(p.id))
+      if (!pending.length) return text(`✅ Todos los proyectos activos con fee ya tienen ingreso en ${r.key}.`)
+      const total = pending.reduce((s, p) => s + Number(p.monthly_fee), 0)
+      return text(`Fees pendientes de ${r.key} (${pending.length}):\n${pending.map((p) => `- ${p.name}: ${usd(Number(p.monthly_fee))}`).join("\n")}\nTotal pendiente: ${usd(total)}`)
+    },
+  )
+
+  server.registerTool(
+    "editar_fee_proyecto",
+    {
+      title: "Editar fee mensual / valor de un proyecto",
+      description: "Cambia el fee mensual y/o el valor de un proyecto existente (lo mismo que esos campos en 'Editar proyecto'). El dashboard guarda ambos en USD: si das MXN se convierte con el tipo de cambio de hoy y se dice a cuánto quedó. 0 quita el fee. Sin confirmar: true solo muestra antes → después y el efecto en el MRR. Solo admin/subadmin con permiso para ver finanzas de proyectos.",
+      inputSchema: z.object({
+        proyecto: z.string().min(1),
+        fee_mensual: z.number().nonnegative().optional(),
+        valor: z.number().nonnegative().optional().describe("Valor total del proyecto"),
+        moneda: z.enum(["MXN", "USD"]).describe("Moneda de los montos que das"),
+        confirmar: z.boolean().default(false),
+      }),
+    },
+    async (a, ctx: ToolCtx) => {
+      const profileId = ctx.http?.authInfo?.extra?.profileId
+      if (typeof profileId !== "string") throw new Error("No se pudo identificar quién está llamando esta herramienta")
+      const { data: me } = await db().from("profiles").select("role, permissions").eq("id", profileId).single()
+      if (!me || (me.role !== "admin" && me.role !== "subadmin")) throw new Error("Solo admin o subadmin pueden editar proyectos.")
+      if (!can(me as never, "view_project_financials")) throw new Error("No tienes permiso para ver/editar las finanzas de proyectos.")
+      if (a.fee_mensual == null && a.valor == null) throw new Error("Indica fee_mensual, valor o ambos.")
+
+      const p = await findProject(a.proyecto)
+      const { data: cur } = await db().from("projects").select("monthly_fee, project_value, status").eq("id", p.id).single()
+      const date = today()
+      const patch: Record<string, number | null> = {}
+      const notes: string[] = []
+      if (a.fee_mensual != null) {
+        const c = await toUsd(a.fee_mensual, a.moneda, date)
+        patch.monthly_fee = c.amountUsd > 0 ? c.amountUsd : null
+        if (a.moneda === "MXN" && a.fee_mensual > 0) notes.push(`Fee ${mxn(a.fee_mensual)}${c.note}`)
+      }
+      if (a.valor != null) {
+        const c = await toUsd(a.valor, a.moneda, date)
+        patch.project_value = c.amountUsd > 0 ? c.amountUsd : null
+        if (a.moneda === "MXN" && a.valor > 0) notes.push(`Valor ${mxn(a.valor)}${c.note}`)
+      }
+      const fmt = (n: number | null | undefined) => (n ? usd(Number(n)) : "—")
+      const lines = [
+        `${p.name}`,
+        ...("monthly_fee" in patch ? [`Fee mensual: ${fmt(cur?.monthly_fee)} → ${fmt(patch.monthly_fee)}`] : []),
+        ...("project_value" in patch ? [`Valor: ${fmt(cur?.project_value)} → ${fmt(patch.project_value)}`] : []),
+        ...notes.map((n) => `(${n}; el dashboard guarda USD)`),
+      ]
+      if ("monthly_fee" in patch && cur?.status === "Active") {
+        const { data: rows } = await db().from("projects").select("id, monthly_fee").eq("status", "Active").gt("monthly_fee", 0)
+        const before = (rows ?? []).reduce((s, r) => s + Number(r.monthly_fee), 0)
+        const after = before - Number(cur?.monthly_fee ?? 0) + Number(patch.monthly_fee ?? 0)
+        lines.push(`MRR: ${usd(before)} → ${usd(after)}`)
+      } else if ("monthly_fee" in patch) {
+        lines.push(`(El proyecto no está activo: su fee no cuenta en el MRR.)`)
+      }
+      if (!a.confirmar) return text(`${lines.join("\n")}\n\nNo se cambió nada. Si es correcto, vuelve a llamar con confirmar: true.`)
+
+      const { error } = await db().from("projects").update(patch).eq("id", p.id)
+      if (error) throw new Error(error.message)
+      revalidatePath("/projects"); revalidatePath(`/projects/${p.id}`); revalidatePath("/finances")
+      return text(`✅ Proyecto actualizado.\n${lines.join("\n")}\n\nEsto no registra ningún cobro: si ya pagó, usa registrar_ingreso.`)
     },
   )
 }

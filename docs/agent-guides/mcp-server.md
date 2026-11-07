@@ -3,7 +3,7 @@
 **Ruta:** `/api/mcp` (endpoint, no una página) — la UI para generar keys vive en
 `/employees/[id]` (tu propio perfil, sección "API keys de IA (MCP)")
 **Para quién:** cualquier empleado con sesión — cada persona genera su propia key
-**Actualizado:** 2026-11-06
+**Actualizado:** 2026-11-07
 
 ## Qué es y para qué sirve
 
@@ -130,6 +130,17 @@ más estricto desde el inicio, no una copia de cómo funciona Telegram.
   Mismo modelo que el bot de Telegram: montos en USD (MXN se convierte con el
   tipo de cambio de la fecha); con proyecto → `project_expenses`, sin
   proyecto → `recurring_expenses` "One-time". Nómina no se registra por aquí.
+  **Ingresos y fees (2026-11-07)**: `registrar_ingreso` (permiso
+  `view_global_finances`; igual que un ingreso por Telegram: guarda moneda,
+  monto original, tipo de cambio y `amount` en USD; con `proyecto` cuenta como
+  su cobro del mes; descripción por defecto "Cuota mensual - <proyecto>
+  (<mes>)"; avisa si el proyecto ya tenía ingreso ese mes, no lo bloquea).
+  `fees_pendientes` (proyectos activos con fee sin ingreso en el mes, misma
+  regla que `getPendingMonthlyFees`). `editar_fee_proyecto` cambia
+  `monthly_fee`/`project_value` (admin/subadmin + `view_project_financials`,
+  como "Editar proyecto"; dos pasos, muestra el efecto en el MRR). El fee se
+  guarda en USD: si se da en MXN se convierte con el tipo de cambio de hoy y
+  el chat lo dice. Editar el fee NO registra cobro.
 - **@menciones**: si el texto de una nota incluye `@Nombre Completo` de un
   miembro del proyecto, a esa persona le llega aviso por Telegram (además de
   `avisar_a`). Se resuelve en `notifyNewNote`/`resolveMentions`
