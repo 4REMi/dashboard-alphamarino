@@ -5,7 +5,9 @@ import { resolveProject } from "@/lib/mcp/resolve-project"
 import { lineParts, type AdCloneLine } from "@/lib/types"
 
 // Solo lectura: briefs por concepto con guiones completos y los creativos
-// (creative_assets.brief_id) ligados a cada brief.
+// (creative_assets.brief_id) ligados a cada brief. Para crear/editar/
+// eliminar/aprobar guiones: lib/mcp/script-tools.ts (usa la misma
+// numeración de guiones y líneas).
 
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] })
 const REVIEW: Record<string, string> = { pending_review: "en revisión del cliente", approved: "aprobado", changes_requested: "cambios pedidos" }
@@ -17,7 +19,7 @@ function scripts(b: Brief) {
   if (!raw) return []
   const entries: [string, AdCloneLine[]][] = Array.isArray(raw) ? [["_single", raw]] : Object.entries(raw)
   return entries.filter(([, l]) => l?.length).map(([key, lines], i, all) => ({
-    key, lines,
+    key, lines, number: i + 1,
     title: b.script_titles?.[key] || (all.length > 1 ? `Guión #${i + 1}` : "Guión"),
     status: b.script_reviews?.[key]?.client_status ?? "pending_review",
     feedback: b.script_reviews?.[key]?.client_feedback ?? null,
@@ -25,10 +27,11 @@ function scripts(b: Brief) {
 }
 
 function renderScript(lines: AdCloneLine[]) {
-  return lines.map((l) => {
+  // Líneas numeradas: editar_guion (lib/mcp/script-tools.ts) usa estos números.
+  return lines.map((l, i) => {
     const { section, visual, overlay } = lineParts(l)
     const said = (l.adapted || l.original || "").trim()
-    return [`    ${section ? `[${section}] ` : ""}${said || "(sin texto hablado)"}`, visual && `      🎬 ${visual}`, overlay && `      📝 ${overlay}`].filter(Boolean).join("\n")
+    return [`    ${i + 1}. ${section ? `[${section}] ` : ""}${said || "(sin texto hablado)"}`, visual && `       🎬 ${visual}`, overlay && `       📝 ${overlay}`].filter(Boolean).join("\n")
   }).join("\n")
 }
 
@@ -93,7 +96,7 @@ export function registerBriefTools(server: McpServer) {
         if (b.important_notes) out.push(`Notas: ${b.important_notes}`)
         for (const s of ss) {
           const hook = (s.lines.find((l) => (l.adapted || l.original)?.trim())?.adapted || s.lines[0]?.original || "").trim()
-          out.push(`- ${s.title} · ${REVIEW[s.status] ?? s.status}${s.feedback ? ` · feedback: "${s.feedback}"` : ""}${hook ? `\n  Hook: "${hook}"` : ""}`)
+          out.push(`- Guion #${s.number} "${s.title}" (clave ${s.key}) · ${REVIEW[s.status] ?? s.status}${s.feedback ? ` · feedback: "${s.feedback}"` : ""}${hook ? `\n  Hook: "${hook}"` : ""}`)
           if (!sin_guion_completo) out.push(renderScript(s.lines))
         }
         out.push(linked.length ? `Creativos ligados:\n${linked.map((a) => `  - ${assetLine(a)}`).join("\n")}` : "Creativos ligados: ninguno")

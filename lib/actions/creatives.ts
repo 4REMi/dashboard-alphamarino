@@ -1,5 +1,6 @@
 "use server"
 
+import { normalizeScriptMap, nextScriptKey, patchSetScriptLines, patchRemoveReference, patchScriptTitle, patchApproveScripts, SCRIPT_VARIANT_SEEDS, type BriefScriptsRow } from "@/lib/briefs/scripts-core"
 import { requireSessionOrTrusted } from "@/lib/auth/guards"
 import { CONCEPT_NAME_RULE } from "@/lib/ai/concept-naming"
 
@@ -552,14 +553,9 @@ export async function updateScriptTitle(briefId: string, projectId: string, scri
     .single()
   if (fetchError) throw fetchError
 
-  const titles = { ...(existing?.script_titles as Record<string, string> | null ?? {}) }
-  const trimmed = title.trim()
-  if (trimmed) titles[scriptKey] = trimmed
-  else delete titles[scriptKey]
-
   const { data: brief, error } = await supabase
     .from("creative_briefs")
-    .update({ script_titles: titles, updated_at: new Date().toISOString() })
+    .update(patchScriptTitle({ adapted_script: null, script_titles: existing?.script_titles as Record<string, string> | null }, scriptKey, title))
     .eq("id", briefId)
     .select("share_token")
     .single()
@@ -587,26 +583,9 @@ export async function deleteBriefReference(briefId: string, projectId: string, r
     .single()
   if (fetchError) throw fetchError
 
-  const attachedAdIds = ((existing?.attached_ad_ids as string[] | null) ?? []).filter((id) => id !== referenceKey)
-  const noTranscribeAdIds = ((existing?.no_transcribe_ad_ids as string[] | null) ?? []).filter((id) => id !== referenceKey)
-
-  const adaptedScript = { ...(existing?.adapted_script as Record<string, AdCloneLine[]> | null ?? {}) }
-  delete adaptedScript[referenceKey]
-  const scriptReviews = { ...(existing?.script_reviews as Record<string, unknown> | null ?? {}) }
-  delete scriptReviews[referenceKey]
-  const scriptTitles = { ...(existing?.script_titles as Record<string, string> | null ?? {}) }
-  delete scriptTitles[referenceKey]
-
   const { data: brief, error } = await supabase
     .from("creative_briefs")
-    .update({
-      attached_ad_ids: attachedAdIds,
-      adapted_script: adaptedScript,
-      script_reviews: scriptReviews,
-      script_titles: scriptTitles,
-      no_transcribe_ad_ids: noTranscribeAdIds,
-      updated_at: new Date().toISOString(),
-    })
+    .update(patchRemoveReference(existing as BriefScriptsRow, referenceKey))
     .eq("id", briefId)
     .select("share_token")
     .single()
@@ -633,17 +612,9 @@ export async function autoApproveBriefScripts(briefId: string, projectId: string
     .single()
   if (fetchError) throw fetchError
 
-  const rawScript = existing?.adapted_script as Record<string, AdCloneLine[]> | AdCloneLine[] | null
-  const scriptKeys = rawScript && !Array.isArray(rawScript) ? Object.keys(rawScript) : rawScript ? ["_single"] : []
-
-  const scriptReviews = { ...(existing?.script_reviews as Record<string, unknown> | null ?? {}) }
-  for (const key of scriptKeys.filter((k) => !onlyKeys || onlyKeys.includes(k))) {
-    scriptReviews[key] = { client_status: "approved", client_feedback: null }
-  }
-
   const { data: brief, error } = await supabase
     .from("creative_briefs")
-    .update({ script_reviews: scriptReviews, updated_at: new Date().toISOString() })
+    .update(patchApproveScripts(existing as BriefScriptsRow, onlyKeys))
     .eq("id", briefId)
     .select("share_token")
     .single()
@@ -699,11 +670,7 @@ export async function generateScriptDrafts(
     ? (await supabase.from("brand_lines").select("name, description, usps, pain_points, keywords").eq("id", concept.brand_line_id).single()).data
     : null
 
-  const variantSeeds = [
-    "opción 1 — hook directo, ve al grano",
-    "opción 2 — hook narrativo, abre con una escena o pregunta",
-    "opción 3 — hook contrastante, abre con una afirmación inesperada",
-  ]
+  const variantSeeds = SCRIPT_VARIANT_SEEDS
 
   const results = await Promise.allSettled(
     Array.from({ length: Math.min(variantCount, variantSeeds.length) }, (_, i) =>
@@ -848,23 +815,6 @@ export async function addScriptDraftsToBrief(
   revalidateProject(projectId)
   const { data: fresh } = await supabase.from("creative_briefs").select("*, brand_brain:brand_brains!brand_brain_id(id, name, industry)").eq("id", briefId).single()
   return fresh as CreativeBrief
-}
-
-// A brief's adapted_script can be null, a legacy flat AdCloneLine[] (pre
-// multi-reference briefs), or the current Record<string, AdCloneLine[]> —
-// normalize to the record shape so appends have a stable place to write to.
-function normalizeScriptMap(raw: unknown): Record<string, AdCloneLine[]> {
-  if (!raw) return {}
-  if (Array.isArray(raw)) return { _single: raw as AdCloneLine[] }
-  return { ...(raw as Record<string, AdCloneLine[]>) }
-}
-
-// Finds the next unused "<prefix>_N" key so repeated appends never clobber
-// an earlier script (or the legacy "manual"/"gen_N" keys with no suffix).
-function nextScriptKey(scripts: Record<string, AdCloneLine[]>, prefix: "manual" | "gen"): string {
-  let n = 1
-  while (scripts[`${prefix}_${n}`] !== undefined || (n === 1 && scripts[prefix] !== undefined)) n++
-  return `${prefix}_${n}`
 }
 
 // Next.js redacts the message of any error thrown out of a Server Action in
@@ -1198,26 +1148,11 @@ export async function updateBriefScript(
     .single()
   if (!brief) throw new Error("Brief not found")
 
-  const currentScript = brief.adapted_script
-  const isLegacyArray = Array.isArray(currentScript)
-  const updatedScript = isLegacyArray
-    ? lines
-    : { ...((currentScript as Record<string, unknown>) ?? {}), [adId]: lines }
-
-  // Editing the lines invalidates whatever approval/changes-requested state
-  // applied to the old version — the client needs to see and re-review the
-  // new one, not keep looking at a stale "cambios pedidos" that's already
-  // been addressed (or a stale "aprobado" for lines that changed since).
-  const reviewKey = isLegacyArray ? "_single" : adId
-  const currentReviews = (brief.script_reviews as Record<string, unknown>) ?? {}
-  const updatedReviews = {
-    ...currentReviews,
-    [reviewKey]: { client_status: "pending_review", client_feedback: null },
-  }
-
+  // Editar las líneas invalida la revisión anterior: el cliente vuelve a
+  // revisar (patchSetScriptLines, lib/briefs/scripts-core.ts).
   const { error } = await supabase
     .from("creative_briefs")
-    .update({ adapted_script: updatedScript, script_reviews: updatedReviews, updated_at: new Date().toISOString() })
+    .update(patchSetScriptLines(brief as BriefScriptsRow, adId, lines))
     .eq("id", briefId)
   if (error) throw error
 

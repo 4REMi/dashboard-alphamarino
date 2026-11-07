@@ -519,3 +519,16 @@ Cada concepto creativo puede estar ligado a una línea (`creative_concepts.brand
 - `briefs_concepto` muestra la línea de cada concepto, y la del brief solo si es distinta.
 - `detalle_brand_brain` lista bajo cada línea sus conceptos (proyecto, estado, # creativos; máx. 25 por línea) y al final los conceptos de los proyectos de esa marca que no tienen línea.
 - `asignar_linea_concepto(proyecto, concepto, linea | "ninguna", confirmar)` — igual que el selector de línea del concepto en el Creative Tracker: solo admin/subadmin (mismo permiso que `updateConcept`) y solo líneas del Brand Brain del proyecto. Dos pasos. No cambia la línea de los briefs ya creados (la UI tampoco).
+
+## Guiones: generar, crear, editar, eliminar y aprobar — 2026-11-07
+
+`lib/mcp/script-tools.ts`. Solo admin/subadmin (igual que el editor de briefs). Todo lo que escribe va en dos pasos (`confirmar`). Proyecto, concepto y brief por nombre; `brief` (título o brief_id) solo si el concepto tiene varios.
+
+- `briefs_concepto` (lectura) ahora numera guiones (`Guion #N`, con su clave) y líneas; esos números son los que usa `editar_guion`.
+- `generar_guiones_ia(proyecto, concepto, estructura, variantes)` — misma IA que "Crear rápido" (`writeScriptFromConcept`, estructuras de `SCRIPT_STRUCTURES`, semillas `SCRIPT_VARIANT_SEEDS`) con el Brand Brain del proyecto y la línea del concepto. No guarda: devuelve las opciones en formato de `crear_guion`.
+- `crear_guion(…, titulo?, lineas[{seccion, hablado, visual, en_pantalla}])` — agrega el guion al brief (clave `manual_N`); si el concepto no tiene brief, lo crea como "Crear rápido" (Brand Brain del proyecto, línea del concepto). Queda en revisión del cliente.
+- `editar_guion(…, guion, lineas | cambios/quitar_lineas/insertar, titulo?)` — `guion` por número, título o clave. Los números de línea son los del guion antes de editar (`applyLineEdits`). Cambiar líneas lo regresa a revisión del cliente (como el editor); solo renombrar no.
+- `eliminar_guion` — igual que borrar la referencia en el editor (`patchRemoveReference`): quita la clave de guion, título, revisión y, si era video de referencia, del brief.
+- `aprobar_guiones(…, guiones?)` — aprobación interna sin cliente (`patchApproveScripts`); sin lista aprueba todos.
+- La lógica de los guiones vive en `lib/briefs/scripts-core.ts` (sin `"use server"`), compartida con las actions del dashboard (`updateBriefScript`, `deleteBriefReference`, `updateScriptTitle`, `autoApproveBriefScripts`, `addManualScriptToBrief`…).
+- No disponible por MCP: regenerar un guion desde un video de referencia (transcripción, tarda minutos) ni el constructor por mecánicas; el chat puede escribir el guion directamente.

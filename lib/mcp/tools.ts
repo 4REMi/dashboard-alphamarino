@@ -20,6 +20,7 @@ import { registerDomainTools } from "@/lib/mcp/domain-tools"
 import { registerBriefTools } from "@/lib/mcp/brief-tools"
 import { registerReceiptTools } from "@/lib/mcp/receipt-tools"
 import { registerBrandBrainTools } from "@/lib/mcp/brand-brain-tools"
+import { registerScriptTools } from "@/lib/mcp/script-tools"
 import { getProjectContext } from "@/lib/project-context"
 import { interpretStandup } from "@/lib/standup-core"
 
@@ -113,6 +114,7 @@ export function registerMcpTools(server: McpServer) {
   registerBriefTools(server)
   registerReceiptTools(server)
   registerBrandBrainTools(server)
+  registerScriptTools(server)
 
   server.registerTool(
     "crear_tarea",
