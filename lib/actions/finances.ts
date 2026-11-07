@@ -160,7 +160,8 @@ export async function getPendingMonthlyFees() {
   const lastDay  = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0]
 
   const [projectsRes, incomeRes] = await Promise.all([
-    supabase.from("projects").select("id, name, monthly_fee").eq("status", "Active").gt("monthly_fee", 0),
+    // "*" para no fallar si todavía no se corre la migración 122 (moneda del fee).
+    supabase.from("projects").select("*").eq("status", "Active").gt("monthly_fee", 0),
     supabase.from("income").select("project_id").gte("date", firstDay).lte("date", lastDay).not("project_id", "is", null),
   ])
 
@@ -168,27 +169,42 @@ export async function getPendingMonthlyFees() {
 
   return (projectsRes.data ?? [])
     .filter((p) => !collectedProjectIds.has(p.id))
-    .map((p) => ({ id: p.id, name: p.name, monthly_fee: Number(p.monthly_fee) }))
+    .map((p) => ({
+      id: p.id as string,
+      name: p.name as string,
+      monthly_fee: Number(p.monthly_fee),
+      monthly_fee_currency: (p.monthly_fee_currency as string | undefined) ?? "USD",
+      monthly_fee_original: p.monthly_fee_original != null ? Number(p.monthly_fee_original) : null,
+    }))
 }
 
-// Registra la cuota mensual de un proyecto como Income (USD, fecha de hoy)
+// Registra la cuota mensual de un proyecto como Income (fecha de hoy). Fee
+// en MXN: se registra en pesos con el tipo de cambio del día, igual que un
+// ingreso en MXN capturado a mano.
 export async function collectMonthlyFee(formData: FormData) {
   await requireSessionOrTrusted()
   const supabase = await createClient()
   const projectId = formData.get("project_id") as string
   const projectName = formData.get("project_name") as string
   const amount = Number(formData.get("amount"))
+  const currency = formData.get("currency") === "MXN" ? "MXN" : "USD"
+  const original = Number(formData.get("original_amount"))
 
   const today = new Date()
-  const monthLabel = today.toLocaleDateString("es-MX", { month: "long", year: "numeric" })
+  const date = today.toLocaleDateString("en-CA", { timeZone: "America/Mexico_City" })
+  const monthLabel = today.toLocaleDateString("es-MX", { month: "long", year: "numeric", timeZone: "America/Mexico_City" })
+
+  let row = { amount, currency: "USD" as "USD" | "MXN", original_amount: amount, exchange_rate: 1 }
+  if (currency === "MXN" && original > 0) {
+    const rate = await getExchangeRate(date)
+    if (!rate) throw new Error("No se pudo obtener el tipo de cambio; intenta de nuevo.")
+    row = { amount: Math.round((original / rate) * 100) / 100, currency: "MXN", original_amount: original, exchange_rate: rate }
+  }
 
   const { error } = await supabase.from("income").insert({
     project_id: projectId,
-    amount,
-    currency: "USD",
-    original_amount: amount,
-    exchange_rate: 1,
-    date: today.toISOString().split("T")[0],
+    ...row,
+    date,
     description: `Cuota mensual - ${projectName} (${monthLabel})`,
   })
   if (error) throw error

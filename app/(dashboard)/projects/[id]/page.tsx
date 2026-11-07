@@ -359,6 +359,8 @@ export default async function ProjectDetailPage({ params, searchParams }: { para
             totalIncome,
             accountsReceivable,
             monthlyFee: project.monthly_fee,
+            monthlyFeeCurrency: project.monthly_fee_currency,
+            monthlyFeeOriginal: project.monthly_fee_original,
             totalExpenses,
           } : null}
         />

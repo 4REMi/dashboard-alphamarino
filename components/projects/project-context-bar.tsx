@@ -1,5 +1,6 @@
 "use client"
 
+import { formatFee } from "@/lib/finance/fee-display"
 import { useState } from "react"
 import type { Profile, ProjectLogEntry } from "@/lib/types"
 import { TeamManager } from "@/components/projects/team-manager"
@@ -26,6 +27,8 @@ interface Props {
     totalIncome: number
     accountsReceivable: number
     monthlyFee?: number | null
+    monthlyFeeCurrency?: string | null
+    monthlyFeeOriginal?: number | null
     totalExpenses: number
   } | null
 }
@@ -132,7 +135,7 @@ export function ProjectContextBar({
                 {finances.monthlyFee && (
                   <div>
                     <span className="text-muted-foreground">Fee </span>
-                    <span className="font-semibold">{formatCurrency(finances.monthlyFee)}</span>
+                    <span className="font-semibold">{formatFee({ monthly_fee: finances.monthlyFee, monthly_fee_currency: finances.monthlyFeeCurrency, monthly_fee_original: finances.monthlyFeeOriginal })}</span>
                   </div>
                 )}
               </div>

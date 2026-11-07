@@ -158,7 +158,9 @@ export interface Project {
   status: ProjectStatus
   progress: number
   project_value: number | null
-  monthly_fee: number | null
+  monthly_fee: number | null            // siempre en USD (equivalente si el fee se pactó en MXN)
+  monthly_fee_currency?: "USD" | "MXN"  // migración 122
+  monthly_fee_original?: number | null  // monto pactado en MXN
   start_date: string | null
   end_date: string | null
   description: string | null

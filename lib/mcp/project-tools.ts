@@ -40,7 +40,8 @@ export function registerProjectTools(server: McpServer) {
         fecha_inicio: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
         fecha_fin: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
         valor: z.number().nonnegative().optional().describe("Valor del proyecto (USD)"),
-        fee_mensual: z.number().nonnegative().optional().describe("Fee mensual (USD)"),
+        fee_mensual: z.number().nonnegative().optional().describe("Fee mensual, en la moneda de moneda_fee"),
+        moneda_fee: z.enum(["USD", "MXN"]).default("USD").describe("Moneda en que se pactó el fee (MXN: se guarda en pesos y su equivalente en USD se actualiza a diario)"),
         descripcion: z.string().optional(),
         ofertas: z.array(z.string()).optional().describe("Ofertas del catálogo por nombre (ver listar_ofertas)"),
         entregables_propios: z.array(z.object({
@@ -92,7 +93,7 @@ export function registerProjectTools(server: McpServer) {
           ...offers.map((o) => `- Oferta ${o.name}: ${(o.deliverables ?? []).map((d) => `${d.quantity ?? 1}× ${d.control_text?.trim() || d.text} (${CAD[d.cadence] ?? d.cadence})`).join(", ") || "sin entregables"}`),
           ...customs.map((c) => `- Propio: ${c.cantidad}× ${c.texto} (${CAD[c.cadencia]})`),
         ].join("\n")}`,
-        a.valor != null || a.fee_mensual != null ? `Valor: ${a.valor ?? "—"} · Fee mensual: ${a.fee_mensual ?? "—"}` : "",
+        a.valor != null || a.fee_mensual != null ? `Valor: ${a.valor ?? "—"} · Fee mensual: ${a.fee_mensual != null ? `${a.fee_mensual} ${a.moneda_fee}` : "—"}` : "",
       ].filter(Boolean).join("\n")
       if (!a.confirmar) return text(`Crearía:\n${plan}${confirmHint}`)
 
@@ -104,7 +105,7 @@ export function registerProjectTools(server: McpServer) {
       if (a.fecha_inicio) fd.set("start_date", a.fecha_inicio)
       if (a.fecha_fin) fd.set("end_date", a.fecha_fin)
       if (a.valor != null) fd.set("project_value", String(a.valor))
-      if (a.fee_mensual != null) fd.set("monthly_fee", String(a.fee_mensual))
+      if (a.fee_mensual != null) { fd.set("monthly_fee", String(a.fee_mensual)); fd.set("monthly_fee_currency", a.moneda_fee) }
       if (a.descripcion) fd.set("description", a.descripcion)
       fd.set("is_internal", String(!!a.interno))
       fd.set("offer_ids_json", JSON.stringify(offers.map((o) => o.id)))

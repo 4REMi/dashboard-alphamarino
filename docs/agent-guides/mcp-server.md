@@ -139,8 +139,22 @@ más estricto desde el inicio, no una copia de cómo funciona Telegram.
   regla que `getPendingMonthlyFees`). `editar_fee_proyecto` cambia
   `monthly_fee`/`project_value` (admin/subadmin + `view_project_financials`,
   como "Editar proyecto"; dos pasos, muestra el efecto en el MRR). El fee se
-  guarda en USD: si se da en MXN se convierte con el tipo de cambio de hoy y
-  el chat lo dice. Editar el fee NO registra cobro.
+  guarda en la moneda pactada (ver abajo). Editar el fee NO registra cobro.
+  **Moneda del fee (2026-11-07, migración 122)**: `projects.monthly_fee_currency`
+  (USD/MXN) y `monthly_fee_original` (monto en pesos). `monthly_fee` sigue
+  siendo el equivalente en USD que leen MRR, Finanzas y reportes; para fees en
+  MXN el cron diario (`refreshMxnFees`, `lib/finance/project-fee.ts`) lo
+  recalcula con el tipo de cambio del día. "Marcar como cobrado" y
+  `registrar_ingreso` registran el cobro en MXN. `crear_proyecto` acepta
+  `moneda_fee`. Sin la migración, los fees en USD siguen funcionando y uno en
+  MXN da un error que lo dice.
+  **Gastos recurrentes (2026-11-07)**: `editar_gasto_recurrente` (por nombre,
+  dos pasos). Cambio de monto/frecuencia = cambio de precio desde este mes:
+  cierra el gasto al final del mes pasado (`ended_at`) y crea uno igual con el
+  monto nuevo y `start_date` el día 1, para no reescribir meses pasados;
+  `corregir_historial: true` edita en su lugar. Nombre/categoría se editan en
+  su lugar. `dar_de_baja: true` = mismo efecto que el switch de Finanzas
+  (`is_active: false`, `ended_at` hoy).
 - **@menciones**: si el texto de una nota incluye `@Nombre Completo` de un
   miembro del proyecto, a esa persona le llega aviso por Telegram (además de
   `avisar_a`). Se resuelve en `notifyNewNote`/`resolveMentions`

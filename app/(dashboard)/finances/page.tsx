@@ -1,4 +1,5 @@
 import Link from "next/link"
+import { formatFee } from "@/lib/finance/fee-display"
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import {
@@ -260,7 +261,7 @@ export default async function FinancesPage() {
                 >
                   <span className="truncate">{p.name}</span>
                   <div className="flex items-center gap-3 flex-shrink-0">
-                    <span>{formatCurrency(p.monthly_fee)}</span>
+                    <span>{formatFee(p)}</span>
                     <form action={async (formData: FormData) => {
                       "use server"
                       await collectMonthlyFee(formData)
@@ -268,6 +269,8 @@ export default async function FinancesPage() {
                       <input type="hidden" name="project_id" value={p.id} />
                       <input type="hidden" name="project_name" value={p.name} />
                       <input type="hidden" name="amount" value={p.monthly_fee} />
+                      <input type="hidden" name="currency" value={p.monthly_fee_currency} />
+                      <input type="hidden" name="original_amount" value={p.monthly_fee_original ?? ""} />
                       <Button type="submit" variant="outline" size="sm">Marcar como cobrado</Button>
                     </form>
                   </div>

@@ -3,6 +3,7 @@ import { timingSafeEqual } from "crypto"
 import { runDailyCycleCheck } from "@/lib/actions/projects"
 import { runBonusReportReminders } from "@/lib/actions/my-compensation"
 import { runTrusted } from "@/lib/trusted-context"
+import { refreshMxnFees } from "@/lib/finance/project-fee"
 
 // Triggered once a day by a scheduler (Vercel Cron via vercel.json, or any
 // external cron hitting this URL with the right header — the route itself
@@ -27,5 +28,7 @@ export async function GET(req: NextRequest) {
   const result = await runTrusted("cron", () => runDailyCycleCheck())
   // Recordatorios del reporte de bonos (último día del mes y día 2).
   const bonus = await runBonusReportReminders(secret).catch((e) => ({ reminded: 0, error: String(e) }))
-  return NextResponse.json({ ok: true, ...result, bonusReminders: bonus })
+  // Fees pactados en MXN: equivalente en USD con el tipo de cambio de hoy (MRR).
+  const mxnFeesUpdated = await refreshMxnFees().catch((e) => ({ error: String(e) }))
+  return NextResponse.json({ ok: true, ...result, bonusReminders: bonus, mxnFeesUpdated })
 }

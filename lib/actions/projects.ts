@@ -7,11 +7,14 @@ import { assertNoCycleOverlap } from "@/lib/utils/cycle-overlap"
 import type { ProjectSignals } from "@/lib/utils/project-signals"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { feeRow, isMissingFeeColumns, type FeeCurrency } from "@/lib/finance/project-fee"
 import { notify } from "@/lib/notifications/notify"
 import { can } from "@/lib/permissions"
 import { attachServiceOfferToProject, addCustomDeliverable } from "@/lib/actions/service-deliverables"
 import type { ProjectStatus, PhaseStatus, CampaignStatus, Profile, ProjectLogCategory, CycleChannelRow, DeliverableCadence } from "@/lib/types"
 import type { SupabaseClient } from "@supabase/supabase-js"
+
+const feeCurrencyFrom = (fd: FormData): FeeCurrency => (fd.get("monthly_fee_currency") === "MXN" ? "MXN" : "USD")
 
 // Builds position_id → [profile_ids] from a project's current members, so
 // template tasks/re-assignment can resolve default_position_id → assignee.
@@ -633,16 +636,15 @@ export async function createProject(
     if (me?.role === "admin" || me?.role === "subadmin") throw new Error("Define el alcance: elige una oferta, agrega entregables propios o marca el proyecto como interno.")
   }
 
-  const { data: project, error } = await supabase
-    .from("projects")
-    .insert({
+  // Fee mensual con su moneda (migración 122): monthly_fee siempre en USD.
+  const fee = await feeRow(formData.get("monthly_fee") ? Number(formData.get("monthly_fee")) : null, feeCurrencyFrom(formData))
+  const insertBase = {
       is_internal: isInternal,
       name: formData.get("name") as string,
       customer_id: (formData.get("customer_id") as string) || null,
       project_type_id: projectTypeId && projectTypeId !== "none" ? projectTypeId : null,
       status: "Active" as ProjectStatus,
       project_value: formData.get("project_value") ? Number(formData.get("project_value")) : null,
-      monthly_fee: formData.get("monthly_fee") ? Number(formData.get("monthly_fee")) : null,
       start_date: (formData.get("start_date") as string) || null,
       end_date: (formData.get("end_date") as string) || null,
       description: (formData.get("description") as string) || null,
@@ -650,11 +652,16 @@ export async function createProject(
       paid_media_cycle_start_day: formData.get("paid_media_cycle_start_day")
         ? Number(formData.get("paid_media_cycle_start_day"))
         : null,
-    })
-    .select()
-    .single()
+  }
+  let { data: project, error } = await supabase.from("projects").insert({ ...insertBase, ...fee }).select().single()
+  // Sin la migración 122 todavía: fees en USD siguen funcionando.
+  if (error && isMissingFeeColumns(error.message) && fee.monthly_fee_currency === "USD") {
+    ({ data: project, error } = await supabase.from("projects").insert({ ...insertBase, monthly_fee: fee.monthly_fee }).select().single())
+  }
+  if (error && isMissingFeeColumns(error.message)) throw new Error("Para guardar el fee en pesos falta correr la migración 122 en Supabase.")
 
   if (error) throw error
+  if (!project) throw new Error("No se pudo crear el proyecto")
 
   // Add team members BEFORE copying task sets — task assignment resolves
   // default_position_id against project_members at copy time, so members
@@ -831,15 +838,19 @@ export async function updateProject(id: string, formData: FormData) {
 
   const statusValue = formData.get("status") as string | null
 
-  const { error } = await supabase
-    .from("projects")
-    .update({
+  // Valor y fee solo se tocan si vienen en el formulario: quien no tiene
+  // permiso de finanzas no los ve, y antes al guardar se borraban.
+  const fee = formData.has("monthly_fee")
+    ? await feeRow(formData.get("monthly_fee") ? Number(formData.get("monthly_fee")) : null, feeCurrencyFrom(formData))
+    : null
+  const updateBase = {
       name: formData.get("name") as string,
       customer_id: (formData.get("customer_id") as string) || null,
       project_type_id: projectTypeId && projectTypeId !== "none" ? projectTypeId : null,
       ...(statusValue ? { status: statusValue as ProjectStatus } : {}),
-      project_value: formData.get("project_value") ? Number(formData.get("project_value")) : null,
-      monthly_fee: formData.get("monthly_fee") ? Number(formData.get("monthly_fee")) : null,
+      ...(formData.has("project_value")
+        ? { project_value: formData.get("project_value") ? Number(formData.get("project_value")) : null }
+        : {}),
       start_date: (formData.get("start_date") as string) || null,
       end_date: (formData.get("end_date") as string) || null,
       description: (formData.get("description") as string) || null,
@@ -851,8 +862,13 @@ export async function updateProject(id: string, formData: FormData) {
               : null,
           }
         : {}),
-    })
-    .eq("id", id)
+  }
+  let { error } = await supabase.from("projects").update({ ...updateBase, ...(fee ?? {}) }).eq("id", id)
+  // Sin la migración 122 todavía: fees en USD siguen funcionando.
+  if (error && fee && isMissingFeeColumns(error.message) && fee.monthly_fee_currency === "USD") {
+    ({ error } = await supabase.from("projects").update({ ...updateBase, monthly_fee: fee.monthly_fee }).eq("id", id))
+  }
+  if (error && isMissingFeeColumns(error.message)) throw new Error("Para guardar el fee en pesos falta correr la migración 122 en Supabase.")
 
   if (error) throw error
   revalidatePath("/projects")

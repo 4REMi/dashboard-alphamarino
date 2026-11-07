@@ -204,7 +204,17 @@ export function ProjectForm({ project, customers, projectTypes, brandBrains = []
                 <label className="space-y-1"><span className="text-xs font-medium text-muted-foreground">Valor del proyecto</span>
                   <input name="project_value" type="number" min="0" step="0.01" placeholder="$" defaultValue={project?.project_value ?? ""} className={cn(input, "tabular-nums")} /></label>
                 <label className="space-y-1"><span className="text-xs font-medium text-muted-foreground">Fee mensual</span>
-                  <input name="monthly_fee" type="number" min="0" step="0.01" placeholder="$" defaultValue={project?.monthly_fee ?? ""} className={cn(input, "tabular-nums")} /></label>
+                  <div className="flex gap-1">
+                    <input name="monthly_fee" type="number" min="0" step="0.01" placeholder="$"
+                      defaultValue={(project?.monthly_fee_currency === "MXN" ? project?.monthly_fee_original : project?.monthly_fee) ?? ""}
+                      className={cn(input, "tabular-nums min-w-0")} />
+                    {/* MXN: se guarda el monto en pesos y su equivalente en USD se actualiza a diario con el tipo de cambio. */}
+                    <select name="monthly_fee_currency" defaultValue={project?.monthly_fee_currency ?? "USD"} aria-label="Moneda del fee"
+                      className="rounded-lg border border-input bg-background px-1.5 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring">
+                      <option value="USD">USD</option>
+                      <option value="MXN">MXN</option>
+                    </select>
+                  </div></label>
               </>}
             </div>
 

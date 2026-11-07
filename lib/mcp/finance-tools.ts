@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { getExchangeRate } from "@/lib/actions/finances"
 import { can } from "@/lib/permissions"
 import { revalidatePath } from "next/cache"
+import { feeColumns, isMissingFeeColumns } from "@/lib/finance/project-fee"
 import { recurringAppliesToMonth } from "@/lib/utils/recurring-in-month"
 import { normalizeToMonthly, type ExpenseFrequency } from "@/lib/types"
 
@@ -32,6 +33,13 @@ export async function requireFinance(ctx: ToolCtx): Promise<string> {
 }
 
 const mxn = (n: number) => `MXN ${n.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
+// Fee de un proyecto como texto: "MXN 11,500.00 (≈ USD 615.00)" o "USD 615.00".
+function feeText(p: { monthly_fee: number | null; monthly_fee_currency?: string | null; monthly_fee_original?: number | null }): string {
+  if (!p.monthly_fee) return "—"
+  if (p.monthly_fee_currency === "MXN" && Number(p.monthly_fee_original) > 0) return `${mxn(Number(p.monthly_fee_original))} (≈ ${usd(Number(p.monthly_fee))})`
+  return usd(Number(p.monthly_fee))
+}
 
 // MXN → USD con el tipo de cambio de la fecha (mismo criterio que el bot).
 async function toUsd(monto: number, moneda: "MXN" | "USD", date: string) {
@@ -241,14 +249,14 @@ export function registerFinanceTools(server: McpServer) {
       await requireFinance(ctx)
       const r = monthRange(mes)
       const [{ data: projects }, { data: inc }] = await Promise.all([
-        db().from("projects").select("id, name, monthly_fee").eq("status", "Active").gt("monthly_fee", 0).order("name"),
+        db().from("projects").select("*").eq("status", "Active").gt("monthly_fee", 0).order("name"),
         db().from("income").select("project_id").gte("date", r.first).lte("date", r.last).not("project_id", "is", null),
       ])
       const paid = new Set((inc ?? []).map((i) => i.project_id))
       const pending = (projects ?? []).filter((p) => !paid.has(p.id))
       if (!pending.length) return text(`✅ Todos los proyectos activos con fee ya tienen ingreso en ${r.key}.`)
       const total = pending.reduce((s, p) => s + Number(p.monthly_fee), 0)
-      return text(`Fees pendientes de ${r.key} (${pending.length}):\n${pending.map((p) => `- ${p.name}: ${usd(Number(p.monthly_fee))}`).join("\n")}\nTotal pendiente: ${usd(total)}`)
+      return text(`Fees pendientes de ${r.key} (${pending.length}):\n${pending.map((p) => `- ${p.name}: ${feeText(p)}`).join("\n")}\nTotal pendiente: ${usd(total)} (equivalente en USD)`)
     },
   )
 
@@ -256,7 +264,7 @@ export function registerFinanceTools(server: McpServer) {
     "editar_fee_proyecto",
     {
       title: "Editar fee mensual / valor de un proyecto",
-      description: "Cambia el fee mensual y/o el valor de un proyecto existente (lo mismo que esos campos en 'Editar proyecto'). El dashboard guarda ambos en USD: si das MXN se convierte con el tipo de cambio de hoy y se dice a cuánto quedó. 0 quita el fee. Sin confirmar: true solo muestra antes → después y el efecto en el MRR. Solo admin/subadmin con permiso para ver finanzas de proyectos.",
+      description: "Cambia el fee mensual y/o el valor de un proyecto existente (lo mismo que esos campos en 'Editar proyecto'). El fee se guarda en la moneda en que se pactó: en MXN queda el monto en pesos y su equivalente en USD (para el MRR) se actualiza a diario con el tipo de cambio. El valor del proyecto se guarda en USD (MXN se convierte con el tipo de cambio de hoy). 0 quita el fee. Sin confirmar: true solo muestra antes → después y el efecto en el MRR. Solo admin/subadmin con permiso para ver finanzas de proyectos.",
       inputSchema: z.object({
         proyecto: z.string().min(1),
         fee_mensual: z.number().nonnegative().optional(),
@@ -274,14 +282,14 @@ export function registerFinanceTools(server: McpServer) {
       if (a.fee_mensual == null && a.valor == null) throw new Error("Indica fee_mensual, valor o ambos.")
 
       const p = await findProject(a.proyecto)
-      const { data: cur } = await db().from("projects").select("monthly_fee, project_value, status").eq("id", p.id).single()
+      const { data: cur } = await db().from("projects").select("*").eq("id", p.id).single()
       const date = today()
-      const patch: Record<string, number | null> = {}
+      const patch: Record<string, number | string | null> = {}
       const notes: string[] = []
       if (a.fee_mensual != null) {
-        const c = await toUsd(a.fee_mensual, a.moneda, date)
-        patch.monthly_fee = c.amountUsd > 0 ? c.amountUsd : null
-        if (a.moneda === "MXN" && a.fee_mensual > 0) notes.push(`Fee ${mxn(a.fee_mensual)}${c.note}`)
+        const { rate, ...cols } = await feeColumns(a.fee_mensual > 0 ? a.fee_mensual : null, a.moneda)
+        Object.assign(patch, cols)
+        if (rate) notes.push(`fee en pesos; hoy equivale a ${usd(Number(cols.monthly_fee))} a ${rate.toFixed(2)} y se actualiza a diario`)
       }
       if (a.valor != null) {
         const c = await toUsd(a.valor, a.moneda, date)
@@ -291,9 +299,9 @@ export function registerFinanceTools(server: McpServer) {
       const fmt = (n: number | null | undefined) => (n ? usd(Number(n)) : "—")
       const lines = [
         `${p.name}`,
-        ...("monthly_fee" in patch ? [`Fee mensual: ${fmt(cur?.monthly_fee)} → ${fmt(patch.monthly_fee)}`] : []),
-        ...("project_value" in patch ? [`Valor: ${fmt(cur?.project_value)} → ${fmt(patch.project_value)}`] : []),
-        ...notes.map((n) => `(${n}; el dashboard guarda USD)`),
+        ...("monthly_fee" in patch ? [`Fee mensual: ${feeText(cur ?? { monthly_fee: null })} → ${feeText(patch as { monthly_fee: number | null })}`] : []),
+        ...("project_value" in patch ? [`Valor: ${fmt(cur?.project_value)} → ${fmt(patch.project_value as number | null)}`] : []),
+        ...notes.map((n) => `(${n})`),
       ]
       if ("monthly_fee" in patch && cur?.status === "Active") {
         const { data: rows } = await db().from("projects").select("id, monthly_fee").eq("status", "Active").gt("monthly_fee", 0)
@@ -305,10 +313,111 @@ export function registerFinanceTools(server: McpServer) {
       }
       if (!a.confirmar) return text(`${lines.join("\n")}\n\nNo se cambió nada. Si es correcto, vuelve a llamar con confirmar: true.`)
 
-      const { error } = await db().from("projects").update(patch).eq("id", p.id)
+      let { error } = await db().from("projects").update(patch).eq("id", p.id)
+      // Sin la migración 122 todavía: un fee en USD se guarda igual que antes.
+      if (error && isMissingFeeColumns(error.message) && patch.monthly_fee_currency !== "MXN") {
+        const { monthly_fee_currency: _c, monthly_fee_original: _o, ...legacy } = patch
+        void _c; void _o
+        ;({ error } = await db().from("projects").update(legacy).eq("id", p.id))
+      }
+      if (error && isMissingFeeColumns(error.message)) throw new Error("Para guardar el fee en pesos falta correr la migración 122 en Supabase.")
       if (error) throw new Error(error.message)
       revalidatePath("/projects"); revalidatePath(`/projects/${p.id}`); revalidatePath("/finances")
       return text(`✅ Proyecto actualizado.\n${lines.join("\n")}\n\nEsto no registra ningún cobro: si ya pagó, usa registrar_ingreso.`)
+    },
+  )
+
+  server.registerTool(
+    "editar_gasto_recurrente",
+    {
+      title: "Editar o dar de baja un gasto recurrente",
+      description:
+        "Cambia o da de baja un gasto recurrente general (suscripciones, renta, etc.; lo que en /finances son gastos recurrentes). Se busca por nombre. " +
+        "Cambio de monto o frecuencia (ej. 'Pastel ahora cuesta 35'): por defecto es un cambio de precio DESDE ESTE MES — el gasto anterior se cierra al final del mes pasado y se crea uno igual con el monto nuevo, así los meses anteriores conservan lo que de verdad costó. Con corregir_historial: true se edita en su lugar (para corregir un monto que estaba mal desde el inicio; cambia también los meses pasados). " +
+        "Nombre y categoría se editan en su lugar. dar_de_baja: true lo desactiva desde hoy (igual que el switch de Finanzas; no se borra de los meses en que aplicó). " +
+        "Monto en MXN o USD (se guarda en USD con el tipo de cambio de hoy). Sin confirmar: true solo muestra antes → después. Requiere acceso a Finanzas.",
+      inputSchema: z.object({
+        gasto: z.string().min(1).describe("Nombre (o parte) del gasto recurrente"),
+        nuevo_monto: z.number().positive().optional(),
+        moneda: z.enum(["MXN", "USD"]).default("USD").describe("Moneda de nuevo_monto"),
+        frecuencia: z.enum(["mensual", "semanal", "semestral", "anual"]).optional(),
+        nuevo_nombre: z.string().min(1).optional(),
+        categoria: z.enum(CATS).optional(),
+        dar_de_baja: z.boolean().default(false),
+        corregir_historial: z.boolean().default(false),
+        confirmar: z.boolean().default(false),
+      }),
+    },
+    async (a, ctx: ToolCtx) => {
+      await requireFinance(ctx)
+      const { data: all, error: e0 } = await db().from("recurring_expenses").select("*").eq("is_active", true).neq("frequency", "One-time").order("name")
+      if (e0) throw new Error(e0.message)
+      const rows = (all ?? []) as { id: string; name: string; amount: number; frequency: string; category: string; start_date: string | null; created_at: string; next_payment_date: string | null }[]
+      const q = a.gasto.trim().toLowerCase()
+      const exact = rows.filter((r) => r.name.trim().toLowerCase() === q)
+      const hits = exact.length ? exact : rows.filter((r) => r.name.toLowerCase().includes(q))
+      if (!hits.length) throw new Error(`No encontré un gasto recurrente activo "${a.gasto}". Activos: ${rows.map((r) => r.name).join(", ") || "ninguno"}.`)
+      if (hits.length > 1) throw new Error(`"${a.gasto}" coincide con varios gastos recurrentes: ${hits.map((r) => `${r.name} (${usd(Number(r.amount))})`).join(", ")}. Sé más específico.`)
+      const g = hits[0]
+
+      const FREQ: Record<string, string> = { mensual: "Monthly", semanal: "Weekly", semestral: "Semestral", anual: "Annual" }
+      const FREQ_LABEL: Record<string, string> = { Monthly: "mensual", Weekly: "semanal", Semestral: "semestral", Annual: "anual" }
+      const line = (x: { name: string; amount: number; frequency: string; category: string }) =>
+        `${x.name} · ${usd(Number(x.amount))} ${FREQ_LABEL[x.frequency] ?? x.frequency} · ${CAT_LABEL[x.category] ?? x.category}`
+      const date = today()
+      const thisMonth = monthRange(date.slice(0, 7))
+
+      if (a.dar_de_baja) {
+        const desc = `Dar de baja desde hoy (${date}):\n- ${line(g)}\nSigue contando en los meses en que ya aplicó.`
+        if (!a.confirmar) return text(`${desc}\n\nNo se cambió nada. Si es correcto, vuelve a llamar con confirmar: true.`)
+        const { error } = await db().from("recurring_expenses").update({ is_active: false, ended_at: date }).eq("id", g.id)
+        if (error) throw new Error(error.message)
+        revalidatePath("/finances"); revalidatePath("/finances/expenses")
+        return text(`✅ Gasto recurrente dado de baja.\n${desc}`)
+      }
+
+      let amount = Number(g.amount)
+      let rateNote = ""
+      if (a.nuevo_monto != null) {
+        const c = await toUsd(a.nuevo_monto, a.moneda, date)
+        amount = c.amountUsd
+        if (a.moneda === "MXN") rateNote = `\n(${mxn(a.nuevo_monto)}${c.note})`
+      }
+      const frequency = a.frecuencia ? FREQ[a.frecuencia] : g.frequency
+      const after = { name: a.nuevo_nombre?.trim() || g.name, amount, frequency, category: a.categoria ?? g.category }
+      const moneyChanged = amount !== Number(g.amount) || frequency !== g.frequency
+      if (!moneyChanged && after.name === g.name && after.category === g.category) throw new Error("No indicaste nada que cambiar.")
+
+      // ¿Cambio de precio desde este mes (cerrar + crear) o edición en su lugar?
+      const begins = (g.start_date ?? g.created_at.slice(0, 10))
+      const splitByMonth = moneyChanged && !a.corregir_historial && begins < thisMonth.first
+      const prevMonthEnd = new Date(Date.UTC(Number(thisMonth.key.slice(0, 4)), Number(thisMonth.key.slice(5, 7)) - 1, 0)).toISOString().slice(0, 10)
+
+      const desc = [
+        `Antes:   ${line(g)}`,
+        `Después: ${line(after)}${rateNote}`,
+        splitByMonth
+          ? `Cambio de precio desde ${thisMonth.key}: el gasto actual se cierra el ${prevMonthEnd} (los meses anteriores conservan ${usd(Number(g.amount))}) y se crea uno igual con el monto nuevo desde el ${thisMonth.first}.`
+          : moneyChanged
+            ? `Se edita en su lugar: el monto nuevo aplica también a los meses pasados de este gasto.`
+            : `Se edita en su lugar.`,
+      ].join("\n")
+      if (!a.confirmar) return text(`${desc}\n\nNo se cambió nada. Si es correcto, vuelve a llamar con confirmar: true.`)
+
+      if (splitByMonth) {
+        const { error: e1 } = await db().from("recurring_expenses").insert({
+          name: after.name, amount: after.amount, frequency: after.frequency, category: after.category,
+          start_date: thisMonth.first, next_payment_date: g.next_payment_date, is_active: true,
+        })
+        if (e1) throw new Error(e1.message)
+        const { error: e2 } = await db().from("recurring_expenses").update({ is_active: false, ended_at: prevMonthEnd }).eq("id", g.id)
+        if (e2) throw new Error(`Se creó el gasto con el monto nuevo pero no se pudo cerrar el anterior (${e2.message}); dalo de baja en /finances para no duplicarlo.`)
+      } else {
+        const { error } = await db().from("recurring_expenses").update(after).eq("id", g.id)
+        if (error) throw new Error(error.message)
+      }
+      revalidatePath("/finances"); revalidatePath("/finances/expenses")
+      return text(`✅ Gasto recurrente actualizado.\n${desc}`)
     },
   )
 }
