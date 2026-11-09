@@ -532,3 +532,7 @@ Cada concepto creativo puede estar ligado a una línea (`creative_concepts.brand
 - `aprobar_guiones(…, guiones?)` — aprobación interna sin cliente (`patchApproveScripts`); sin lista aprueba todos.
 - La lógica de los guiones vive en `lib/briefs/scripts-core.ts` (sin `"use server"`), compartida con las actions del dashboard (`updateBriefScript`, `deleteBriefReference`, `updateScriptTitle`, `autoApproveBriefScripts`, `addManualScriptToBrief`…).
 - No disponible por MCP: regenerar un guion desde un video de referencia (transcripción, tarda minutos) ni el constructor por mecánicas; el chat puede escribir el guion directamente.
+
+## detalle_tarea — 2026-11-09
+
+`lib/mcp/task-tools.ts`. Solo lectura. Una tarea con todo su detalle: estado, proyecto y fase, responsable y puesto (con aviso si la asignación por puesto falló), fechas (creada, vence, completada, último cambio), descripción, checklist (marcados y cuáles bloquean), ping y a quién avisa, entregable requerido (instrucciones y lo subido) y SOP (propio o heredado de la plantilla). Busca por `titulo` (parcial; exacto gana), opcional `proyecto`, o `tarea_id`; incluye completadas. Si hay varias coincidencias, las lista con su `tarea_id`. Visibilidad igual que la RLS de `tasks`: admin/subadmin ven todo; un empleado, tareas de proyectos donde es miembro o asignadas a él; las personales solo su dueño.
