@@ -114,7 +114,10 @@ export function ConceptAnalysisModal({ ad, open, onClose, initial = null, onClon
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && requestClose()}>
-      <DialogContent className="max-w-[min(1120px,96vw)] w-[96vw] h-[90vh] p-0 gap-0 overflow-y-auto md:overflow-hidden flex flex-col relative">
+      {/* Sin "relative": tailwind-merge lo dejaría ganarle al "fixed" de DialogContent
+          y la ventana se iría al final de la página (solo quedaba el fondo oscuro).
+          "fixed" ya sirve de referencia para el aviso absoluto de abajo. */}
+      <DialogContent className="max-w-[min(1120px,96vw)] w-[96vw] h-[90vh] p-0 gap-0 overflow-y-auto md:overflow-hidden flex flex-col">
         {confirmClose && busy && (
           <div className="absolute inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
             <div className="max-w-sm w-full rounded-xl border bg-background shadow-lg p-5 space-y-3">
