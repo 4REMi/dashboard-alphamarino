@@ -1,4 +1,5 @@
 import { resolveProject } from "@/lib/mcp/resolve-project"
+import { withToolDeadlines } from "@/lib/mcp/tool-deadline"
 import { z } from "zod"
 import type { McpServer, AuthInfo } from "@modelcontextprotocol/server"
 import { createAdminClient } from "@/lib/supabase/admin"
@@ -100,6 +101,8 @@ function todayIso(): string {
 // guía) reusando siempre acciones reales del dashboard, nunca lógica
 // duplicada ni un bypass de permisos como el que usa el bot.
 export function registerMcpTools(server: McpServer) {
+  // Antes que nada: todas las herramientas con límite de 270 s (lib/mcp/tool-deadline.ts).
+  withToolDeadlines(server)
   // Plantillas de Operations (solo admin) — lib/mcp/operations-tools.ts
   registerOperationsTools(server)
   registerFinanceTools(server)

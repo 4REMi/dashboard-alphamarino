@@ -352,6 +352,8 @@ export async function searchFacebookPageSuggestions(query: string): Promise<Acco
     resultsLimit: 8,
   }
 
+  // Autocompletado: si Apify no responde en 20 s, sin sugerencias (antes
+  // lanzaba TimeoutError y ensuciaba los logs; la UI igual mostraba vacío).
   const res = await fetch(
     `${APIFY_BASE}/acts/${FB_SEARCH_ACTOR}/run-sync-get-dataset-items?token=${token}`,
     {
@@ -361,13 +363,20 @@ export async function searchFacebookPageSuggestions(query: string): Promise<Acco
       cache:   "no-store",
       signal:  AbortSignal.timeout(20_000),
     }
-  )
+  ).catch((e) => {
+    if (e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")) return null
+    throw e
+  })
+  if (!res) return []
   if (!res.ok) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const err: any = await res.json().catch(() => ({}))
     throw new Error(err?.error?.message ?? `Apify error ${res.status}`)
   }
-  const data = await res.json()
+  const data = await res.json().catch((e) => {
+    if (e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")) return []
+    throw e
+  })
   const items = Array.isArray(data) ? data : []
 
   return items.map((raw): AccountSuggestion => {
@@ -399,6 +408,8 @@ export async function searchInstagramAccountSuggestions(query: string): Promise<
     maxItems: 8,
   }
 
+  // Autocompletado: si Apify no responde en 20 s, sin sugerencias (antes
+  // lanzaba TimeoutError y ensuciaba los logs; la UI igual mostraba vacío).
   const res = await fetch(
     `${APIFY_BASE}/acts/${IG_SEARCH_ACTOR}/run-sync-get-dataset-items?token=${token}`,
     {
@@ -408,13 +419,20 @@ export async function searchInstagramAccountSuggestions(query: string): Promise<
       cache:   "no-store",
       signal:  AbortSignal.timeout(20_000),
     }
-  )
+  ).catch((e) => {
+    if (e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")) return null
+    throw e
+  })
+  if (!res) return []
   if (!res.ok) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const err: any = await res.json().catch(() => ({}))
     throw new Error(err?.error?.message ?? `Apify error ${res.status}`)
   }
-  const data = await res.json()
+  const data = await res.json().catch((e) => {
+    if (e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")) return []
+    throw e
+  })
   const items = Array.isArray(data) ? data : []
 
   return items.map((raw): AccountSuggestion => {

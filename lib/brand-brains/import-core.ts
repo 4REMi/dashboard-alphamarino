@@ -15,14 +15,25 @@ function apifyToken() {
 async function runApifyActor(actorId: string, input: Record<string, unknown>): Promise<unknown[]> {
   const token = apifyToken()
   const res = await fetch(
-    `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=${token}`,
+    // timeout=140: Apify detiene el actor a los 140 s; el AbortSignal corta la
+    // espera por si la respuesta se cuelga. Así importar (UI o MCP) no se pasa
+    // de los 300 s de Vercel.
+    `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=${token}&timeout=140`,
     {
       method:  "POST",
+      signal:  AbortSignal.timeout(150_000),
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify(input),
       cache:   "no-store",
     }
-  )
+  ).catch((e) => {
+    if (e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")) {
+      throw new Error("Instagram (Apify) tardó demasiado en responder. Intenta de nuevo en unos minutos, o importa solo desde el sitio web.")
+    }
+    throw e
+  })
+  // 408 = Apify detuvo el actor por el timeout de 140 s.
+  if (res.status === 408) throw new Error("Instagram (Apify) tardó demasiado en responder. Intenta de nuevo en unos minutos, o importa solo desde el sitio web.")
   if (!res.ok) throw new Error(`Apify error ${res.status}: ${await res.text().catch(() => "")}`)
   return res.json()
 }

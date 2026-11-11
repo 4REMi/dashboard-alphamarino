@@ -3,7 +3,7 @@
 **Ruta:** `/api/mcp` (endpoint, no una página) — la UI para generar keys vive en
 `/employees/[id]` (tu propio perfil, sección "API keys de IA (MCP)")
 **Para quién:** cualquier empleado con sesión — cada persona genera su propia key
-**Actualizado:** 2026-11-07
+**Actualizado:** 2026-11-11
 
 ## Qué es y para qué sirve
 
@@ -536,3 +536,7 @@ Cada concepto creativo puede estar ligado a una línea (`creative_concepts.brand
 ## detalle_tarea — 2026-11-09
 
 `lib/mcp/task-tools.ts`. Solo lectura. Una tarea con todo su detalle: estado, proyecto y fase, responsable y puesto (con aviso si la asignación por puesto falló), fechas (creada, vence, completada, último cambio), descripción, checklist (marcados y cuáles bloquean), ping y a quién avisa, entregable requerido (instrucciones y lo subido) y SOP (propio o heredado de la plantilla). Busca por `titulo` (parcial; exacto gana), opcional `proyecto`, o `tarea_id`; incluye completadas. Si hay varias coincidencias, las lista con su `tarea_id`. Visibilidad igual que la RLS de `tasks`: admin/subadmin ven todo; un empleado, tareas de proyectos donde es miembro o asignadas a él; las personales solo su dueño.
+
+## Límite de tiempo por herramienta — 2026-11-11
+
+`/api/mcp` muere a los 300 s en Vercel ("Task timed out"); el cliente se quedaba sin respuesta y solía reintentar. `withToolDeadlines` (`lib/mcp/tool-deadline.ts`, aplicado al inicio de `registerMcpTools`) envuelve TODAS las herramientas: si una pasa de 270 s, el chat recibe un error claro ("tardó más de 270 s… revisa antes de repetirla; si es de escritura no la reintentes") y queda en logs como `[mcp] <herramienta> pasó de 270 s`. Las esperas largas conocidas también tienen su propio límite: Apify en `importar_brand_brain` (`timeout=140` + corte a los 150 s, con mensaje claro) y el análisis de video (ver `ad-lab-analisis.md`).

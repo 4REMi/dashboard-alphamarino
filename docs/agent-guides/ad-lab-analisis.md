@@ -47,3 +47,12 @@ El análisis ya no vive en el modal sino en `lib/ad-lab/analysis-jobs.ts` (regis
 - Reabrir el mismo anuncio se engancha al análisis en curso; no lanza otro.
 - `components/ad-lab/analysis-jobs-toaster.tsx` (montado en el layout del dashboard) muestra abajo a la derecha "Analizando concepto…" y, al terminar con el modal cerrado, "Análisis listo · Ver" / "Falló · Reintentar".
 - Límite: si se recarga o cierra la pestaña, el aviso se pierde; el resultado igual se guarda en `ad_analyses` si el servidor alcanzó a terminar.
+
+## Tiempos y límites (2026-11-11)
+
+El análisis corre dentro de una función de Vercel que muere a los 300 s. Antes ninguna llamada externa tenía límite: con Gemini saturado (503 "high demand") los reintentos en cadena superaban los 300 s y el análisis se perdía ("Task timed out after 300 seconds").
+
+- Presupuesto: transcripción (AssemblyAI), "ver" el video (Gemini) y landing corren en paralelo hasta **170 s**; Claude usa lo que quede, sin pasar de ~285 s (`claudeBudget` en `lib/actions/ad-analysis.ts`; igual en `classifyAsset`, `lib/actions/creative-classify.ts`).
+- Gemini (`lib/ai/video-understanding.ts`, `describeVideo(url, kind, deadline)`): cada llamada (descarga, subida, espera de procesamiento, generación) tiene límite; no lanza un intento nuevo si quedan menos de 25 s. Si Gemini está saturado o no alcanza, el análisis sigue sin la descripción del video (etiqueta "No visto") con el aviso "Gemini está saturado… vuelve a analizar más tarde".
+- La transcripción se abandona al llegar al límite y sigue sin ella.
+- Tiempo normal de un video: 40 s – 2 min. Más largo = video largo o Gemini saturado; el tope práctico ahora es ~4.5 min, nunca el corte de Vercel.

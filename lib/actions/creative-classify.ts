@@ -65,11 +65,23 @@ async function requireManager(projectId: string) {
   return user.id
 }
 
-async function transcribe(url: string): Promise<string | null> {
+// Transcribe con AssemblyAI sin pasarse de `deadline` (ms epoch): si no
+// terminó a tiempo regresa null y el análisis sigue sin transcripción.
+async function transcribe(url: string, deadline: number): Promise<string | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const giveUp = new Promise<null>((r) => { timer = setTimeout(() => r(null), Math.max(0, deadline - Date.now())) })
+  try {
+    return await Promise.race([transcribeUntil(url, deadline), giveUp])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function transcribeUntil(url: string, deadline: number): Promise<string | null> {
   try {
     const t = await aaiPost("/transcript", { audio_url: url, language_detection: true })
     let r: { status: string; text?: string } = { status: "queued" }
-    for (let i = 0; i < 40 && r.status !== "completed" && r.status !== "error"; i++) {
+    while (r.status !== "completed" && r.status !== "error" && Date.now() < deadline - 3000) {
       await new Promise((x) => setTimeout(x, 3000))
       r = await aaiGet(`/transcript/${t.id}`)
     }
@@ -85,11 +97,15 @@ export async function classifyAsset(projectId: string, assetId: string, lineId: 
   const url = asset.file_path ? ASSET_BASE + asset.file_path : asset.asset_url
   if (!url) throw new Error("El asset no tiene archivo")
 
+  // Presupuesto (Vercel corta a los 300 s): transcripción + Gemini hasta
+  // 170 s; Claude con lo que quede, sin pasar de ~285 s.
+  const started = Date.now()
+  const gatherDeadline = started + 170_000
   const [{ data: project }, { data: concepts }, transcriptAndVideo] = await Promise.all([
     db.from("projects").select("name, brand_brain_id").eq("id", projectId).single(),
     db.from("creative_concepts").select("id, name, angle_type, organizing_principle, target_persona, pain_point, why_it_works, transformation, funnel_stage, brand_line_id, status").eq("project_id", projectId).neq("status", "Archived").limit(80),
     // Estáticos: no hay audio que transcribir; Gemini lee la imagen (y su texto).
-    asset.file_type === "image" ? Promise.all([Promise.resolve(null), describeVideo(url, "image")]) : Promise.all([transcribe(url), describeVideo(url, "video")]),
+    asset.file_type === "image" ? Promise.all([Promise.resolve(null), describeVideo(url, "image", gatherDeadline)]) : Promise.all([transcribe(url, gatherDeadline), describeVideo(url, "video", gatherDeadline)]),
   ])
   const [transcript, { description: video, provider, error: visionError }] = transcriptAndVideo
   const { data: lines } = project?.brand_brain_id ? await db.from("brand_lines").select("id, name, description").eq("brand_brain_id", project.brand_brain_id) : { data: [] }
@@ -126,7 +142,7 @@ TRANSCRIPCIÓN: ${asset.file_type === "image" ? "(no aplica)" : transcript ?? "(
 
 LO QUE SE VE Y SE OYE: ${video ? JSON.stringify(video) : "(no disponible — clasifica solo con la transcripción)"}`,
     }],
-  })
+  }, { timeout: Math.max(30_000, Math.min(120_000, started + 285_000 - Date.now())), maxRetries: started + 125_000 > Date.now() ? 1 : 0 })
   const parsed = parseAiJson<{ summary: string; breakdown?: AssetBreakdown; matches: { concept_id: string; confidence: number; reason: string }[]; new_concept: ConceptDraft }>(msg, "classifyAsset")
   const byId = new Map((concepts ?? []).map((c) => [c.id, c]))
   const matches = (parsed.matches ?? []).filter((m) => byId.has(m.concept_id)).slice(0, 3)

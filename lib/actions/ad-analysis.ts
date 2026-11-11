@@ -52,11 +52,29 @@ export interface LibraryAdAnalysis {
 // Cada aprendizaje: un título corto (lo que se ve) y el detalle (al abrirlo).
 export interface Point { titulo: string; detalle: string }
 
-async function transcribe(url: string): Promise<string | null> {
+// Transcribe con AssemblyAI sin pasarse de `deadline` (ms epoch): si no
+// terminó a tiempo regresa null y el análisis sigue sin transcripción.
+// Opciones de la llamada a Claude: lo que quede del presupuesto de ~285 s.
+function claudeBudget(started: number) {
+  const left = started + 285_000 - Date.now()
+  return { timeout: Math.max(30_000, Math.min(120_000, left)), maxRetries: left > 160_000 ? 1 : 0 }
+}
+
+async function transcribe(url: string, deadline: number): Promise<string | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const giveUp = new Promise<null>((r) => { timer = setTimeout(() => r(null), Math.max(0, deadline - Date.now())) })
+  try {
+    return await Promise.race([transcribeUntil(url, deadline), giveUp])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function transcribeUntil(url: string, deadline: number): Promise<string | null> {
   try {
     const t = await aaiPost("/transcript", { audio_url: url, language_detection: true })
     let r: { status: string; text?: string } = { status: "queued" }
-    for (let i = 0; i < 40 && r.status !== "completed" && r.status !== "error"; i++) {
+    while (r.status !== "completed" && r.status !== "error" && Date.now() < deadline - 3000) {
       await new Promise((x) => setTimeout(x, 3000))
       r = await aaiGet(`/transcript/${t.id}`)
     }
@@ -94,9 +112,13 @@ export async function analyzeLibraryAd(ad: LibraryAdInput): Promise<LibraryAdAna
   const mediaUrl = ad.videoUrl ?? ad.imageUrl
   if (!mediaUrl) throw new Error("Este anuncio no tiene video ni imagen para analizar")
 
+  // Presupuesto (Vercel corta a los 300 s): transcripción + Gemini + landing
+  // en paralelo hasta 170 s; Claude con lo que quede, sin pasar de ~285 s.
+  const started = Date.now()
+  const gatherDeadline = started + 170_000
   const [transcript, { description: media, error: visionError }, landing] = await Promise.all([
-    ad.videoUrl ? transcribe(ad.videoUrl) : Promise.resolve(null),
-    describeVideo(mediaUrl, ad.videoUrl ? "video" : "image"),
+    ad.videoUrl ? transcribe(ad.videoUrl, gatherDeadline) : Promise.resolve(null),
+    describeVideo(mediaUrl, ad.videoUrl ? "video" : "image", gatherDeadline),
     landingText(ad.linkUrl),
   ])
   const dias = ad.startDate ? Math.max(1, Math.round((Date.now() / 1000 - ad.startDate) / 86400)) : null
@@ -134,7 +156,7 @@ TRANSCRIPCIÓN: ${ad.videoUrl ? transcript ?? "(sin voz o no disponible)" : "(no
 LO QUE SE VE Y SE OYE: ${media ? JSON.stringify(media) : "(no se pudo analizar el creativo)"}
 TEXTO DE LA LANDING: ${landing ?? "(no disponible)"}`,
     }],
-  })
+  }, claudeBudget(started))
   const parsed = parseAiJson<Omit<LibraryAdAnalysis, "transcript" | "media" | "visionError" | "landingLeida" | "diasCorriendo" | "analyzedAt">>(msg, "analyzeLibraryAd")
   // Tolerar listas como texto suelto (versión anterior del prompt).
   const pts = (l: unknown): Point[] => (Array.isArray(l) ? l : []).map((x) => (typeof x === "string" ? { titulo: x, detalle: "" } : x as Point))
