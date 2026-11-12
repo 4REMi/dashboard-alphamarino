@@ -1446,6 +1446,12 @@ export interface ServiceOffer {
   price: number | null
   currency: Currency
   price_note: string | null
+  // Migración 123 (opcionales hasta correrla): catálogo, no los lee ningún proyecto.
+  recommended_ad_budget?: number | null      // pauta recomendada, en `currency`
+  recommended_ad_budget_note?: string | null
+  cycle_count?: number | null                // duración: N ciclos…
+  cycle_length_days?: number | null          // …de N días
+  sort_order?: number | null                 // orden manual dentro de la categoría
   status: ServiceStatus
   created_by: string | null
   created_at: string

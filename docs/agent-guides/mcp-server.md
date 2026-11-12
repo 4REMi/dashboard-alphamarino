@@ -3,7 +3,7 @@
 **Ruta:** `/api/mcp` (endpoint, no una página) — la UI para generar keys vive en
 `/employees/[id]` (tu propio perfil, sección "API keys de IA (MCP)")
 **Para quién:** cualquier empleado con sesión — cada persona genera su propia key
-**Actualizado:** 2026-11-11
+**Actualizado:** 2026-11-12
 
 ## Qué es y para qué sirve
 
@@ -311,8 +311,9 @@ Reglas propias:
   código de la app), así que se le agregó un chequeo explícito
   (`requireOffersPermission`, `lib/actions/services.ts`) para no heredar por
   accidente un bypass al usar el cliente admin desde MCP. `listar_ofertas`/
-  `detalle_oferta`/`ofertas_de_proyecto` son de lectura, sin restricción
-  (mismo catálogo que ya es visible para cualquiera en `/services`).
+  `detalle_oferta` también son admin/subadmin desde 2026-11-12 (traen precios;
+  la RLS de `service_offers` ya era admin/subadmin y `/services` es solo admin);
+  `ofertas_de_proyecto` sigue abierta.
   Finanzas/Ad Nodes/etc. se agregan cuando se pidan, no de antemano.
 - **De regalo, arregló un bug real ya reportado**: guardar una oferta
   EXISTENTE (`updateServiceOffer`) a veces tronaba con un error crudo de
@@ -540,3 +541,19 @@ Cada concepto creativo puede estar ligado a una línea (`creative_concepts.brand
 ## Límite de tiempo por herramienta — 2026-11-11
 
 `/api/mcp` muere a los 300 s en Vercel ("Task timed out"); el cliente se quedaba sin respuesta y solía reintentar. `withToolDeadlines` (`lib/mcp/tool-deadline.ts`, aplicado al inicio de `registerMcpTools`) envuelve TODAS las herramientas: si una pasa de 270 s, el chat recibe un error claro ("tardó más de 270 s… revisa antes de repetirla; si es de escritura no la reintentes") y queda en logs como `[mcp] <herramienta> pasó de 270 s`. Las esperas largas conocidas también tienen su propio límite: Apify en `importar_brand_brain` (`timeout=140` + corte a los 150 s, con mensaje claro) y el análisis de video (ver `ad-lab-analisis.md`).
+
+## Catálogo de ofertas completo — 2026-11-12
+
+`lib/mcp/offer-tools.ts` (antes en `tools.ts`). Todo admin/subadmin (lectura incluida: precios). Escrituras vía las server actions reales con `actingProfileId`; todo lo que cambia algo va en dos pasos (`confirmar`). La oferta se busca por nombre exacto antes que parcial ("Core" ya no choca con "Core Plus") y también entre archivadas.
+
+- `listar_ofertas(query?, categoria?, incluir_archivadas?)` — por categoría, en el orden manual; precio, BASE / deriva de, ARCHIVADA.
+- `detalle_oferta(oferta)` — id, estado, categoría, orden, base/deriva de/derivadas, tipo de proyecto (el chip de la tarjeta, p. ej. "Paid Media" con ícono de Meta), descripción, precio + periodicidad (`price_note`), pauta recomendada, duración en ciclos, add-ons con precio, entregables numerados (venta, control, cadencia, cantidad, desde cuándo) y proyectos que la tienen.
+- `crear_oferta` — todos los campos (incl. pauta, ciclos, base/deriva de, tipo de proyecto, orden, add-ons, entregables); avisa si el nombre ya existe (también archivada).
+- `editar_oferta(oferta, nuevo_nombre?, categoria?, descripcion?, precio?, moneda?, texto_periodicidad?, presupuesto_pauta?, nota_pauta?, ciclos?, dias_por_ciclo?, es_base?, deriva_de?, tipo_proyecto?, orden?)` — solo lo indicado; antes → después y **efecto en proyectos**: los proyectos guardan solo el id de la oferta, así que nombre/categoría/descripción se ven actualizados en ellos sin romper la asignación; precio/periodicidad/pauta/ciclos son del catálogo y NO cambian `projects.monthly_fee` (eso es `editar_fee_proyecto`).
+- `duplicar_oferta(oferta, nuevo_nombre, derivar_de_original=true, …campos)` — como "crear variante" del dashboard: copia campos, entregables (ids nuevos) y add-ons; no hereda el orden ni "base".
+- `oferta_entregables` — igual que antes (movida aquí); avisa el efecto en proyectos.
+- `archivar_oferta` / `desarchivar_oferta` — los proyectos que la tienen la conservan.
+- `ordenar_ofertas(categoria, orden[])` — fija `sort_order` (1, 2, 3…); las no mencionadas van después.
+- `listar_addons`, `oferta_addons(oferta, agregar? | quitar? | reemplazar?)` — vincular add-ons existentes (`setOfferAddons`, ahora con `actingProfileId` y permiso explícito admin/subadmin). Crear/editar add-ons sigue en la UI.
+
+Campos nuevos (migración 123, todos opcionales e informativos del catálogo): `recommended_ad_budget` + `recommended_ad_budget_note` (pauta recomendada, en la moneda de la oferta), `cycle_count` + `cycle_length_days` (duración), `sort_order` (orden manual dentro de la categoría; la UI de Servicios lo respeta). También en el formulario y la tarjeta de `/services` y en Exportar/Importar JSON. Sin la migración, las ofertas se siguen guardando mientras esos campos vayan vacíos.

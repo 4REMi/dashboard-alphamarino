@@ -29,6 +29,23 @@ interface Props {
   projectTypes: ProjectTypeBadge[]
 }
 
+// Orden dentro de la categoría: sort_order manual (menor primero; sin orden
+// al final), luego como antes (base primero, por nombre).
+function byManualOrder(a: ServiceOffer, b: ServiceOffer) {
+  const oa = a.sort_order ?? Number.POSITIVE_INFINITY
+  const ob = b.sort_order ?? Number.POSITIVE_INFINITY
+  if (oa !== ob) return oa - ob
+  if (a.is_base !== b.is_base) return a.is_base ? -1 : 1
+  return a.name.localeCompare(b.name, "es")
+}
+
+// "3 ciclos de 30 días" / "3 ciclos" / "ciclos de 30 días"
+export function cyclesLabel(count?: number | null, days?: number | null): string | null {
+  if (!count && !days) return null
+  if (count && days) return `${count} ciclo${count === 1 ? "" : "s"} de ${days} días`
+  return count ? `${count} ciclo${count === 1 ? "" : "s"}` : `ciclos de ${days} días`
+}
+
 function money(n: number | null, currency: Currency) {
   if (n === null) return null
   return currency === "MXN"
@@ -300,6 +317,58 @@ function OfferForm({
             name="price_note"
             defaultValue={initial?.price_note ?? prefillFrom?.price_note ?? ""}
             placeholder="Desde $X/mes, Cotización…"
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+        </div>
+      </div>
+
+      {/* Migración 123 — informativos del catálogo; ningún proyecto los lee. */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-muted-foreground block">Pauta recomendada ({currency})</label>
+          <input
+            name="recommended_ad_budget" type="number" step="0.01" min="0"
+            defaultValue={initial?.recommended_ad_budget ?? prefillFrom?.recommended_ad_budget ?? ""}
+            placeholder="10000"
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-muted-foreground block">Nota de pauta</label>
+          <input
+            name="recommended_ad_budget_note"
+            defaultValue={initial?.recommended_ad_budget_note ?? prefillFrom?.recommended_ad_budget_note ?? ""}
+            placeholder="Desde $10,000/mes, pagado directo a Meta…"
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3">
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-muted-foreground block">Número de ciclos</label>
+          <input
+            name="cycle_count" type="number" min="1" step="1"
+            defaultValue={initial?.cycle_count ?? prefillFrom?.cycle_count ?? ""}
+            placeholder="3"
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-muted-foreground block">Días por ciclo</label>
+          <input
+            name="cycle_length_days" type="number" min="1" step="1"
+            defaultValue={initial?.cycle_length_days ?? prefillFrom?.cycle_length_days ?? ""}
+            placeholder="30"
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-muted-foreground block" title="Menor = primero dentro de la categoría; vacío = al final, por nombre">Orden en la categoría</label>
+          <input
+            name="sort_order" type="number" step="1"
+            defaultValue={initial?.sort_order ?? ""}
+            placeholder="1"
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
           />
         </div>
@@ -717,8 +786,18 @@ function OfferCard({
 
       <div className="flex items-center gap-2 flex-wrap">
         {(offer.price !== null || offer.price_note) && (
-          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
+          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700" title={offer.price_note ?? undefined}>
             {money(offer.price, offer.currency) ?? offer.price_note}
+          </span>
+        )}
+        {(offer.recommended_ad_budget != null || offer.recommended_ad_budget_note) && (
+          <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300" title={offer.recommended_ad_budget_note ?? "Presupuesto de pauta recomendado"}>
+            Pauta: {money(offer.recommended_ad_budget ?? null, offer.currency) ?? offer.recommended_ad_budget_note}
+          </span>
+        )}
+        {cyclesLabel(offer.cycle_count, offer.cycle_length_days) && (
+          <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+            {cyclesLabel(offer.cycle_count, offer.cycle_length_days)}
           </span>
         )}
         <span
@@ -918,7 +997,7 @@ export function ServiceCatalogManager({ initialOffers, initialAddons, projectTyp
 
   // ── grouping: category -> base + its children, then flat siblings ──
   const byCategory = categories.map((category) => {
-    const inCat = offers.filter((o) => o.category === category)
+    const inCat = offers.filter((o) => o.category === category).sort(byManualOrder)
     const bases = inCat.filter((o) => o.is_base)
     const flat = inCat.filter((o) => !o.is_base && !o.based_on_offer_id)
     const orphanChildren = inCat.filter((o) => !o.is_base && o.based_on_offer_id && !inCat.some((b) => b.id === o.based_on_offer_id))
@@ -1010,7 +1089,7 @@ export function ServiceCatalogManager({ initialOffers, initialAddons, projectTyp
                     onEdit={() => setEditingOffer(base)}
                     onPickAddons={() => setPickingAddonsFor(base)}
                   />
-                  {offers.filter((o) => o.based_on_offer_id === base.id).map((child) => (
+                  {offers.filter((o) => o.based_on_offer_id === base.id).sort(byManualOrder).map((child) => (
                     <OfferCard
                       key={child.id} offer={child} addons={addons} projectTypes={projectTypes} nested
                       onEdit={() => setEditingOffer(child)}

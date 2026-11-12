@@ -84,6 +84,25 @@ function parseCurrency(formData: FormData): Currency {
   return (formData.get("currency") as string) === "USD" ? "USD" : "MXN"
 }
 
+// Campos de la migración 123 (pauta recomendada, ciclos, orden). Solo se
+// escriben si vienen en el formulario: así un formulario que no los manda
+// no los borra, y sin la migración las ofertas siguen guardándose.
+const EXTRA_NUMBER_FIELDS = ["recommended_ad_budget", "cycle_count", "cycle_length_days", "sort_order"] as const
+function parseExtraFields(formData: FormData): Record<string, number | string | null> {
+  const out: Record<string, number | string | null> = {}
+  for (const k of EXTRA_NUMBER_FIELDS) {
+    if (!formData.has(k)) continue
+    const raw = String(formData.get(k) ?? "").trim()
+    const n = Number(raw)
+    out[k] = raw === "" || !Number.isFinite(n) ? null : k === "recommended_ad_budget" ? n : Math.round(n)
+  }
+  if (formData.has("recommended_ad_budget_note")) out.recommended_ad_budget_note = String(formData.get("recommended_ad_budget_note") ?? "").trim() || null
+  return out
+}
+const SELECT_OFFER = "*, based_on_offer:service_offers!based_on_offer_id(id, name), default_project_type:project_types(id, name, color, icon)"
+const MISSING_123 = "Falta correr la migración 123 en Supabase para guardar pauta recomendada, ciclos u orden."
+const isMissing123 = (msg?: string) => !!msg && /recommended_ad_budget|cycle_count|cycle_length_days|sort_order/.test(msg)
+
 // ============================================================
 // OFFERS
 // ============================================================
@@ -160,6 +179,18 @@ function parsePortableDeliverables(raw: unknown): ServiceDeliverable[] {
 // by exact case-insensitive name match against what already exists at
 // import time; no match just leaves that reference null (reported as a
 // warning, never blocks the import).
+// Campos de la migración 123 en el JSON portable: solo los que vengan.
+function portableExtras(r: Record<string, unknown>): Record<string, number | string | null> {
+  const out: Record<string, number | string | null> = {}
+  for (const k of EXTRA_NUMBER_FIELDS) {
+    if (!(k in r)) continue
+    const n = Number(r[k])
+    out[k] = r[k] == null || r[k] === "" || !Number.isFinite(n) ? null : n
+  }
+  if ("recommended_ad_budget_note" in r) out.recommended_ad_budget_note = r.recommended_ad_budget_note ? String(r.recommended_ad_budget_note).trim() : null
+  return out
+}
+
 export async function importServiceOffers(json: string): Promise<{ offers: ServiceOffer[]; errors: string[] }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -216,6 +247,7 @@ export async function importServiceOffers(json: string): Promise<{ offers: Servi
         price,
         currency,
         price_note: r?.price_note ? String(r.price_note).trim() : null,
+        ...portableExtras(r),
         created_by: user?.id ?? null,
       })
       .select("*, based_on_offer:service_offers!based_on_offer_id(id, name), default_project_type:project_types(id, name, color, icon)")
@@ -243,24 +275,25 @@ export async function createServiceOffer(formData: FormData, actingProfileId?: s
   const basedOnId = (formData.get("based_on_offer_id") as string) || null
   const projectTypeId = (formData.get("default_project_type_id") as string) || null
 
-  const { data, error } = await admin
-    .from("service_offers")
-    .insert({
-      category:                formData.get("category") as string,
-      name:                    formData.get("name") as string,
-      description:             (formData.get("description") as string) || null,
-      deliverables:            parseDeliverables(formData),
-      is_base:                 formData.get("is_base") === "true",
-      based_on_offer_id:       basedOnId,
-      default_project_type_id: projectTypeId,
-      price:                   parsePrice(formData),
-      currency:                parseCurrency(formData),
-      price_note:              (formData.get("price_note") as string) || null,
-      created_by:              profile.id,
-    })
-    .select("*, based_on_offer:service_offers!based_on_offer_id(id, name), default_project_type:project_types(id, name, color, icon)")
-    .single()
-  if (error) throw error
+  const row = {
+    category:                formData.get("category") as string,
+    name:                    formData.get("name") as string,
+    description:             (formData.get("description") as string) || null,
+    deliverables:            parseDeliverables(formData),
+    is_base:                 formData.get("is_base") === "true",
+    based_on_offer_id:       basedOnId,
+    default_project_type_id: projectTypeId,
+    price:                   parsePrice(formData),
+    currency:                parseCurrency(formData),
+    price_note:              (formData.get("price_note") as string) || null,
+    created_by:              profile.id,
+  }
+  const extras = parseExtraFields(formData)
+  const insert = (values: Record<string, unknown>) => admin.from("service_offers").insert(values).select(SELECT_OFFER).single()
+  let { data, error } = await insert({ ...row, ...extras })
+  // Sin la migración 123 y sin valores en los campos nuevos: guardar sin ellos.
+  if (error && isMissing123(error.message) && Object.values(extras).every((v) => v == null)) ({ data, error } = await insert(row))
+  if (error) throw isMissing123(error.message) ? new Error(MISSING_123) : error
   revalidateServices()
   return { ...data, addons: [] } as ServiceOffer
 }
@@ -273,24 +306,24 @@ export async function updateServiceOffer(id: string, formData: FormData, actingP
   const basedOnId = (formData.get("based_on_offer_id") as string) || null
   const projectTypeId = (formData.get("default_project_type_id") as string) || null
 
-  const { data, error } = await admin
-    .from("service_offers")
-    .update({
-      category:                formData.get("category") as string,
-      name:                    formData.get("name") as string,
-      description:             (formData.get("description") as string) || null,
-      deliverables:            parseDeliverables(formData),
-      is_base:                 formData.get("is_base") === "true",
-      based_on_offer_id:       basedOnId,
-      default_project_type_id: projectTypeId,
-      price:                   parsePrice(formData),
-      currency:                parseCurrency(formData),
-      price_note:              (formData.get("price_note") as string) || null,
-    })
-    .eq("id", id)
-    .select("*, based_on_offer:service_offers!based_on_offer_id(id, name), default_project_type:project_types(id, name, color, icon)")
-    .single()
-  if (error) throw error
+  const row = {
+    category:                formData.get("category") as string,
+    name:                    formData.get("name") as string,
+    description:             (formData.get("description") as string) || null,
+    deliverables:            parseDeliverables(formData),
+    is_base:                 formData.get("is_base") === "true",
+    based_on_offer_id:       basedOnId,
+    default_project_type_id: projectTypeId,
+    price:                   parsePrice(formData),
+    currency:                parseCurrency(formData),
+    price_note:              (formData.get("price_note") as string) || null,
+  }
+  const extras = parseExtraFields(formData)
+  const update = (values: Record<string, unknown>) => admin.from("service_offers").update(values).eq("id", id).select(SELECT_OFFER).single()
+  let { data, error } = await update({ ...row, ...extras })
+  // Sin la migración 123 y sin valores en los campos nuevos: guardar sin ellos.
+  if (error && isMissing123(error.message) && Object.values(extras).every((v) => v == null)) ({ data, error } = await update(row))
+  if (error) throw isMissing123(error.message) ? new Error(MISSING_123) : error
   revalidateServices()
   return data as ServiceOffer
 }
@@ -315,9 +348,12 @@ export async function deleteServiceOffer(id: string): Promise<void> {
   revalidateServices()
 }
 
-export async function setOfferAddons(offerId: string, addonIds: string[]): Promise<void> {
-  await requireSessionOrTrusted()
-  const supabase = await createClient()
+// Mismo permiso que crear/editar ofertas (admin/subadmin), verificado aquí;
+// actingProfileId solo lo pasa el MCP (validado por assertActingProfile).
+export async function setOfferAddons(offerId: string, addonIds: string[], actingProfileId?: string): Promise<void> {
+  assertActingProfile(actingProfileId)
+  await requireOffersPermission(actingProfileId)
+  const supabase = createAdminClient()
   const { error: delError } = await supabase.from("service_offer_addons").delete().eq("offer_id", offerId)
   if (delError) throw delError
   if (addonIds.length > 0) {

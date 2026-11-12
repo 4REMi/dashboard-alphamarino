@@ -203,3 +203,5 @@ número) y borra sus filas sin avance — pensado para duplicados o cargas por
 error. Lo de una oferta no se quita ahí: `quitar_oferta_de_proyecto` la
 desasigna. Ambos con vista previa y solo admin/subadmin; lo ya entregado queda
 como historial.
+
+**Catálogo por MCP (2026-11-12):** además de `oferta_entregables`, el chat puede editar los demás campos de la oferta (`editar_oferta`), duplicarla como variante, ordenarla, desarchivarla y vincular add-ons — ver "Catálogo de ofertas completo" en `mcp-server.md`. Editar nombre o precio de una oferta no toca los entregables ni los periodos de los proyectos que la tienen.
