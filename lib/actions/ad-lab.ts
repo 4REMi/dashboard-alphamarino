@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { resolveSavedAdMedia } from "@/lib/ad-lab/saved-ad-media"
 import type { TrackedBrand, SavedAd, AdBoard, ClientCreativeContext, MetaAdResult, InstagramPostResult, AccountSuggestion } from "@/lib/types"
 
 // ── Storage mirror ────────────────────────────────────────────────
@@ -808,6 +809,53 @@ export async function getBoards(): Promise<AdBoard[]> {
     ...b,
     preview_ads: previewMap[b.id] ?? [],
   })) as AdBoard[]
+}
+
+// ── Referencias para el modal de brief ──────────────────────────────
+// El modal "Nuevo brief" (Creative Tracker) elige videos/imágenes de la
+// biblioteca y de los boards para tropicalizar. Antes pedía getSavedAds() /
+// getBoardAds(): TODOS los anuncios con su ad_snapshot completo (JSON pesado
+// que el modal no usa) y leía solo las columnas planas, así que los
+// anuncios con la media únicamente en el snapshot salían sin video ni
+// miniatura (Boards sí los muestra). Aquí la media se resuelve en el
+// servidor (lib/ad-lab/saved-ad-media.ts, mismo orden que Boards) y al
+// navegador solo viaja lo que se pinta.
+export interface BriefRefAd {
+  id: string
+  page_name: string | null
+  body: string | null
+  thumbUrl: string | null
+  videoUrl: string | null
+  isVideo: boolean
+}
+
+const BRIEF_REF_COLUMNS = "id, page_name, body, format, cached_image_url, image_url, cached_video_url, video_url, ad_snapshot"
+
+function toBriefRef(ad: Pick<SavedAd, "id" | "page_name" | "body" | "format" | "cached_image_url" | "image_url" | "cached_video_url" | "video_url" | "ad_snapshot">): BriefRefAd {
+  const { videoUrl, thumbUrl, isVideo } = resolveSavedAdMedia(ad)
+  return { id: ad.id, page_name: ad.page_name, body: ad.body, thumbUrl, videoUrl, isVideo }
+}
+
+export async function getBriefReferenceAds(): Promise<BriefRefAd[]> {
+  const { supabase } = await assertAuth()
+  const { data } = await supabase
+    .from("saved_ads")
+    .select(BRIEF_REF_COLUMNS)
+    .order("created_at", { ascending: false })
+  return ((data ?? []) as unknown as Parameters<typeof toBriefRef>[0][]).map(toBriefRef)
+}
+
+export async function getBoardReferenceAds(boardId: string): Promise<BriefRefAd[]> {
+  const { supabase } = await assertAuth()
+  const { data } = await supabase
+    .from("board_ads")
+    .select(`saved_ad:saved_ads(${BRIEF_REF_COLUMNS})`)
+    .eq("board_id", boardId)
+    .order("added_at", { ascending: false })
+  return ((data ?? []) as unknown as { saved_ad: Parameters<typeof toBriefRef>[0] | null }[])
+    .map((r) => r.saved_ad)
+    .filter((a): a is Parameters<typeof toBriefRef>[0] => !!a)
+    .map(toBriefRef)
 }
 
 export async function getBoardAds(boardId: string): Promise<SavedAd[]> {

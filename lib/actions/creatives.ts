@@ -1,5 +1,6 @@
 "use server"
 
+import { resolveSavedAdMedia } from "@/lib/ad-lab/saved-ad-media"
 import { normalizeScriptMap, nextScriptKey, patchSetScriptLines, patchRemoveReference, patchScriptTitle, patchApproveScripts, SCRIPT_VARIANT_SEEDS, type BriefScriptsRow } from "@/lib/briefs/scripts-core"
 import { requireSessionOrTrusted } from "@/lib/auth/guards"
 import { CONCEPT_NAME_RULE } from "@/lib/ai/concept-naming"
@@ -963,11 +964,15 @@ El brief debe ser accionable: un editor o diseñador que lo lea debe poder empez
       try {
         const { data: ads } = await supabase
           .from("saved_ads")
-          .select("id, video_url, cached_video_url, format")
+          .select("id, video_url, cached_video_url, image_url, cached_image_url, format, ad_snapshot")
           .in("id", brief.attached_ad_ids)
         const skipIds = new Set<string>(brief.no_transcribe_ad_ids ?? [])
-        const videoAds = (ads?.filter((a: any) => a.format === "video" || a.cached_video_url || a.video_url) ?? [])
-          .filter((a: any) => !skipIds.has(a.id))
+        // La URL del video sale de las columnas o, si vienen vacías, del
+        // snapshot del anuncio (lib/ad-lab/saved-ad-media.ts): antes esos
+        // anuncios no se transcribían aunque Boards sí los reproduce.
+        const videoAds = (ads ?? [])
+          .map((a: any) => ({ id: a.id as string, ...resolveSavedAdMedia(a) }))
+          .filter((a) => a.isVideo && !skipIds.has(a.id))
 
         if (videoAds.length > 0) {
           const lineData = brief.brand_line_id
@@ -977,8 +982,8 @@ El brief debe ser accionable: un editor o diseñador que lo lea debe poder empez
           const POLL_INTERVAL_MS = 3000
           const MAX_POLL_ATTEMPTS = 40 // ~120s ceiling per video
 
-          async function transcribeAndAdapt(videoAd: { id: string; video_url: string | null; cached_video_url: string | null }) {
-            const videoUrl = videoAd.cached_video_url || videoAd.video_url
+          async function transcribeAndAdapt(videoAd: { id: string; videoUrl: string | null }) {
+            const videoUrl = videoAd.videoUrl
             if (!videoUrl) return null
 
             try {
@@ -1114,9 +1119,14 @@ export async function getBriefByToken(token: string): Promise<(CreativeBrief & {
   if (brief.attached_ad_ids && brief.attached_ad_ids.length > 0) {
     const { data: ads } = await supabase
       .from("saved_ads")
-      .select("id, page_name, cached_image_url, image_url, cached_video_url, video_url, format, body")
+      .select("id, page_name, cached_image_url, image_url, cached_video_url, video_url, format, body, ad_snapshot")
       .in("id", brief.attached_ad_ids)
-    brief.attached_ads = ads ?? []
+    // Se resuelve aquí (columnas → snapshot) y el snapshot NO viaja a la
+    // página pública: solo lo que se pinta.
+    brief.attached_ads = (ads ?? []).map(({ ad_snapshot, ...rest }) => {
+      const { videoUrl, thumbUrl, isVideo } = resolveSavedAdMedia({ ...rest, ad_snapshot })
+      return { ...rest, video_url: rest.video_url || videoUrl, image_url: rest.image_url || thumbUrl, format: isVideo ? "video" : rest.format }
+    })
   }
 
   return brief
@@ -1680,8 +1690,8 @@ export async function generateReferenceScript(briefId: string, adId: string): Pr
   const lineData = brief.brand_line_id
     ? (await supabase.from("brand_lines").select("name, description, usps, pain_points, keywords").eq("id", brief.brand_line_id).single()).data
     : null
-  const { data: ad } = await supabase.from("saved_ads").select("id, video_url, cached_video_url").eq("id", adId).single()
-  const videoUrl = ad?.cached_video_url || ad?.video_url
+  const { data: ad } = await supabase.from("saved_ads").select("id, video_url, cached_video_url, ad_snapshot").eq("id", adId).single()
+  const videoUrl = ad ? resolveSavedAdMedia(ad).videoUrl : null
   if (!videoUrl) return { error: "El video no tiene URL disponible" }
 
   try {

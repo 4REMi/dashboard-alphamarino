@@ -8,7 +8,7 @@ import {
 } from "lucide-react"
 import type { CreativeConcept, BrandBrain, CreativeBrief } from "@/lib/types"
 import { createBrief, generateBriefContent, getBrief } from "@/lib/actions/creatives"
-import { getSavedAds, getBoards, getBoardAds } from "@/lib/actions/ad-lab"
+import { getBriefReferenceAds, getBoards, getBoardReferenceAds, type BriefRefAd } from "@/lib/actions/ad-lab"
 
 // Crear brief: pantalla casi completa en dos columnas.
 //  - Izquierda: el concepto, nombre del brief, cerebro de marca (el del
@@ -19,16 +19,10 @@ import { getSavedAds, getBoards, getBoardAds } from "@/lib/actions/ad-lab"
 //    todos los videos/imágenes, con buscador, miniaturas grandes 9:16 y
 //    vista previa al pasar el cursor.
 
-interface SavedAdRef {
-  id: string
-  page_name: string | null
-  body: string | null
-  cached_image_url: string | null
-  image_url: string | null
-  cached_video_url: string | null
-  video_url: string | null
-  format: string | null
-}
+// Referencia ya resuelta por el servidor (getBriefReferenceAds): video y
+// miniatura salen de las columnas guardadas o, si vienen vacías, del
+// snapshot del anuncio — igual que en Boards (lib/ad-lab/saved-ad-media.ts).
+type SavedAdRef = BriefRefAd
 
 interface BoardRef {
   id: string
@@ -49,9 +43,9 @@ interface Props {
 
 type Tab = "boards" | "videos" | "images"
 
-const isVideoAd = (ad: SavedAdRef) => ad.format === "video" || !!ad.video_url || !!ad.cached_video_url
-const thumbOf = (ad: SavedAdRef) => ad.cached_image_url || ad.image_url || null
-const videoOf = (ad: SavedAdRef) => ad.cached_video_url || ad.video_url || null
+const isVideoAd = (ad: SavedAdRef) => ad.isVideo
+const thumbOf = (ad: SavedAdRef) => ad.thumbUrl
+const videoOf = (ad: SavedAdRef) => ad.videoUrl
 
 export function BriefCreator({ concept, projectId, brandBrains, projectBrandBrainId, onClose, onCreated }: Props) {
   const [title, setTitle] = useState(concept.name ?? concept.angle_type ?? "")
@@ -67,30 +61,42 @@ export function BriefCreator({ concept, projectId, brandBrains, projectBrandBrai
   const [savedAds, setSavedAds] = useState<SavedAdRef[]>([])
   const [boards, setBoards] = useState<BoardRef[]>([])
   const [loadingRefs, setLoadingRefs] = useState(true)
+  // Sin esto, si una carga fallaba el "Cargando…" se quedaba para siempre.
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [boardError, setBoardError] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
+  function retry() {
+    setLoadError(null); setBoardError(null); setLoadingRefs(true); setBoardAds(null)
+    setReloadKey((k) => k + 1)
+  }
   const [tab, setTab] = useState<Tab>("boards")
   const [openBoard, setOpenBoard] = useState<BoardRef | null>(null)
   const [boardAds, setBoardAds] = useState<SavedAdRef[] | null>(null)
   const [search, setSearch] = useState("")
   const [preview, setPreview] = useState<SavedAdRef | null>(null)
+  const [failedPreviewId, setFailedPreviewId] = useState<string | null>(null)
+  const previewFailed = !!preview && failedPreviewId === preview.id
 
   useEffect(() => {
     let cancelled = false
-    Promise.all([getSavedAds(), getBoards()]).then(([ads, brds]) => {
+    Promise.all([getBriefReferenceAds(), getBoards()]).then(([ads, brds]) => {
       if (cancelled) return
       setSavedAds(ads)
       setBoards(brds)
-      setLoadingRefs(false)
       if (brds.length === 0) setTab("videos")
-    })
+    }).catch((e) => {
+      if (!cancelled) setLoadError(e instanceof Error && e.message ? e.message : "No se pudo cargar la biblioteca")
+    }).finally(() => { if (!cancelled) setLoadingRefs(false) })
     return () => { cancelled = true }
-  }, [])
+  }, [reloadKey])
 
   useEffect(() => {
     if (!openBoard) return
     let cancelled = false
-    getBoardAds(openBoard.id).then((ads) => { if (!cancelled) setBoardAds(ads) })
+    getBoardReferenceAds(openBoard.id).then((ads) => { if (!cancelled) setBoardAds(ads) })
+      .catch((e) => { if (!cancelled) setBoardError(e instanceof Error && e.message ? e.message : "No se pudo cargar el board") })
     return () => { cancelled = true }
-  }, [openBoard])
+  }, [openBoard, reloadKey])
 
   const brain = brandBrains.find((b) => b.id === brainId) ?? null
   const adById = useMemo(() => new Map([...savedAds, ...(boardAds ?? [])].map((a) => [a.id, a])), [savedAds, boardAds])
@@ -265,7 +271,9 @@ export function BriefCreator({ concept, projectId, brandBrains, projectBrandBrai
           </div>
 
           <div className="flex-1 overflow-y-auto p-5">
-            {loadingRefs ? (
+            {loadError ? (
+              <LoadError text={loadError} onRetry={retry} />
+            ) : loadingRefs ? (
               <p className="text-sm text-muted-foreground flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Cargando biblioteca…</p>
             ) : tab === "boards" && !openBoard ? (
               shownBoards.length === 0 ? <Empty text="Sin boards todavía. Crea uno en Ad Lab → Boards." /> : (
@@ -273,7 +281,7 @@ export function BriefCreator({ concept, projectId, brandBrains, projectBrandBrai
                   {shownBoards.map((b) => {
                     const previews = (b.preview_ads ?? []).slice(0, 4)
                     return (
-                      <button key={b.id} onClick={() => { setBoardAds(null); setOpenBoard(b); setSearch("") }}
+                      <button key={b.id} onClick={() => { setBoardAds(null); setBoardError(null); setOpenBoard(b); setSearch("") }}
                         className={cn("text-left rounded-xl border overflow-hidden hover:border-primary/50 hover:shadow-sm transition-all", selectedBoardIds.includes(b.id) ? "border-primary ring-1 ring-primary" : "border-border")}>
                         <div className="grid grid-cols-2 gap-px bg-border aspect-[4/3]">
                           {Array.from({ length: 4 }, (_, i) => {
@@ -293,6 +301,8 @@ export function BriefCreator({ concept, projectId, brandBrains, projectBrandBrai
                   })}
                 </div>
               )
+            ) : openBoard && boardError ? (
+              <LoadError text={boardError} onRetry={retry} />
             ) : openBoard && !boardAds ? (
               <p className="text-sm text-muted-foreground flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Cargando board…</p>
             ) : gridAds.length === 0 ? (
@@ -313,7 +323,17 @@ export function BriefCreator({ concept, projectId, brandBrains, projectBrandBrai
         <div className="fixed inset-0 z-[60] bg-black/85 flex flex-col items-center justify-center gap-3 p-4" onClick={(e) => { e.stopPropagation(); setPreview(null) }}>
           <div onClick={(e) => e.stopPropagation()} className="flex flex-col items-center gap-3 max-w-full">
             {isVideoAd(preview) && videoOf(preview) ? (
-              <video src={videoOf(preview)!} poster={thumbOf(preview) ?? undefined} controls autoPlay className="max-h-[78vh] max-w-full rounded-lg" />
+              <>
+                <video key={preview.id} src={videoOf(preview)!} poster={thumbOf(preview) ?? undefined} controls autoPlay playsInline
+                  onError={() => setFailedPreviewId(preview.id)} className="max-h-[78vh] max-w-full rounded-lg" />
+                {previewFailed && (
+                  <p className="text-xs text-amber-300 max-w-md text-center">
+                    No se pudo reproducir este video (el enlace puede haber vencido). Puedes usarlo igual: se transcribe desde el enlace guardado, o ábrelo en Ad Lab → Boards.
+                  </p>
+                )}
+              </>
+            ) : isVideoAd(preview) ? (
+              <p className="text-sm text-white/80 max-w-md text-center">Este anuncio es un video pero no tiene un enlace de video guardado, así que no se puede reproducir ni transcribir.</p>
             ) : (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={thumbOf(preview) ?? ""} alt="" className="max-h-[78vh] max-w-full rounded-lg object-contain" />
@@ -328,6 +348,16 @@ export function BriefCreator({ concept, projectId, brandBrains, projectBrandBrai
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function LoadError({ text, onRetry }: { text: string; onRetry: () => void }) {
+  return (
+    <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm space-y-2 max-w-md">
+      <p className="font-medium text-destructive">No se pudieron cargar las referencias</p>
+      <p className="text-xs text-muted-foreground break-words">{text}</p>
+      <button onClick={onRetry} className="px-3 py-1.5 rounded-md border border-border text-xs font-medium hover:bg-muted">Reintentar</button>
     </div>
   )
 }

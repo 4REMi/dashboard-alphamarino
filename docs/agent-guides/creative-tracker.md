@@ -321,3 +321,11 @@ oculta el mensaje de los errores lanzados; la UI muestra el mensaje real.
 Un brief está "sin creativo" si ningún `creative_assets.brief_id` apunta a él (`briefsWithoutAssets` en concepts-table.tsx; derivado, sin campo en BD).
 - Renglón del concepto: pastilla violeta clicable "Sin creativo: <brief> · N guiones →" por cada brief pendiente; abre el concepto con ese brief resaltado y centrado.
 - Dentro del concepto, cada brief muestra "Sin creativo todavía" + "Subir creativo de este brief" (crea el asset ya ligado), o "N creativos ligados".
+
+## Referencias de video del modal "Nuevo brief" — 2026-11-17
+
+Al tropicalizar un guion desde un video de la biblioteca, los videos de los boards a veces no cargaban en el modal aunque en Ad Lab → Boards sí.
+- **Causa:** un anuncio guardado puede tener su media en tres lugares: `cached_*` (copia en Storage), columnas planas `video_url`/`image_url` y, para los guardados antes del arreglo de "varias formas de Apify", **solo en `ad_snapshot`**. Boards ya leía los tres; el modal, la transcripción del brief y la página compartida solo leían los dos primeros → esos anuncios salían sin miniatura, sin reproducir, contados como imagen y sin poder transcribirse.
+- **Ahora:** `lib/ad-lab/saved-ad-media.ts` (`resolveSavedAdMedia`: cached → plano → snapshot, misma prioridad que Boards) lo usan: el modal (vía `getBriefReferenceAds` / `getBoardReferenceAds` en `lib/actions/ad-lab.ts`, que resuelven en el servidor y NO mandan el snapshot al navegador — antes `getSavedAds()` traía todos los anuncios con su snapshot completo), `generateBriefContent` (transcripción), `generateReferenceScript` y `getBriefByToken` (página compartida).
+- El modal ya no se queda en "Cargando…" si una carga falla: muestra el error con "Reintentar"; y si el video de la vista previa no se puede reproducir (enlace vencido de Meta) lo dice.
+- Si un anuncio se guardó sin copia en Storage y su enlace original ya venció, no hay video que mostrar en ningún lado; habría que volver a guardarlo desde Discovery.
