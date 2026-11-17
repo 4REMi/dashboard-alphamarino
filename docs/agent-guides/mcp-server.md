@@ -3,7 +3,7 @@
 **Ruta:** `/api/mcp` (endpoint, no una página) — la UI para generar keys vive en
 `/employees/[id]` (tu propio perfil, sección "API keys de IA (MCP)")
 **Para quién:** cualquier empleado con sesión — cada persona genera su propia key
-**Actualizado:** 2026-11-12
+**Actualizado:** 2026-11-17
 
 ## Qué es y para qué sirve
 
@@ -557,3 +557,13 @@ Cada concepto creativo puede estar ligado a una línea (`creative_concepts.brand
 - `listar_addons`, `oferta_addons(oferta, agregar? | quitar? | reemplazar?)` — vincular add-ons existentes (`setOfferAddons`, ahora con `actingProfileId` y permiso explícito admin/subadmin). Crear/editar add-ons sigue en la UI.
 
 Campos nuevos (migración 123, todos opcionales e informativos del catálogo): `recommended_ad_budget` + `recommended_ad_budget_note` (pauta recomendada, en la moneda de la oferta), `cycle_count` + `cycle_length_days` (duración), `sort_order` (orden manual dentro de la categoría; la UI de Servicios lo respeta). También en el formulario y la tarjeta de `/services` y en Exportar/Importar JSON. Sin la migración, las ofertas se siguen guardando mientras esos campos vayan vacíos.
+
+## editar_tarea y eliminar_tarea — 2026-11-17
+
+`lib/mcp/task-tools.ts`. El chat solo podía crear, completar y leer tareas; ahora también editarlas y borrarlas. Ambas buscan por título (exacto gana; con varias coincidencias listan con `tarea_id` y NO editan "la primera"), con la misma visibilidad que `detalle_tarea` (las tareas personales solo las toca su dueño), y escriben en dos pasos (`confirmar`).
+
+- `editar_tarea(titulo, proyecto?, tarea_id?, nuevo_titulo?, descripcion?, estado?, fecha_limite?, responsable?, pingear?, avisar_a?, requiere_entregable?, instrucciones_entregable?, checklist?[])` — solo cambia lo indicado y muestra antes → después. Permiso `manage_tasks` (como la UI), vía las acciones reales de `lib/actions/tasks.ts` con `actingProfileId`: `updateTask` (campos), `updateTaskAssignee` (responsable: avisa a la persona nueva, como el dashboard), `updateTaskStatus` (estado: valida ítems obligatorios y dispara el ping), y las del checklist (`createChecklistItem`, `updateChecklistItem`, `deleteChecklistItem`, `toggleChecklistItem`).
+  - Checklist: acciones `agregar | editar | marcar | desmarcar | quitar`; los números de ítem son los del checklist ANTES de editar (`lib/tasks/checklist-plan.ts`, lógica pura con pruebas). **Palomear cambia el estado solo** (`syncTaskStatusFromChecklist`: todos = Done, alguno = In Progress, ninguno = Todo): si además se pide otro estado, error antes de escribir. Agregar o quitar ítems no lo cambia.
+  - No se mueve de proyecto ni de fase (la UI tampoco lo permite). Orden de ejecución: campos → responsable → checklist (quitar, editar, agregar, palomear) → estado. No es atómica: si algo falla a la mitad, el error lo dice y hay que revisar con `detalle_tarea`.
+- `eliminar_tarea(titulo, proyecto?, tarea_id?, confirmar)` — **solo admin**. La vista previa dice cuántos ítems de checklist y entregables subidos se pierden con ella (se borran en cascada). Una por llamada. Para cerrarla sin borrar: `completar_tarea`.
+- **Seguridad (mismo patrón de siempre):** la UI solo muestra "Eliminar tarea" a admin, pero `deleteTask` solo pedía `manage_tasks` (que los empleados tienen por defecto), así que cualquiera podía borrar una tarea llamando la acción directo. Ahora `deleteTask` exige rol admin en el servidor (`requireTaskAdmin`). Las acciones de checklist, `updateTask`, `updateTaskAssignee` y `deleteTask` aceptan `actingProfileId` validado con `assertActingProfile`.

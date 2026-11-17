@@ -2,7 +2,7 @@
 
 **Ruta:** `/tasks`
 **Para quién:** ambos (admin ve más — ver "Quién puede ver/hacer qué")
-**Actualizado:** 2026-09-15
+**Actualizado:** 2026-11-17
 
 ## Qué es y para qué sirve
 
@@ -260,3 +260,7 @@ a Done; se limpia al reabrir).
 resultado; en "Más detalles" hay un botón "Pide entregable" con campo de qué
 se entrega. Antes siempre se creaban sin entregable. Igual en el MCP
 `captura_rapida` (📎 en la vista previa).
+
+## Por MCP: editar y eliminar tareas — 2026-11-17
+
+Claude puede editar una tarea ya creada (`editar_tarea`: título, descripción, estado, fecha, responsable, ping, entregable, checklist) y borrarla (`eliminar_tarea`, solo admin). Mismas acciones y reglas que la UI; detalle en `mcp-server.md` ("editar_tarea y eliminar_tarea"). **Regla del servidor:** borrar una tarea es solo de admin (antes solo lo escondía el botón; `deleteTask` ahora lo exige).

@@ -63,6 +63,17 @@ async function requireTaskPermission(projectId: string | null, actingProfileId?:
   return user
 }
 
+// Borrar una tarea es solo de admin: la interfaz ya solo muestra el botón a
+// admins (task-table, team-member-view), pero el servidor solo pedía
+// manage_tasks (que los empleados tienen por defecto), así que cualquiera
+// podía borrar llamando la acción directo. Mismo rol que la UI.
+async function requireTaskAdmin(projectId: string | null, actingProfileId?: string) {
+  const user = await requireTaskPermission(projectId, actingProfileId)
+  const { data: profile } = await createAdminClient().from("profiles").select("role").eq("id", user.id).single()
+  if (profile?.role !== "admin") throw new Error("Permission denied")
+  return user
+}
+
 function revalidateTaskPaths(projectId: string | null) {
   if (projectId) revalidatePath(`/projects/${projectId}`)
   revalidatePath("/tasks")
@@ -170,14 +181,17 @@ export async function createTask(formData: FormData, actingProfileId?: string) {
   if (assigneeId) await notifyTaskAssigned(admin, assigneeId, title, projectId)
 }
 
-export async function updateTask(id: string, formData: FormData) {
+export async function updateTask(id: string, formData: FormData, actingProfileId?: string) {
+  assertActingProfile(actingProfileId)
   const projectId = (formData.get("project_id") as string) || null
-  await requireTaskPermission(projectId)
+  await requireTaskPermission(projectId, actingProfileId)
 
   const admin = createAdminClient()
   const { error } = await admin
     .from("tasks")
     .update({
+      // Solo si el formulario lo manda (el de la UI no lo manda y no cambia).
+      ...(formData.has("deliverable_instructions") ? { deliverable_instructions: (formData.get("deliverable_instructions") as string) || null } : {}),
       title: formData.get("title") as string,
       description: (formData.get("description") as string) || null,
       status: formData.get("status") as TaskStatus,
@@ -207,8 +221,9 @@ export async function updateTaskPinged(id: string, isPinged: boolean, projectId:
   revalidateTaskPaths(projectId)
 }
 
-export async function updateTaskAssignee(id: string, assigneeId: string | null, projectId: string | null) {
-  await requireTaskPermission(projectId)
+export async function updateTaskAssignee(id: string, assigneeId: string | null, projectId: string | null, actingProfileId?: string) {
+  assertActingProfile(actingProfileId)
+  await requireTaskPermission(projectId, actingProfileId)
 
   const admin = createAdminClient()
   const { data, error } = await admin
@@ -367,8 +382,9 @@ export async function markTaskDoneFromBot(taskId: string, completedByProfileId: 
   revalidatePath("/tasks")
 }
 
-export async function deleteTask(id: string, projectId: string | null) {
-  await requireTaskPermission(projectId)
+export async function deleteTask(id: string, projectId: string | null, actingProfileId?: string) {
+  assertActingProfile(actingProfileId)
+  await requireTaskAdmin(projectId, actingProfileId)
 
   const admin = createAdminClient()
   const { data: task } = await admin.from("tasks").select("phase_id").eq("id", id).single()
@@ -476,9 +492,11 @@ export async function createChecklistItem(
   taskId: string,
   text: string,
   isBlocking: boolean,
-  projectId: string | null
+  projectId: string | null,
+  actingProfileId?: string,
 ): Promise<TaskChecklistItem> {
-  await requireTaskPermission(projectId)
+  assertActingProfile(actingProfileId)
+  await requireTaskPermission(projectId, actingProfileId)
   const admin = createAdminClient()
 
   const { data: existing } = await admin
@@ -502,9 +520,11 @@ export async function createChecklistItem(
 export async function toggleChecklistItem(
   itemId: string,
   isChecked: boolean,
-  projectId: string | null
+  projectId: string | null,
+  actingProfileId?: string,
 ) {
-  const user = await requireTaskPermission(projectId)
+  assertActingProfile(actingProfileId)
+  const user = await requireTaskPermission(projectId, actingProfileId)
   const admin = createAdminClient()
   const { data, error } = await admin
     .from("task_checklist_items")
@@ -522,9 +542,11 @@ export async function toggleChecklistItem(
 export async function updateChecklistItem(
   itemId: string,
   fields: { text?: string; is_blocking?: boolean },
-  projectId: string | null
+  projectId: string | null,
+  actingProfileId?: string,
 ) {
-  await requireTaskPermission(projectId)
+  assertActingProfile(actingProfileId)
+  await requireTaskPermission(projectId, actingProfileId)
   const admin = createAdminClient()
   const { error } = await admin
     .from("task_checklist_items")
@@ -534,8 +556,9 @@ export async function updateChecklistItem(
   revalidateTaskPaths(projectId)
 }
 
-export async function deleteChecklistItem(itemId: string, projectId: string | null) {
-  await requireTaskPermission(projectId)
+export async function deleteChecklistItem(itemId: string, projectId: string | null, actingProfileId?: string) {
+  assertActingProfile(actingProfileId)
+  await requireTaskPermission(projectId, actingProfileId)
   const admin = createAdminClient()
   const { error } = await admin
     .from("task_checklist_items")
