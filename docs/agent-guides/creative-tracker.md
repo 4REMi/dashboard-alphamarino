@@ -329,3 +329,10 @@ Al tropicalizar un guion desde un video de la biblioteca, los videos de los boar
 - **Ahora:** `lib/ad-lab/saved-ad-media.ts` (`resolveSavedAdMedia`: cached → plano → snapshot, misma prioridad que Boards) lo usan: el modal (vía `getBriefReferenceAds` / `getBoardReferenceAds` en `lib/actions/ad-lab.ts`, que resuelven en el servidor y NO mandan el snapshot al navegador — antes `getSavedAds()` traía todos los anuncios con su snapshot completo), `generateBriefContent` (transcripción), `generateReferenceScript` y `getBriefByToken` (página compartida).
 - El modal ya no se queda en "Cargando…" si una carga falla: muestra el error con "Reintentar"; y si el video de la vista previa no se puede reproducir (enlace vencido de Meta) lo dice.
 - Si un anuncio se guardó sin copia en Storage y su enlace original ya venció, no hay video que mostrar en ningún lado; habría que volver a guardarlo desde Discovery.
+
+## Vista rápida de guiones: cambios que no se reflejaban — 2026-11-17
+
+En el modal del concepto, al abrir un guion en la vista rápida (`script-quick-view.tsx`), guardar o borrar no se veía hasta recargar la página.
+- **Causa:** el `brief` que recibe el visor vive en el estado del hub (`creatives-hub.tsx`), que solo se vuelve a pedir con `reload()` (llega como `onRefresh`). El visor llamaba a `router.refresh()`, que no toca ese estado: al guardar volvía a leer el texto viejo y el guion borrado seguía en la lista del padre y reaparecía al reabrir.
+- **Ahora:** el visor recibe `onRefresh` (desde `BriefScriptStatus`) y lo llama tras guardar y tras borrar; además muestra al instante lo guardado (`savedLines`) sin esperar a que el hub termine de recargar. Sin `onRefresh` cae a `router.refresh()`.
+- **Regla para vistas nuevas dentro del hub:** si cambian briefs, conceptos o creativos, llamar a `onRefresh` del hub — `router.refresh()` solo revalida lo renderizado en el servidor, no el estado de cliente del hub.

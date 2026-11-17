@@ -145,7 +145,7 @@ export function BriefScriptStatus({ brief, canEdit, projectId, onRefresh }: { br
           ))}
         </div>
       )}
-      {openKey && <ScriptQuickView brief={brief} scripts={entries} initialKey={openKey} canEdit={canEdit} onClose={() => setOpenKey(null)} />}
+      {openKey && <ScriptQuickView brief={brief} scripts={entries} initialKey={openKey} canEdit={canEdit} onClose={() => setOpenKey(null)} onRefresh={onRefresh} />}
     </div>
   )
 }

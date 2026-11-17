@@ -32,12 +32,17 @@ function linesOf(brief: CreativeBrief, key: string): AdCloneLine[] {
   return Array.isArray(raw) ? raw : raw[key] ?? []
 }
 
-export function ScriptQuickView({ brief, scripts, initialKey, canEdit, onClose }: {
+export function ScriptQuickView({ brief, scripts, initialKey, canEdit, onClose, onRefresh }: {
   brief: CreativeBrief
   scripts: QuickScript[]
   initialKey: string
   canEdit: boolean
   onClose: () => void
+  // Vuelve a pedir los briefs al hub (creatives-hub.tsx → reload). El brief
+  // que recibe este visor vive en el estado del hub: router.refresh() NO lo
+  // actualiza, así que sin esto un guardado o un borrado no se veía hasta
+  // recargar la página.
+  onRefresh?: () => void
 }) {
   const [key, setKey] = useState(initialKey)
   const [compare, setCompare] = useState(false)
@@ -46,6 +51,10 @@ export function ScriptQuickView({ brief, scripts, initialKey, canEdit, onClose }
   // Borradores por guion: se puede saltar entre guiones sin perder cambios.
   const [drafts, setDrafts] = useState<Record<string, AdCloneLine[]>>({})
   const [savedKeys, setSavedKeys] = useState<Set<string>>(new Set())
+  // Lo ya guardado se muestra al instante, sin esperar a que el hub vuelva a
+  // pedir los briefs (si no, entre guardar y que llegue el brief nuevo se
+  // vería el texto viejo).
+  const [savedLines, setSavedLines] = useState<Record<string, AdCloneLine[]>>({})
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -53,7 +62,7 @@ export function ScriptQuickView({ brief, scripts, initialKey, canEdit, onClose }
 
   const visible = scripts.filter((s) => !deletedKeys.has(s.key))
   const current = visible.find((s) => s.key === key) ?? visible[0]
-  const original = linesOf(brief, current.key)
+  const original = savedLines[current.key] ?? linesOf(brief, current.key)
   const lines = drafts[current.key] ?? original
   const dirty = !!drafts[current.key] && JSON.stringify(drafts[current.key]) !== JSON.stringify(original)
   const hasOriginal = lines.some((l) => l.original?.trim())
@@ -79,6 +88,12 @@ export function ScriptQuickView({ brief, scripts, initialKey, canEdit, onClose }
     if (j < 0 || j >= lines.length) return
     const next = [...lines]; [next[i], next[j]] = [next[j], next[i]]; setLines(next)
   }
+  // El hub vuelve a pedir los briefs; sin él (no debería pasar) se cae a
+  // router.refresh(), que al menos revalida lo renderizado en el servidor.
+  function refreshParent() {
+    if (onRefresh) onRefresh()
+    else router.refresh()
+  }
   function deleteScript() {
     if (!confirm(`¿Borrar "${current.label}" del brief? No se puede deshacer.`)) return
     const k = current.key
@@ -89,7 +104,7 @@ export function ScriptQuickView({ brief, scripts, initialKey, canEdit, onClose }
         setDrafts((d) => { const n = { ...d }; delete n[k]; return n })
         const rest = visible.filter((s) => s.key !== k)
         if (rest.length) setKey(rest[0].key); else onClose()
-        router.refresh()
+        refreshParent()
       } catch (e) { setError(e instanceof Error ? e.message : String(e)) }
     })
   }
@@ -100,8 +115,9 @@ export function ScriptQuickView({ brief, scripts, initialKey, canEdit, onClose }
       try {
         await updateBriefScript(brief.id, current.key, lines)
         setSavedKeys((s) => new Set(s).add(current.key))
+        setSavedLines((m) => ({ ...m, [current.key]: lines }))
         setDrafts((d) => { const n = { ...d }; delete n[current.key]; return n })
-        router.refresh()
+        refreshParent()
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e))
       }
@@ -114,7 +130,7 @@ export function ScriptQuickView({ brief, scripts, initialKey, canEdit, onClose }
     setTimeout(() => setCopied(false), 2000)
   }
 
-  const dirtyKeys = Object.keys(drafts).filter((k) => JSON.stringify(drafts[k]) !== JSON.stringify(linesOf(brief, k)))
+  const dirtyKeys = Object.keys(drafts).filter((k) => JSON.stringify(drafts[k]) !== JSON.stringify(savedLines[k] ?? linesOf(brief, k)))
 
   return (
     <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4" onClick={(e) => { e.stopPropagation(); if (!dirtyKeys.length || confirm("Hay cambios sin guardar. ¿Cerrar de todos modos?")) onClose() }}>
@@ -134,7 +150,7 @@ export function ScriptQuickView({ brief, scripts, initialKey, canEdit, onClose }
                   <span className={cn("w-2 h-2 rounded-full flex-shrink-0", st.dot)} />
                   <span className="flex-1 min-w-0">
                     <span className="block font-medium truncate">{s.label}</span>
-                    <span className="block text-[10px] text-muted-foreground">{linesOf(brief, s.key).length} líneas · {st.label}</span>
+                    <span className="block text-[10px] text-muted-foreground">{(savedLines[s.key] ?? linesOf(brief, s.key)).length} líneas · {st.label}</span>
                   </span>
                   {dirtyKeys.includes(s.key) && <span className="w-1.5 h-1.5 rounded-full bg-primary" title="Sin guardar" />}
                 </button>
