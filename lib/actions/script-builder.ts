@@ -3,6 +3,7 @@
 import Anthropic from "@anthropic-ai/sdk"
 import { createClient } from "@/lib/supabase/server"
 import { METHODS, METHOD_KEYS, TRIGGERS, AWARENESS, wordBudget, spokenBeats, methodBrief, type MethodKey, type ScriptHook, type ScriptPart } from "@/lib/scripts/framework"
+import { sanitizeDials, hookDialsBrief, refineBrief, HOOK_REFINES, type HookDials, type HookRefine } from "@/lib/scripts/hook-dials"
 
 // Constructor de guiones paso a paso: cada función propone opciones para UN
 // paso; nada escribe el guion completo de un jalón. Contexto = concepto
@@ -77,10 +78,18 @@ async function suggestMethodsImpl(conceptId: string, brainId: string): Promise<{
   return (r.methods ?? []).filter((m) => (METHOD_KEYS as string[]).includes(m.key) && !seen.has(m.key) && !!seen.add(m.key)).slice(0, 3) as { key: MethodKey; why: string }[]
 }
 
-async function generateHooksImpl(conceptId: string, brainId: string, mechanic: MethodKey, opts: { like?: ScriptHook; avoid?: string[]; targetSeconds?: number } = {}): Promise<ScriptHook[]> {
+export interface HookOpts { like?: ScriptHook; avoid?: string[]; targetSeconds?: number; dials?: HookDials; refine?: HookRefine }
+
+async function generateHooksImpl(conceptId: string, brainId: string, mechanic: MethodKey, opts: HookOpts = {}): Promise<ScriptHook[]> {
   const ctx = await context(conceptId, brainId)
   const m = METHODS[mechanic]
   const budget = budgetFor(mechanic, opts.targetSeconds ?? 30)
+  // Los ajustes llegan del navegador: se vuelven a sanear aquí. Con todo en
+  // automático el brief es "" y el prompt queda igual que siempre.
+  const dials = sanitizeDials(opts.dials)
+  const adjust = hookDialsBrief(dials, { hookWords: budget.hook })
+  const refine = HOOK_REFINES.some((x) => x.key === opts.refine) ? refineBrief(opts.refine) : ""
+  const limited = dials.triggers.length > 0
   const r = await ask<{ hooks: ScriptHook[] }>(
     `Eres redactor experto en hooks de video para paid media. El hook solo tiene un trabajo: detener el scroll en 1–3 segundos con una respuesta psicológica o emocional. ${RULES}`,
     `${ctx.text}
@@ -89,12 +98,12 @@ ${methodBrief(mechanic)}
 EL HOOK ABRE ${m.kind === "framework" ? "ESTE FRAMEWORK" : "ESTA MECÁNICA"}: los 6 deben tener la forma "${m.hookShape}" — lo que varía entre ellos es el disparador psicológico, no la forma.
 ${m.beats.every((b) => b.mode === "visual") ? 'Este método NO lleva voz: en cada hook "spoken" va VACÍO (""); el hook vive en "visual" y en un "overlay" corto que no juzgue.' : ""}
 ESTRATEGIA DE HOOK PARA ${ctx.stage.label.toUpperCase()}: ${ctx.stage.hook}
-DISPARADORES: ${TRIGGERS.join(", ")}.
-${opts.like ? `Haz variaciones cercanas a este hook que gustó (mismo espíritu, distinta redacción y disparador): "${opts.like.spoken}"` : ""}
+${limited ? "" : `DISPARADORES: ${TRIGGERS.join(", ")}.`}
+${adjust ? `AJUSTES DE ESTE LOTE (los eligió quien escribe el guion; respétalos aunque suenen extremos):\n${adjust}\n` : ""}${opts.like ? (refine ? `Haz variaciones de este hook que gustó, ${refine} Hook original: "${opts.like.spoken}"` : `Haz variaciones cercanas a este hook que gustó (mismo espíritu, distinta redacción y disparador): "${opts.like.spoken}"`) : ""}
 ${opts.avoid?.length ? `Evita estos hooks ya vistos: ${opts.avoid.map((h) => `"${h}"`).join(" | ")}` : ""}
 
 DURACIÓN DEL VIDEO: ${opts.targetSeconds ?? 30} s en total. Cada hook (lo que se dice) debe tener como MÁXIMO ${budget.hook} palabras.
-Escribe 6 hooks, cada uno con un disparador DISTINTO (puedes combinar dos en uno, ej. "Identity call-out + Pain agitation"). En ${ctx.language}.`, "generateHooks", { properties: { hooks: { type: "array", items: { type: "object", properties: { trigger: { type: "string" }, spoken: { type: "string", description: "primeras palabras en cámara (vacío si el método no lleva voz)" }, visual: { type: "string", description: "qué pasa en el primer cuadro" }, overlay: { type: "string", description: "texto en pantalla corto" }, why: { type: "string", description: "por qué detiene a esta persona" } }, required: ["trigger", "spoken", "visual", "overlay"] } } }, required: ["hooks"] })
+${limited ? "Escribe 6 hooks (puedes combinar dos de los disparadores permitidos en uno)." : 'Escribe 6 hooks, cada uno con un disparador DISTINTO (puedes combinar dos en uno, ej. "Identity call-out + Pain agitation").'} En ${ctx.language}.`, "generateHooks", { properties: { hooks: { type: "array", items: { type: "object", properties: { trigger: { type: "string" }, spoken: { type: "string", description: "primeras palabras en cámara (vacío si el método no lleva voz)" }, visual: { type: "string", description: "qué pasa en el primer cuadro" }, overlay: { type: "string", description: dials.sinSonido ? "texto en pantalla: el hook COMPLETO" : "texto en pantalla corto" }, why: { type: "string", description: "por qué detiene a esta persona" } }, required: ["trigger", "spoken", "visual", "overlay"] } } }, required: ["hooks"] })
   return (r.hooks ?? []).slice(0, 6)
 }
 
@@ -167,6 +176,6 @@ async function safe<T>(fn: () => Promise<T>): Promise<BuilderResult<T>> {
   try { return { ok: true, data: await fn() } } catch (e) { return { ok: false, error: e instanceof Error ? e.message : String(e) } }
 }
 export async function suggestMethods(conceptId: string, brainId: string) { return safe(() => suggestMethodsImpl(conceptId, brainId)) }
-export async function generateHooks(conceptId: string, brainId: string, mechanic: MethodKey, opts: { like?: ScriptHook; avoid?: string[]; targetSeconds?: number } = {}) { return safe(() => generateHooksImpl(conceptId, brainId, mechanic, opts)) }
+export async function generateHooks(conceptId: string, brainId: string, mechanic: MethodKey, opts: HookOpts = {}) { return safe(() => generateHooksImpl(conceptId, brainId, mechanic, opts)) }
 export async function generateBeat(conceptId: string, brainId: string, mechanic: MethodKey, hook: ScriptHook, beatIndex: number, previous: ScriptPart[], targetSeconds = 30) { return safe(() => generateBeatImpl(conceptId, brainId, mechanic, hook, beatIndex, previous, targetSeconds)) }
 export async function generateCloses(conceptId: string, brainId: string, mechanic: MethodKey, hook: ScriptHook, body: ScriptPart[], targetSeconds = 30) { return safe(() => generateClosesImpl(conceptId, brainId, mechanic, hook, body, targetSeconds)) }

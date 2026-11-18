@@ -347,3 +347,16 @@ El paso 1 del constructor ahora se llama **Método** y ofrece dos familias con l
 - **Regla en todos los frameworks: no inventar datos.** Piden pruebas, cifras y testimonios, y la IA no debe fabricarlos: si el contexto no trae el dato, deja un marcador `[así]` para que quien graba ponga el real (importante en Testimonio y HSO, que se graban con una persona de verdad).
 - Para agregar un framework: una ficha más en `FRAMEWORKS` (y su clave en `FrameworkKey`); la pantalla y los prompts lo toman solos. "Crear rápido" (`SCRIPT_STRUCTURES`, `lib/constants/creatives.ts`) es otro flujo, de un solo disparo, y no cambia.
 - No expuesto por MCP: el constructor paso a paso solo vive en la pantalla (`generar_guiones_ia` usa las estructuras de "Crear rápido").
+
+## Ajustes del hook en el constructor — 2026-11-18
+
+Dentro del constructor de guiones, el hook ahora se puede dirigir antes de generarlo. Panel "Ajustes del hook" (en el paso Método, antes de "Escribir hooks", y en el paso Hooks; se cierra al generar y su resumen queda en el encabezado). Lógica pura en `lib/scripts/hook-dials.ts`; la pantalla es `HookDialsPanel` en `script-builder-modal.tsx`; el prompt lo arma `generateHooksImpl` (`lib/actions/script-builder.ts`).
+- **5 sliders (1–5; el 3 = automático):** especificidad de persona (amplia ↔ una persona y su escena), intensidad emocional (suave ↔ cruda), concretud (evocador ↔ muy concreto), curiosidad (directo ↔ misterioso) y longitud (mínima ↔ usa todo el presupuesto de palabras). Cada posición muestra su significado en vivo.
+- **Disparadores** (chips, vacío = varía entre todos) y **forma de la primera frase** (pregunta, afirmación, dato, escena, demostración).
+- **"Debe funcionar sin sonido":** el `overlay` lleva el hook completo (la mayoría ve el video en silencio).
+- **Atajos:** Call-out a una persona, Rompe-scroll, Empático, Directo al grano (parten de automático y mueven solo lo suyo).
+- **Refinar un hook:** además de "Más como este", cada hook tiene Más específico / Más corto / Más fuerte / Más curioso (`HookRefine`).
+- **Regla de oro:** con todo en automático el prompt es IDÉNTICO al de antes (`hookDialsBrief` devuelve ""); solo lo que se mueve entra al prompt. "Armar todo con IA" y "Otros 6" usan los ajustes actuales; si los cambias después de generar, aparece el aviso "Cambiaste los ajustes" con botón para regenerar.
+- **Los ajustes llegan del navegador:** `sanitizeDials` los vuelve a limpiar en el servidor (niveles 1–5, solo disparadores/formas válidos), así que nadie puede colar texto en el prompt.
+- **Seguridad de anuncios:** con persona ≥ 4 o intensidad ≥ 4 el prompt pide encuadre condicional ("Si eres…", "Para quien…"), no afirmar ni insinuar atributos personales del espectador (salud, deudas, edad exacta, identidad, etc. — la política de atributos personales de Meta rechaza esos anuncios) y no humillar ni culpar. Con concretud ≥ 4: detalles de escena sí, estadísticas o testimonios inventados no (marcador `[dato]`).
+- No se guardan en el brief: son ajustes de la sesión del constructor. No expuesto por MCP.

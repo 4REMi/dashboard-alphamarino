@@ -1,14 +1,15 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Loader2, Sparkles, Check, RefreshCw, Wand2, ChevronRight, AlertTriangle, Info, Clock, Copy, X } from "lucide-react"
+import { Loader2, Sparkles, Check, RefreshCw, Wand2, ChevronRight, ChevronDown, AlertTriangle, Info, Clock, Copy, X, SlidersHorizontal } from "lucide-react"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
 import { suggestMethods, generateHooks, generateBeat, generateCloses, type BuilderResult } from "@/lib/actions/script-builder"
 import { saveScriptDrafts, addScriptDraftsToBrief } from "@/lib/actions/creatives"
-import { METHODS, METHOD_KEYS, FRAMEWORK_KEYS, MECHANIC_KEYS, AWARENESS, MODE_LABEL, methodFlow, lintScript, estimateSeconds, wordBudget, wordCount, spokenBeats, WORDS_PER_SECOND, type MethodKey, type ScriptHook, type ScriptPart } from "@/lib/scripts/framework"
+import { METHODS, METHOD_KEYS, FRAMEWORK_KEYS, MECHANIC_KEYS, AWARENESS, MODE_LABEL, TRIGGERS, methodFlow, lintScript, estimateSeconds, wordBudget, wordCount, spokenBeats, WORDS_PER_SECOND, type MethodKey, type ScriptHook, type ScriptPart } from "@/lib/scripts/framework"
 import type { AdCloneLine, BrandBrain, CreativeBrief, CreativeConcept } from "@/lib/types"
+import { DEFAULT_DIALS, DIAL_DEFS, HOOK_FORMS, HOOK_PRESETS, HOOK_REFINES, applyPreset, dialsSummary, isDefaultDials, type HookDials, type HookRefine } from "@/lib/scripts/hook-dials"
 import { cn } from "@/lib/utils"
 
 // Constructor de guion de VIDEO paso a paso (runneth: Strategy Engine → Método
@@ -32,6 +33,67 @@ let seq = 0
 const withKey = (h: ScriptHook): ScriptHook => ({ ...h, key: `h${Date.now().toString(36)}${seq++}` })
 
 const STEPS = ["Base", "Método", "Hooks", "Cuerpo", "Cierre", "Revisión"] as const
+
+// Ajustes del hook: sliders (1–5, el 3 es automático), disparadores, forma de
+// la primera frase, "sin sonido" y atajos. Solo lo que se mueve llega al
+// prompt (lib/scripts/hook-dials.ts); en automático todo queda como siempre.
+function HookDialsPanel({ dials, onChange, open, onToggle, silent }: { dials: HookDials; onChange: (d: HookDials) => void; open: boolean; onToggle: () => void; silent: boolean }) {
+  const chip = (on: boolean) => cn("h-7 px-2.5 rounded-full text-xs border transition-colors", on ? "bg-foreground text-background border-foreground" : "border-border text-muted-foreground hover:text-foreground")
+  const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v])
+  return (
+    <div className="rounded-xl border border-border">
+      <button type="button" onClick={onToggle} className="w-full flex items-center gap-2 px-3 py-2 text-left" aria-expanded={open}>
+        <SlidersHorizontal className="w-4 h-4 text-violet-600 shrink-0" />
+        <span className="text-sm font-semibold shrink-0">Ajustes del hook</span>
+        <span className={cn("text-xs truncate flex-1", isDefaultDials(dials) ? "text-muted-foreground" : "text-violet-700 dark:text-violet-300")}>{dialsSummary(dials)}</span>
+        <ChevronDown className={cn("w-4 h-4 shrink-0 transition-transform", open && "rotate-180")} />
+      </button>
+      {open && (
+        <div className="border-t border-border p-3 space-y-4">
+          <div className="space-y-1.5">
+            <p className="text-[11px] font-medium text-muted-foreground">Atajos</p>
+            <div className="flex flex-wrap gap-1.5">
+              {HOOK_PRESETS.map((p) => (
+                <button key={p.key} type="button" title={p.hint} onClick={() => onChange(applyPreset(p.key))} className={chip(false)}>{p.label}</button>
+              ))}
+              {!isDefaultDials(dials) && <button type="button" onClick={() => onChange(DEFAULT_DIALS)} className="h-7 px-2.5 rounded-full text-xs text-violet-600 hover:underline">Restablecer</button>}
+            </div>
+          </div>
+          <div className="grid sm:grid-cols-2 gap-x-6 gap-y-4">
+            {DIAL_DEFS.map((def) => (
+              <div key={def.key} className="space-y-1">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-xs font-medium">{def.label}</span>
+                  <span className={cn("ml-auto text-[11px]", dials[def.key] === 3 ? "text-muted-foreground" : "text-violet-700 dark:text-violet-300 font-medium")}>{def.levels[dials[def.key] - 1]}</span>
+                </div>
+                <input type="range" min={1} max={5} step={1} value={dials[def.key]} aria-label={def.label}
+                  onChange={(e) => onChange({ ...dials, [def.key]: Number(e.target.value) })} className="w-full accent-primary" />
+                <div className="flex justify-between text-[10px] text-muted-foreground"><span>{def.low}</span><span>{def.high}</span></div>
+              </div>
+            ))}
+          </div>
+          <div className="space-y-1.5">
+            <p className="text-[11px] font-medium text-muted-foreground">Disparadores <span className="font-normal">· vacío = varía entre todos</span></p>
+            <div className="flex flex-wrap gap-1.5">
+              {TRIGGERS.map((t) => <button key={t} type="button" onClick={() => onChange({ ...dials, triggers: toggle(dials.triggers, t) })} className={chip(dials.triggers.includes(t))}>{t}</button>)}
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <p className="text-[11px] font-medium text-muted-foreground">Forma de la primera frase <span className="font-normal">· vacío = cualquiera</span></p>
+            <div className="flex flex-wrap gap-1.5">
+              {HOOK_FORMS.map((f) => <button key={f.key} type="button" title={f.guide} onClick={() => onChange({ ...dials, formas: toggle(dials.formas, f.key) })} className={chip(dials.formas.includes(f.key))}>{f.label}</button>)}
+            </div>
+          </div>
+          <label className="flex items-start gap-2 text-xs cursor-pointer select-none">
+            <input type="checkbox" checked={dials.sinSonido} onChange={(e) => onChange({ ...dials, sinSonido: e.target.checked })} className="mt-0.5 accent-primary" />
+            <span><span className="font-medium">Debe funcionar sin sonido</span> <span className="text-muted-foreground">· la mayoría ve el video en silencio: el texto en pantalla lleva el hook completo.</span></span>
+          </label>
+          {silent && <p className="text-[11px] text-amber-700 dark:text-amber-400">Este método no lleva voz: los ajustes aplican al visual y al texto en pantalla.</p>}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // Tarjeta de un método: etiqueta de familia, descripción, la estructura
 // completa (Hook → … → CTA) y en qué etapa de awareness rinde mejor.
@@ -64,6 +126,10 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
   const [method, setMethod] = useState<MethodKey | null>(null)
   const [showAllMethods, setShowAllMethods] = useState(false)
   const [hookOptions, setHookOptions] = useState<ScriptHook[]>([])
+  const [dials, setDials] = useState<HookDials>(DEFAULT_DIALS)
+  const [dialsOpen, setDialsOpen] = useState(false)
+  // Ajustes con los que se escribió el último lote: avisa si cambiaron después.
+  const [dialsUsed, setDialsUsed] = useState<HookDials | null>(null)
   const [picked, setPicked] = useState<ScriptHook[]>([])
   const [beatOptions, setBeatOptions] = useState<Record<number, ScriptPart[]>>({})
   const [body, setBody] = useState<ScriptPart[]>([])
@@ -99,11 +165,12 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
     if (r) { setMethodOptions(r); setStep(1) }
     return r
   }
-  async function loadHooks(opts: { like?: ScriptHook } = {}) {
+  async function loadHooks(opts: { like?: ScriptHook; refine?: HookRefine } = {}) {
     if (!method) return null
-    const r = await runAi(opts.like ? "Variaciones de ese hook…" : "Escribiendo 6 hooks…", () => generateHooks(concept.id, brainId, method, { like: opts.like, avoid: hookOptions.map((h) => h.spoken), targetSeconds }))
+    const r = await runAi(opts.like ? "Variaciones de ese hook…" : "Escribiendo 6 hooks…", () => generateHooks(concept.id, brainId, method, { like: opts.like, refine: opts.refine, avoid: hookOptions.map((h) => h.spoken), targetSeconds, dials }))
     const keyed = r?.map(withKey) ?? null
-    if (keyed) { setHookOptions(keyed); setStep(2) }
+    // El panel se cierra al generar: los hooks quedan a la vista (el resumen del encabezado sigue diciendo qué ajustes se usaron).
+    if (keyed) { setHookOptions(keyed); setDialsUsed(dials); setDialsOpen(false); setStep(2) }
     return keyed
   }
   async function loadBeat(i: number, prev = body.slice(0, i), hook = primary, mech = method) {
@@ -139,9 +206,9 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
     }
     let hooks = picked
     if (!hooks.length) {
-      const hs = hookOptions.length ? hookOptions : (await runAi("Escribiendo 6 hooks…", () => generateHooks(concept.id, brainId, mech!, { targetSeconds })))?.map(withKey)
+      const hs = hookOptions.length ? hookOptions : (await runAi("Escribiendo 6 hooks…", () => generateHooks(concept.id, brainId, mech!, { targetSeconds, dials })))?.map(withKey)
       if (!hs?.length) return
-      setHookOptions(hs); hooks = [hs[0]]; setPicked(hooks)
+      setHookOptions(hs); setDialsUsed(dials); hooks = [hs[0]]; setPicked(hooks)
     }
     const b = [...body]
     for (let i = b.length; i < METHODS[mech].beats.length; i++) {
@@ -298,6 +365,7 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
                     })}
                   </div>
                 )}
+                <HookDialsPanel dials={dials} onChange={setDials} open={dialsOpen} onToggle={() => setDialsOpen((v) => !v)} silent={silent} />
                 <Button onClick={() => (hookOptions.length ? setStep(2) : loadHooks())} disabled={!method || !!busy}>Escribir hooks <ChevronRight className="w-4 h-4" /></Button>
               </div>
             )}
@@ -305,6 +373,14 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
             {step === 2 && (
               <div className="space-y-3">
                 <p className="text-sm text-muted-foreground">Elige uno o varios. Con varios se arma un guion por hook con el mismo cuerpo, para testear hooks en Meta. <span className="text-foreground">{stage.label}:</span> {stage.hook} <span className="whitespace-nowrap">· máx. ~{budget.hook} palabras</span></p>
+                <HookDialsPanel dials={dials} onChange={setDials} open={dialsOpen} onToggle={() => setDialsOpen((v) => !v)} silent={silent} />
+                {dialsUsed && JSON.stringify(dialsUsed) !== JSON.stringify(dials) && (
+                  <div className="flex items-center gap-2 rounded-lg bg-violet-50 dark:bg-violet-950/30 px-3 py-2 text-xs text-violet-800 dark:text-violet-200">
+                    <Info className="w-3.5 h-3.5 shrink-0" />
+                    <span className="flex-1">Cambiaste los ajustes: los hooks de abajo no los reflejan todavía.</span>
+                    <Button size="sm" variant="outline" onClick={() => loadHooks()} disabled={!!busy}><RefreshCw className="w-3.5 h-3.5" />Escribir 6 con estos ajustes</Button>
+                  </div>
+                )}
                 <div className="grid sm:grid-cols-2 gap-2">
                   {hookOptions.map((h, i) => {
                     const on = picked.some((p) => p.key === h.key)
@@ -322,7 +398,12 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
                         <p className="text-[11px] text-muted-foreground">🎬 {h.visual}</p>
                         {h.overlay && <p className="text-[11px] text-muted-foreground">📝 {h.overlay}</p>}
                         {h.why && <p className="text-[11px] italic text-muted-foreground">{h.why}</p>}
-                        <button type="button" onClick={() => loadHooks({ like: h })} disabled={!!busy} className="text-[11px] text-violet-600 hover:underline">Más como este</button>
+                        <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                          <button type="button" onClick={() => loadHooks({ like: h })} disabled={!!busy} className="text-[11px] text-violet-600 hover:underline">Más como este</button>
+                          {HOOK_REFINES.map((r) => (
+                            <button key={r.key} type="button" onClick={() => loadHooks({ like: h, refine: r.key })} disabled={!!busy} className="text-[11px] text-violet-600 hover:underline">{r.label}</button>
+                          ))}
+                        </div>
                       </div>
                     )
                   })}
