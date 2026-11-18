@@ -1,3 +1,4 @@
+import { findWritingTics } from "@/lib/ai/writing-tics"
 // Constructor de guiones de video paso a paso — conocimiento del framework
 // (runneth.com: Creative Strategy Engine, Hook Writing, Creative Mechanics).
 // Orden: Ángulo → Método → Hook → Cuerpo (beats del método) → Cierre.
@@ -358,6 +359,13 @@ export function lintScript(input: { hooks: ScriptHook[]; body: ScriptPart[]; clo
   if (dup) out.push({ level: "info", text: `Dos hooks usan el mismo disparador (${dup}).`, fix: "Para testear, varía el disparador manteniendo el ángulo." })
   const all = [...input.body.map((b) => b.spoken), input.close?.spoken ?? ""].join(" ")
   if (all && !/\d/.test(all)) out.push({ level: "info", text: "El guion no tiene ningún dato concreto (cifra, tiempo, precio, resultado).", fix: "Los detalles específicos hacen creíble el mensaje." })
+  const KIND_TXT = { paralelismo: "paralelismo negativo", antitesis: "antítesis simétrica", frase_suelta: "frases cortas sueltas" } as const
+  const tic = (where: string, t: string, skipShort = false) => {
+    for (const x of findWritingTics(t, { skipShort })) out.push({ level: "warn", text: `${where} tiene ${KIND_TXT[x.kind]}: «${x.excerpt.slice(0, 80)}».`, fix: "Afirma directo lo que sí es o pasa, con oraciones completas y ritmo natural al hablar." })
+  }
+  for (const [i, h] of input.hooks.entries()) { tic(`Hook ${i + 1}`, h.spoken); tic(`Hook ${i + 1} (texto en pantalla)`, h.overlay ?? "", true) }
+  for (const [i, b] of input.body.entries()) tic(`Cuerpo ${i + 1}`, b.spoken)
+  if (input.close) tic("El cierre", input.close.spoken)
   if (!input.close) out.push({ level: "warn", text: "Falta el cierre.", fix: "Elige o escribe un cierre." })
   return out
 }

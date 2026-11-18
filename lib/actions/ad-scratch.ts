@@ -1,5 +1,6 @@
 "use server"
 
+import { WRITING_RULES } from "@/lib/ai/writing-tics"
 import { createClient } from "@/lib/supabase/server"
 import type { BrandBrain, ScratchAdIdea } from "@/lib/types"
 
@@ -109,7 +110,7 @@ Genera 5 ideas de creativo estático nuevas y distintas entre sí (varía el án
     model: "claude-sonnet-4-6",
     max_tokens: 2048,
     messages: [{ role: "user", content: userPrompt }],
-    system: systemPrompt,
+    system: `${systemPrompt}\n\n${WRITING_RULES}`,
   })
 
   const text = message.content[0].type === "text" ? message.content[0].text : ""

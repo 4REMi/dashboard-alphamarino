@@ -1,5 +1,6 @@
 "use server"
 
+import { WRITING_RULES } from "@/lib/ai/writing-tics"
 import { requireSessionOrTrusted } from "@/lib/auth/guards"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
@@ -111,6 +112,8 @@ export async function adaptWithClaude(
 ${langBlock ? `\n${langBlock}\n` : ""}
 PASO 1 — DIVIDE el siguiente guión en líneas naturales de longitud similar, como aparecerían en un teleprompter o guión de video. Cada línea debe ser una unidad de sentido completa que se pueda decir de un tirón (entre 10 y 25 palabras aproximadamente). Agrupa frases cortas relacionadas en una misma línea. Separa en líneas distintas los cambios de idea o de gancho.
 
+${WRITING_RULES}
+
 PASO 2 — ADAPTA cada línea para vender "${destinationName}". Preserva la estructura emocional y el ritmo del original. Mantén cada línea adaptada aproximadamente de la misma extensión que la original para respetar el timing del video. Adapta nombres de producto, beneficios, dolores y tono de voz.
 ${productInstruction}${conceptBlock}
 GUIÓN ORIGINAL (texto continuo):
@@ -195,6 +198,8 @@ MARCA / PRODUCTO:
 - CTAs: ${ctas}
 ${brandLine?.keywords?.length ? `- Keywords relevantes: ${brandLine.keywords.join(", ")}` : ""}
 ${variantSeed ? `\nVARIANTE: ${variantSeed}` : ""}
+
+${WRITING_RULES}
 
 Divide el guión en 4-7 líneas naturales de teleprompter (10-25 palabras cada una, unidad de sentido completa). Cada línea debe corresponder claramente a uno de los beats de la estructura.
 

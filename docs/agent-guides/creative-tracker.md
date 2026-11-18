@@ -360,3 +360,13 @@ Dentro del constructor de guiones, el hook ahora se puede dirigir antes de gener
 - **Los ajustes llegan del navegador:** `sanitizeDials` los vuelve a limpiar en el servidor (niveles 1–5, solo disparadores/formas válidos), así que nadie puede colar texto en el prompt.
 - **Seguridad de anuncios:** con persona ≥ 4 o intensidad ≥ 4 el prompt pide encuadre condicional ("Si eres…", "Para quien…"), no afirmar ni insinuar atributos personales del espectador (salud, deudas, edad exacta, identidad, etc. — la política de atributos personales de Meta rechaza esos anuncios) y no humillar ni culpar. Con concretud ≥ 4: detalles de escena sí, estadísticas o testimonios inventados no (marcador `[dato]`).
 - No se guardan en el brief: son ajustes de la sesión del constructor. No expuesto por MCP.
+
+## Anti-tics de redacción de IA — 2026-11-18
+
+Tres muletillas de la IA están prohibidas en todo el copy que genera el dashboard: **paralelismo negativo** («no es X, es Y», «no solo X, sino también Y», «más que un X, es un Y»), **antítesis simétrica** («menos X, más Y») y **frases cortas sueltas para dar peso** («Sin excusas. Sin vueltas.»).
+- **Módulo único:** `lib/ai/writing-tics.ts` (puro, sin imports). `WRITING_RULES` es el bloque de prompt (con alternativa positiva y un ejemplo ✗/✓); `findWritingTics(texto)` es el detector por regex; `ticsFeedback` arma la corrección.
+- **Dónde se aplica:** el constructor de guiones (`RULES` de `script-builder.ts`), `adaptWithClaude` y `writeScriptFromConcept` (`ad-clone.ts`), copy de assets y refinados (`generateCopyText`, `creatives.ts`) e ideas estáticas desde cero (`ad-scratch.ts`). No se aplica a los análisis (`ad-analysis`, `creative-classify`): ahí «no es X, es Y» puede ser una observación legítima.
+- **Reintento automático (solo constructor de guiones):** `ask()` revisa `spoken` y `overlay` de la respuesta; si hay tics, hace UNA segunda llamada citando las frases exactas y se queda con la que tenga menos tics (si el reintento falla, devuelve la primera). Cuesta una llamada extra solo cuando hay tics.
+- **Revisión:** `lintScript` avisa (warn) de los tics en hooks, cuerpo y cierre. En el texto en pantalla (`overlay`) no se revisan las frases cortas, porque ahí son normales.
+- **Falsos positivos cuidados:** «antes… ahora» (BAB), «menos de 5 minutos, más de 20», «no es barato, pero…», chats «Nombre: mensaje» y CTAs cortos sueltos («Pruébalo hoy.») no se marcan. Frase suelta = ≥3 frases de ≤4 palabras seguidas, o ≥2 con una de arranque retórico (sin/solo/nada/cero/así…), o un remate así tras una oración larga.
+- Para sumar un patrón: una regex más en `writing-tics.ts` y un caso en la prueba. No expuesto por MCP.

@@ -1,5 +1,6 @@
 "use server"
 
+import { WRITING_RULES } from "@/lib/ai/writing-tics"
 import { resolveSavedAdMedia } from "@/lib/ad-lab/saved-ad-media"
 import { normalizeScriptMap, nextScriptKey, patchSetScriptLines, patchRemoveReference, patchScriptTitle, patchApproveScripts, SCRIPT_VARIANT_SEEDS, type BriefScriptsRow } from "@/lib/briefs/scripts-core"
 import { requireSessionOrTrusted } from "@/lib/auth/guards"
@@ -1322,7 +1323,9 @@ async function generateCopyText(prompt: string): Promise<{ hook: string; copy: s
     max_tokens: 1024,
     messages: [{ role: "user", content: prompt }],
     system: `Eres un copywriter de performance marketing experto en Meta Ads, TikTok Ads y Google Ads.
-Responde ÚNICAMENTE con un JSON válido: {"hook": "...", "copy": "...", "cta": "..."}. Sin markdown, sin texto adicional.`,
+Responde ÚNICAMENTE con un JSON válido: {"hook": "...", "copy": "...", "cta": "..."}. Sin markdown, sin texto adicional.
+
+${WRITING_RULES}`,
   })
 
   const parsed = parseAiJson<{ hook?: string; copy?: string; cta?: string }>(message, "generateCopyText")

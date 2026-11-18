@@ -3,6 +3,7 @@
 import Anthropic from "@anthropic-ai/sdk"
 import { createClient } from "@/lib/supabase/server"
 import { METHODS, METHOD_KEYS, TRIGGERS, AWARENESS, wordBudget, spokenBeats, methodBrief, type MethodKey, type ScriptHook, type ScriptPart } from "@/lib/scripts/framework"
+import { WRITING_RULES, findWritingTics, ticsFeedback, type Tic } from "@/lib/ai/writing-tics"
 import { sanitizeDials, hookDialsBrief, refineBrief, HOOK_REFINES, type HookDials, type HookRefine } from "@/lib/scripts/hook-dials"
 
 // Constructor de guiones paso a paso: cada función propone opciones para UN
@@ -44,11 +45,46 @@ const RULES = `REGLAS (Hook Writing, runneth):
 - Detalles y cifras concretas. Que parezca escrito para una sola persona.
 - Nunca abras con el nombre de la marca/producto ni con "Descubre", "Conoce", "Te presentamos", "¿Buscas…?".
 - Léelo en voz alta: si suena a anuncio, reescríbelo.
-- Es VIDEO: cada parte tiene lo que se DICE (spoken), lo que se VE (visual) y, si aplica, TEXTO EN PANTALLA (overlay).`
+- Es VIDEO: cada parte tiene lo que se DICE (spoken), lo que se VE (visual) y, si aplica, TEXTO EN PANTALLA (overlay).
+${WRITING_RULES}`
 
 // Salida estructurada: la IA responde llamando a una herramienta con el
 // esquema exacto, así no hay JSON roto ni bloques de código que parsear.
+// Tics de redacción (paralelismo negativo, antítesis, frases sueltas) solo en
+// lo que se dice / se lee en pantalla; "visual" y "why" son notas internas.
+function ticsIn(value: unknown): Tic[] {
+  const texts: string[] = []
+  const walk = (v: unknown) => {
+    if (Array.isArray(v)) v.forEach(walk)
+    else if (v && typeof v === "object") {
+      for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
+        if ((k === "spoken" || k === "overlay") && typeof x === "string") texts.push(x)
+        else if (typeof x === "object") walk(x)
+      }
+    }
+  }
+  walk(value)
+  return texts.flatMap((t) => findWritingTics(t))
+}
+
 async function ask<T>(system: string, user: string, ctxName: string, schema: Record<string, unknown>): Promise<T> {
+  const first = await askOnce<T>(system, user, ctxName, schema)
+  const tics = ticsIn(first)
+  if (!tics.length) return first
+  // Un solo reintento citando las frases exactas; nos quedamos con el que
+  // tenga menos tics y, si el reintento falla, con el original.
+  try {
+    const second = await askOnce<T>(system, `${user}\n\n${ticsFeedback(tics)}`, ctxName, schema)
+    const left = ticsIn(second).length
+    console.warn(`[${ctxName}] tics de redacción: ${tics.length} → ${left}`)
+    return left <= tics.length ? second : first
+  } catch (e) {
+    console.warn(`[${ctxName}] reintento de estilo falló`, e)
+    return first
+  }
+}
+
+async function askOnce<T>(system: string, user: string, ctxName: string, schema: Record<string, unknown>): Promise<T> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY no configurado")
   const msg = await new Anthropic({ apiKey }).messages.create({
