@@ -370,3 +370,11 @@ Tres muletillas de la IA están prohibidas en todo el copy que genera el dashboa
 - **Revisión:** `lintScript` avisa (warn) de los tics en hooks, cuerpo y cierre. En el texto en pantalla (`overlay`) no se revisan las frases cortas, porque ahí son normales.
 - **Falsos positivos cuidados:** «antes… ahora» (BAB), «menos de 5 minutos, más de 20», «no es barato, pero…», chats «Nombre: mensaje» y CTAs cortos sueltos («Pruébalo hoy.») no se marcan. Frase suelta = ≥3 frases de ≤4 palabras seguidas, o ≥2 con una de arranque retórico (sin/solo/nada/cero/así…), o un remate así tras una oración larga.
 - Para sumar un patrón: una regex más en `writing-tics.ts` y un caso en la prueba. No expuesto por MCP.
+
+## Detalle y edición de la línea de producto en Conceptos — 2026-11-18
+
+Para distinguir líneas parecidas (mismo cliente, servicios casi iguales) antes de crear un ángulo:
+- **Encabezado de cada grupo de línea** (tabla de conceptos): ícono ℹ junto al nombre. Hover = resumen (descripción, primeros USPs y dolores); clic = ficha completa (descripción, USPs, pain points, keywords) con botón **Editar línea**.
+- **Modal de un concepto:** fila "Línea" bajo el título con un chip de color + nombre de su línea (o "General"), con el mismo hover/clic.
+- **Editar** abre el mismo formulario que Brand Brains (`BrandLineForm`, ahora en `components/brand-brains/brand-line-form.tsx`, con autorrelleno por IA). Solo admin/subadmin ven el botón (la RLS de `brand_lines` también lo exige). Al guardar, el cambio se ve al instante y se hace `router.refresh()`.
+- Componentes: `components/projects/hub/creatives/brand-line-info.tsx` (`BrandLineInfoIcon`, `BrandLineChip`, `BrandLineDialog`). El grupo "General" no tiene línea, así que no lleva ℹ. No expuesto por MCP (ya existen `editar_brand_line` / `detalle_brand_brain`).

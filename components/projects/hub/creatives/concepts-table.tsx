@@ -1,5 +1,7 @@
 "use client"
 
+import { useRouter } from "next/navigation"
+import { BrandLineInfoIcon, BrandLineChip } from "@/components/projects/hub/creatives/brand-line-info"
 import { ScriptQuickView } from "./script-quick-view"
 import { useEffect, useState, useTransition } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
@@ -332,7 +334,11 @@ function ConceptDetailModal({
   onUpdateAsset,
   assetLinkStatus,
   allConcepts = [],
+  brandLine = null,
+  onLineSaved,
 }: {
+  brandLine?: BrandLine | null
+  onLineSaved: (l: BrandLine) => void
   allConcepts?: CreativeConcept[]
   concept: CreativeConcept
   conceptAssets: CreativeAsset[]
@@ -465,6 +471,10 @@ function ConceptDetailModal({
                   Stage {concept.awareness_stage} · {AWARENESS_LABELS[concept.awareness_stage]}
                 </span>
               )}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Línea</span>
+              <BrandLineChip line={brandLine} canEdit={isAdminOrSubadmin} onSaved={onLineSaved} />
             </div>
           </div>
         </DialogHeader>
@@ -1223,7 +1233,12 @@ function MecanismoCell({
 
 // ── Main table ───────────────────────────────────────────────────────────────
 
-export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleId, isAdminOrSubadmin, canManageAssets = isAdminOrSubadmin, onRefresh, onUpdateAsset, assetLinkStatus, brandBrains = [], brandLines = [], projectBrandBrainId }: ConceptsTableProps) {
+export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleId, isAdminOrSubadmin, canManageAssets = isAdminOrSubadmin, onRefresh, onUpdateAsset, assetLinkStatus, brandBrains = [], brandLines: brandLinesProp = [], projectBrandBrainId }: ConceptsTableProps) {
+  // Líneas editadas desde aquí (tooltip/ficha): se ven al instante; router.refresh() trae las del servidor.
+  const router = useRouter()
+  const [editedLines, setEditedLines] = useState<Record<string, BrandLine>>({})
+  const brandLines = brandLinesProp.map((l) => editedLines[l.id] ?? l)
+  const onLineSaved = (l: BrandLine) => { setEditedLines((m) => ({ ...m, [l.id]: l })); router.refresh() }
   const [detailConcept, setDetailConcept]   = useState<CreativeConcept | null>(null)
   const [focusBriefId, setFocusBriefId]     = useState<string | null>(null)
   const [editConcept,   setEditConcept]     = useState<CreativeConcept | null>(null)
@@ -1551,10 +1566,12 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
         return (
           <div key={groupId} className="border rounded-lg overflow-hidden bg-card">
             {/* Group header */}
-            <button
-              type="button"
+            <div
+              role="button"
+              tabIndex={0}
               onClick={() => toggleGroup(groupId)}
-              className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/30 transition-colors"
+              onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); toggleGroup(groupId) } }}
+              className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/30 transition-colors cursor-pointer"
             >
               <div
                 className="w-3 h-3 rounded-full flex-shrink-0"
@@ -1562,6 +1579,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
               />
               <span className="text-sm font-semibold flex-1">
                 {line?.name ?? "General"}
+                {line && <span className="ml-1.5 align-middle"><BrandLineInfoIcon line={line} canEdit={isAdminOrSubadmin} onSaved={onLineSaved} /></span>}
               </span>
               {unpublishedInGroup > 0 && (
                 <AttentionPill tone="warn" title="Assets que el cliente todavía no puede ver ni revisar">
@@ -1575,7 +1593,7 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
                 "w-4 h-4 text-muted-foreground transition-transform",
                 isCollapsed && "-rotate-90"
               )} />
-            </button>
+            </div>
 
             {/* Group content */}
             {!isCollapsed && (
@@ -1645,6 +1663,8 @@ export function ConceptsTable({ concepts, assets, briefs = [], projectId, cycleI
           onUpdateAsset={onUpdateAsset}
           assetLinkStatus={assetLinkStatus}
           allConcepts={concepts}
+          brandLine={brandLines.find((l) => l.id === detailConcept.brand_line_id) ?? null}
+          onLineSaved={onLineSaved}
         />
       )}
 
