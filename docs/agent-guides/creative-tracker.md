@@ -336,3 +336,14 @@ En el modal del concepto, al abrir un guion en la vista rápida (`script-quick-v
 - **Causa:** el `brief` que recibe el visor vive en el estado del hub (`creatives-hub.tsx`), que solo se vuelve a pedir con `reload()` (llega como `onRefresh`). El visor llamaba a `router.refresh()`, que no toca ese estado: al guardar volvía a leer el texto viejo y el guion borrado seguía en la lista del padre y reaparecía al reabrir.
 - **Ahora:** el visor recibe `onRefresh` (desde `BriefScriptStatus`) y lo llama tras guardar y tras borrar; además muestra al instante lo guardado (`savedLines`) sin esperar a que el hub termine de recargar. Sin `onRefresh` cae a `router.refresh()`.
 - **Regla para vistas nuevas dentro del hub:** si cambian briefs, conceptos o creativos, llamar a `onRefresh` del hub — `router.refresh()` solo revalida lo renderizado en el servidor, no el estado de cliente del hub.
+
+## Frameworks clásicos en el constructor de guiones — 2026-11-18
+
+El paso 1 del constructor ahora se llama **Método** y ofrece dos familias con la misma forma, así que hooks, beats, cierres, presupuesto de palabras y revisión funcionan igual para las dos:
+- **Frameworks clásicos** (`FRAMEWORKS` en `lib/scripts/framework.ts`, 7): Hook–Cuerpo–CTA, PAS (Problema–Agitar–Solución), AIDA (Atención–Interés–Deseo–Acción), BAB (Antes–Después–Puente), HSO (Hook–Historia–Oferta), 4 P (Promesa–Imagen–Prueba–Empujón) y Testimonio / Arco de historia. El hook cumple el primer rol del framework, los beats son los intermedios y el cierre es el CTA (su tono lo decide la etapa de awareness). Todos hablados y con CTA.
+- **Mecánicas creativas** (`MECHANICS`, 8): sin cambios.
+- `METHODS` / `MethodKey` / `METHOD_KEYS` es el registro unificado (cada ficha tiene `kind: "mechanic" | "framework"`). `methodBrief` arma el texto para los prompts y `methodFlow` la línea "Hook → Agitar → Solución → CTA" que muestra la pantalla.
+- La IA recomienda 3 entre los 15 (`suggestMethods`) y procura incluir al menos un framework y una mecánica, para comparar un camino probado con uno creativo. El catálogo completo se despliega agrupado ("Ver los 15 métodos"); cada tarjeta lleva su etiqueta de familia, la estructura completa y en qué etapa de awareness rinde.
+- **Regla en todos los frameworks: no inventar datos.** Piden pruebas, cifras y testimonios, y la IA no debe fabricarlos: si el contexto no trae el dato, deja un marcador `[así]` para que quien graba ponga el real (importante en Testimonio y HSO, que se graban con una persona de verdad).
+- Para agregar un framework: una ficha más en `FRAMEWORKS` (y su clave en `FrameworkKey`); la pantalla y los prompts lo toman solos. "Crear rápido" (`SCRIPT_STRUCTURES`, `lib/constants/creatives.ts`) es otro flujo, de un solo disparo, y no cambia.
+- No expuesto por MCP: el constructor paso a paso solo vive en la pantalla (`generar_guiones_ia` usa las estructuras de "Crear rápido").

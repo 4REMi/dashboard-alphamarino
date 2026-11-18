@@ -5,16 +5,17 @@ import { Loader2, Sparkles, Check, RefreshCw, Wand2, ChevronRight, AlertTriangle
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
-import { suggestMechanics, generateHooks, generateBeat, generateCloses, type BuilderResult } from "@/lib/actions/script-builder"
+import { suggestMethods, generateHooks, generateBeat, generateCloses, type BuilderResult } from "@/lib/actions/script-builder"
 import { saveScriptDrafts, addScriptDraftsToBrief } from "@/lib/actions/creatives"
-import { MECHANICS, MECHANIC_KEYS, AWARENESS, lintScript, estimateSeconds, wordBudget, wordCount, spokenBeats, WORDS_PER_SECOND, type MechanicKey, type ScriptHook, type ScriptPart, type BeatMode } from "@/lib/scripts/framework"
+import { METHODS, METHOD_KEYS, FRAMEWORK_KEYS, MECHANIC_KEYS, AWARENESS, MODE_LABEL, methodFlow, lintScript, estimateSeconds, wordBudget, wordCount, spokenBeats, WORDS_PER_SECOND, type MethodKey, type ScriptHook, type ScriptPart } from "@/lib/scripts/framework"
 import type { AdCloneLine, BrandBrain, CreativeBrief, CreativeConcept } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
-// Constructor de guion de VIDEO paso a paso (runneth: Strategy Engine → Mecánica
-// → Hook → Cuerpo por beats → Cierre). La IA propone opciones en cada paso; tú
-// eliges, editas o pides más. "Armar todo con IA" completa lo que falte con la
-// opción recomendada, sin salir de los pasos.
+// Constructor de guion de VIDEO paso a paso (runneth: Strategy Engine → Método
+// → Hook → Cuerpo por beats → Cierre). El método puede ser un framework clásico
+// (Hook–Cuerpo–CTA, PAS, AIDA…) o una mecánica creativa. La IA propone opciones
+// en cada paso; tú eliges, editas o pides más. "Armar todo con IA" completa lo
+// que falte con la opción recomendada, sin salir de los pasos.
 
 interface Props {
   concept: CreativeConcept
@@ -26,12 +27,32 @@ interface Props {
   onCreated: (brief: CreativeBrief) => void
 }
 
-const MODE_LABEL: Record<BeatMode, string> = { spoken: "hablado", visual: "solo visual, sin voz", chat: "mensajes de chat" }
 
 let seq = 0
 const withKey = (h: ScriptHook): ScriptHook => ({ ...h, key: `h${Date.now().toString(36)}${seq++}` })
 
-const STEPS = ["Base", "Mecánica", "Hooks", "Cuerpo", "Cierre", "Revisión"] as const
+const STEPS = ["Base", "Método", "Hooks", "Cuerpo", "Cierre", "Revisión"] as const
+
+// Tarjeta de un método: etiqueta de familia, descripción, la estructura
+// completa (Hook → … → CTA) y en qué etapa de awareness rinde mejor.
+function MethodCard({ k, why, recommended, selected, awareness, onPick }: { k: MethodKey; why?: string; recommended?: boolean; selected: boolean; awareness: number; onPick: () => void }) {
+  const m = METHODS[k]
+  const framework = m.kind === "framework"
+  return (
+    <button type="button" onClick={onPick}
+      className={cn("rounded-xl border p-3 text-left transition-colors", selected ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border hover:border-foreground/30")}>
+      <span className="flex items-center gap-1.5 flex-wrap text-sm font-semibold">
+        {m.label}
+        <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded", framework ? "bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300" : "bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300")}>{framework ? "Framework clásico" : "Mecánica"}</span>
+        {recommended && <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300">Recomendado</span>}
+      </span>
+      <span className="block text-xs text-muted-foreground mt-0.5">{m.desc}</span>
+      {why && <span className="block text-xs mt-1.5">{why}</span>}
+      <span className="block text-[11px] text-muted-foreground mt-1.5">Estructura: {methodFlow(k)}</span>
+      <span className="block text-[11px] text-muted-foreground">Mejor en: {m.stages.map((n) => AWARENESS[n]?.label).join(", ")}{!m.stages.includes(awareness) && <span className="text-amber-600"> · fuera de la etapa de este concepto</span>}</span>
+    </button>
+  )
+}
 
 export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBrandBrainId, existingBrief, onClose, onCreated }: Props) {
   const [step, setStep] = useState(0)
@@ -39,9 +60,9 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
   // palabras entre hook, beats y cierre que la IA tiene que respetar.
   const [targetSeconds, setTargetSeconds] = useState(30)
   const [brainId, setBrainId] = useState(existingBrief?.brand_brain_id ?? projectBrandBrainId ?? brandBrains[0]?.id ?? "")
-  const [mechOptions, setMechOptions] = useState<{ key: MechanicKey; why: string }[]>([])
-  const [mechanic, setMechanic] = useState<MechanicKey | null>(null)
-  const [showAllMech, setShowAllMech] = useState(false)
+  const [methodOptions, setMethodOptions] = useState<{ key: MethodKey; why: string }[]>([])
+  const [method, setMethod] = useState<MethodKey | null>(null)
+  const [showAllMethods, setShowAllMethods] = useState(false)
   const [hookOptions, setHookOptions] = useState<ScriptHook[]>([])
   const [picked, setPicked] = useState<ScriptHook[]>([])
   const [beatOptions, setBeatOptions] = useState<Record<number, ScriptPart[]>>({})
@@ -53,12 +74,12 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
   const [saved, setSaved] = useState<CreativeBrief | null>(null)
 
   const stage = AWARENESS[concept.awareness_stage ?? 2] ?? AWARENESS[2]
-  const beats = mechanic ? MECHANICS[mechanic].beats : []
+  const beats = method ? METHODS[method].beats : []
   const brain = brandBrains.find((b) => b.id === brainId)
   const primary = picked[0] ?? null
-  // Mecánicas sin voz (Contrast): la duración la marcan las tomas, no las palabras.
-  const silent = !!mechanic && spokenBeats(mechanic) === 0
-  const budget = mechanic ? wordBudget(targetSeconds, spokenBeats(mechanic), MECHANICS[mechanic].close === "natural") : wordBudget(targetSeconds, 3)
+  // Métodos sin voz (Contrast): la duración la marcan las tomas, no las palabras.
+  const silent = !!method && spokenBeats(method) === 0
+  const budget = method ? wordBudget(targetSeconds, spokenBeats(method), METHODS[method].close === "natural") : wordBudget(targetSeconds, 3)
 
   async function run<T>(label: string, fn: () => Promise<T>): Promise<T | null> {
     setBusy(label); setError(null)
@@ -73,32 +94,32 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
   }
 
   // ── Acciones por paso ────────────────────────────────────────────────
-  async function loadMechanics() {
-    const r = await runAi("Eligiendo mecánicas…", () => suggestMechanics(concept.id, brainId))
-    if (r) { setMechOptions(r); setStep(1) }
+  async function loadMethods() {
+    const r = await runAi("Eligiendo el mejor método…", () => suggestMethods(concept.id, brainId))
+    if (r) { setMethodOptions(r); setStep(1) }
     return r
   }
   async function loadHooks(opts: { like?: ScriptHook } = {}) {
-    if (!mechanic) return null
-    const r = await runAi(opts.like ? "Variaciones de ese hook…" : "Escribiendo 6 hooks…", () => generateHooks(concept.id, brainId, mechanic, { like: opts.like, avoid: hookOptions.map((h) => h.spoken), targetSeconds }))
+    if (!method) return null
+    const r = await runAi(opts.like ? "Variaciones de ese hook…" : "Escribiendo 6 hooks…", () => generateHooks(concept.id, brainId, method, { like: opts.like, avoid: hookOptions.map((h) => h.spoken), targetSeconds }))
     const keyed = r?.map(withKey) ?? null
     if (keyed) { setHookOptions(keyed); setStep(2) }
     return keyed
   }
-  async function loadBeat(i: number, prev = body.slice(0, i), hook = primary, mech = mechanic) {
+  async function loadBeat(i: number, prev = body.slice(0, i), hook = primary, mech = method) {
     if (!hook || !mech) return null
-    const r = await runAi(`Escribiendo "${MECHANICS[mech].beats[i].name}"…`, () => generateBeat(concept.id, brainId, mech, hook, i, prev, targetSeconds))
+    const r = await runAi(`Escribiendo "${METHODS[mech].beats[i].name}"…`, () => generateBeat(concept.id, brainId, mech, hook, i, prev, targetSeconds))
     if (r) setBeatOptions((o) => ({ ...o, [i]: r }))
     return r
   }
-  async function loadCloses(b = body, hook = primary, mech = mechanic) {
+  async function loadCloses(b = body, hook = primary, mech = method) {
     if (!hook || !mech) return null
     const r = await runAi("Escribiendo cierres…", () => generateCloses(concept.id, brainId, mech, hook, b, targetSeconds))
     if (r) setCloseOptions(r)
     return r
   }
-  function chooseMechanic(k: MechanicKey) {
-    if (k !== mechanic) { setMechanic(k); setHookOptions([]); setPicked([]); setBody([]); setBeatOptions({}); setCloseOptions([]); setClose(null) }
+  function chooseMethod(k: MethodKey) {
+    if (k !== method) { setMethod(k); setHookOptions([]); setPicked([]); setBody([]); setBeatOptions({}); setCloseOptions([]); setClose(null) }
   }
   function pickBeat(i: number, part: ScriptPart) {
     const next = [...body.slice(0, i), part]
@@ -110,11 +131,11 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
 
   // Armar todo con IA: completa lo que falte con la opción recomendada.
   async function buildAll() {
-    let mech = mechanic
+    let mech = method
     if (!mech) {
-      const ms = mechOptions.length ? mechOptions : await loadMechanics()
+      const ms = methodOptions.length ? methodOptions : await loadMethods()
       if (!ms?.length) return
-      mech = ms[0].key; setMechanic(mech)
+      mech = ms[0].key; setMethod(mech)
     }
     let hooks = picked
     if (!hooks.length) {
@@ -123,7 +144,7 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
       setHookOptions(hs); hooks = [hs[0]]; setPicked(hooks)
     }
     const b = [...body]
-    for (let i = b.length; i < MECHANICS[mech].beats.length; i++) {
+    for (let i = b.length; i < METHODS[mech].beats.length; i++) {
       const opts = await loadBeat(i, b, hooks[0], mech)
       if (!opts?.length) return
       b.push(opts[0])
@@ -141,7 +162,7 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
   // Al entrar a Cuerpo / Cierre, pide lo que falte.
   useEffect(() => {
     if (busy) return
-    if (step === 3 && primary && mechanic && body.length < beats.length && !beatOptions[body.length]) loadBeat(body.length)
+    if (step === 3 && primary && method && body.length < beats.length && !beatOptions[body.length]) loadBeat(body.length)
     if (step === 4 && primary && body.length === beats.length && !closeOptions.length) loadCloses()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, body.length])
@@ -163,7 +184,7 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
     if (r) setSaved(r)
   }
 
-  const reach = [true, !!mechOptions.length || !!mechanic, !!mechanic && (hookOptions.length > 0 || picked.length > 0), picked.length > 0, body.length === beats.length && beats.length > 0, complete]
+  const reach = [true, !!methodOptions.length || !!method, !!method && (hookOptions.length > 0 || picked.length > 0), picked.length > 0, body.length === beats.length && beats.length > 0, complete]
   const card = "rounded-xl border p-3 text-left transition-colors"
 
   if (saved) {
@@ -190,7 +211,7 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
           <div className="flex items-start gap-3">
             <div className="flex-1 min-w-0">
               <DialogTitle className="text-base font-semibold truncate">Guion de video · {concept.name}</DialogTitle>
-              <p className="text-xs text-muted-foreground">{targetSeconds} s · {stage.label}{mechanic ? ` · ${MECHANICS[mechanic].label}` : ""}{brain ? ` · ${brain.name}` : ""}</p>
+              <p className="text-xs text-muted-foreground">{targetSeconds} s · {stage.label}{method ? ` · ${METHODS[method].label}` : ""}{brain ? ` · ${brain.name}` : ""}</p>
             </div>
             <Button size="sm" variant="outline" onClick={buildAll} disabled={!!busy || !brainId}><Wand2 className="w-4 h-4" />Armar todo con IA</Button>
           </div>
@@ -245,37 +266,39 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
                       {brandBrains.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                     </select></label>
                 )}
-                <Button onClick={() => (mechOptions.length ? setStep(1) : loadMechanics())} disabled={!!busy || !brainId}>Elegir mecánica <ChevronRight className="w-4 h-4" /></Button>
+                <Button onClick={() => (methodOptions.length ? setStep(1) : loadMethods())} disabled={!!busy || !brainId}>Elegir método <ChevronRight className="w-4 h-4" /></Button>
               </div>
             )}
 
             {step === 1 && (
               <div className="space-y-3">
-                <p className="text-sm text-muted-foreground">La mecánica define cómo se conectan hook, cuerpo y cierre. Recomendadas para este concepto:</p>
+                <p className="text-sm text-muted-foreground">El método define cómo se conectan hook, cuerpo y cierre. Puede ser un <span className="text-foreground font-medium">framework clásico</span> (estructuras de copywriting con décadas de uso: la opción segura) o una <span className="text-foreground font-medium">mecánica creativa</span> (patrones con giro, mejores para ángulos muy específicos). Recomendados para este concepto:</p>
                 <div className="grid gap-2">
-                  {mechOptions.map((m, i) => (
-                    <button key={m.key} type="button" onClick={() => chooseMechanic(m.key)}
-                      className={cn(card, mechanic === m.key ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border hover:border-foreground/30")}>
-                      <span className="flex items-center gap-2 text-sm font-semibold">{MECHANICS[m.key].label}{i === 0 && <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300">Recomendada</span>}</span>
-                      <span className="block text-xs text-muted-foreground mt-0.5">{MECHANICS[m.key].desc}</span>
-                      <span className="block text-xs mt-1.5">{m.why}</span>
-                      <span className="block text-[11px] text-muted-foreground mt-1.5">Cuerpo: {MECHANICS[m.key].beats.map((b) => `${b.name}${b.mode !== "spoken" ? ` (${MODE_LABEL[b.mode]})` : ""}`).join(" → ")} · Cierre {MECHANICS[m.key].close === "natural" ? "natural, sin CTA hablado" : "con CTA"}</span>
-                      <span className="block text-[11px] text-muted-foreground">Mejor en: {MECHANICS[m.key].stages.map((n) => AWARENESS[n]?.label).join(", ")}{!MECHANICS[m.key].stages.includes(concept.awareness_stage ?? 2) && <span className="text-amber-600"> · fuera de la etapa de este concepto</span>}</span>
-                    </button>
+                  {methodOptions.map((m, i) => (
+                    <MethodCard key={m.key} k={m.key} why={m.why} recommended={i === 0} selected={method === m.key} awareness={concept.awareness_stage ?? 2} onPick={() => chooseMethod(m.key)} />
                   ))}
                 </div>
-                <button type="button" onClick={() => setShowAllMech((v) => !v)} className="block text-xs text-muted-foreground hover:text-foreground">{showAllMech ? "Ocultar" : "Ver"} las 8 mecánicas</button>
-                {showAllMech && (
-                  <div className="grid sm:grid-cols-2 gap-2">
-                    {MECHANIC_KEYS.filter((k) => !mechOptions.some((m) => m.key === k)).map((k) => (
-                      <button key={k} type="button" onClick={() => chooseMechanic(k)}
-                        className={cn(card, "text-xs", mechanic === k ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border hover:border-foreground/30")}>
-                        <span className="block text-sm font-semibold">{MECHANICS[k].label}</span>{MECHANICS[k].desc}
-                      </button>
-                    ))}
+                <button type="button" onClick={() => setShowAllMethods((v) => !v)} className="block text-xs text-muted-foreground hover:text-foreground">{showAllMethods ? "Ocultar" : "Ver"} los {METHOD_KEYS.length} métodos ({FRAMEWORK_KEYS.length} frameworks · {MECHANIC_KEYS.length} mecánicas)</button>
+                {showAllMethods && (
+                  <div className="space-y-4">
+                    {([
+                      ["Frameworks clásicos", FRAMEWORK_KEYS, "Estructuras probadas de copywriting de respuesta directa."],
+                      ["Mecánicas creativas", MECHANIC_KEYS, "Patrones con giro, mejores para ángulos muy específicos."],
+                    ] as const).map(([title, keys, hint]) => {
+                      const rest = (keys as readonly MethodKey[]).filter((k) => !methodOptions.some((m) => m.key === k))
+                      if (!rest.length) return null
+                      return (
+                        <div key={title} className="space-y-1.5">
+                          <p className="text-xs font-semibold">{title} <span className="font-normal text-muted-foreground">· {hint}</span></p>
+                          <div className="grid sm:grid-cols-2 gap-2">
+                            {rest.map((k) => <MethodCard key={k} k={k} selected={method === k} awareness={concept.awareness_stage ?? 2} onPick={() => chooseMethod(k)} />)}
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
-                <Button onClick={() => (hookOptions.length ? setStep(2) : loadHooks())} disabled={!mechanic || !!busy}>Escribir hooks <ChevronRight className="w-4 h-4" /></Button>
+                <Button onClick={() => (hookOptions.length ? setStep(2) : loadHooks())} disabled={!method || !!busy}>Escribir hooks <ChevronRight className="w-4 h-4" /></Button>
               </div>
             )}
 
@@ -311,9 +334,9 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
               </div>
             )}
 
-            {step === 3 && mechanic && (
+            {step === 3 && method && (
               <div className="space-y-4">
-                <p className="text-sm text-muted-foreground">{MECHANICS[mechanic].label}: el cuerpo se arma beat por beat. Elige una opción por beat; puedes editarla en el guion de la derecha. {silent ? "Mecánica sin voz: la duración la marcan las tomas." : `Beats hablados: máx. ~${budget.beat} palabras.`} Reglas: {MECHANICS[mechanic].rules.join(" ")}</p>
+                <p className="text-sm text-muted-foreground">{METHODS[method].label}: el cuerpo se arma beat por beat. Elige una opción por beat; puedes editarla en el guion de la derecha. {silent ? "Método sin voz: la duración la marcan las tomas." : `Beats hablados: máx. ~${budget.beat} palabras.`} Reglas: {METHODS[method].rules.join(" ")}</p>
                 {beats.map((bt, i) => {
                   const b = bt.name
                   const chosen = body[i]
@@ -352,8 +375,8 @@ export function ScriptBuilderModal({ concept, projectId, brandBrains, projectBra
 
             {step === 4 && (
               <div className="space-y-3">
-                <p className="text-sm text-muted-foreground">{mechanic && MECHANICS[mechanic].close === "natural"
-                  ? <><span className="text-foreground">Cierre natural ({MECHANICS[mechanic].label}):</span> {MECHANICS[mechanic].closeGuide}</>
+                <p className="text-sm text-muted-foreground">{method && METHODS[method].close === "natural"
+                  ? <><span className="text-foreground">Cierre natural ({METHODS[method].label}):</span> {METHODS[method].closeGuide}</>
                   : <><span className="text-foreground">{stage.label}:</span> {stage.close} · máx. ~{budget.close} palabras</>}</p>
                 <div className="grid gap-2">
                   {closeOptions.map((o, j) => (

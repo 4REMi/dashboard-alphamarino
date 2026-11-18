@@ -2,7 +2,7 @@
 
 import Anthropic from "@anthropic-ai/sdk"
 import { createClient } from "@/lib/supabase/server"
-import { MECHANICS, MECHANIC_KEYS, TRIGGERS, AWARENESS, wordBudget, spokenBeats, mechanicBrief, type MechanicKey, type ScriptHook, type ScriptPart } from "@/lib/scripts/framework"
+import { METHODS, METHOD_KEYS, TRIGGERS, AWARENESS, wordBudget, spokenBeats, methodBrief, type MethodKey, type ScriptHook, type ScriptPart } from "@/lib/scripts/framework"
 
 // Constructor de guiones paso a paso: cada función propone opciones para UN
 // paso; nada escribe el guion completo de un jalón. Contexto = concepto
@@ -35,7 +35,7 @@ ${line ? `LÍNEA DE PRODUCTO: ${line.name} — ${line.description ?? ""} · USPs
   return { text, stage, brandName: b.name as string, language: (b.language as string) || "español" }
 }
 
-const budgetFor = (k: MechanicKey, secs: number) => wordBudget(secs, spokenBeats(k), MECHANICS[k].close === "natural")
+const budgetFor = (k: MethodKey, secs: number) => wordBudget(secs, spokenBeats(k), METHODS[k].close === "natural")
 const STAGE_NAMES: Record<number, string> = { 1: "Unaware", 2: "Problem-aware", 3: "Solution-aware", 4: "Product-aware", 5: "Most-aware" }
 
 const RULES = `REGLAS (Hook Writing, runneth):
@@ -67,39 +67,40 @@ async function ask<T>(system: string, user: string, ctxName: string, schema: Rec
 const PART = { type: "object", properties: { spoken: { type: "string" }, visual: { type: "string" }, overlay: { type: "string" } }, required: ["spoken", "visual"] }
 const OPTIONS = { properties: { options: { type: "array", items: PART } }, required: ["options"] }
 
-async function suggestMechanicsImpl(conceptId: string, brainId: string): Promise<{ key: MechanicKey; why: string }[]> {
+async function suggestMethodsImpl(conceptId: string, brainId: string): Promise<{ key: MethodKey; why: string }[]> {
   const ctx = await context(conceptId, brainId)
-  const catalog = MECHANIC_KEYS.map((k) => `- ${k}: ${MECHANICS[k].label} — ${MECHANICS[k].desc} Por qué funciona: ${MECHANICS[k].why} Mejor en: ${MECHANICS[k].stages.map((n) => STAGE_NAMES[n]).join(", ")}.`).join("\n")
-  const r = await ask<{ mechanics: { key: string; why: string }[] }>(
-    `Eres estratega creativo de paid media. Eliges la MECÁNICA creativa (el patrón que conecta hook → cuerpo → cierre) que mejor transmite el ángulo de un concepto en video.`,
-    `${ctx.text}\n\nMECÁNICAS:\n${catalog}\n\nElige las 3 mejores para este concepto, de la más a la menos recomendable. Prioriza las que funcionan en la etapa de awareness del concepto; usa una fuera de etapa solo si el ángulo lo pide claramente y dilo en el why. "why": una frase concreta de por qué encaja con ESTE ángulo y persona.`, "suggestMechanics", { properties: { mechanics: { type: "array", items: { type: "object", properties: { key: { type: "string", enum: MECHANIC_KEYS }, why: { type: "string" } }, required: ["key", "why"] } } }, required: ["mechanics"] })
-  return (r.mechanics ?? []).filter((m) => (MECHANIC_KEYS as string[]).includes(m.key)).slice(0, 3) as { key: MechanicKey; why: string }[]
+  const catalog = METHOD_KEYS.map((k) => `- ${k} [${METHODS[k].kind === "framework" ? "FRAMEWORK CLÁSICO" : "MECÁNICA CREATIVA"}]: ${METHODS[k].label} — ${METHODS[k].desc} Por qué funciona: ${METHODS[k].why} Mejor en: ${METHODS[k].stages.map((n) => STAGE_NAMES[n]).join(", ")}.`).join("\n")
+  const r = await ask<{ methods: { key: string; why: string }[] }>(
+    `Eres estratega creativo de paid media. Eliges el MÉTODO (la estructura que conecta hook → cuerpo → cierre) que mejor transmite el ángulo de un concepto en video. Hay dos familias: FRAMEWORKS CLÁSICOS de copywriting de respuesta directa (la opción probada y segura) y MECÁNICAS CREATIVAS (patrones con giro, mejores para ángulos muy específicos). Ninguna familia es mejor en general: elige por ajuste.`,
+    `${ctx.text}\n\nMÉTODOS:\n${catalog}\n\nElige los 3 mejores para este concepto, del más al menos recomendable. Prioriza los que funcionan en la etapa de awareness del concepto; usa uno fuera de etapa solo si el ángulo lo pide claramente y dilo en el why. Procura que entre los 3 haya al menos un framework clásico y al menos una mecánica creativa, para comparar un camino probado con uno creativo; salta esto solo si una de las familias claramente no encaja con el concepto, y dilo en el why. "why": una frase concreta de por qué encaja con ESTE ángulo y persona.`, "suggestMethods", { properties: { methods: { type: "array", items: { type: "object", properties: { key: { type: "string", enum: METHOD_KEYS }, why: { type: "string" } }, required: ["key", "why"] } } }, required: ["methods"] })
+  const seen = new Set<string>()
+  return (r.methods ?? []).filter((m) => (METHOD_KEYS as string[]).includes(m.key) && !seen.has(m.key) && !!seen.add(m.key)).slice(0, 3) as { key: MethodKey; why: string }[]
 }
 
-async function generateHooksImpl(conceptId: string, brainId: string, mechanic: MechanicKey, opts: { like?: ScriptHook; avoid?: string[]; targetSeconds?: number } = {}): Promise<ScriptHook[]> {
+async function generateHooksImpl(conceptId: string, brainId: string, mechanic: MethodKey, opts: { like?: ScriptHook; avoid?: string[]; targetSeconds?: number } = {}): Promise<ScriptHook[]> {
   const ctx = await context(conceptId, brainId)
-  const m = MECHANICS[mechanic]
+  const m = METHODS[mechanic]
   const budget = budgetFor(mechanic, opts.targetSeconds ?? 30)
   const r = await ask<{ hooks: ScriptHook[] }>(
     `Eres redactor experto en hooks de video para paid media. El hook solo tiene un trabajo: detener el scroll en 1–3 segundos con una respuesta psicológica o emocional. ${RULES}`,
     `${ctx.text}
 
-${mechanicBrief(mechanic)}
-EL HOOK ABRE ESTA MECÁNICA: los 6 deben tener la forma "${m.hookShape}" — lo que varía entre ellos es el disparador psicológico, no la forma.
-${m.beats.every((b) => b.mode === "visual") ? 'Esta mecánica NO lleva voz: en cada hook "spoken" va VACÍO (""); el hook vive en "visual" y en un "overlay" corto que no juzgue.' : ""}
+${methodBrief(mechanic)}
+EL HOOK ABRE ${m.kind === "framework" ? "ESTE FRAMEWORK" : "ESTA MECÁNICA"}: los 6 deben tener la forma "${m.hookShape}" — lo que varía entre ellos es el disparador psicológico, no la forma.
+${m.beats.every((b) => b.mode === "visual") ? 'Este método NO lleva voz: en cada hook "spoken" va VACÍO (""); el hook vive en "visual" y en un "overlay" corto que no juzgue.' : ""}
 ESTRATEGIA DE HOOK PARA ${ctx.stage.label.toUpperCase()}: ${ctx.stage.hook}
 DISPARADORES: ${TRIGGERS.join(", ")}.
 ${opts.like ? `Haz variaciones cercanas a este hook que gustó (mismo espíritu, distinta redacción y disparador): "${opts.like.spoken}"` : ""}
 ${opts.avoid?.length ? `Evita estos hooks ya vistos: ${opts.avoid.map((h) => `"${h}"`).join(" | ")}` : ""}
 
 DURACIÓN DEL VIDEO: ${opts.targetSeconds ?? 30} s en total. Cada hook (lo que se dice) debe tener como MÁXIMO ${budget.hook} palabras.
-Escribe 6 hooks, cada uno con un disparador DISTINTO (puedes combinar dos en uno, ej. "Identity call-out + Pain agitation"). En ${ctx.language}.`, "generateHooks", { properties: { hooks: { type: "array", items: { type: "object", properties: { trigger: { type: "string" }, spoken: { type: "string", description: "primeras palabras en cámara (vacío si la mecánica no lleva voz)" }, visual: { type: "string", description: "qué pasa en el primer cuadro" }, overlay: { type: "string", description: "texto en pantalla corto" }, why: { type: "string", description: "por qué detiene a esta persona" } }, required: ["trigger", "spoken", "visual", "overlay"] } } }, required: ["hooks"] })
+Escribe 6 hooks, cada uno con un disparador DISTINTO (puedes combinar dos en uno, ej. "Identity call-out + Pain agitation"). En ${ctx.language}.`, "generateHooks", { properties: { hooks: { type: "array", items: { type: "object", properties: { trigger: { type: "string" }, spoken: { type: "string", description: "primeras palabras en cámara (vacío si el método no lleva voz)" }, visual: { type: "string", description: "qué pasa en el primer cuadro" }, overlay: { type: "string", description: "texto en pantalla corto" }, why: { type: "string", description: "por qué detiene a esta persona" } }, required: ["trigger", "spoken", "visual", "overlay"] } } }, required: ["hooks"] })
   return (r.hooks ?? []).slice(0, 6)
 }
 
-async function generateBeatImpl(conceptId: string, brainId: string, mechanic: MechanicKey, hook: ScriptHook, beatIndex: number, previous: ScriptPart[], targetSeconds = 30): Promise<ScriptPart[]> {
+async function generateBeatImpl(conceptId: string, brainId: string, mechanic: MethodKey, hook: ScriptHook, beatIndex: number, previous: ScriptPart[], targetSeconds = 30): Promise<ScriptPart[]> {
   const ctx = await context(conceptId, brainId)
-  const m = MECHANICS[mechanic]
+  const m = METHODS[mechanic]
   const beat = m.beats[beatIndex]
   const budget = budgetFor(mechanic, targetSeconds)
   const sofar = [`HOOK: "${hook.spoken}" (visual: ${hook.visual})`, ...previous.map((p, i) => `${m.beats[i].name}: ${p.spoken ? `"${p.spoken}"` : "(sin voz)"} — visual: ${p.visual}`)].join("\n")
@@ -112,22 +113,22 @@ async function generateBeatImpl(conceptId: string, brainId: string, mechanic: Me
     `Eres guionista de anuncios de video de performance (UGC / VO). ${RULES}`,
     `${ctx.text}
 
-${mechanicBrief(mechanic)}
+${methodBrief(mechanic)}
 GUION HASTA AHORA:
 ${sofar}
 
 Escribe SOLO el beat ${beatIndex + 1} "${beat.name}": ${beat.guide}
 Debe continuar con naturalidad lo anterior. Video de ${targetSeconds} s en total. ${modeRule}
-No repitas lo que ya se dijo. Respeta las reglas de la mecánica. Da 2 opciones distintas. Todo (spoken, visual, overlay) en ${ctx.language}.`, "generateBeat", OPTIONS)
+No repitas lo que ya se dijo. Respeta las reglas del método. Da 2 opciones distintas. Todo (spoken, visual, overlay) en ${ctx.language}.`, "generateBeat", OPTIONS)
   return (r.options ?? []).slice(0, 2).map((o) => ({
     ...o,
     spoken: beat.mode === "visual" ? "" : stripRepeated(o.spoken ?? "", [hook.spoken, ...previous.map((p) => p.spoken)]),
   }))
 }
 
-async function generateClosesImpl(conceptId: string, brainId: string, mechanic: MechanicKey, hook: ScriptHook, body: ScriptPart[], targetSeconds = 30): Promise<ScriptPart[]> {
+async function generateClosesImpl(conceptId: string, brainId: string, mechanic: MethodKey, hook: ScriptHook, body: ScriptPart[], targetSeconds = 30): Promise<ScriptPart[]> {
   const ctx = await context(conceptId, brainId)
-  const m = MECHANICS[mechanic]
+  const m = METHODS[mechanic]
   const budget = budgetFor(mechanic, targetSeconds)
   const natural = m.close === "natural"
   const silent = m.beats.every((b) => b.mode === "visual")
@@ -135,10 +136,10 @@ async function generateClosesImpl(conceptId: string, brainId: string, mechanic: 
     `Eres guionista de anuncios de video de performance. ${RULES}`,
     `${ctx.text}
 
-${mechanicBrief(mechanic)}
+${methodBrief(mechanic)}
 GUION: HOOK "${hook.spoken}" → ${body.map((p, i) => `${m.beats[i].name}: ${p.spoken ? `"${p.spoken}"` : `(sin voz) ${p.visual}`}`).join(" → ")}
 ${natural
-  ? `CIERRE NATURAL (lo pide la mecánica): ${m.closeGuide} NO hay CTA hablado ni frase de venta.${silent ? ' "spoken" debe ir VACÍO (""): esta mecánica no lleva voz.' : ` Si hay voz, máximo ${budget.close} palabras y que suene natural, no a anuncio.`} Si hace falta, el CTA va solo como texto corto en "overlay".`
+  ? `CIERRE NATURAL (lo pide el método): ${m.closeGuide} NO hay CTA hablado ni frase de venta.${silent ? ' "spoken" debe ir VACÍO (""): este método no lleva voz.' : ` Si hay voz, máximo ${budget.close} palabras y que suene natural, no a anuncio.`} Si hace falta, el CTA va solo como texto corto en "overlay".`
   : `ESTRATEGIA DE CIERRE PARA ${ctx.stage.label.toUpperCase()}: ${ctx.stage.close}`}
 Video de ${targetSeconds} s en total${natural ? "" : `: el cierre debe tener como MÁXIMO ${budget.close} palabras habladas`}. Escribe SOLO el cierre: frases NUEVAS que vienen después del último beat. NO repitas ni resumas el hook ni el cuerpo; "spoken" contiene únicamente las frases del cierre. ${natural ? "" : "Usa los CTAs de la marca si encajan."} Da 3 opciones distintas. Todo (spoken, visual, overlay) en ${ctx.language}.`, "generateCloses", OPTIONS)
   return (r.options ?? []).slice(0, 3).map((o) => ({ ...o, spoken: silent ? "" : stripRepeated(o.spoken ?? "", [hook.spoken, ...body.map((p) => p.spoken)]) }))
@@ -165,7 +166,7 @@ export type BuilderResult<T> = { ok: true; data: T } | { ok: false; error: strin
 async function safe<T>(fn: () => Promise<T>): Promise<BuilderResult<T>> {
   try { return { ok: true, data: await fn() } } catch (e) { return { ok: false, error: e instanceof Error ? e.message : String(e) } }
 }
-export async function suggestMechanics(conceptId: string, brainId: string) { return safe(() => suggestMechanicsImpl(conceptId, brainId)) }
-export async function generateHooks(conceptId: string, brainId: string, mechanic: MechanicKey, opts: { like?: ScriptHook; avoid?: string[]; targetSeconds?: number } = {}) { return safe(() => generateHooksImpl(conceptId, brainId, mechanic, opts)) }
-export async function generateBeat(conceptId: string, brainId: string, mechanic: MechanicKey, hook: ScriptHook, beatIndex: number, previous: ScriptPart[], targetSeconds = 30) { return safe(() => generateBeatImpl(conceptId, brainId, mechanic, hook, beatIndex, previous, targetSeconds)) }
-export async function generateCloses(conceptId: string, brainId: string, mechanic: MechanicKey, hook: ScriptHook, body: ScriptPart[], targetSeconds = 30) { return safe(() => generateClosesImpl(conceptId, brainId, mechanic, hook, body, targetSeconds)) }
+export async function suggestMethods(conceptId: string, brainId: string) { return safe(() => suggestMethodsImpl(conceptId, brainId)) }
+export async function generateHooks(conceptId: string, brainId: string, mechanic: MethodKey, opts: { like?: ScriptHook; avoid?: string[]; targetSeconds?: number } = {}) { return safe(() => generateHooksImpl(conceptId, brainId, mechanic, opts)) }
+export async function generateBeat(conceptId: string, brainId: string, mechanic: MethodKey, hook: ScriptHook, beatIndex: number, previous: ScriptPart[], targetSeconds = 30) { return safe(() => generateBeatImpl(conceptId, brainId, mechanic, hook, beatIndex, previous, targetSeconds)) }
+export async function generateCloses(conceptId: string, brainId: string, mechanic: MethodKey, hook: ScriptHook, body: ScriptPart[], targetSeconds = 30) { return safe(() => generateClosesImpl(conceptId, brainId, mechanic, hook, body, targetSeconds)) }
