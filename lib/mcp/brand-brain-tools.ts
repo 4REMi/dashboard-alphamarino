@@ -73,13 +73,13 @@ async function findBrain(q: string) {
   return hits[0]
 }
 
-async function getLines(brainId: string): Promise<BrandLine[]> {
+export async function getLines(brainId: string): Promise<BrandLine[]> {
   const { data, error } = await db().from("brand_lines").select("*").eq("brand_brain_id", brainId).order("position")
   if (error) throw new Error(error.message)
   return (data ?? []) as BrandLine[]
 }
 
-function findLine(lines: BrandLine[], q: string, brainName: string): BrandLine {
+export function findLine(lines: BrandLine[], q: string, brainName: string): BrandLine {
   const s = q.trim().toLowerCase()
   const exact = lines.filter((l) => l.name.toLowerCase() === s)
   const hits = exact.length ? exact : lines.filter((l) => l.name.toLowerCase().includes(s))

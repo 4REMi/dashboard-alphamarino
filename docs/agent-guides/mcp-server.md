@@ -519,6 +519,7 @@ Cada concepto creativo puede estar ligado a una línea (`creative_concepts.brand
 
 - `briefs_concepto` muestra la línea de cada concepto, y la del brief solo si es distinta.
 - `detalle_brand_brain` lista bajo cada línea sus conceptos (proyecto, estado, # creativos; máx. 25 por línea) y al final los conceptos de los proyectos de esa marca que no tienen línea.
+- `crear_concepto(proyecto, nombre, persona_objetivo, dolor?, objecion?, transformacion?, por_que_funciona?, angulo?, principio_organizador?, etapa_awareness?, funnel?, producto_servicio?, linea?, confirmar)` — igual que "Nuevo concepto" del Creative Tracker (`createConcept`): solo admin/subadmin, status Active y en el ciclo ACTIVO del proyecto (el trigger de la migración 098 lo registra como miembro; sin ciclo activo queda sin ciclo). Un concepto va en UNA línea del Brand Brain del proyecto o en ninguna (`linea: "ninguna"` o vacío = General): un video que sirve a varias líneas va sin línea. Rechaza nombres repetidos en el proyecto (los guiones buscan el concepto por nombre). Dos pasos. Archivo: `lib/mcp/concept-tools.ts`. Siguiente paso típico: `crear_guion` / `generar_guiones_ia`.
 - `asignar_linea_concepto(proyecto, concepto, linea | "ninguna", confirmar)` — igual que el selector de línea del concepto en el Creative Tracker: solo admin/subadmin (mismo permiso que `updateConcept`) y solo líneas del Brand Brain del proyecto. Dos pasos. No cambia la línea de los briefs ya creados (la UI tampoco).
 
 ## Guiones: generar, crear, editar, eliminar y aprobar — 2026-11-07
