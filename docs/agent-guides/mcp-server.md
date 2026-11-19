@@ -125,6 +125,14 @@ más estricto desde el inicio, no una copia de cómo funciona Telegram.
   **Alcance obligatorio**: `ofertas[]` (por nombre; la vista previa muestra sus
   entregables, nunca precios), `entregables_propios[]` (texto, cadencia,
   cantidad) o `interno: true`. Sin ninguno de los tres, falla.
+- **Equipo de un proyecto existente** (`lib/mcp/project-tools.ts`):
+  `agregar_miembro_proyecto(proyecto, persona, confirmar)` y
+  `quitar_miembro_proyecto(...)`, por nombre y en dos pasos; solo admin/subadmin.
+  Usan `addProjectMember` / `removeProjectMember` con `actingProfileId` (sin
+  cookies en el MCP se usa el cliente admin, y la propia action exige que ese
+  perfil sea admin/subadmin, igual que la RLS de `project_members`). Agregar
+  también reasigna las tareas sin responsable que correspondan a su puesto y
+  notifica a la persona; quitar no reasigna sus tareas. Avisan si ya estaba/no estaba.
 - **Finanzas** (`lib/mcp/finance-tools.ts`): `registrar_gasto`, `listar_gastos`,
   `resumen_finanzas`; `registrar_gasto` también da de alta recurrentes generales (`frecuencia`). Permiso `view_global_finances` (igual que /finances).
   Mismo modelo que el bot de Telegram: montos en USD (MXN se convierte con el

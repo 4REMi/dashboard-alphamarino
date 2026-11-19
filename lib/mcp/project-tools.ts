@@ -1,7 +1,7 @@
 import { z } from "zod"
 import type { McpServer } from "@modelcontextprotocol/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { createProject } from "@/lib/actions/projects"
+import { createProject, addProjectMember, removeProjectMember } from "@/lib/actions/projects"
 import { can } from "@/lib/permissions"
 import { requireEditor, text, confirmHint, type ToolCtx } from "@/lib/mcp/meta-tools"
 
@@ -114,4 +114,36 @@ export function registerProjectTools(server: McpServer) {
       return text(`✅ Proyecto creado: "${a.nombre}" [id ${project.id}]\n${plan}`)
     },
   )
+
+  for (const mode of ["agregar", "quitar"] as const) {
+    server.registerTool(
+      mode === "agregar" ? "agregar_miembro_proyecto" : "quitar_miembro_proyecto",
+      {
+        title: mode === "agregar" ? "Agregar persona al equipo de un proyecto" : "Quitar persona del equipo de un proyecto",
+        description: mode === "agregar"
+          ? "Agrega a una persona al equipo de un proyecto que YA existe (igual que el botón de equipo del proyecto). Al agregarla se le asignan las tareas sin responsable que correspondan a su puesto y se le notifica. Por nombre. Solo admin/subadmin. Dos pasos."
+          : "Quita a una persona del equipo de un proyecto (igual que el botón de equipo). No reasigna sus tareas ya asignadas. Por nombre. Solo admin/subadmin. Dos pasos.",
+        inputSchema: z.object({ proyecto: z.string().min(1), persona: z.string().min(1).describe("Nombre (o parte) de la persona"), confirmar: z.boolean().default(false) }),
+      },
+      async (a, ctx: ToolCtx) => {
+        const profileId = await requireEditor(ctx)
+        const [{ data: projects }, { data: people }] = await Promise.all([
+          db().from("projects").select("id, name, status"),
+          db().from("profiles").select("id, full_name, position:positions(name)"),
+        ])
+        const project = pick((projects ?? []) as { id: string; name: string }[], a.proyecto, "proyecto")
+        const person = pick((people ?? []) as unknown as { id: string; full_name: string; position: { name: string } | null }[], a.persona, "persona", "full_name")
+        const { data: current } = await db().from("project_members").select("profile_id").eq("project_id", project.id)
+        const isMember = (current ?? []).some((m) => m.profile_id === person.id)
+        const who = `${person.full_name}${person.position?.name ? ` (${person.position.name})` : ""}`
+        if (mode === "agregar" && isMember) return text(`${who} ya está en el equipo de ${project.name}. No hay nada que cambiar.`)
+        if (mode === "quitar" && !isMember) return text(`${who} no está en el equipo de ${project.name}. No hay nada que cambiar.`)
+        const desc = `${mode === "agregar" ? "Agregar a" : "Quitar a"} ${who} ${mode === "agregar" ? "al" : "del"} equipo de ${project.name}`
+        if (!a.confirmar) return text(`${desc}.${confirmHint}`)
+        if (mode === "agregar") await addProjectMember(project.id, person.id, profileId)
+        else await removeProjectMember(project.id, person.id, profileId)
+        return text(`✅ ${desc}.`)
+      },
+    )
+  }
 }

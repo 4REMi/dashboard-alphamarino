@@ -1000,9 +1000,22 @@ export async function reactivateProject(id: string) {
 // TEAM
 // ============================================================
 
-export async function addProjectMember(projectId: string, profileId: string) {
+// Desde el MCP no hay cookies: con actingProfileId (solo válido dentro del
+// contexto de confianza del MCP) se usa el cliente admin, y se exige aquí
+// mismo que ese perfil sea admin/subadmin — igual que la RLS de project_members
+// (migración 016) lo exige a la sesión del navegador.
+async function teamClient(actingProfileId?: string) {
+  assertActingProfile(actingProfileId)
   await requireSessionOrTrusted()
-  const supabase = await createClient()
+  if (!actingProfileId) return await createClient()
+  const admin = createAdminClient()
+  const { data: me } = await admin.from("profiles").select("role").eq("id", actingProfileId).single()
+  if (me?.role !== "admin" && me?.role !== "subadmin") throw new Error("Permission denied")
+  return admin
+}
+
+export async function addProjectMember(projectId: string, profileId: string, actingProfileId?: string) {
+  const supabase = await teamClient(actingProfileId)
   const { error } = await supabase
     .from("project_members")
     .insert({ project_id: projectId, profile_id: profileId })
@@ -1022,9 +1035,8 @@ export async function addProjectMember(projectId: string, profileId: string) {
   revalidatePath(`/projects/${projectId}`)
 }
 
-export async function removeProjectMember(projectId: string, profileId: string) {
-  await requireSessionOrTrusted()
-  const supabase = await createClient()
+export async function removeProjectMember(projectId: string, profileId: string, actingProfileId?: string) {
+  const supabase = await teamClient(actingProfileId)
   const { error } = await supabase
     .from("project_members")
     .delete()
