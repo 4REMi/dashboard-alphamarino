@@ -4,46 +4,8 @@ import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { resolveSavedAdMedia } from "@/lib/ad-lab/saved-ad-media"
+import { mirrorToStorage } from "@/lib/ad-lab/storage-mirror"
 import type { TrackedBrand, SavedAd, AdBoard, ClientCreativeContext, MetaAdResult, InstagramPostResult, AccountSuggestion } from "@/lib/types"
-
-// ── Storage mirror ────────────────────────────────────────────────
-
-type SupabaseClient = Awaited<ReturnType<typeof createClient>>
-
-/**
- * Downloads a URL and uploads to Supabase Storage.
- * Returns the public URL or null if download/upload fails.
- * maxSizeMB = 0 means no size limit.
- */
-async function mirrorToStorage(
-  supabase: SupabaseClient,
-  sourceUrl: string,
-  storagePath: string,
-  maxSizeMB = 0,
-): Promise<string | null> {
-  try {
-    const res = await fetch(sourceUrl, { signal: AbortSignal.timeout(30_000) })
-    if (!res.ok) return null
-
-    if (maxSizeMB > 0) {
-      const len = Number(res.headers.get("content-length") ?? 0)
-      if (len > maxSizeMB * 1024 * 1024) return null
-    }
-
-    const buffer      = await res.arrayBuffer()
-    const contentType = res.headers.get("content-type") ?? "application/octet-stream"
-
-    const { error } = await supabase.storage
-      .from("ad-lab")
-      .upload(storagePath, buffer, { contentType, upsert: true })
-    if (error) return null
-
-    const { data: { publicUrl } } = supabase.storage.from("ad-lab").getPublicUrl(storagePath)
-    return publicUrl
-  } catch {
-    return null
-  }
-}
 
 // ── Apify — Facebook Ads Library scraper ─────────────────────────
 
