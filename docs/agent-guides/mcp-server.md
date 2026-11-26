@@ -576,3 +576,31 @@ Campos nuevos (migración 123, todos opcionales e informativos del catálogo): `
   - No se mueve de proyecto ni de fase (la UI tampoco lo permite). Orden de ejecución: campos → responsable → checklist (quitar, editar, agregar, palomear) → estado. No es atómica: si algo falla a la mitad, el error lo dice y hay que revisar con `detalle_tarea`.
 - `eliminar_tarea(titulo, proyecto?, tarea_id?, confirmar)` — **solo admin**. La vista previa dice cuántos ítems de checklist y entregables subidos se pierden con ella (se borran en cascada). Una por llamada. Para cerrarla sin borrar: `completar_tarea`.
 - **Seguridad (mismo patrón de siempre):** la UI solo muestra "Eliminar tarea" a admin, pero `deleteTask` solo pedía `manage_tasks` (que los empleados tienen por defecto), así que cualquiera podía borrar una tarea llamando la acción directo. Ahora `deleteTask` exige rol admin en el servidor (`requireTaskAdmin`). Las acciones de checklist, `updateTask`, `updateTaskAssignee` y `deleteTask` aceptan `actingProfileId` validado con `assertActingProfile`.
+
+## Auditorías de cuentas (solo lectura) — 2026-11-26
+
+`lib/mcp/audit-tools.ts`. Permiso `access_ad_lab` (el mismo que deja entrar a
+`/ad-lab/auditorias`). **Solo consultan**: auditar (capturar) lo hace la
+extensión desde el Ads Manager; analizar por partes, generar hipótesis y
+cambiar su estado se hace en el dashboard. Reutilizan las mismas lecturas y
+cálculos que las pantallas (`lib/ad-audit/queries.ts`, `metrics.ts`,
+`findings.ts`), así que dan los mismos números. Cuenta y campaña se buscan por
+nombre (exacto o parcial) o por ID `act_`; si hay varias coincidencias piden
+ser más específico.
+
+- `auditorias(busqueda?)` — cuentas auditadas con sus campañas y períodos.
+- `auditoria_campana(cuenta, campana?)` — totales y, por conjunto, cada anuncio:
+  veredicto, % del gasto, métricas de creativo y tienda contra la mediana de su
+  conjunto, dónde se rompe y partes (gancho/cuerpo/cierre).
+- `auditoria_anuncio(cuenta, anuncio, campana?)` — embudo completo con
+  medianas y etapa rota, mayor caída de retención, partes con segundos,
+  ganador del conjunto para comparar.
+- `auditoria_que_funciona(cuenta, formato?)` — ganchos/cuerpos/cierres por
+  tipo con veredicto y respaldo, y la combinación que más vende (solo cuenta
+  creativos analizados por partes).
+- `auditoria_hipotesis(cuenta, campana?, estado?)` — hipótesis con estado,
+  nota y evidencia hoy.
+- `metricas_auditoria()` — fórmulas vigentes (con los cambios de la agencia).
+
+Regla para el modelo: las comparaciones válidas son dentro del mismo conjunto;
+las métricas en "muestra chica" no se usan para concluir.

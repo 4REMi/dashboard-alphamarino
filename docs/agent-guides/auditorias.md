@@ -21,6 +21,9 @@ Construido (2026-11-26):
   funciona», hipótesis por campaña, métricas editables.
 - **Fase 3** — seguimiento de hipótesis (abierta/confirmada/descartada con nota
   y «evidencia hoy» tras re-capturar).
+También consultable desde el MCP (solo lectura): `auditorias`,
+`auditoria_campana`, `auditoria_anuncio`, `auditoria_que_funciona`,
+`auditoria_hipotesis`, `metricas_auditoria`.
 Pendiente / ideas: reporte compartible para el prospecto; actualizar cuentas de
 clientes sin la extensión (usuario de sistema). El mockup vive en el artifact
 "Ad Account Judge".
@@ -157,4 +160,5 @@ anuncios y los archivos en Storage. **Prospecto/Cliente**: clic en la etiqueta.
 - `lib/ad-audit/queries.ts` — lecturas para las páginas.
 - `lib/actions/ad-audits.ts` — borrar, prospecto/cliente, analizar por partes, hipótesis, métricas.
 - `components/ad-audit/*` — tabla de campaña, detalle, lista de cuentas.
+- `lib/mcp/audit-tools.ts` — consulta desde el MCP (solo lectura; ver mcp-server.md).
 - `app/(dashboard)/ad-lab/auditorias/**` — páginas.

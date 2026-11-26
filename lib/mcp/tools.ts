@@ -24,6 +24,7 @@ import { registerBrandBrainTools } from "@/lib/mcp/brand-brain-tools"
 import { registerScriptTools } from "@/lib/mcp/script-tools"
 import { registerConceptTools } from "@/lib/mcp/concept-tools"
 import { registerTaskTools } from "@/lib/mcp/task-tools"
+import { registerAuditTools } from "@/lib/mcp/audit-tools"
 import { getProjectContext } from "@/lib/project-context"
 import { interpretStandup } from "@/lib/standup-core"
 
@@ -124,6 +125,8 @@ export function registerMcpTools(server: McpServer) {
   registerBrandBrainTools(server)
   registerScriptTools(server)
   registerConceptTools(server)
+  // Auditorías de Ad Lab, solo lectura — lib/mcp/audit-tools.ts
+  registerAuditTools(server)
   registerTaskTools(server)
 
   server.registerTool(
