@@ -1,4 +1,4 @@
-# Extensión de Chrome — Guardar anuncios en boards — Guía para agentes
+# Extensión de Chrome/Firefox — Guardar anuncios en boards — Guía para agentes
 
 **Ruta:** extensión de navegador (`extension/` en la raíz del repo) → rutas `/api/extension/*` → boards de `/ad-lab/boards`
 **Para quién:** quien tenga el permiso `access_ad_lab` (admin y subadmin por defecto; empleados solo si se les activa)
@@ -6,7 +6,8 @@
 
 ## Qué es y para qué sirve
 
-Una extensión de Chrome (Manifest V3, sin publicar en la Chrome Web Store) que
+Una extensión de navegador para Chrome y Firefox (Manifest V3, sin publicar en
+ninguna tienda) que
 manda anuncios a un board de Ad Lab sin salir de Meta. Cubre dos lugares:
 
 - **Ads Manager**: anuncios propios o de clientes que se están corriendo. Es la
@@ -54,6 +55,16 @@ manda anuncios a un board de Ad Lab sin salir de Meta. Cubre dos lugares:
 
 ## Cómo hacer las acciones comunes
 
+**Chrome y Firefox, una sola fuente:** `extension/` es el código (manifest de
+Chrome). `pnpm ext:build` (`scripts/build-extension.mjs`) genera
+`dist-extension/chrome` y `dist-extension/firefox`; la de Firefox solo cambia el
+manifest (`background.scripts` en vez de `service_worker`, ID
+`guardar-anuncios@alphamarino.dashboard`, mínimo Firefox 128 por
+`world: "MAIN"`). El JS es el mismo (Firefox entiende `chrome.*`). En Firefox
+los permisos de sitios pueden quedar sin conceder: el popup lo detecta y muestra
+«Dar permisos». Sin firma de Mozilla, en Firefox solo se instala como
+complemento temporal (se borra al cerrar el navegador).
+
 **Instalar (una vez por computadora):** ver `extension/README.md`. En resumen:
 `chrome://extensions` → Modo desarrollador → «Cargar descomprimida» → carpeta
 `extension/`. Luego, desde el ícono: URL del dashboard + API key personal
@@ -100,6 +111,7 @@ sea válida. Lo guardado queda con `created_by`/`added_by` de esa persona.
 
 ## Dónde vive esto en el código
 
+- `scripts/build-extension.mjs` — genera las versiones Chrome/Firefox.
 - `extension/` — la extensión (manifest; `background.js` hace todas las
   llamadas al dashboard y a la Graph API con la sesión; `content/` scripts por
   sitio, `token-main.js` en el mundo de la página; `popup/`).

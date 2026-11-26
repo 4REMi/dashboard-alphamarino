@@ -40,3 +40,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .claude/
+
+# Builds de la extensión (scripts/build-extension.mjs)
+/dist-extension

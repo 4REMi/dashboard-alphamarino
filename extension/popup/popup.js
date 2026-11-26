@@ -34,6 +34,23 @@ function originOf(url) {
   }
 }
 
+// Sitios de Meta que la extensión necesita, tomados del manifest para pedir
+// exactamente lo declarado. Chrome concede todo al instalar y no reporta los
+// sitios de los content scripts en permissions.contains (aunque los aplica),
+// así que ahí solo se revisan los host_permissions. Firefox (Manifest V3)
+// puede dejar ambos sin conceder hasta que el usuario los apruebe.
+const IS_FIREFOX = chrome.runtime.getURL("").startsWith("moz-extension:")
+const META_ORIGINS = [...new Set([
+  ...(IS_FIREFOX ? chrome.runtime.getManifest().content_scripts.flatMap((c) => c.matches) : []),
+  ...(chrome.runtime.getManifest().host_permissions || []),
+])]
+
+async function checkMetaPermissions() {
+  const ok = await chrome.permissions.contains({ origins: META_ORIGINS }).catch(() => true)
+  $("perm-section").hidden = ok
+  return ok
+}
+
 async function loadBoards(selectId) {
   const settings = await send({ type: "settings" })
   ;({ boards } = await send({ type: "api", path: "/api/extension/boards" }))
@@ -134,6 +151,7 @@ async function describeTab() {
 }
 
 async function init() {
+  await checkMetaPermissions()
   const settings = await send({ type: "settings" })
   $("url").value = settings.dashboardUrl
   if (!settings.dashboardUrl || !settings.apiKey) {
@@ -160,7 +178,7 @@ $("save-settings").addEventListener("click", async () => {
   const origin = originOf(url)
   if (!origin) return showMsg("La URL debe empezar con https://", "err")
   // permissions.request debe ir antes de cualquier await (gesto del usuario).
-  const granted = await chrome.permissions.request({ origins: [origin] })
+  const granted = await chrome.permissions.request({ origins: [origin, ...META_ORIGINS] })
   if (!granted) return showMsg("Sin permiso sobre ese dominio la extensión no puede hablar con el dashboard.", "err")
   const update = { dashboardUrl: url }
   if (key) update.apiKey = key
@@ -169,6 +187,15 @@ $("save-settings").addEventListener("click", async () => {
   showMsg("")
   await init()
   if ($("status").classList.contains("ok")) $("settings").open = false
+})
+
+$("grant-perms").addEventListener("click", async () => {
+  // Sin await antes: el pedido de permisos debe salir del clic del usuario.
+  const granted = await chrome.permissions.request({ origins: META_ORIGINS })
+  if (granted) {
+    await checkMetaPermissions()
+    showMsg("Listo. Recarga las pestañas de Facebook que tengas abiertas.", "ok")
+  }
 })
 
 $("board").addEventListener("change", (e) => setActive(e.target.value))

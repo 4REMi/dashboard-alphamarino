@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "check:actions": "node scripts/check-server-actions.mjs"
+    "check:actions": "node scripts/check-server-actions.mjs",
+    "ext:build": "node scripts/build-extension.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.88.0",
