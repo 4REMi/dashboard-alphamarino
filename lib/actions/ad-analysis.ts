@@ -105,6 +105,17 @@ export async function getSavedAdAnalysis(adArchiveId: string): Promise<LibraryAd
   return (data?.analysis as LibraryAdAnalysis | undefined) ?? null
 }
 
+// ¿Este anuncio ya tiene análisis guardado? Solo para el botón del detalle
+// ("Concepto analizado"): no trae el análisis, solo si existe.
+export async function hasSavedAdAnalysis(adArchiveId: string): Promise<boolean> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return false
+  const { count } = await createAdminClient().from("ad_analyses")
+    .select("ad_archive_id", { count: "exact", head: true }).eq("ad_archive_id", adArchiveId)
+  return (count ?? 0) > 0
+}
+
 export async function analyzeLibraryAd(ad: LibraryAdInput): Promise<LibraryAdAnalysis> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
