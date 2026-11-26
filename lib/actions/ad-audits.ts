@@ -11,6 +11,9 @@ import { analyzeLibraryAd } from "@/lib/actions/ad-analysis"
 import { getCampaignAudit } from "@/lib/ad-audit/queries"
 import { COUNTER_KEYS, METRICS, biggestDrop, curvePoints, formatMetric, formatSec, metricById, type MetricId } from "@/lib/ad-audit/metrics"
 import { parseAiJson } from "@/lib/utils/ai-json"
+import { inferAuditBrandCore, promoteAuditBrandCore } from "@/lib/ad-audit/brand"
+import { can } from "@/lib/permissions"
+import type { Profile } from "@/lib/types"
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -231,4 +234,28 @@ export async function resetMetricOverride(metricId: string): Promise<void> {
   if (!METRICS.some((m) => m.id === metricId)) throw new Error("Métrica inválida")
   await createAdminClient().from("audit_metric_overrides").delete().eq("metric_id", metricId)
   revalidatePath("/ad-lab/auditorias")
+}
+
+// ── Marca inferida (Brand Brain + Brand Lines de la cuenta) ───────
+// Vive solo en auditorías; "llevar" la crea en /brand-brains, para lo que
+// además hace falta el permiso de Brand Brains.
+export async function inferAuditBrand(accountId: string): Promise<{ lines: number }> {
+  await requireSessionOrTrusted()
+  const user = await requireAuditAccess()
+  if (!UUID_RE.test(accountId)) throw new Error("Cuenta inválida")
+  const r = await inferAuditBrandCore(accountId, user.id)
+  revalidatePath("/ad-lab/auditorias")
+  return r
+}
+
+export async function promoteAuditBrand(accountId: string): Promise<{ brandBrainId: string; created: boolean }> {
+  await requireSessionOrTrusted()
+  const user = await requireAuditAccess()
+  if (!UUID_RE.test(accountId)) throw new Error("Cuenta inválida")
+  const { data: profile } = await createAdminClient().from("profiles").select("role, permissions").eq("id", user.id).single()
+  if (!can(profile as Pick<Profile, "role" | "permissions"> | null, "access_brand_brains")) throw new Error("No tienes acceso a Brand Brains")
+  const r = await promoteAuditBrandCore(accountId, user.id)
+  revalidatePath("/brand-brains")
+  revalidatePath("/ad-lab/auditorias")
+  return r
 }

@@ -600,6 +600,7 @@ ser más específico.
   creativos analizados por partes).
 - `auditoria_hipotesis(cuenta, campana?, estado?)` — hipótesis con estado,
   nota y evidencia hoy.
+- `auditoria_marca(cuenta)` — Brand Brain y Brand Lines inferidos de sus campañas (con anuncios, gasto y compras por línea) y si ya se llevaron a Brand Brains.
 - `metricas_auditoria()` — fórmulas vigentes (con los cambios de la agencia).
 
 Regla para el modelo: las comparaciones válidas son dentro del mismo conjunto;

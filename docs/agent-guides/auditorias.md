@@ -23,7 +23,8 @@ Construido (2026-11-26):
   y «evidencia hoy» tras re-capturar).
 También consultable desde el MCP (solo lectura): `auditorias`,
 `auditoria_campana`, `auditoria_anuncio`, `auditoria_que_funciona`,
-`auditoria_hipotesis`, `metricas_auditoria`.
+`auditoria_hipotesis`, `auditoria_marca`, `metricas_auditoria`.
+- **Marca inferida** (2026-11-26) — Brand Brain + Brand Lines por cuenta, ver abajo.
 Pendiente / ideas: reporte compartible para el prospecto; actualizar cuentas de
 clientes sin la extensión (usuario de sistema). El mockup vive en el artifact
 "Ad Account Judge".
@@ -101,6 +102,24 @@ clientes sin la extensión (usuario de sistema). El mockup vive en el artifact
   auditorías. Ver: todos con Ad Lab; cambiar: solo admin/subadmin
   (`requireRole` en la action).
 
+- **Marca inferida** (`lib/ad-audit/brand.ts`, migración 126): un Brand Brain y
+  sus Brand Lines **por cuenta auditada**, con los mismos campos que
+  `brand_brains` / `brand_lines`. Fuentes: el sitio principal (dominio de
+  destino con más gasto, leído con `draftFromWebsite`, que también da los
+  colores), el copy y la página de destino de los 50 anuncios con más gasto y
+  lo que el análisis de concepto dedujo de cada creativo (qué vende, audiencia,
+  oferta, dolor). Una llamada a Claude; solo evidencia. Cada línea = un
+  producto/colección/servicio distinto (máx. 8) y **cada anuncio queda ligado a
+  su línea** (`audit_ads.audit_brand_line_id`) para poder ver qué funciona por
+  línea más adelante. Vive SOLO en `audit_brand_brains` / `audit_brand_lines`:
+  no aparece en `/brand-brains`.
+- **Llevar a Brand Brains** (`promoteAuditBrand`): crea el Brand Brain y sus
+  líneas reales (con `insertBrandLine`) y guarda el vínculo
+  (`promoted_brand_brain_id`, `promoted_brand_line_id`). Exige además
+  `access_brand_brains`. Si ya se llevó, solo enlaza. Volver a inferir rehace la
+  copia de la auditoría (líneas incluidas) pero NO toca lo que ya está en Brand
+  Brains.
+
 ## Cómo hacer las acciones comunes
 
 **Auditar**: Ads Manager → pestaña Campañas → marcar campañas → botón
@@ -128,6 +147,9 @@ Cierres, Video / Imagen. Pasar el mouse sobre un video reproduce su tramo.
 **Hipótesis**: al final de la campaña, «Generar hipótesis» (~30 s). Mejor
 después de analizar por partes.
 
+**Marca inferida**: en la cuenta → «Marca inferida» → «Inferir Brand Brain y
+Brand Lines» (~1 min). «Llevar a Brand Brains» la crea en `/brand-brains`.
+
 **Borrar**: en `/ad-lab/auditorias`, papelera → «Borrar todo»: borra métricas,
 anuncios y los archivos en Storage. **Prospecto/Cliente**: clic en la etiqueta.
 
@@ -151,7 +173,7 @@ anuncios y los archivos en Storage. **Prospecto/Cliente**: clic en la etiqueta.
 
 ## Dónde vive esto en el código
 
-- `supabase/migrations/124_ad_audits.sql`, `125_ad_audit_hypotheses_metrics.sql` — tablas.
+- `supabase/migrations/124_ad_audits.sql`, `125_ad_audit_hypotheses_metrics.sql`, `126_ad_audit_brand.sql` — tablas.
 - `lib/ad-audit/parts.ts` (partes y tipos), `lib/ad-audit/findings.ts` (Qué funciona).
 - `extension/content/audit.js` — captura; `extension/background.js` →
   `graph`/`graphAll` (con lectura de uso de límites).
@@ -161,4 +183,5 @@ anuncios y los archivos en Storage. **Prospecto/Cliente**: clic en la etiqueta.
 - `lib/actions/ad-audits.ts` — borrar, prospecto/cliente, analizar por partes, hipótesis, métricas.
 - `components/ad-audit/*` — tabla de campaña, detalle, lista de cuentas.
 - `lib/mcp/audit-tools.ts` — consulta desde el MCP (solo lectura; ver mcp-server.md).
+- `lib/ad-audit/brand.ts` + `components/ad-audit/audit-brand.tsx` — marca inferida.
 - `app/(dashboard)/ad-lab/auditorias/**` — páginas.

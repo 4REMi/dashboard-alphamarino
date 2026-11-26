@@ -27,6 +27,13 @@ export default async function AuditAccountPage({ params }: { params: Promise<{ a
         </div>
         <span className="text-sm font-semibold text-primary">Ver →</span>
       </Link>
+      <Link href={`/ad-lab/auditorias/${account.id}/marca`} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card p-4 transition-colors hover:border-primary/40">
+        <div>
+          <p className="font-semibold">Marca inferida</p>
+          <p className="text-sm text-muted-foreground">Brand Brain y Brand Lines deducidos de sus campañas. Se pueden llevar a Brand Brains.</p>
+        </div>
+        <span className="text-sm font-semibold text-primary">Ver →</span>
+      </Link>
       <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(320px,1fr))]">
         {campaigns.map((c) => (
           <Link key={c.id} href={`/ad-lab/auditorias/${account.id}/c/${c.id}`} className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 transition-colors hover:border-primary/40">

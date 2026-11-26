@@ -12,6 +12,7 @@ import {
 } from "@/lib/ad-audit/metrics"
 import { buildFindings, type Format } from "@/lib/ad-audit/findings"
 import { PART_LABEL, type PartKey } from "@/lib/ad-audit/parts"
+import { getAuditBrand } from "@/lib/ad-audit/brand"
 
 // Auditorías de Ad Lab desde el MCP — SOLO LECTURA (consultar, no auditar:
 // la captura la hace la extensión). Permiso: access_ad_lab, el mismo que
@@ -24,6 +25,7 @@ import { PART_LABEL, type PartKey } from "@/lib/ad-audit/parts"
 // - auditoria_anuncio(cuenta, anuncio, campana?): embudo, retención, partes.
 // - auditoria_que_funciona(cuenta, formato?): ganchos/cuerpos/cierres.
 // - auditoria_hipotesis(cuenta, campana?, estado?): hipótesis y seguimiento.
+// - auditoria_marca(cuenta): Brand Brain y Brand Lines inferidos.
 // - metricas_auditoria(): fórmulas vigentes.
 
 interface ToolCtx { http?: { authInfo?: AuthInfo } }
@@ -300,6 +302,41 @@ export function registerAuditTools(server: McpServer) {
         }
       }
       return text(out.length ? `CUENTA: ${acc.name}${out.join("\n")}` : `No hay hipótesis${estado ? ` ${estado}s` : ""} para ${acc.name}.`)
+    },
+  )
+
+  server.registerTool(
+    "auditoria_marca",
+    {
+      title: "Marca inferida de una cuenta auditada",
+      description:
+        "Brand Brain y Brand Lines INFERIDOS de las campañas de una cuenta auditada (sitio principal, copy, páginas de destino y análisis de concepto), con los anuncios, gasto y compras de cada línea, y si ya se llevaron a Brand Brains. Solo lectura: no infiere ni lleva nada (eso se hace en el dashboard).",
+      inputSchema: z.object({ cuenta: z.string().describe("Nombre (o ID act_) de la cuenta auditada") }),
+    },
+    async ({ cuenta }, ctx: ToolCtx) => {
+      await requireAuditAccess(ctx)
+      const acc = await findAccount(cuenta)
+      const { brain, lines, error } = await getAuditBrand(acc.id)
+      if (error) throw new Error(error)
+      if (!brain) return text(`Aún no se ha inferido la marca de ${acc.name} (se hace en Auditorías → la cuenta → Marca inferida).`)
+      const currency = acc.currency ?? "MXN"
+      const l = (label: string, xs: string[]) => (xs.length ? `${label}: ${xs.join("; ")}` : "")
+      return text([
+        `BRAND BRAIN INFERIDO: ${brain.name}${brain.promoted_brand_brain_id ? " (ya está en Brand Brains)" : " (solo en la auditoría)"}`,
+        [brain.industry, brain.tone_of_voice].filter(Boolean).join(" · "),
+        brain.description ?? "",
+        brain.target_audience ? `Audiencia: ${brain.target_audience}` : "",
+        l("USPs", brain.usps), l("Beneficios", brain.key_benefits), l("Dolores", brain.pain_points), l("Características", brain.key_features), l("CTAs", brain.ctas),
+        brain.additional_context ? `Aprendido de los anuncios: ${brain.additional_context}` : "",
+        `Fuentes: ${brain.sources?.website ?? "sin sitio"} · ${brain.sources?.ads ?? 0} anuncios · ${brain.sources?.analyses ?? 0} análisis`,
+        lines.length ? "\nBRAND LINES:" : "Sin Brand Lines.",
+        ...lines.map((x) => [
+          `- ${x.name}: ${x.description ?? ""}`,
+          `  ${x.ads.length} anuncios · ${formatMoney(x.ads.reduce((t, a) => t + a.spend, 0), currency)} · ${x.ads.reduce((t, a) => t + a.purchases, 0)} compras${x.ads.length ? ` · ej. ${x.ads.slice(0, 4).map((a) => a.name).join(", ")}` : ""}`,
+          [l("USPs", x.usps), l("Dolores", x.pain_points), l("Keywords", x.keywords)].filter(Boolean).map((t) => `  ${t}`).join("\n"),
+          x.landing_urls.length ? `  Destino: ${x.landing_urls.join(", ")}` : "",
+        ].filter(Boolean).join("\n")),
+      ].filter(Boolean).join("\n"))
     },
   )
 
