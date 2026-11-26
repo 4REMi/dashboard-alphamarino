@@ -123,10 +123,25 @@
     const act = accountId()
     if (!act) throw new Error("No se reconoce la cuenta publicitaria en la dirección de la página (falta act=…).")
 
-    const until = new Date()
-    const since = new Date(Date.now() - (days - 1) * 86400000)
-    const iso = (d) => d.toISOString().slice(0, 10)
-    const timeRange = JSON.stringify({ since: iso(since), until: iso(until) })
+    // Mismo período que el «Últimos N días» del Ads Manager: el preset de
+    // Meta (last_30d…) se calcula en la zona horaria de la cuenta y NO
+    // incluye hoy. Antes se calculaba en UTC con hoy incluido y el período
+    // salía corrido un día respecto al Ads Manager.
+    const datePreset = `last_${days}d`
+    const localIso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+    let since, until
+    try {
+      const r = await graph("graph", `/act_${act}/insights`, { date_preset: datePreset, fields: "date_start,date_stop" }, token)
+      since = r.data?.[0]?.date_start
+      until = r.data?.[0]?.date_stop
+    } catch {}
+    if (!since || !until) {
+      // Sin datos en la cuenta para ese período: mismo cálculo en hora local.
+      const y = new Date(); y.setDate(y.getDate() - 1)
+      const s = new Date(y); s.setDate(s.getDate() - (days - 1))
+      since = localIso(s); until = localIso(y)
+    }
+    const iso = (x) => x
 
     onProgress("Leyendo la cuenta y las campañas…")
     const account = await graph("graph", `/act_${act}`, { fields: "name,currency" }, token)
@@ -154,14 +169,14 @@
 
       onProgress(`${label}: métricas por día…`)
       const daily = await graph("graphAll", `/${camp.id}/insights`, {
-        level: "ad", time_increment: "1", time_range: timeRange, fields: INSIGHT_FIELDS,
+        level: "ad", time_increment: "1", date_preset: datePreset, fields: INSIGHT_FIELDS,
         action_attribution_windows: JSON.stringify(["7d_click"]), limit: "500",
       }, token)
       const rows = daily.map(toCounters)
 
       onProgress(`${label}: curvas de retención…`)
       const curves = await graph("graphAll", `/${camp.id}/insights`, {
-        level: "ad", time_range: timeRange, fields: "ad_id,video_play_curve_actions", limit: "500",
+        level: "ad", date_preset: datePreset, fields: "ad_id,video_play_curve_actions", limit: "500",
       }, token)
       const retention = curves
         .map((r) => ({ ad_id: r.ad_id, curve: r.video_play_curve_actions?.[0]?.value }))

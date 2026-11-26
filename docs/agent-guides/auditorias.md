@@ -1,6 +1,6 @@
 # Ad Lab — Auditorías de cuentas publicitarias — Guía para agentes
 
-**Ruta:** `/ad-lab/auditorias` → `/ad-lab/auditorias/[cuenta]` → `…/c/[campaña]` → `…/c/[campaña]/a/[anuncio]`
+**Ruta:** `/ad-lab/auditorias` → `/ad-lab/auditorias/[cuenta]` → `…/c/[campaña]` → `…/c/[campaña]/a/[anuncio]`; `…/[cuenta]/funciona` (Qué funciona); `/ad-lab/auditorias/metricas`
 **Para quién:** quien tenga `access_ad_lab` (admin y subadmin por defecto)
 **Actualizado:** 2026-11-26
 
@@ -14,11 +14,16 @@ datos reales de Meta y con los videos a la vista. Es exclusivamente para
 auditar: los videos son la versión ligera que entrega la API de Meta, no el
 original (no se reutiliza material).
 
-Fase 1 (esta): captura desde la extensión, vista por conjunto (Creativo /
-Tienda), detalle del anuncio con videos sincronizados, curva y embudo.
-Fase 2 (pendiente): ganchos / cuerpos / cierres que funcionan (requiere el
-análisis de concepto por partes), hipótesis con evidencia, pantalla para
-editar las métricas. El mockup de todo vive en el artifact "Ad Account Judge".
+Construido (2026-11-26):
+- **Fase 1** — captura desde la extensión, vista por conjunto (Creativo /
+  Tienda), detalle del anuncio con videos sincronizados, curva y embudo.
+- **Fase 2** — análisis por partes (gancho/cuerpo/cierre), pantalla «Qué
+  funciona», hipótesis por campaña, métricas editables.
+- **Fase 3** — seguimiento de hipótesis (abierta/confirmada/descartada con nota
+  y «evidencia hoy» tras re-capturar).
+Pendiente / ideas: reporte compartible para el prospecto; actualizar cuentas de
+clientes sin la extensión (usuario de sistema). El mockup vive en el artifact
+"Ad Account Judge".
 
 ## Conceptos y vocabulario clave
 
@@ -58,6 +63,41 @@ editar las métricas. El mockup de todo vive en el artifact "Ad Account Judge".
   (0–14 s uno por segundo, luego tramos 15/20/25/30/40/50/60+). "Mayor caída" =
   tramo con más % perdido por segundo desde el segundo 1.
 
+- **Período**: el de los presets de Meta (`last_7d`/`last_30d`/`last_90d`),
+  calculado en la zona horaria de la cuenta y SIN hoy, igual que el
+  «Últimos N días» del Ads Manager (hasta 2026-11-26 se usaba UTC con hoy
+  incluido y el período salía corrido un día). Las diferencias que quedan
+  contra el Ads Manager son de atribución: compara con la columna en
+  «7 días después del clic».
+- **Partes del creativo** (`lib/ad-audit/parts.ts`): el análisis de concepto
+  de Ad Lab (`analyzeLibraryAd`) devuelve `partes` = gancho/cuerpo/cierre con
+  `desde`/`hasta` en segundos y un `tipo` de una **lista cerrada** (para poder
+  agrupar). Se analiza **una vez por video** (clave `audit:v:<video>`; en
+  imágenes `audit:i:<anuncio>`) y se guarda en `ad_analyses`, así que también
+  se abre desde Ad Lab → Análisis. Análisis viejos sin `partes` se rehacen al
+  pedirlo.
+- **Qué funciona** (`lib/ad-audit/findings.ts`): por tipo de parte, la métrica
+  que le toca (gancho → hook rate / CTR en imagen; cuerpo → hold rate /
+  visita→carrito en imagen; cierre → conversión de sesión + AOV). Número
+  grande = pooled (suma de numeradores ÷ suma de denominadores). Veredicto =
+  diferencia promedio de cada anuncio **contra la mediana de su propio
+  conjunto**, ponderada por denominador: ≥ +10 % «Funciona», ≤ −10 % «No
+  funciona», < 2 anuncios con muestra «Pocos datos». Combinación que más vende
+  = gancho+cuerpo+cierre con más compras entre las que superan el ROAS de la
+  cuenta (mínimo 3 compras). Cada video reproduce SOLO su tramo.
+- **Hipótesis** (`generateCampaignHypotheses`): una llamada a Claude por
+  campaña con una tabla compacta (métricas con muestra suficiente contra la
+  mediana, veredicto, dónde se rompe, partes, mayor caída de retención). Solo
+  puede usar esos números; compara dentro del conjunto; máx. 2 por conjunto y
+  8 en total; incluye perdedores. Regenerar borra solo las abiertas sin nota.
+- **Seguimiento**: confirmar/descartar/reabrir con nota (`setHypothesisStatus`).
+  «Evidencia hoy» muestra el veredicto ACTUAL de cada anuncio citado; si los
+  datos son de otro período que la hipótesis, lo avisa para revisarla.
+- **Métricas editables** (`audit_metric_overrides`, `applyOverrides`):
+  numerador, denominador y muestra mínima por métrica. Recalcula todas las
+  auditorías. Ver: todos con Ad Lab; cambiar: solo admin/subadmin
+  (`requireRole` en la action).
+
 ## Cómo hacer las acciones comunes
 
 **Auditar**: Ads Manager → pestaña Campañas → marcar campañas → botón
@@ -74,6 +114,16 @@ una columna muestra fórmula y mínimo; por una celda, conteos y mediana.
 **Detalle de un anuncio**: video del anuncio al lado del ganador (mejor CPA)
 del mismo conjunto. Los botones de momentos y el clic en la curva llevan
 **ambos** videos al mismo segundo y muestran % que sigue viendo en cada uno.
+
+**Analizar por partes**: en la campaña, «Analizar partes de N creativos»
+(de 2 en 2 desde el navegador, ~1 min por video; no cerrar la pestaña; lo ya
+analizado se guarda). Después, la tabla muestra G/C/Ci por anuncio.
+
+**Qué funciona**: desde la cuenta o la campaña → pestañas Ganchos / Cuerpos /
+Cierres, Video / Imagen. Pasar el mouse sobre un video reproduce su tramo.
+
+**Hipótesis**: al final de la campaña, «Generar hipótesis» (~30 s). Mejor
+después de analizar por partes.
 
 **Borrar**: en `/ad-lab/auditorias`, papelera → «Borrar todo»: borra métricas,
 anuncios y los archivos en Storage. **Prospecto/Cliente**: clic en la etiqueta.
@@ -98,12 +148,13 @@ anuncios y los archivos en Storage. **Prospecto/Cliente**: clic en la etiqueta.
 
 ## Dónde vive esto en el código
 
-- `supabase/migrations/124_ad_audits.sql` — tablas.
+- `supabase/migrations/124_ad_audits.sql`, `125_ad_audit_hypotheses_metrics.sql` — tablas.
+- `lib/ad-audit/parts.ts` (partes y tipos), `lib/ad-audit/findings.ts` (Qué funciona).
 - `extension/content/audit.js` — captura; `extension/background.js` →
   `graph`/`graphAll` (con lectura de uso de límites).
 - `app/api/extension/audit/[step]/route.ts` + `lib/ad-audit/ingest.ts` — recepción.
 - `lib/ad-audit/metrics.ts` — fórmulas, medianas, veredictos, curva (puro).
 - `lib/ad-audit/queries.ts` — lecturas para las páginas.
-- `lib/actions/ad-audits.ts` — borrar, prospecto/cliente.
+- `lib/actions/ad-audits.ts` — borrar, prospecto/cliente, analizar por partes, hipótesis, métricas.
 - `components/ad-audit/*` — tabla de campaña, detalle, lista de cuentas.
 - `app/(dashboard)/ad-lab/auditorias/**` — páginas.

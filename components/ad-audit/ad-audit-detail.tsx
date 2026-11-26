@@ -5,7 +5,7 @@ import Link from "next/link"
 import { cn } from "@/lib/utils"
 import {
   biggestDrop, curvePoints, formatMetric, formatMoney, formatSec, metricById, retentionAt,
-  type Counters, type CurvePoint, type MetricId,
+  type Counters, type CurvePoint, type MetricDef, type MetricId,
 } from "@/lib/ad-audit/metrics"
 import type { AuditAdView, AuditAdsetView } from "@/lib/ad-audit/queries"
 import { CMP_CLASS, VerdictChip, breakSummary } from "@/components/ad-audit/ui"
@@ -30,7 +30,7 @@ const CASCADE: { step: string; count: keyof Counters; metric?: MetricId; videoOn
   { step: "Compras", count: "purchases", metric: "checkout_purchase" },
 ]
 
-export function AdAuditDetail({ ad, adset, currency, backHref }: { ad: AuditAdView; adset: AuditAdsetView; currency: string; backHref: string }) {
+export function AdAuditDetail({ ad, adset, currency, backHref, metrics }: { ad: AuditAdView; adset: AuditAdsetView; currency: string; backHref: string; metrics: MetricDef[] }) {
   const other = useMemo(() => pickComparison(ad, adset), [ad, adset])
   const isVideo = ad.format === "video"
   const mainRef = useRef<HTMLVideoElement>(null)
@@ -81,7 +81,7 @@ export function AdAuditDetail({ ad, adset, currency, backHref }: { ad: AuditAdVi
             <VerdictChip evaluation={e} />
             <span className="text-sm text-muted-foreground">{(e.spendShare * 100).toFixed(1)} % del gasto del conjunto · {formatMoney(ad.counters.spend, currency)}</span>
           </div>
-          <p className="text-sm text-muted-foreground">{breakSummary(e, currency)}</p>
+          <p className="text-sm text-muted-foreground">{breakSummary(e, currency, metrics)}</p>
         </div>
         {ad.landingUrl && <a href={ad.landingUrl} target="_blank" rel="noreferrer" className="text-sm text-primary hover:underline">Página de destino ↗</a>}
       </div>
@@ -160,7 +160,7 @@ export function AdAuditDetail({ ad, adset, currency, backHref }: { ad: AuditAdVi
               <div className="min-w-[460px]">
                 {CASCADE.filter((r) => !(r.videoOnly && !isVideo)).map((r) => {
                   const m = r.metric ? e.metrics[r.metric] : null
-                  const def = r.metric ? metricById(r.metric) : null
+                  const def = r.metric ? metricById(r.metric, metrics) : null
                   const isBreak = r.metric && e.breakAt === r.metric
                   return (
                     <div key={r.step} className={cn("grid grid-cols-[1.6fr_0.8fr_1.4fr_0.9fr] items-center gap-3 border-b border-border/60 px-2 py-2 text-sm last:border-0",
@@ -179,7 +179,7 @@ export function AdAuditDetail({ ad, adset, currency, backHref }: { ad: AuditAdVi
             <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
               {money.map((id) => {
                 const m = e.metrics[id]
-                const def = metricById(id)
+                const def = metricById(id, metrics)
                 return (
                   <div key={id} className="rounded-lg border border-border bg-background px-3 py-2">
                     <p className="text-[11px] text-muted-foreground">{def.label}</p>

@@ -4,7 +4,7 @@ import { useRef } from "react"
 import { cn } from "@/lib/utils"
 import {
   formatMetric, metricById,
-  type AdEvaluation, type MetricId, type Verdict,
+  type AdEvaluation, type MetricDef, type MetricId, type Verdict,
 } from "@/lib/ad-audit/metrics"
 
 export const VERDICT: Record<Verdict, { label: string; className: string }> = {
@@ -33,8 +33,8 @@ export const CMP_CLASS = {
   none: "text-muted-foreground",
 }
 
-export function MetricCell({ id, evaluation, currency, isBreak }: { id: MetricId; evaluation: AdEvaluation; currency: string; isBreak?: boolean }) {
-  const def = metricById(id)
+export function MetricCell({ id, defs, evaluation, currency, isBreak }: { id: MetricId; defs: MetricDef[]; evaluation: AdEvaluation; currency: string; isBreak?: boolean }) {
+  const def = metricById(id, defs)
   const m = evaluation.metrics[id]
   if (m.status === "na") return <span className="text-muted-foreground" title="No aplica en imágenes">—</span>
   if (m.status === "not_measured") return <span className="text-xs text-muted-foreground" title="La cuenta no manda este evento">no medido</span>
@@ -71,9 +71,9 @@ export const BREAK_TEXT: Record<MetricId, string> = {
   roas: "ROAS bajo",
 }
 
-export function breakSummary(e: AdEvaluation, currency: string): string {
+export function breakSummary(e: AdEvaluation, currency: string, defs: MetricDef[]): string {
   if (!e.breakAt) return e.verdict === "nodata" || e.verdict === "starved" ? e.verdictReason : "No se rompe"
-  const def = metricById(e.breakAt)
+  const def = metricById(e.breakAt, defs)
   const m = e.metrics[e.breakAt]
   return `${BREAK_TEXT[e.breakAt]} · ${def.label} ${formatMetric(def, m.value, currency)} vs ${formatMetric(def, m.median, currency)}`
 }

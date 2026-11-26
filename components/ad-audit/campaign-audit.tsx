@@ -9,6 +9,7 @@ import {
 } from "@/lib/ad-audit/metrics"
 import type { CampaignAuditView } from "@/lib/ad-audit/queries"
 import { HoverVideo, MetricCell, VerdictChip, breakSummary } from "@/components/ad-audit/ui"
+import { AnalyzePartsButton } from "@/components/ad-audit/analyze-parts-button"
 
 const CREATIVE_COLS: MetricId[] = ["hook", "hold", "ctr", "cpa"]
 const STORE_COLS: MetricId[] = ["click_visit", "visit_cart", "cart_checkout", "checkout_purchase", "session_cvr", "aov", "roas"]
@@ -28,7 +29,7 @@ export function CampaignAudit({ view, basePath }: { view: CampaignAuditView; bas
     : "minmax(260px,2.6fr) minmax(120px,1fr) repeat(7,minmax(84px,0.75fr)) minmax(200px,1.5fr)"
 
   const t = view.totals
-  const kpi = (id: MetricId) => formatMetric(metricById(id), computeMetric(metricById(id), t, { isVideo: true, missing: view.campaign.missing_events }).value, currency)
+  const kpi = (id: MetricId) => formatMetric(metricById(id, view.metrics), computeMetric(metricById(id, view.metrics), t, { isVideo: true, missing: view.campaign.missing_events }).value, currency)
 
   return (
     <div className="flex flex-col gap-5">
@@ -47,6 +48,17 @@ export function CampaignAudit({ view, basePath }: { view: CampaignAuditView; bas
             <p className="text-lg font-bold tabular-nums">{value}</p>
           </div>
         ))}
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          {(() => {
+            const all = view.adsets.flatMap((x) => x.ads).filter((a) => a.format !== "other")
+            const done = all.filter((a) => a.parts).length
+            return `${done} de ${all.length} creativos analizados por partes (gancho, cuerpo y cierre).`
+          })()}
+        </p>
+        <AnalyzePartsButton pending={view.adsets.flatMap((x) => x.ads).filter((a) => !a.parts && a.format !== "other" && (a.videoUrl || a.imageUrl)).map((a) => ({ adId: a.id, key: a.analysisKey }))} />
       </div>
 
       {view.campaign.missing_events.length > 0 && (
@@ -92,7 +104,7 @@ export function CampaignAudit({ view, basePath }: { view: CampaignAuditView; bas
               <div className="grid gap-3 border-b border-border px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground" style={{ gridTemplateColumns: grid }}>
                 <span>Creativo</span><span>Veredicto</span>
                 {cols.map((id) => (
-                  <span key={id} title={`${metricById(id).formula} · mínimo ${metricById(id).min.label}`} className="cursor-help underline decoration-dotted underline-offset-4">{metricById(id).label}</span>
+                  <span key={id} title={`${metricById(id, view.metrics).formula} · mínimo ${metricById(id, view.metrics).min.label}`} className="cursor-help underline decoration-dotted underline-offset-4">{metricById(id, view.metrics).label}</span>
                 ))}
                 <span>Dónde se rompe</span>
               </div>
@@ -107,13 +119,18 @@ export function CampaignAudit({ view, basePath }: { view: CampaignAuditView; bas
                       <Link href={`${basePath}/a/${ad.id}`} className="truncate font-semibold hover:underline">{ad.name}</Link>
                       <span className="text-xs text-muted-foreground">{ad.format === "video" ? "Video" : ad.format === "image" ? "Imagen" : "Otro"} · {(ad.evaluation.spendShare * 100).toFixed(ad.evaluation.spendShare < 0.1 ? 1 : 0)} % del gasto</span>
                       <span className="text-xs text-muted-foreground tabular-nums">{formatMoney(ad.counters.spend, currency)} · {ad.counters.purchases} compras</span>
+                      {ad.parts && (
+                        <span className="text-xs leading-snug" title={ad.conceptName ?? undefined}>
+                          <span className="text-muted-foreground">G</span> {ad.parts.gancho.tipo} <span className="text-muted-foreground">· C</span> {ad.parts.cuerpo.tipo} <span className="text-muted-foreground">· Ci</span> {ad.parts.cierre.tipo}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <VerdictChip evaluation={ad.evaluation} />
                   {cols.map((id) => (
-                    <MetricCell key={id} id={id} evaluation={ad.evaluation} currency={currency} isBreak={ad.evaluation.breakAt === id} />
+                    <MetricCell key={id} id={id} defs={view.metrics} evaluation={ad.evaluation} currency={currency} isBreak={ad.evaluation.breakAt === id} />
                   ))}
-                  <span className="text-[13px] leading-snug text-muted-foreground">{breakSummary(ad.evaluation, currency)}</span>
+                  <span className="text-[13px] leading-snug text-muted-foreground">{breakSummary(ad.evaluation, currency, view.metrics)}</span>
                 </div>
               ))}
             </div>

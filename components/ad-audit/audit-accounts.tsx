@@ -27,7 +27,10 @@ export function AuditAccounts({ accounts, error }: { accounts: AuditAccountRow[]
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-bold tracking-tight">Auditorías</h1>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-2xl font-bold tracking-tight">Auditorías</h1>
+          <Link href="/ad-lab/auditorias/metricas" className="inline-flex h-10 items-center rounded-lg border border-border bg-card px-3 text-sm font-medium">Métricas de auditoría</Link>
+        </div>
         <p className="max-w-2xl text-sm text-muted-foreground">
           Cuentas publicitarias enviadas desde la extensión. No necesitan estar conectadas al dashboard: se leen con la sesión de quien las ve en el Ads Manager.
         </p>

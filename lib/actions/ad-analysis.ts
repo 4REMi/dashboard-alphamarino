@@ -6,6 +6,7 @@ import { aaiPost, aaiGet } from "@/lib/actions/ad-clone"
 import { describeVideo, type VideoDescription } from "@/lib/ai/video-understanding"
 import { parseAiJson } from "@/lib/utils/ai-json"
 import { CONCEPT_NAME_RULE } from "@/lib/ai/concept-naming"
+import { PARTS_JSON_SHAPE, PARTS_PROMPT, normalizeParts, type CreativeParts } from "@/lib/ad-audit/parts"
 
 // Análisis de concepto de un anuncio de la librería (Ad Lab). Sin Brand
 // Brain: el contexto de la marca se INFIERE de lo que hay — nombre de la
@@ -34,6 +35,9 @@ export interface LibraryAdAnalysis {
   concepto: { nombre: string; angle_type: string; organizing_principle: string; target_persona: string; pain_point: string; objection: string; why_it_works: string; transformation: string; funnel_stage: string; awareness_stage: number }
   gancho: { texto: string; tipo: string; por_que_atrapa: string }
   estructura: { t: string; momento: string; que_pasa: string }[]
+  // Gancho / cuerpo / cierre con tiempos y tipo de una lista fija
+  // (lib/ad-audit/parts.ts). Análisis anteriores a 2026-11-26 no lo traen.
+  partes?: CreativeParts | null
   mecanica: string
   formato: string
   resumen: string
@@ -138,19 +142,21 @@ export async function analyzeLibraryAd(ad: LibraryAdInput): Promise<LibraryAdAna
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
   const msg = await client.messages.create({
     model: "claude-sonnet-4-6",
-    max_tokens: 3000,
+    max_tokens: 3600,
     system: `Eres estratega creativo senior de paid media. Desarmas un anuncio de la competencia para entender su CONCEPTO y por qué funciona. No tienes ficha de la marca: infiere su contexto SOLO de la evidencia (nombre de la página, copy, landing, lo que se ve y se oye) y di qué tan segura es la inferencia y en qué te basas. No inventes datos que no estén en la evidencia.
 ${CONCEPT_NAME_RULE}
 Un anuncio que lleva muchos días activo es señal de que le funciona a la marca.
 ESCRIBE CORTO: se lee en una interfaz. Respeta los límites de palabras; nada de párrafos.
 angle_type EXACTAMENTE uno de: ${ANGULOS.join(", ")}. funnel_stage: TOF, MOF o BOF. organizing_principle: Pain-First o Desire-First. awareness_stage: 1-5.
 "t" de la estructura en formato m:ss-m:ss, cubriendo todo el video (en imágenes una sola entrada "imagen").
+${PARTS_PROMPT}
 Responde SOLO JSON en español:
 {"resumen":"qué hace el anuncio y por qué funciona, máx. 25 palabras",
 "marca":{"que_vende":"máx. 20 palabras","audiencia":"máx. 15","oferta":"máx. 15","posicionamiento":"máx. 15","confianza":"alta|media|baja","basado_en":"máx. 25"},
 "concepto":{"nombre":"Dolor × Persona — Ángulo","angle_type":"","organizing_principle":"","target_persona":"máx. 20","pain_point":"máx. 20","objection":"máx. 15","why_it_works":"máx. 25","transformation":"máx. 15","funnel_stage":"","awareness_stage":3},
 "gancho":{"texto":"lo que se dice/ve en los primeros 3 s, literal","tipo":"pregunta|afirmación polémica|dato|demostración|historia|otro","por_que_atrapa":"máx. 20"},
 "estructura":[{"t":"0:00-0:06","momento":"gancho|problema|demostración|prueba social|oferta|CTA|otro","que_pasa":"máx. 18 palabras"}],
+${PARTS_JSON_SHAPE},
 "mecanica":"máx. 18 palabras","formato":"máx. 10 palabras",
 "por_que_funciona":[{"titulo":"máx. 7 palabras","detalle":"máx. 30"}],
 "debilidades":[{"titulo":"máx. 7","detalle":"máx. 30"}],
@@ -172,7 +178,7 @@ TEXTO DE LA LANDING: ${landing ?? "(no disponible)"}`,
   // Tolerar listas como texto suelto (versión anterior del prompt).
   const pts = (l: unknown): Point[] => (Array.isArray(l) ? l : []).map((x) => (typeof x === "string" ? { titulo: x, detalle: "" } : x as Point))
   const result: LibraryAdAnalysis = {
-    ...parsed, por_que_funciona: pts(parsed.por_que_funciona), debilidades: pts(parsed.debilidades), como_adaptarlo: pts(parsed.como_adaptarlo),
+    ...parsed, partes: normalizeParts(parsed.partes), por_que_funciona: pts(parsed.por_que_funciona), debilidades: pts(parsed.debilidades), como_adaptarlo: pts(parsed.como_adaptarlo),
     transcript, media, visionError, landingLeida: !!landing, diasCorriendo: dias, analyzedAt: new Date().toISOString(), ad,
   }
   const { error } = await createAdminClient().from("ad_analyses").upsert({

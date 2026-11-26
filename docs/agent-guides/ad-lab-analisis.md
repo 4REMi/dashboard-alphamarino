@@ -74,3 +74,10 @@ trae el análisis) con los trabajos de `analysis-jobs.ts`, así cambia en vivo a
 terminar. Usa la MISMA clave que el modal (`ad_archive_id` o `saved:<id>`); un
 anuncio de Discovery sin id ni guardar (clave `media:…`) siempre muestra
 "Analizar concepto". Botón compartido: `components/ad-lab/analyze-concept-button.tsx`.
+
+## Partes del creativo (2026-11-26)
+
+El análisis ahora también devuelve `partes`: gancho, cuerpo y cierre con
+`desde`/`hasta` en segundos y un `tipo` de una lista cerrada
+(`lib/ad-audit/parts.ts`). Lo usan las Auditorías («Qué funciona»); ver
+[auditorias.md](./auditorias.md). Análisis anteriores no lo traen.

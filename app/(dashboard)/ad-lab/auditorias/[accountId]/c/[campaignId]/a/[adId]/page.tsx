@@ -15,7 +15,7 @@ export default async function AuditAdPage({ params }: { params: Promise<{ accoun
   if (!adset || !ad) notFound()
   return (
     <div className="mx-auto max-w-[1500px] p-4 sm:p-6">
-      <AdAuditDetail ad={ad} adset={adset} currency={view.account.currency ?? "MXN"} backHref={`/ad-lab/auditorias/${accountId}/c/${campaignId}`} />
+      <AdAuditDetail ad={ad} adset={adset} currency={view.account.currency ?? "MXN"} backHref={`/ad-lab/auditorias/${accountId}/c/${campaignId}`} metrics={view.metrics} />
     </div>
   )
 }

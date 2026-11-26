@@ -39,6 +39,16 @@ export function addCounters(into: Counters, row: Partial<Record<keyof Counters, 
   return into
 }
 
+// Nombres en español de cada conteo (para fórmulas y la pantalla de
+// Métricas de auditoría).
+export const COUNTER_LABEL: Record<keyof Counters, string> = {
+  impressions: "Impresiones", spend: "Gasto", video_3s: "Reproducciones de 3 s",
+  video_p25: "Reproducciones al 25 %", video_p50: "Reproducciones al 50 %", video_p75: "Reproducciones al 75 %",
+  video_p95: "Reproducciones al 95 %", video_p100: "Reproducciones al 100 %", thruplays: "ThruPlays",
+  outbound_clicks: "Clics de salida", landing_page_views: "Visitas a la página", add_to_cart: "Agregados al carrito",
+  initiate_checkout: "Pagos iniciados", purchases: "Compras", purchase_value: "Valor de compras",
+}
+
 // Eventos de la tienda que una cuenta puede no mandar (píxel/CAPI incompleto).
 export type StoreEvent = "landing_page_view" | "add_to_cart" | "initiate_checkout" | "purchase"
 
@@ -76,7 +86,32 @@ export const METRICS: MetricDef[] = [
   { id: "roas", label: "ROAS", formula: "Valor de compras ÷ gasto", num: "purchase_value", den: "spend", view: "store", format: "ratio", higherIsBetter: true, min: { key: "purchases", value: 5, label: "5 compras" }, needs: ["purchase"] },
 ]
 
-export const metricById = (id: MetricId) => METRICS.find((m) => m.id === id)!
+export const metricById = (id: MetricId, defs: MetricDef[] = METRICS) => defs.find((m) => m.id === id)!
+
+// Cambios de la agencia a las fórmulas (tabla audit_metric_overrides,
+// pantalla Métricas de auditoría). Se aplican sobre METRICS; lo que no se
+// cambió queda como está.
+export interface MetricOverride {
+  metric_id: MetricId
+  num: keyof Counters
+  den: keyof Counters
+  min_key: keyof Counters
+  min_value: number
+}
+
+export function applyOverrides(overrides: MetricOverride[]): MetricDef[] {
+  return METRICS.map((m) => {
+    const o = overrides.find((x) => x.metric_id === m.id)
+    if (!o || !(o.num in COUNTER_LABEL) || !(o.den in COUNTER_LABEL) || !(o.min_key in COUNTER_LABEL)) return m
+    return {
+      ...m,
+      num: o.num,
+      den: o.den,
+      formula: `${COUNTER_LABEL[o.num]} ÷ ${COUNTER_LABEL[o.den]}`,
+      min: { key: o.min_key, value: Math.max(0, Number(o.min_value) || 0), label: `${Number(o.min_value).toLocaleString("es-MX")} ${COUNTER_LABEL[o.min_key].toLowerCase()}` },
+    }
+  })
+}
 
 // Orden del embudo para "dónde se rompe": la primera etapa con muestra
 // suficiente que queda claramente por debajo de la mediana del conjunto.
@@ -145,15 +180,15 @@ export interface AdEvaluation {
 const MIN_IMPRESSIONS = 1000
 const STARVED_SHARE = 0.05
 
-export function evaluateAdset(ads: AuditAdInput[], missing: StoreEvent[]): { evaluations: AdEvaluation[]; medians: Record<MetricId, number | null>; totals: Counters } {
+export function evaluateAdset(ads: AuditAdInput[], missing: StoreEvent[], defs: MetricDef[] = METRICS): { evaluations: AdEvaluation[]; medians: Record<MetricId, number | null>; totals: Counters } {
   const totals = ads.reduce((acc, a) => addCounters(acc, a.counters as unknown as Record<keyof Counters, number>), zeroCounters())
 
   const raw = ads.map((a) => ({
     ad: a,
-    values: Object.fromEntries(METRICS.map((m) => [m.id, computeMetric(m, a.counters, { isVideo: a.isVideo, missing })])) as Record<MetricId, MetricValue>,
+    values: Object.fromEntries(defs.map((m) => [m.id, computeMetric(m, a.counters, { isVideo: a.isVideo, missing })])) as Record<MetricId, MetricValue>,
   }))
 
-  const medians = Object.fromEntries(METRICS.map((m) => [
+  const medians = Object.fromEntries(defs.map((m) => [
     m.id,
     median(raw.filter((r) => r.values[m.id].sampleOk).map((r) => r.values[m.id].value as number)),
   ])) as Record<MetricId, number | null>
@@ -161,7 +196,7 @@ export function evaluateAdset(ads: AuditAdInput[], missing: StoreEvent[]): { eva
   const comparableForCpa = raw.filter((r) => r.values.cpa.sampleOk).length
 
   const evaluations = raw.map(({ ad, values }): AdEvaluation => {
-    const metrics = Object.fromEntries(METRICS.map((m) => {
+    const metrics = Object.fromEntries(defs.map((m) => {
       const v = values[m.id]
       const { cmp, rel } = v.sampleOk ? compare(m, v.value, medians[m.id]) : { cmp: "none" as Comparison, rel: null }
       return [m.id, { ...v, median: medians[m.id], cmp, rel }]

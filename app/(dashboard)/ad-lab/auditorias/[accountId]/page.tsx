@@ -20,6 +20,13 @@ export default async function AuditAccountPage({ params }: { params: Promise<{ a
         <h1 className="text-2xl font-bold tracking-tight">{account.name}</h1>
         <p className="text-sm text-muted-foreground">act_{account.meta_account_id} · {campaigns.length} campaña{campaigns.length === 1 ? "" : "s"} auditada{campaigns.length === 1 ? "" : "s"}</p>
       </div>
+      <Link href={`/ad-lab/auditorias/${account.id}/funciona`} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-500/40 bg-card p-4 transition-colors hover:border-emerald-500/70">
+        <div>
+          <p className="font-semibold">Qué funciona en esta cuenta</p>
+          <p className="text-sm text-muted-foreground">Ganchos, cuerpos y cierres por tipo, con sus videos y respaldo en datos.</p>
+        </div>
+        <span className="text-sm font-semibold text-primary">Ver →</span>
+      </Link>
       <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(320px,1fr))]">
         {campaigns.map((c) => (
           <Link key={c.id} href={`/ad-lab/auditorias/${account.id}/c/${c.id}`} className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 transition-colors hover:border-primary/40">

@@ -4,11 +4,20 @@
 
 import { createAdminClient } from "@/lib/supabase/admin"
 import {
-  addCounters, evaluateAdset, zeroCounters,
-  type AdEvaluation, type Counters, type MetricId, type StoreEvent,
+  addCounters, applyOverrides, evaluateAdset, zeroCounters,
+  type AdEvaluation, type Counters, type MetricDef, type MetricId, type MetricOverride, type StoreEvent,
 } from "@/lib/ad-audit/metrics"
+import { auditAnalysisKey, type CreativeParts } from "@/lib/ad-audit/parts"
 
 type Admin = ReturnType<typeof createAdminClient>
+
+// Fórmulas vigentes: las de fábrica con los cambios de la agencia. Si la
+// tabla aún no existe (falta la migración 125), las de fábrica.
+export async function loadMetricDefs(admin: Admin = createAdminClient()): Promise<MetricDef[]> {
+  const { data, error } = await admin.from("audit_metric_overrides").select("metric_id, num, den, min_key, min_value")
+  if (error) return applyOverrides([])
+  return applyOverrides((data ?? []) as MetricOverride[])
+}
 
 // Supabase devuelve como máximo 1000 filas por consulta: paginar.
 async function fetchAll<T>(build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>): Promise<T[]> {
@@ -129,6 +138,9 @@ export interface AuditAdView {
   counters: Counters
   curve: number[] | null
   evaluation: AdEvaluation
+  analysisKey: string
+  parts: CreativeParts | null       // null = sin analizar por partes
+  conceptName: string | null
 }
 
 export interface AuditAdsetView {
@@ -141,6 +153,7 @@ export interface AuditAdsetView {
 }
 
 export interface CampaignAuditView {
+  metrics: MetricDef[]
   account: { id: string; name: string; currency: string | null; meta_account_id: string }
   campaign: { id: string; name: string; objective: string | null; period_since: string | null; period_until: string | null; captured_at: string | null; missing_events: StoreEvent[] }
   totals: Counters
@@ -178,6 +191,14 @@ export async function getCampaignAudit(campaignId: string): Promise<CampaignAudi
     for (const c of data ?? []) curves.set(c.ad_id as string, c.curve as number[])
   }
 
+  const defs = await loadMetricDefs(admin)
+  const keys = [...new Set(ads.map((a) => auditAnalysisKey(a)))]
+  const analyses = new Map<string, { partes?: CreativeParts | null; concepto?: { nombre?: string } }>()
+  for (let i = 0; i < keys.length; i += 200) {
+    const { data } = await admin.from("ad_analyses").select("ad_archive_id, analysis").in("ad_archive_id", keys.slice(i, i + 200))
+    for (const r of data ?? []) analyses.set(r.ad_archive_id as string, r.analysis as { partes?: CreativeParts | null; concepto?: { nombre?: string } })
+  }
+
   const missing = (campaign.missing_events ?? []) as StoreEvent[]
   const totals = zeroCounters()
   const adsetViews: AuditAdsetView[] = []
@@ -188,6 +209,7 @@ export async function getCampaignAudit(campaignId: string): Promise<CampaignAudi
     const { evaluations, medians, totals: setTotals } = evaluateAdset(
       members.map((a) => ({ id: a.id, isVideo: a.format === "video", counters: countersByAd.get(a.id) ?? zeroCounters() })),
       missing,
+      defs,
     )
     addCounters(totals, setTotals)
     const views: AuditAdView[] = members.map((a) => {
@@ -202,6 +224,9 @@ export async function getCampaignAudit(campaignId: string): Promise<CampaignAudi
         counters: countersByAd.get(a.id) ?? zeroCounters(),
         curve: curves.get(a.id) ?? null,
         evaluation: evaluations.find((e) => e.id === a.id)!,
+        analysisKey: auditAnalysisKey(a),
+        parts: analyses.get(auditAnalysisKey(a))?.partes ?? null,
+        conceptName: analyses.get(auditAnalysisKey(a))?.concepto?.nombre ?? null,
       }
     }).sort((x, y) => y.counters.spend - x.counters.spend)
     adsetViews.push({ id: s.id, name: s.name, optimization_goal: s.optimization_goal, totals: setTotals, medians, ads: views })
@@ -209,9 +234,48 @@ export async function getCampaignAudit(campaignId: string): Promise<CampaignAudi
   adsetViews.sort((x, y) => y.totals.spend - x.totals.spend)
 
   return {
+    metrics: defs,
     account: account as CampaignAuditView["account"],
     campaign: { ...campaign, missing_events: missing } as CampaignAuditView["campaign"],
     totals,
     adsets: adsetViews,
   }
+}
+
+// Todas las campañas de una cuenta ya evaluadas (para «Qué funciona»).
+export async function getAccountCampaignViews(accountId: string): Promise<CampaignAuditView[]> {
+  const admin = createAdminClient()
+  const { data: camps } = await admin.from("audit_campaigns").select("id").eq("account_id", accountId)
+  const views: CampaignAuditView[] = []
+  for (const c of camps ?? []) {
+    const v = await getCampaignAudit(c.id)
+    if (v) views.push(v)
+  }
+  return views
+}
+
+// Hipótesis de una campaña (fase 2) con su estado (fase 3).
+export interface AuditHypothesis {
+  id: string
+  adset_id: string | null
+  part: "gancho" | "cuerpo" | "cierre" | "tienda" | "general"
+  claim: string
+  evidence: string
+  test: string | null
+  confidence: "alta" | "media" | "baja"
+  ad_ids: string[]
+  status: "open" | "confirmed" | "discarded"
+  status_note: string | null
+  status_changed_at: string | null
+  period_since: string | null
+  period_until: string | null
+  created_at: string
+}
+
+export async function getCampaignHypotheses(campaignId: string): Promise<{ rows: AuditHypothesis[]; error: string | null }> {
+  const { data, error } = await createAdminClient().from("audit_hypotheses")
+    .select("id, adset_id, part, claim, evidence, test, confidence, ad_ids, status, status_note, status_changed_at, period_since, period_until, created_at")
+    .eq("campaign_id", campaignId).order("created_at", { ascending: false })
+  if (error) return { rows: [], error: /audit_hypotheses/.test(error.message) ? "Falta correr la migración 125 en Supabase" : error.message }
+  return { rows: (data ?? []) as AuditHypothesis[], error: null }
 }
