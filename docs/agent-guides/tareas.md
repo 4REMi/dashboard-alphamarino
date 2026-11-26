@@ -2,7 +2,7 @@
 
 **Ruta:** `/tasks`
 **Para quién:** ambos (admin ve más — ver "Quién puede ver/hacer qué")
-**Actualizado:** 2026-11-17
+**Actualizado:** 2026-11-26
 
 ## Qué es y para qué sirve
 
@@ -264,3 +264,16 @@ se entrega. Antes siempre se creaban sin entregable. Igual en el MCP
 ## Por MCP: editar y eliminar tareas — 2026-11-17
 
 Claude puede editar una tarea ya creada (`editar_tarea`: título, descripción, estado, fecha, responsable, ping, entregable, checklist) y borrarla (`eliminar_tarea`, solo admin). Mismas acciones y reglas que la UI; detalle en `mcp-server.md` ("editar_tarea y eliminar_tarea"). **Regla del servidor:** borrar una tarea es solo de admin (antes solo lo escondía el botón; `deleteTask` ahora lo exige).
+
+## "Recordar" (buzz) desde el modal de la tarea — 2026-11-26
+
+En el encabezado del modal de detalle (junto a cerrar) hay un botón **Recordar**
+(campana). Le manda al responsable un aviso de que la tarea sigue pendiente
+(evento `task_reminder`: Telegram + bandeja del inicio), con quién lo envía,
+proyecto y fecha límite si la hay. Reglas (las valida el servidor,
+`sendTaskReminder` en `lib/actions/tasks.ts`): solo aparece si la tarea tiene
+responsable y no está Hecha; no se puede recordar a uno mismo; **máximo uno por
+hora por tarea** (si no, dice a qué hora se puede de nuevo). Lo puede usar
+cualquiera con permiso de tareas sobre ese proyecto. El modal muestra cuándo fue
+el último recordatorio (`tasks.last_reminded_at`, migración 124). Es manual:
+no hay recordatorios automáticos.

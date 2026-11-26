@@ -3,7 +3,7 @@
 import { useState, useTransition, useRef, useEffect } from "react"
 import { createPortal } from "react-dom"
 import { useTranslations } from "next-intl"
-import { deleteTask, updateTask, updateTaskStatus, updateTaskAssignee, updateTaskPinged, createChecklistItem, toggleChecklistItem, updateChecklistItem, deleteChecklistItem, reorderChecklistItems } from "@/lib/actions/tasks"
+import { deleteTask, updateTask, updateTaskStatus, updateTaskAssignee, updateTaskPinged, sendTaskReminder, createChecklistItem, toggleChecklistItem, updateChecklistItem, deleteChecklistItem, reorderChecklistItems } from "@/lib/actions/tasks"
 import { assignSopToTask } from "@/lib/actions/sops"
 import { PingRecipientsPicker } from "@/components/tasks/ping-recipients-picker"
 import { DeliverableDrawer } from "@/components/projects/deliverable-drawer"
@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Trash2, CalendarDays, ChevronDown, ChevronRight, UserX, Bell, Paperclip, X, BookOpen, Search, ExternalLink, GripVertical, Lock, ListChecks, Plus, ChevronsUpDown } from "lucide-react"
+import { Trash2, CalendarDays, ChevronDown, ChevronRight, UserX, Bell, Paperclip, X, BookOpen, Search, ExternalLink, GripVertical, Lock, ListChecks, Plus, ChevronsUpDown, BellRing } from "lucide-react"
 import { formatDate } from "@/lib/utils"
 import { cn } from "@/lib/utils"
 import type { Task, Profile, TaskStatus, Deliverable, Sop, TaskChecklistItem } from "@/lib/types"
@@ -776,6 +776,63 @@ function ChecklistEditor({
 
 // ─── Task Detail Modal ────────────────────────────────────────────────────────
 
+// "Recordar" (buzz): reenvía al responsable un aviso de que la tarea sigue
+// pendiente (sendTaskReminder → evento task_reminder). Solo aparece si hay
+// responsable y la tarea no está hecha; el servidor limita a uno por hora.
+function ReminderButton({ task, projectId, onReminded }: { task: Task; projectId: string | null; onReminded: (at: string) => void }) {
+  const tT = useTranslations("tasks")
+  const [isPending, startTransition] = useTransition()
+  const [feedback, setFeedback] = useState<{ tone: "ok" | "warn"; text: string } | null>(null)
+
+  const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+  const fmtWhen = (iso: string) => new Date(iso).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
+
+  function handleClick() {
+    setFeedback(null)
+    startTransition(async () => {
+      try {
+        const res = await sendTaskReminder(task.id, projectId)
+        if (res.ok) {
+          onReminded(res.remindedAt)
+          setFeedback({ tone: "ok", text: tT("remindSent") })
+        } else {
+          const text =
+            res.reason === "cooldown" && res.retryAt ? tT("remindCooldown", { time: fmtTime(res.retryAt) })
+            : res.reason === "no_assignee" ? tT("remindNoAssignee")
+            : res.reason === "done" ? tT("remindDone")
+            : res.reason === "self" ? tT("remindSelf")
+            : tT("remindNotFound")
+          setFeedback({ tone: "warn", text })
+        }
+      } catch {
+        setFeedback({ tone: "warn", text: tT("remindError") })
+      }
+    })
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      {feedback ? (
+        <span className={cn("text-xs", feedback.tone === "ok" ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400")}>
+          {feedback.text}
+        </span>
+      ) : task.last_reminded_at ? (
+        <span className="text-xs text-muted-foreground hidden sm:inline">{tT("remindLast", { when: fmtWhen(task.last_reminded_at) })}</span>
+      ) : null}
+      <button
+        type="button"
+        onClick={handleClick}
+        disabled={isPending}
+        title={tT("remindTitle")}
+        className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-50 transition-colors"
+      >
+        <BellRing className={cn("w-3.5 h-3.5", isPending && "animate-pulse")} />
+        {tT("remind")}
+      </button>
+    </div>
+  )
+}
+
 export function TaskDetailModal({
   task,
   projectId,
@@ -865,9 +922,14 @@ export function TaskDetailModal({
               onStatusChange={(status) => { setCurrentStatus(status); onTaskUpdate({ status }) }}
             />
           </div>
-          <button onClick={onClose} className="p-1 rounded text-muted-foreground hover:text-foreground flex-shrink-0">
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {currentAssigneeId && currentStatus !== "Done" && (
+              <ReminderButton task={task} projectId={projectId} onReminded={(at) => onTaskUpdate({ last_reminded_at: at })} />
+            )}
+            <button onClick={onClose} className="p-1 rounded text-muted-foreground hover:text-foreground">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Form */}
