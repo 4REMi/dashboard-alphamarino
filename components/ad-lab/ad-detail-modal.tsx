@@ -6,7 +6,7 @@ import { saveAd, addAdToBoard, createBoard } from "@/lib/actions/ad-lab"
 import { getAdClones, deleteAdClone } from "@/lib/actions/ad-clone"
 import { getImageClones, deleteImageClone } from "@/lib/actions/image-clone"
 import {
-  X, ExternalLink, Bookmark, ScanSearch, Check, Loader2,
+  X, ExternalLink, Bookmark, Check, Loader2,
   Calendar, Wand2, ImageIcon, ChevronLeft, ChevronRight, Link as LinkIcon, Plus, Trash2, FolderPlus, FileText,
 } from "lucide-react"
 import { SiFacebook, SiInstagram, SiMessenger, SiMeta, SiThreads } from "@icons-pack/react-simple-icons"
@@ -14,6 +14,8 @@ import { CloneModal } from "@/components/ad-lab/clone-modal"
 import { ImageCloneModal } from "@/components/ad-lab/image-clone-modal"
 import { ExtractScriptModal } from "@/components/ad-lab/extract-script-modal"
 import { ConceptAnalysisModal } from "@/components/ad-lab/concept-analysis-modal"
+import { AnalyzeConceptButton } from "@/components/ad-lab/analyze-concept-button"
+import { useConceptAnalysisStatus } from "@/lib/hooks/use-concept-analysis-status"
 
 interface Props {
   ad: MetaAdResult | null
@@ -115,6 +117,10 @@ export function AdDetailModal({ ad, boards: boardsProp, onClose, savedAdId }: Pr
     getAdClones(effectiveSavedAdId).then((c) => { setClones(c); setLoadingClones(false) })
     getImageClones(effectiveSavedAdId).then((c) => setImageClones(c))
   }, [effectiveSavedAdId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Misma clave que usa ConceptAnalysisModal abajo (sin el caso "media:", que
+  // es un anuncio sin id ni guardar: ahí el botón queda como "Analizar").
+  const analysisStatus = useConceptAnalysisStatus(ad ? (ad.ad_archive_id || (savedAdId ? `saved:${savedAdId}` : null)) : null)
 
   if (!ad) return null
 
@@ -705,14 +711,7 @@ export function AdDetailModal({ ad, boards: boardsProp, onClose, savedAdId }: Pr
 
             {/* Concept analysis — video or image; no brand/board needed */}
             {(videoUrl || thumbUrl) && (
-              <button
-                title="Desarma el concepto del anuncio: ángulo, persona, dolor, gancho, estructura y cómo adaptarlo"
-                onClick={() => setShowAnalysis(true)}
-                className="h-9 px-3 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted flex items-center gap-2 whitespace-nowrap flex-1 justify-center transition-colors"
-              >
-                <ScanSearch className="w-4 h-4" />
-                Analizar concepto
-              </button>
+              <AnalyzeConceptButton status={analysisStatus} onClick={() => setShowAnalysis(true)} className="flex-1" />
             )}
 
             {/* Image clone button */}

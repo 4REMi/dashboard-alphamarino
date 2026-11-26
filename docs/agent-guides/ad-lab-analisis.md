@@ -56,3 +56,28 @@ El análisis corre dentro de una función de Vercel que muere a los 300 s. Antes
 - Gemini (`lib/ai/video-understanding.ts`, `describeVideo(url, kind, deadline)`): cada llamada (descarga, subida, espera de procesamiento, generación) tiene límite; no lanza un intento nuevo si quedan menos de 25 s. Si Gemini está saturado o no alcanza, el análisis sigue sin la descripción del video (etiqueta "No visto") con el aviso "Gemini está saturado… vuelve a analizar más tarde".
 - La transcripción se abandona al llegar al límite y sigue sin ella.
 - Tiempo normal de un video: 40 s – 2 min. Más largo = video largo o Gemini saturado; el tope práctico ahora es ~4.5 min, nunca el corte de Vercel.
+
+## Botón "Concepto analizado" (2026-11-26)
+
+En el detalle de un anuncio (`ad-detail-modal.tsx`) y de un post orgánico
+(`organic-post-detail-modal.tsx`) el botón cambia según el estado:
+- **Analizar concepto** — nunca se ha analizado.
+- **Analizando…** (con spinner) — hay un análisis en curso para ese anuncio,
+  aunque el modal se haya cerrado ("Cerrar y avisarme").
+- **Concepto analizado** (verde, con ✓) — ya hay análisis guardado en
+  `ad_analyses`. Al abrirlo muestra el guardado: no vuelve a analizar ni cobra
+  (↻ dentro del modal sigue re-analizando).
+
+Fuente: `useConceptAnalysisStatus(adArchiveId)` (`lib/hooks/use-concept-analysis-status.ts`)
+combina `hasSavedAdAnalysis` (`lib/actions/ad-analysis.ts`; solo cuenta, no
+trae el análisis) con los trabajos de `analysis-jobs.ts`, así cambia en vivo al
+terminar. Usa la MISMA clave que el modal (`ad_archive_id` o `saved:<id>`); un
+anuncio de Discovery sin id ni guardar (clave `media:…`) siempre muestra
+"Analizar concepto". Botón compartido: `components/ad-lab/analyze-concept-button.tsx`.
+
+## Partes del creativo (2026-11-26)
+
+El análisis ahora también devuelve `partes`: gancho, cuerpo y cierre con
+`desde`/`hasta` en segundos y un `tipo` de una lista cerrada
+(`lib/ad-audit/parts.ts`). Lo usan las Auditorías («Qué funciona»); ver
+[auditorias.md](./auditorias.md). Análisis anteriores no lo traen.

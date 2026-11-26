@@ -92,7 +92,8 @@ export function McpApiKeys({ profileId }: { profileId: string }) {
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">
         Genera una key personal para que Claude (o cualquier cliente compatible con MCP) pueda crear/completar tareas
-        y agregar notas de bitácora por ti, con los mismos permisos que ya tienes en el dashboard.
+        y agregar notas de bitácora por ti, con los mismos permisos que ya tienes en el dashboard. La misma key
+        conecta la extensión de Chrome para guardar anuncios en boards de Ad Lab.
       </p>
 
       {revealedKey ? (

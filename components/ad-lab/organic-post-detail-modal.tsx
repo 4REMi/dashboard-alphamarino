@@ -2,10 +2,12 @@
 
 import { useState } from "react"
 import type { SavedAd } from "@/lib/types"
-import { X, ChevronLeft, ChevronRight, Heart, MessageCircle, ExternalLink, Wand2, Layers, FileText, ScanSearch, ImageIcon } from "lucide-react"
+import { X, ChevronLeft, ChevronRight, Heart, MessageCircle, ExternalLink, Wand2, Layers, FileText, ImageIcon } from "lucide-react"
 import { CloneModal } from "@/components/ad-lab/clone-modal"
 import { ExtractScriptModal } from "@/components/ad-lab/extract-script-modal"
 import { ConceptAnalysisModal } from "@/components/ad-lab/concept-analysis-modal"
+import { AnalyzeConceptButton } from "@/components/ad-lab/analyze-concept-button"
+import { useConceptAnalysisStatus } from "@/lib/hooks/use-concept-analysis-status"
 import type { MetaAdResult } from "@/lib/types"
 import { CarouselCloneModal } from "@/components/ad-lab/carousel-clone-modal"
 import { ImageCloneModal } from "@/components/ad-lab/image-clone-modal"
@@ -41,6 +43,8 @@ export function OrganicPostDetailModal({ post, onClose }: Props) {
   const [showScriptClone, setShowScriptClone] = useState(false)
   const [showExtract, setShowExtract] = useState(false)
   const [showAnalysis, setShowAnalysis] = useState(false)
+  const analysisKey = post.ad_archive_id ?? `saved:${post.id}`
+  const analysisStatus = useConceptAnalysisStatus(analysisKey)
 
   const currentImageUrl = isCarousel
     ? slides[slideIndex]
@@ -69,7 +73,7 @@ export function OrganicPostDetailModal({ post, onClose }: Props) {
         onClose={() => setShowAnalysis(false)}
         onClone={() => { setShowAnalysis(false); if (videoUrl) setShowScriptClone(true); else setShowClone(true) }}
         ad={{
-          adArchiveId: post.ad_archive_id ?? `saved:${post.id}`, pageId: post.page_id ?? null, pageName: post.page_name,
+          adArchiveId: analysisKey, pageId: post.page_id ?? null, pageName: post.page_name,
           body: post.caption ?? null, title: null, caption: null, cta: null, linkUrl: post.post_url ?? null,
           videoUrl, imageUrl: currentImageUrl, isActive: false, startDate: null,
         }}
@@ -189,10 +193,7 @@ export function OrganicPostDetailModal({ post, onClose }: Props) {
                     className="h-9 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted inline-flex items-center justify-center gap-2 transition-colors">
                     <FileText className="w-4 h-4" />Extraer script
                   </button>
-                  <button onClick={() => setShowAnalysis(true)} title="Ángulo, persona, dolor, gancho, estructura y cómo adaptarlo"
-                    className="h-9 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted inline-flex items-center justify-center gap-2 transition-colors">
-                    <ScanSearch className="w-4 h-4" />Analizar concepto
-                  </button>
+                  <AnalyzeConceptButton status={analysisStatus} onClick={() => setShowAnalysis(true)} />
                 </div>
                 {currentImageUrl && (
                   <button onClick={() => setShowClone(true)} title="Clonar la portada del video como imagen estática"
@@ -212,10 +213,7 @@ export function OrganicPostDetailModal({ post, onClose }: Props) {
                   {isCarousel ? `Clonar esta slide (${slideIndex + 1}/${slides.length})` : "Clonar imagen"}
                 </button>
                 {currentImageUrl && (
-                  <button onClick={() => setShowAnalysis(true)}
-                    className="w-full h-9 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted inline-flex items-center justify-center gap-2 transition-colors">
-                    <ScanSearch className="w-4 h-4" />Analizar concepto
-                  </button>
+                  <AnalyzeConceptButton status={analysisStatus} onClick={() => setShowAnalysis(true)} className="w-full" />
                 )}
               </>
             )}

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>Guardar anuncios en Ad Lab</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header>
+    <img src="../icons/icon32.png" alt="" width="20" height="20" />
+    <h1>Guardar anuncios</h1>
+    <span id="status" class="pill">Sin conectar</span>
+  </header>
+
+  <section id="perm-section" hidden>
+    <h2>Permisos</h2>
+    <p class="muted">Falta que autorices a la extensión a leer Facebook y la API de Meta (en Firefox no vienen activados al instalarla).</p>
+    <button id="grant-perms" class="primary">Dar permisos</button>
+  </section>
+
+  <section id="page-section" hidden>
+    <h2>Esta página</h2>
+    <p id="page-info" class="muted"></p>
+    <button id="send-selected" class="primary" hidden></button>
+  </section>
+
+  <section id="board-section" hidden>
+    <h2>Board</h2>
+    <select id="board"></select>
+    <div class="row">
+      <input id="new-board" placeholder="Nombre de un board nuevo" />
+      <button id="create-board">Crear</button>
+    </div>
+  </section>
+
+  <details id="manual" hidden>
+    <summary>Enviar por ID de anuncio</summary>
+    <textarea id="manual-ids" rows="3" placeholder="IDs de anuncio del Ads Manager, separados por coma o salto de línea"></textarea>
+    <button id="send-manual">Enviar al board</button>
+  </details>
+
+  <details id="settings">
+    <summary>Conexión con el dashboard</summary>
+    <label>URL del dashboard
+      <input id="url" placeholder="https://tu-dashboard.com" />
+    </label>
+    <label>API key personal
+      <input id="key" type="password" placeholder="admk_…" autocomplete="off" />
+    </label>
+    <p class="muted small">Se genera en tu perfil del dashboard, tarjeta «API keys de IA (MCP)». Necesitas acceso a Ad Lab.</p>
+    <button id="save-settings" class="primary">Guardar y probar</button>
+  </details>
+
+  <p id="msg" class="msg" hidden></p>
+  <script src="popup.js"></script>
+</body>
+</html>
