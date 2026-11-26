@@ -55,6 +55,9 @@ no cambiarlo, o Firefox la trata como otra extensión.
   tú veas (también auditorías de prospectos). Tu sesión no se comparte con el
   dashboard: solo se le manda el archivo.
 - **Ad Library**: botón «Guardar» en cada anuncio.
+- **Auditorías**: en el Ads Manager, marca campañas en la pestaña «Campañas» →
+  «Auditar N campañas» → elige el período → «Enviar al dashboard». Va despacio
+  a propósito para no saturar la cuenta; al terminar aparece «Abrir auditoría».
 
 ## Actualizar
 

@@ -33,6 +33,7 @@ import {
   Puzzle,
   Wallet,
   ScanSearch,
+  ClipboardCheck,
   Bot,
   FileSignature,
 } from "lucide-react"
@@ -98,6 +99,7 @@ export function Sidebar({ profile, logoUrl, myPendingTaskCount = 0, mobileOpen =
         { href: "/ad-lab/discovery", icon: LayoutGrid, label: "Discovery"     },
         { href: "/ad-lab/boards",    icon: FolderOpen, label: "Boards"        },
         { href: "/ad-lab/analisis",  icon: ScanSearch, label: "Análisis"      },
+        { href: "/ad-lab/auditorias", icon: ClipboardCheck, label: "Auditorías" },
         { href: "/ad-lab/brands",    icon: Radio,      label: "Marcas"        },
         { href: "/ad-lab/creatives", icon: ImagePlay,  label: "Creatives"     },
         { href: "/ad-lab/scratch",   icon: Sparkles,   label: "Crear desde cero" },

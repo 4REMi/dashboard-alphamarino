@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Alpha Marino — Guardar anuncios",
   "short_name": "AM Ads",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Manda anuncios del Ads Manager y de la Biblioteca de anuncios de Meta a un board de Ad Lab.",
   "action": {
     "default_popup": "popup/popup.html",
@@ -40,7 +40,8 @@
       ],
       "js": [
         "content/common.js",
-        "content/ads-manager.js"
+        "content/ads-manager.js",
+        "content/audit.js"
       ],
       "run_at": "document_idle"
     },

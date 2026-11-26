@@ -20,7 +20,7 @@ import type { Profile } from "@/lib/types"
 const META_BASE = "https://graph.facebook.com/v21.0"
 const MAX_ADS_PER_REQUEST = 25
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const NUMERIC_ID_RE = /^\d{5,25}$/
+export const NUMERIC_ID_RE = /^\d{5,25}$/
 
 export class ExtensionError extends Error {
   constructor(message: string, public status = 400) {
@@ -141,7 +141,7 @@ function extOf(url: string, fallback: string) {
 
 const META_CDN_HOSTS = [/\.fbcdn\.net$/i, /\.cdninstagram\.com$/i, /(^|\.)facebook\.com$/i]
 
-function safeMetaUrl(raw: unknown): string | null {
+export function safeMetaUrl(raw: unknown): string | null {
   if (typeof raw !== "string" || !raw) return null
   try {
     const u = new URL(raw)
@@ -152,7 +152,7 @@ function safeMetaUrl(raw: unknown): string | null {
   }
 }
 
-const str = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null)
+export const str = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null)
 
 // ── Ads Manager ───────────────────────────────────────────────────
 // No se captura el video de la página (Ads Manager lo reproduce por

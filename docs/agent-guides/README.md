@@ -90,5 +90,6 @@ grep-ear todo el repo desde cero.
 | [nomina.md](./nomina.md) | Equipo — Nómina y compensación (solo admin) | 2026-10-01 |
 | [ad-lab-analisis.md](./ad-lab-analisis.md) | Ad Lab — Análisis de concepto (`/ad-lab/analisis` + "Analizar concepto") | 2026-10-12 |
 | [extension-chrome.md](./extension-chrome.md) | Extensión de Chrome/Firefox — guardar anuncios de Ads Manager / Ad Library en boards | 2026-11-26 |
+| [auditorias.md](./auditorias.md) | Ad Lab — Auditorías de cuentas publicitarias (`/ad-lab/auditorias`) | 2026-11-26 |
 
 Actualiza esta tabla cada vez que agregues un archivo nuevo.

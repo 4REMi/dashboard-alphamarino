@@ -53,6 +53,10 @@ manda anuncios a un board de Ad Lab sin salir de Meta. Cubre dos lugares:
   - Si el anuncio ya estaba guardado, NO se duplica ni se sobreescribe: solo se
     agrega al board (y se copia la media si faltaba).
 
+**Auditorías (otra función de la misma extensión):** con campañas marcadas en el
+Ads Manager aparece «Auditar N campañas», que las manda a Ad Lab → Auditorías.
+Ver [auditorias.md](./auditorias.md).
+
 ## Cómo hacer las acciones comunes
 
 **Chrome y Firefox, una sola fuente:** `extension/` es el código (manifest de

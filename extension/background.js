@@ -41,6 +41,30 @@ const AD_FIELDS =
   "creative{thumbnail_url,image_url,image_hash,video_id,body,title,object_story_spec," +
   "asset_feed_spec{videos{video_id,thumbnail_url},images{url,hash},bodies{text}}}"
 
+// Uso de los límites de Meta (0–100 %) según la última respuesta. Las
+// peticiones van con la sesión del usuario: cuentan contra los mismos
+// límites que su Ads Manager, así que la auditoría se pausa sola antes de
+// llegar al tope (ver content/audit.js).
+let lastUsage = 0
+
+function usageFrom(res) {
+  let max = 0
+  const read = (name) => {
+    try { return JSON.parse(res.headers.get(name) || "null") } catch { return null }
+  }
+  const app = read("x-app-usage")
+  if (app) max = Math.max(max, app.call_count || 0, app.total_time || 0, app.total_cputime || 0)
+  const acc = read("x-ad-account-usage")
+  if (acc) max = Math.max(max, acc.acc_id_util_pct || 0)
+  const buc = read("x-business-use-case-usage")
+  if (buc) {
+    for (const list of Object.values(buc)) {
+      for (const u of Array.isArray(list) ? list : []) max = Math.max(max, u.call_count || 0, u.total_time || 0, u.total_cputime || 0)
+    }
+  }
+  return max
+}
+
 async function graph(path, params, token) {
   let lastError = null
   for (const base of GRAPH_HOSTS) {
@@ -48,8 +72,15 @@ async function graph(path, params, token) {
     for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
     url.searchParams.set("access_token", token)
     try {
-      const json = await (await fetch(url)).json()
+      const res = await fetch(url)
+      lastUsage = usageFrom(res)
+      const json = await res.json()
       if (!json.error) return json
+      // 4/17/32/613 = límite de uso alcanzado: avisar claro, no reintentar.
+      if ([4, 17, 32, 613].includes(json.error.code)) {
+        lastUsage = 100
+        throw new Error("Meta pidió bajar el ritmo (límite de uso). Espera unos minutos y vuelve a intentar.")
+      }
       lastError = new Error(json.error.message || "Error de Meta")
       // Error de permisos/objeto: el otro host va a decir lo mismo.
       if (json.error.code !== 190 && json.error.code !== 102) throw lastError
@@ -142,7 +173,34 @@ async function saveAdsManager({ boardId, adIds, token }) {
   return api("/api/extension/save", { method: "POST", body: { source: "ads_manager", boardId, adIds, ads: token ? ads : undefined } })
 }
 
+// Todas las páginas de un edge (sigue paging.next). Entre páginas, una
+// pausa corta para no disparar los límites de la cuenta.
+async function graphAll(path, params, token, maxPages = 40) {
+  const out = []
+  let after = null
+  for (let page = 0; page < maxPages; page++) {
+    const json = await graph(path, after ? { ...params, after } : params, token)
+    out.push(...(json.data || []))
+    after = json.paging?.next ? json.paging?.cursors?.after : null
+    if (!after) break
+    await new Promise((r) => setTimeout(r, 250))
+  }
+  return out
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  // Lectura de la Graph API con la sesión (auditorías). Regresa también el
+  // uso de límites para que el content script decida si pausar.
+  if (msg?.type === "graph" || msg?.type === "graphAll") {
+    const run = msg.type === "graph"
+      ? graph(msg.path, msg.params || {}, msg.token)
+      : graphAll(msg.path, msg.params || {}, msg.token, msg.maxPages)
+    run.then(
+      (data) => sendResponse({ ok: true, data: { data, usage: lastUsage } }),
+      (err) => sendResponse({ ok: false, error: err.message, usage: lastUsage }),
+    )
+    return true
+  }
   if (msg?.type === "api") {
     api(msg.path, msg).then(
       (data) => sendResponse({ ok: true, data }),

@@ -48,6 +48,8 @@
     cachedToken = (await tokenFromPage()) || tokenFromScripts()
     return cachedToken
   }
+  // Lo usa también content/audit.js (auditorías de campañas).
+  window.__AMX.getAccessToken = getAccessToken
 
   const style = document.createElement("style")
   style.textContent = `
