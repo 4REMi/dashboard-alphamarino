@@ -173,8 +173,14 @@ async function saveOneFromAdsManager(adId: string, boardId: string, profileId: s
     return {
       id: adId,
       ok: false,
+      // Meta da el MISMO error si el usuario de sistema no tiene asignada la
+      // cuenta publicitaria o si el ID no es de un anuncio (ej. se pegó el de
+      // la campaña/conjunto). Se nombran las dos causas y se deja el texto
+      // original de Meta para poder distinguirlas.
       error: error?.includes("does not exist") || error?.includes("permission")
-        ? "El usuario de sistema de Meta no tiene acceso a la cuenta de este anuncio"
+        ? "Meta no deja leer este ID. O el usuario de sistema del dashboard no tiene asignada esa cuenta publicitaria " +
+          "(Business Manager → Usuarios del sistema → Asignar activos), o el ID no es de un anuncio " +
+          `(¿campaña o conjunto?). Meta: ${error}`
         : (error ?? "No se pudo leer el anuncio"),
     }
   }

@@ -2,7 +2,7 @@
 
 **Ruta:** extensión de navegador (`extension/` en la raíz del repo) → rutas `/api/extension/*` → boards de `/ad-lab/boards`
 **Para quién:** quien tenga el permiso `access_ad_lab` (admin y subadmin por defecto; empleados solo si se les activa)
-**Actualizado:** 2026-11-25
+**Actualizado:** 2026-11-26
 
 ## Qué es y para qué sirve
 
@@ -56,9 +56,16 @@ derecha → elegir o crear el board.
 
 - **Máximo 25 anuncios por envío** (cada uno descarga un video completo; la ruta
   tiene `maxDuration = 300`).
-- **Ads Manager solo funciona con cuentas que el usuario de sistema de Meta
-  puede ver.** Si no, ese anuncio regresa «El usuario de sistema de Meta no
-  tiene acceso a la cuenta de este anuncio» y los demás sí se guardan.
+- **Ads Manager solo funciona con cuentas asignadas al usuario de sistema de
+  Meta del dashboard** (no basta con que la persona vea la cuenta en su Ads
+  Manager — pasa con clientes cuya cuenta vive en su propio Business Manager).
+  Meta responde el MISMO error («does not exist, cannot be loaded due to missing
+  permissions») si falta esa asignación o si el ID no es de un anuncio (ej. el
+  de la campaña); el mensaje nombra ambas causas e incluye el texto de Meta. Ya
+  pasó en la primera prueba real (2026-11-26). Arreglo: Business Manager →
+  Usuarios del sistema → Asignar activos → Cuentas publicitarias (si la cuenta no
+  aparece, el cliente primero da acceso de socio). Los demás anuncios del envío
+  sí se guardan.
 - **Videos > 250 MB** no se copian a Storage; queda el enlace de Meta, que
   caduca, y se avisa con ⚠.
 - **La Ad Library se detecta por texto** («ID de la biblioteca» / «Library ID»),
