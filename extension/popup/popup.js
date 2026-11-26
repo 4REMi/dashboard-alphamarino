@@ -50,6 +50,27 @@ async function setActive(id) {
   if (b) await send({ type: "setActiveBoard", id: b.id, name: b.name })
 }
 
+// Token de la sesión del Ads Manager de la pestaña activa (si es una).
+// Sin él, el dashboard intenta con su usuario de sistema.
+async function sessionToken() {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+    if (!/facebook\.com/.test(tab?.url || "") || !/adsmanager/.test(tab.url)) return null
+    const res = await chrome.tabs.sendMessage(tab.id, { type: "getAccessToken" })
+    return res?.data || null
+  } catch {
+    return null
+  }
+}
+
+function viaLabel(ok) {
+  const session = ok.filter((r) => r.via === "session").length
+  const system = ok.filter((r) => r.via === "system_user").length
+  if (session && !system) return " (con tu sesión)"
+  if (system && !session) return " (con el usuario de sistema)"
+  return ""
+}
+
 async function sendAds(adIds, button) {
   const boardId = $("board").value
   if (!boardId) return showMsg("Elige o crea un board primero.", "err")
@@ -59,9 +80,10 @@ async function sendAds(adIds, button) {
   button.textContent = `Guardando ${adIds.length}… (los videos tardan)`
   showMsg("")
   try {
-    const { results } = await send({ type: "api", path: "/api/extension/save", method: "POST", body: { source: "ads_manager", boardId, adIds } })
+    const token = await sessionToken()
+    const { results } = await send({ type: "saveAdsManager", boardId, adIds, token })
     const ok = results.filter((r) => r.ok)
-    const lines = [`✓ ${ok.length} de ${results.length} guardado(s) en "${board?.name}"`]
+    const lines = [`✓ ${ok.length} de ${results.length} guardado(s) en "${board?.name}"${viaLabel(ok)}`]
     for (const r of results) {
       if (!r.ok) lines.push(`✗ ${r.id}: ${r.error}`)
       else if (r.warning) lines.push(`⚠ ${r.name}: ${r.warning}`)

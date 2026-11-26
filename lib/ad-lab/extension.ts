@@ -127,6 +127,7 @@ export interface SaveResult {
   hasVideo?: boolean
   warning?: string      // guardado, pero con algo incompleto (ej. sin video)
   error?: string
+  via?: "session" | "system_user"   // Ads Manager: con qué acceso se leyó
 }
 
 function extOf(url: string, fallback: string) {
@@ -134,12 +135,34 @@ function extOf(url: string, fallback: string) {
   return /^[a-z0-9]{2,4}$/i.test(ext) ? ext.toLowerCase() : fallback
 }
 
+// ── URLs de media aceptadas ───────────────────────────────────────
+// Solo se descargan URLs https del CDN de Meta, para que las rutas no
+// sirvan para que el servidor pida cualquier URL (SSRF).
+
+const META_CDN_HOSTS = [/\.fbcdn\.net$/i, /\.cdninstagram\.com$/i, /(^|\.)facebook\.com$/i]
+
+function safeMetaUrl(raw: unknown): string | null {
+  if (typeof raw !== "string" || !raw) return null
+  try {
+    const u = new URL(raw)
+    if (u.protocol !== "https:") return null
+    return META_CDN_HOSTS.some((re) => re.test(u.hostname)) ? u.toString() : null
+  } catch {
+    return null
+  }
+}
+
+const str = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null)
+
 // ── Ads Manager ───────────────────────────────────────────────────
-// La extensión solo manda IDs de anuncio. El servidor pide el creativo a
-// la Graph API con META_SYSTEM_USER_TOKEN (getMetaAdById resuelve el video
-// original vía /{video_id}?fields=source, incluso en Advantage+), y lo
-// copia a Storage. No se intenta capturar el video de la página: Ads
-// Manager lo reproduce por streaming (blob:), no hay un MP4 que tomar.
+// No se captura el video de la página (Ads Manager lo reproduce por
+// streaming, blob:). En su lugar:
+//   1. La extensión pide el creativo a la Graph API con la sesión del
+//      usuario en el Ads Manager (su token se queda en el navegador) y
+//      manda aquí solo las URLs del MP4/imagen originales → funciona con
+//      cualquier cuenta que esa persona vea (auditorías de prospectos).
+//   2. Si eso no trae media, respaldo con META_SYSTEM_USER_TOKEN
+//      (getMetaAdById) — solo cuentas asignadas al usuario de sistema.
 
 async function fetchAdContext(adId: string): Promise<{ account: string | null; campaign: string | null }> {
   const token = process.env.META_SYSTEM_USER_TOKEN
@@ -165,29 +188,94 @@ async function fetchAdContext(adId: string): Promise<{ account: string | null; c
   }
 }
 
-async function saveOneFromAdsManager(adId: string, boardId: string, profileId: string): Promise<SaveResult> {
-  if (!NUMERIC_ID_RE.test(adId)) return { id: adId, ok: false, error: "ID de anuncio inválido" }
+// Lo que la extensión ya resolvió con la sesión de quien la usa (su token
+// del Ads Manager, que nunca llega aquí): sirve para cuentas que el
+// usuario de sistema del dashboard NO ve — auditorías de prospectos,
+// clientes con la cuenta en su propio Business Manager.
+interface ClientResolvedAd {
+  name: string | null
+  account: string | null
+  campaign: string | null
+  status: string | null
+  body: string | null
+  videoUrl: string | null
+  imageUrl: string | null
+  error: string | null   // por qué no pudo resolverlo la extensión
+}
 
+function parseClientAd(raw: unknown): ClientResolvedAd | null {
+  if (!raw || typeof raw !== "object") return null
+  const r = raw as Record<string, unknown>
+  return {
+    name:     str(r.name, 300),
+    account:  str(r.account_name, 200),
+    campaign: str(r.campaign_name, 300),
+    status:   str(r.status, 40),
+    body:     str(r.body, 5000),
+    videoUrl: safeMetaUrl(r.video_url),
+    imageUrl: safeMetaUrl(r.image_url),
+    error:    str(r.error, 500),
+  }
+}
+
+interface ResolvedAd {
+  name: string
+  account: string | null
+  campaign: string | null
+  status: string | null
+  body: string | null
+  videoUrl: string | null
+  imageUrl: string | null
+  via: "session" | "system_user"
+}
+
+const NO_ACCESS_HINT =
+  "Ni tu sesión de Facebook ni el usuario de sistema del dashboard pudieron leer este anuncio. " +
+  "¿Es el ID de un anuncio (no de la campaña o el conjunto) y tienes la pestaña del Ads Manager de esa cuenta abierta?"
+
+async function resolveAd(adId: string, client: ClientResolvedAd | null): Promise<{ ad: ResolvedAd | null; error?: string; warning?: string }> {
+  const fromClient = (): ResolvedAd => ({
+    name: client!.name ?? adId, account: client!.account, campaign: client!.campaign, status: client!.status,
+    body: client!.body, videoUrl: client!.videoUrl, imageUrl: client!.imageUrl, via: "session",
+  })
+
+  // 1. La sesión del usuario trajo el video (o una imagen sin errores).
+  if (client && (client.videoUrl || (client.imageUrl && !client.error))) return { ad: fromClient() }
+
+  // 2. Respaldo: usuario de sistema (solo cuentas asignadas en el Business Manager de la agencia).
   const [{ ad, error }, ctx] = await Promise.all([getMetaAdById(adId), fetchAdContext(adId)])
-  if (!ad) {
+  if (ad) {
     return {
-      id: adId,
-      ok: false,
-      // Meta da el MISMO error si el usuario de sistema no tiene asignada la
-      // cuenta publicitaria o si el ID no es de un anuncio (ej. se pegó el de
-      // la campaña/conjunto). Se nombran las dos causas y se deja el texto
-      // original de Meta para poder distinguirlas.
-      error: error?.includes("does not exist") || error?.includes("permission")
-        ? "Meta no deja leer este ID. O el usuario de sistema del dashboard no tiene asignada esa cuenta publicitaria " +
-          "(Business Manager → Usuarios del sistema → Asignar activos), o el ID no es de un anuncio " +
-          `(¿campaña o conjunto?). Meta: ${error}`
-        : (error ?? "No se pudo leer el anuncio"),
+      ad: {
+        name: ad.name, account: ctx.account, campaign: ctx.campaign, status: ad.status, body: ad.body,
+        videoUrl: ad.videoUrl, imageUrl: ad.imageUrl ?? ad.thumbnailUrl, via: "system_user",
+      },
     }
   }
 
+  // 3. Ninguno trajo el video, pero la sesión sí trajo la imagen: mejor eso que nada.
+  if (client?.imageUrl) {
+    return { ad: fromClient(), warning: `Solo se guardó la imagen: ${client.error ?? "Meta no devolvió el video"}.` }
+  }
+
+  const parts = [
+    error?.includes("does not exist") || error?.includes("permission") ? NO_ACCESS_HINT : (error ?? "No se pudo leer el anuncio"),
+    client?.error ? `Tu sesión: ${client.error}` : client ? null : "La extensión no encontró tu sesión del Ads Manager (recarga la pestaña).",
+    error ? `Usuario de sistema: ${error}` : null,
+  ]
+  return { ad: null, error: parts.filter(Boolean).join(" · ") }
+}
+
+async function saveOneFromAdsManager(adId: string, boardId: string, profileId: string, client: ClientResolvedAd | null): Promise<SaveResult> {
+  if (!NUMERIC_ID_RE.test(adId)) return { id: adId, ok: false, error: "ID de anuncio inválido" }
+
+  const resolved = await resolveAd(adId, client)
+  const ad = resolved.ad
+  if (!ad) return { id: adId, ok: false, error: resolved.error }
+
   const admin = createAdminClient()
   const archiveId = `ads_manager_${adId}`
-  const imageSrc = ad.imageUrl ?? ad.thumbnailUrl
+  const imageSrc = ad.imageUrl
 
   const { data: existing } = await admin
     .from("saved_ads")
@@ -199,7 +287,7 @@ async function saveOneFromAdsManager(adId: string, boardId: string, profileId: s
   if (!row) {
     const notes = [
       "Guardado desde Ads Manager (extensión).",
-      ctx.campaign ? `Campaña: ${ctx.campaign}` : null,
+      ad.campaign ? `Campaña: ${ad.campaign}` : null,
       `Ad ID: ${adId}`,
     ].filter(Boolean).join("\n")
 
@@ -208,7 +296,7 @@ async function saveOneFromAdsManager(adId: string, boardId: string, profileId: s
       .insert({
         ad_archive_id: archiveId,
         page_id:       "ads_manager",
-        page_name:     ctx.account ? `${ctx.account} · ${ad.name}` : ad.name,
+        page_name:     ad.account ? `${ad.account} · ${ad.name}` : ad.name,
         body:          ad.body,
         image_url:     imageSrc,
         video_url:     ad.videoUrl,
@@ -226,7 +314,7 @@ async function saveOneFromAdsManager(adId: string, boardId: string, profileId: s
   }
 
   const updates: Record<string, string> = {}
-  let warning: string | undefined
+  let warning: string | undefined = resolved.warning
   if (!row.cached_image_url && imageSrc) {
     const url = await mirrorToStorage(admin, imageSrc, `${row.id}/image.${extOf(imageSrc, "jpg")}`, 20)
     if (url) updates.cached_image_url = url
@@ -244,19 +332,27 @@ async function saveOneFromAdsManager(adId: string, boardId: string, profileId: s
   } catch (e) {
     return { id: adId, ok: false, error: e instanceof Error ? e.message : "No se pudo agregar al board" }
   }
-  return { id: adId, ok: true, name: ad.name, savedAdId: row.id, hasVideo: !!ad.videoUrl, warning }
+  return { id: adId, ok: true, name: ad.name, savedAdId: row.id, hasVideo: !!ad.videoUrl, warning, via: ad.via }
 }
 
-export async function saveFromAdsManager(profileId: string, boardId: string, adIds: unknown): Promise<SaveResult[]> {
+/**
+ * adIds: IDs de anuncio. clientAds (opcional): { [adId]: lo que resolvió la
+ * extensión con la sesión del usuario } — si trae video/imagen se usa eso;
+ * si no, se intenta con el usuario de sistema.
+ */
+export async function saveFromAdsManager(profileId: string, boardId: string, adIds: unknown, clientAds?: unknown): Promise<SaveResult[]> {
   await assertBoard(boardId)
   if (!Array.isArray(adIds) || adIds.length === 0) throw new ExtensionError("No llegaron IDs de anuncio")
   const ids = [...new Set(adIds.map(String))]
   if (ids.length > MAX_ADS_PER_REQUEST) throw new ExtensionError(`Máximo ${MAX_ADS_PER_REQUEST} anuncios por envío`)
+  const byId = (clientAds && typeof clientAds === "object" ? clientAds : {}) as Record<string, unknown>
 
   // De 3 en 3: cada uno descarga un video completo.
   const results: SaveResult[] = []
   for (let i = 0; i < ids.length; i += 3) {
-    results.push(...await Promise.all(ids.slice(i, i + 3).map((id) => saveOneFromAdsManager(id, boardId, profileId))))
+    results.push(...await Promise.all(
+      ids.slice(i, i + 3).map((id) => saveOneFromAdsManager(id, boardId, profileId, parseClientAd(byId[id]))),
+    ))
   }
   revalidateBoards(boardId)
   return results
@@ -264,23 +360,8 @@ export async function saveFromAdsManager(profileId: string, boardId: string, adI
 
 // ── Ad Library ────────────────────────────────────────────────────
 // Aquí sí se toma la media de la página: la Ad Library sirve el MP4 tal
-// cual en <video src>. Solo se descargan URLs del CDN de Meta, para que
-// la ruta no sirva para que el servidor pida cualquier URL (SSRF).
+// cual en <video src> (filtrado con safeMetaUrl, arriba).
 
-const META_CDN_HOSTS = [/\.fbcdn\.net$/i, /\.cdninstagram\.com$/i, /(^|\.)facebook\.com$/i]
-
-function safeMetaUrl(raw: unknown): string | null {
-  if (typeof raw !== "string" || !raw) return null
-  try {
-    const u = new URL(raw)
-    if (u.protocol !== "https:") return null
-    return META_CDN_HOSTS.some((re) => re.test(u.hostname)) ? u.toString() : null
-  } catch {
-    return null
-  }
-}
-
-const str = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null)
 
 export interface AdLibraryPayload {
   ad_archive_id: string

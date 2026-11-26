@@ -168,7 +168,10 @@
     const failed = results.filter((r) => !r.ok)
     const warned = ok.filter((r) => r.warning)
     const lines = []
-    if (ok.length) lines.push(`✓ ${ok.length} guardado${ok.length === 1 ? "" : "s"} en "${board.name}"`)
+    const session = ok.filter((r) => r.via === "session").length
+    const system = ok.filter((r) => r.via === "system_user").length
+    const via = session && !system ? " (con tu sesión)" : system && !session ? " (con el usuario de sistema)" : ""
+    if (ok.length) lines.push(`✓ ${ok.length} guardado${ok.length === 1 ? "" : "s"} en "${board.name}"${via}`)
     for (const r of warned) lines.push(`⚠ ${r.name || r.id}: ${r.warning}`)
     for (const r of failed) lines.push(`✗ ${r.id}: ${r.error}`)
     toast(lines.join("\n"), failed.length ? (ok.length ? "warn" : "err") : warned.length ? "warn" : "ok", {

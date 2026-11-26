@@ -3,8 +3,9 @@
 // Los IDs salen de la URL (`selected_ad_ids`), que Ads Manager actualiza al
 // marcar casillas en la pestaña Anuncios o al abrir un anuncio para
 // editarlo. No se intenta sacar el video de la página — Ads Manager lo
-// reproduce por streaming (blob:). El dashboard descarga el original con
-// la Graph API a partir del ID.
+// reproduce por streaming (blob:). Con el token de la sesión del usuario
+// (getAccessToken), el service worker le pide a la Graph API el MP4
+// original; así funciona con cualquier cuenta que esa persona vea.
 
 ;(() => {
   const { send, toast, pickBoard, reportResults, root } = window.__AMX
@@ -16,6 +17,36 @@
       if (raw) return [...new Set(raw.split(/[,\s]+/).filter((id) => /^\d{5,25}$/.test(id)))]
     }
     return []
+  }
+
+  // Token de acceso de la sesión del Ads Manager. Primero lo pide al
+  // script del mundo de la página (token-main.js); si no, lo busca en los
+  // <script> en línea, donde Facebook lo deja escrito.
+  let cachedToken = null
+  function tokenFromPage() {
+    return new Promise((resolve) => {
+      const done = (e) => { clearTimeout(t); resolve(typeof e?.detail === "string" ? e.detail : null) }
+      const t = setTimeout(() => { document.removeEventListener("amx:token", done); resolve(null) }, 400)
+      document.addEventListener("amx:token", done, { once: true })
+      document.dispatchEvent(new CustomEvent("amx:get-token"))
+    })
+  }
+  function tokenFromScripts() {
+    const patterns = [/__accessToken\s*=\s*"(EAA[A-Za-z0-9]+)"/, /"accessToken"\s*:\s*"(EAA[A-Za-z0-9]+)"/, /"(EAA[A-Za-z0-9]{60,})"/]
+    for (const script of document.querySelectorAll("script:not([src])")) {
+      const text = script.textContent
+      if (!text || !text.includes("EAA")) continue
+      for (const re of patterns) {
+        const m = text.match(re)
+        if (m) return m[1]
+      }
+    }
+    return null
+  }
+  async function getAccessToken() {
+    if (cachedToken) return cachedToken
+    cachedToken = (await tokenFromPage()) || tokenFromScripts()
+    return cachedToken
   }
 
   const style = document.createElement("style")
@@ -62,7 +93,8 @@
     fab.disabled = true
     fab.textContent = `Guardando ${ids.length}… (los videos tardan)`
     try {
-      const { results } = await send({ type: "api", path: "/api/extension/save", method: "POST", body: { source: "ads_manager", boardId: board.id, adIds: ids } })
+      const token = await getAccessToken()
+      const { results } = await send({ type: "saveAdsManager", boardId: board.id, adIds: ids, token })
       await reportResults(results, board)
     } catch (e) {
       toast(e.message, "err")
@@ -85,5 +117,9 @@
   // El popup también puede pedir los IDs seleccionados.
   chrome.runtime.onMessage.addListener((msg, _s, sendResponse) => {
     if (msg?.type === "getSelectedAdIds") sendResponse({ ok: true, data: selectedAdIds() })
+    if (msg?.type === "getAccessToken") {
+      getAccessToken().then((token) => sendResponse({ ok: true, data: token }))
+      return true
+    }
   })
 })()

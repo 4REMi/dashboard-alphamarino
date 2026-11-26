@@ -20,8 +20,10 @@ Necesitas el permiso de Ad Lab en el dashboard.
 ## Usar
 
 - **Ads Manager**: marca anuncios en la pestaña «Anuncios» → botón abajo a la
-  derecha «Enviar N anuncios a un board». El dashboard baja el video original
-  con la API de Meta.
+  derecha «Enviar N anuncios a un board». La extensión baja el video original
+  con tu propia sesión de Facebook, así que funciona con cualquier cuenta que
+  tú veas (también auditorías de prospectos). Tu sesión no se comparte con el
+  dashboard: solo se le manda el archivo.
 - **Ad Library**: botón «Guardar» en cada anuncio.
 
 ## Actualizar
