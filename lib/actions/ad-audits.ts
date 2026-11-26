@@ -3,11 +3,12 @@
 // Acciones de Ad Lab → Auditorías. Ver docs/agent-guides/auditorias.md.
 
 import { revalidatePath } from "next/cache"
+import { after } from "next/server"
+import { headers } from "next/headers"
+import { enqueueAuditAnalyses, getAuditJobStatus, kickAuditWorker, runAuditCreativeAnalysis, type AuditJobStatus } from "@/lib/ad-audit/analysis-jobs"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { requireRole, requireSessionOrTrusted } from "@/lib/auth/guards"
 import { requireAuditAccess } from "@/lib/ad-audit/access"
-import { auditAnalysisKey } from "@/lib/ad-audit/parts"
-import { analyzeLibraryAd } from "@/lib/actions/ad-analysis"
 import { getCampaignAudit } from "@/lib/ad-audit/queries"
 import { COUNTER_KEYS, METRICS, biggestDrop, curvePoints, formatMetric, formatSec, metricById, type MetricId } from "@/lib/ad-audit/metrics"
 import { parseAiJson } from "@/lib/utils/ai-json"
@@ -65,45 +66,44 @@ export async function analyzeAuditCreative(adId: string, force = false): Promise
   await requireSessionOrTrusted()
   await requireAuditAccess()
   if (!UUID_RE.test(adId)) throw new Error("Anuncio inválido")
+  return runAuditCreativeAnalysis(adId, force)
+}
 
-  const admin = createAdminClient()
-  const { data: ad } = await admin.from("audit_ads")
-    .select("id, meta_ad_id, name, format, meta_video_id, image_url, cached_image_url, landing_url, body, campaign_id")
-    .eq("id", adId).maybeSingle()
-  if (!ad) throw new Error("Anuncio no encontrado")
-  const key = auditAnalysisKey(ad)
-
-  if (!force) {
-    const { data: existing } = await admin.from("ad_analyses").select("analysis").eq("ad_archive_id", key).maybeSingle()
-    if ((existing?.analysis as { partes?: unknown } | undefined)?.partes) return { key, ok: true }
+// Encola el análisis por partes (todos los pendientes de la campaña o solo
+// los anuncios elegidos) y despierta al trabajador del servidor: sigue
+// aunque el usuario cierre la página. Ver lib/ad-audit/analysis-jobs.ts.
+export async function queueAuditAnalyses(campaignId: string, adIds?: string[]): Promise<{ queued: number }> {
+  await requireSessionOrTrusted()
+  const user = await requireAuditAccess()
+  if (!UUID_RE.test(campaignId)) throw new Error("Campaña inválida")
+  if (adIds && (!Array.isArray(adIds) || adIds.length > 500 || !adIds.every((id) => UUID_RE.test(id)))) throw new Error("Selección inválida")
+  const r = await enqueueAuditAnalyses(campaignId, user.id, adIds)
+  if (r.queued > 0) {
+    const origin = await requestOrigin()
+    after(() => kickAuditWorker(origin))
   }
+  return r
+}
 
-  let videoUrl: string | null = null
-  if (ad.meta_video_id) {
-    const { data: v } = await admin.from("audit_videos").select("storage_url").eq("meta_video_id", ad.meta_video_id).maybeSingle()
-    videoUrl = (v?.storage_url as string | null) ?? null
+// Estado de la cola de una campaña. Si hay pendientes y nadie trabajando
+// (la cadena se cortó), la retoma.
+export async function getAuditAnalysisStatus(campaignId: string): Promise<AuditJobStatus> {
+  await requireSessionOrTrusted()
+  await requireAuditAccess()
+  if (!UUID_RE.test(campaignId)) throw new Error("Campaña inválida")
+  const status = await getAuditJobStatus(campaignId)
+  if (status.needsKick) {
+    const origin = await requestOrigin()
+    after(() => kickAuditWorker(origin))
   }
-  const imageUrl = (ad.cached_image_url as string | null) ?? (ad.image_url as string | null)
-  if (!videoUrl && !imageUrl) return { key, ok: false, error: "No hay video ni imagen copiados de este anuncio" }
+  return status
+}
 
-  const { data: camp } = await admin.from("audit_campaigns").select("account_id").eq("id", ad.campaign_id).single()
-  const { data: acc } = await admin.from("audit_accounts").select("name, meta_account_id").eq("id", camp?.account_id).single()
-
-  try {
-    await analyzeLibraryAd({
-      adArchiveId: key,
-      pageId: acc?.meta_account_id ?? null,
-      pageName: acc?.name ?? "Cuenta auditada",
-      body: ad.body, title: null, caption: null, cta: null,
-      linkUrl: ad.landing_url,
-      videoUrl: ad.format === "video" ? videoUrl : null,
-      imageUrl: ad.format === "video" ? null : imageUrl,
-      isActive: true, startDate: null,
-    })
-    return { key, ok: true }
-  } catch (e) {
-    return { key, ok: false, error: e instanceof Error ? e.message : "Falló el análisis" }
-  }
+async function requestOrigin(): Promise<string> {
+  const h = await headers()
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000"
+  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https")
+  return `${proto}://${host}`
 }
 
 // ── Hipótesis por campaña (fase 2) y su seguimiento (fase 3) ──────

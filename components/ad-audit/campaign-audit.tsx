@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useCallback, useState } from "react"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
 import {
@@ -9,7 +9,8 @@ import {
 } from "@/lib/ad-audit/metrics"
 import type { CampaignAuditView } from "@/lib/ad-audit/queries"
 import { HoverVideo, MetricCell, VerdictChip, breakSummary } from "@/components/ad-audit/ui"
-import { AnalyzePartsButton } from "@/components/ad-audit/analyze-parts-button"
+import { AnalysisQueueBar } from "@/components/ad-audit/analyze-parts-button"
+import type { AuditJobStatus } from "@/lib/ad-audit/analysis-jobs"
 
 const CREATIVE_COLS: MetricId[] = ["hook", "hold", "ctr", "cpa"]
 const STORE_COLS: MetricId[] = ["click_visit", "visit_cart", "cart_checkout", "checkout_purchase", "session_cvr", "aov", "roas"]
@@ -21,12 +22,19 @@ const STORE_EVENT_LABEL: Record<string, string> = {
 export function CampaignAudit({ view, basePath }: { view: CampaignAuditView; basePath: string }) {
   const [adsetId, setAdsetId] = useState(view.adsets[0]?.id ?? "")
   const [mode, setMode] = useState<"creative" | "store">("creative")
+  // Selección individual para «Analizar partes» (no todos valen la pena).
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set())
+  const onStatus = useCallback((st: AuditJobStatus) => setPendingIds(new Set(st.pendingAdIds)), [])
+  const allAds = view.adsets.flatMap((x) => x.ads)
+  const canAnalyze = (a: (typeof allAds)[number]) => !a.parts && a.format !== "other" && !!(a.videoUrl || a.imageUrl) && !pendingIds.has(a.id)
+  const toggle = (id: string) => setSelected((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
   const currency = view.account.currency ?? "MXN"
   const adset = view.adsets.find((s) => s.id === adsetId) ?? view.adsets[0]
   const cols = mode === "creative" ? CREATIVE_COLS : STORE_COLS
   const grid = mode === "creative"
-    ? "minmax(260px,2.6fr) minmax(120px,1fr) repeat(4,minmax(80px,0.8fr)) minmax(200px,1.6fr)"
-    : "minmax(260px,2.6fr) minmax(120px,1fr) repeat(7,minmax(84px,0.75fr)) minmax(200px,1.5fr)"
+    ? "minmax(290px,2.6fr) minmax(120px,1fr) repeat(4,minmax(80px,0.8fr)) minmax(200px,1.6fr)"
+    : "minmax(290px,2.6fr) minmax(120px,1fr) repeat(7,minmax(84px,0.75fr)) minmax(200px,1.5fr)"
 
   const t = view.totals
   const kpi = (id: MetricId) => formatMetric(metricById(id, view.metrics), computeMetric(metricById(id, view.metrics), t, { isVideo: true, missing: view.campaign.missing_events }).value, currency)
@@ -58,7 +66,14 @@ export function CampaignAudit({ view, basePath }: { view: CampaignAuditView; bas
             return `${done} de ${all.length} creativos analizados por partes (gancho, cuerpo y cierre).`
           })()}
         </p>
-        <AnalyzePartsButton pending={view.adsets.flatMap((x) => x.ads).filter((a) => !a.parts && a.format !== "other" && (a.videoUrl || a.imageUrl)).map((a) => ({ adId: a.id, key: a.analysisKey }))} />
+        <AnalysisQueueBar
+          campaignId={view.campaign.id}
+          selected={[...selected].filter((id) => allAds.some((a) => a.id === id && canAnalyze(a)))}
+          selectable={allAds.filter(canAnalyze).length}
+          onSelectAll={() => setSelected(new Set(allAds.filter(canAnalyze).map((a) => a.id)))}
+          onClear={() => setSelected(new Set())}
+          onStatus={onStatus}
+        />
       </div>
 
       {view.campaign.missing_events.length > 0 && (
@@ -111,6 +126,11 @@ export function CampaignAudit({ view, basePath }: { view: CampaignAuditView; bas
               {adset.ads.map((ad) => (
                 <div key={ad.id} className="grid items-center gap-3 border-b border-border/60 px-4 py-2.5 last:border-0" style={{ gridTemplateColumns: grid }}>
                   <div className="flex min-w-0 items-center gap-3">
+                    {canAnalyze(ad) ? (
+                      <input type="checkbox" checked={selected.has(ad.id)} onChange={() => toggle(ad.id)}
+                        aria-label={`Analizar por partes ${ad.name}`} title="Marcar para analizar por partes"
+                        className="h-5 w-5 flex-none accent-primary" />
+                    ) : <span className="w-5 flex-none" aria-hidden="true" />}
                     <Link href={`${basePath}/a/${ad.id}`} className="flex-none overflow-hidden rounded-lg border border-border">
                       <HoverVideo videoUrl={ad.videoUrl} posterUrl={ad.posterUrl} imageUrl={ad.imageUrl} label={ad.name}
                         className={ad.format === "video" ? "h-32 w-[72px]" : "h-24 w-24"} />
@@ -119,6 +139,7 @@ export function CampaignAudit({ view, basePath }: { view: CampaignAuditView; bas
                       <Link href={`${basePath}/a/${ad.id}`} className="truncate font-semibold hover:underline">{ad.name}</Link>
                       <span className="text-xs text-muted-foreground">{ad.format === "video" ? "Video" : ad.format === "image" ? "Imagen" : "Otro"} · {(ad.evaluation.spendShare * 100).toFixed(ad.evaluation.spendShare < 0.1 ? 1 : 0)} % del gasto</span>
                       <span className="text-xs text-muted-foreground tabular-nums">{formatMoney(ad.counters.spend, currency)} · {ad.counters.purchases} compras</span>
+                      {!ad.parts && pendingIds.has(ad.id) && <span className="w-fit rounded-full bg-sky-500/15 px-2 py-0.5 text-[11px] font-semibold text-sky-700 dark:text-sky-300">En análisis…</span>}
                       {ad.parts && (
                         <span className="text-xs leading-snug" title={ad.conceptName ?? undefined}>
                           <span className="text-muted-foreground">G</span> {ad.parts.gancho.tipo} <span className="text-muted-foreground">· C</span> {ad.parts.cuerpo.tipo} <span className="text-muted-foreground">· Ci</span> {ad.parts.cierre.tipo}

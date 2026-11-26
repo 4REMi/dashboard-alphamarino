@@ -137,9 +137,14 @@ una columna muestra fórmula y mínimo; por una celda, conteos y mediana.
 del mismo conjunto. Los botones de momentos y el clic en la curva llevan
 **ambos** videos al mismo segundo y muestran % que sigue viendo en cada uno.
 
-**Analizar por partes**: en la campaña, «Analizar partes de N creativos»
-(de 2 en 2 desde el navegador, ~1 min por video; no cerrar la pestaña; lo ya
-analizado se guarda). Después, la tabla muestra G/C/Ci por anuncio.
+**Analizar por partes**: en la campaña, marca con la casilla los creativos que
+valgan la pena (selección individual; «Seleccionar pendientes» marca todos) →
+«Analizar N seleccionados». Se encolan en el SERVIDOR (`audit_analysis_jobs`,
+migración 127) y el trabajador `/api/audit-worker` los procesa de 2 en 2 y se
+vuelve a despertar solo: **sigue aunque se cierre la página**. La barra muestra
+en cola / analizando / listos y la tabla se actualiza al terminar cada uno. Un
+video se analiza una vez aunque varios anuncios lo usen; los ya analizados no
+tienen casilla.
 
 **Qué funciona**: desde la cuenta o la campaña → pestañas Ganchos / Cuerpos /
 Cierres, Video / Imagen. Pasar el mouse sobre un video reproduce su tramo.
@@ -154,6 +159,16 @@ Brand Lines» (~1 min). «Llevar a Brand Brains» la crea en `/brand-brains`.
 anuncios y los archivos en Storage. **Prospecto/Cliente**: clic en la etiqueta.
 
 ## Reglas y restricciones
+
+- **Cola de análisis** (`lib/ad-audit/analysis-jobs.ts`): el trabajador
+  (`app/api/audit-worker/route.ts`) exige `Authorization: Bearer CRON_SECRET`,
+  responde 202 al instante y procesa con `after()` (hasta 300 s). Trabajos
+  `running` de más de 6 min se reintentan (máx. 3 intentos, luego `error`).
+  Si no hay `CRON_SECRET` o la llamada a sí mismo falla (p. ej. una URL de
+  preview protegida por Vercel), procesa una tanda en la misma invocación. Si
+  la cadena se corta, `getAuditAnalysisStatus` (la barra lo consulta cada 8 s)
+  la retoma. El análisis corre en contexto de confianza a nombre de quien
+  encoló (`analyzeLibraryAd` acepta `isTrustedContext()` con perfil).
 
 - **Límites de Meta**: las lecturas cuentan contra los límites del Ads Manager
   del usuario. La extensión lee los encabezados de uso y pausa sola (≥75 % →
@@ -173,7 +188,8 @@ anuncios y los archivos en Storage. **Prospecto/Cliente**: clic en la etiqueta.
 
 ## Dónde vive esto en el código
 
-- `supabase/migrations/124_ad_audits.sql`, `125_ad_audit_hypotheses_metrics.sql`, `126_ad_audit_brand.sql` — tablas.
+- `supabase/migrations/124_ad_audits.sql`, `125_ad_audit_hypotheses_metrics.sql`, `126_ad_audit_brand.sql`, `127_ad_audit_analysis_jobs.sql` — tablas.
+- `lib/ad-audit/analysis-jobs.ts` + `app/api/audit-worker/route.ts` — cola de análisis en el servidor.
 - `lib/ad-audit/parts.ts` (partes y tipos), `lib/ad-audit/findings.ts` (Qué funciona).
 - `extension/content/audit.js` — captura; `extension/background.js` →
   `graph`/`graphAll` (con lectura de uso de límites).

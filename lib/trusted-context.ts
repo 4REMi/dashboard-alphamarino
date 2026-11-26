@@ -37,6 +37,12 @@ export function setTrustedProfile(profileId: string): void {
   if (store) store.profileId = profileId
 }
 
+// Perfil autenticado de esta petición de confianza (o null). Lo usa, p. ej.,
+// el análisis de concepto cuando corre en el trabajador de auditorías.
+export function getTrustedProfileId(): string | null {
+  return storage.getStore()?.profileId ?? null
+}
+
 // Primera línea de cada action con `actingProfileId`. Sin valor → camino
 // normal con sesión (UI). Con valor → debe ser el perfil autenticado de
 // esta petición del MCP; si no, se rechaza.

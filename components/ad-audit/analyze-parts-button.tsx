@@ -1,52 +1,83 @@
 "use client"
 
-import { useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { ScanSearch } from "lucide-react"
-import { analyzeAuditCreative } from "@/lib/actions/ad-audits"
+import { getAuditAnalysisStatus, queueAuditAnalyses } from "@/lib/actions/ad-audits"
+import type { AuditJobStatus } from "@/lib/ad-audit/analysis-jobs"
 
-// Analiza por partes (gancho/cuerpo/cierre) los creativos que aún no lo
-// están. Uno por video: los anuncios que comparten video cuentan una vez.
-// Corre desde el navegador de 2 en 2 (cada análisis es una llamada de hasta
-// ~2 min); si se cierra la pestaña, lo ya analizado queda guardado.
-export function AnalyzePartsButton({ pending }: { pending: { adId: string; key: string }[] }) {
+// Barra de «Analizar partes»: encola en el SERVIDOR los creativos elegidos
+// (selección individual con las casillas de la tabla) y muestra el avance.
+// El análisis sigue aunque se cierre la página (lib/ad-audit/analysis-jobs.ts).
+export function AnalysisQueueBar({ campaignId, selected, selectable, onSelectAll, onClear, onStatus }: {
+  campaignId: string
+  selected: string[]
+  selectable: number
+  onSelectAll: () => void
+  onClear: () => void
+  onStatus: (s: AuditJobStatus) => void
+}) {
   const router = useRouter()
-  const unique = [...new Map(pending.map((p) => [p.key, p])).values()]
-  const [running, setRunning] = useState(false)
-  const [done, setDone] = useState(0)
-  const [errors, setErrors] = useState<string[]>([])
+  const [status, setStatus] = useState<AuditJobStatus | null>(null)
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const lastDone = useRef<number | null>(null)
 
-  if (unique.length === 0 && !running) return null
+  const refresh = useCallback(async () => {
+    try {
+      const s = await getAuditAnalysisStatus(campaignId)
+      setStatus(s)
+      onStatus(s)
+      // Cada vez que termina uno, recargar la tabla para ver sus partes.
+      if (lastDone.current !== null && s.done + s.error > lastDone.current) router.refresh()
+      lastDone.current = s.done + s.error
+    } catch { /* sin conexión: se reintenta en el siguiente ciclo */ }
+  }, [campaignId, onStatus, router])
 
-  const run = async () => {
-    setRunning(true); setDone(0); setErrors([])
-    const queue = [...unique]
-    const worker = async () => {
-      for (let item = queue.shift(); item; item = queue.shift()) {
-        try {
-          const r = await analyzeAuditCreative(item.adId)
-          if (!r.ok) setErrors((e) => [...e, r.error ?? "Falló"])
-        } catch (e) {
-          setErrors((x) => [...x, e instanceof Error ? e.message : "Falló"])
-        }
-        setDone((d) => d + 1)
-      }
+  const active = (status?.queued ?? 0) + (status?.running ?? 0) > 0
+  useEffect(() => {
+    const first = setTimeout(refresh, 0)
+    if (!active) return () => clearTimeout(first)
+    const t = setInterval(refresh, 8000)
+    return () => { clearTimeout(first); clearInterval(t) }
+  }, [active, refresh])
+
+  const send = async () => {
+    setSending(true); setError(null)
+    try {
+      const r = await queueAuditAnalyses(campaignId, selected)
+      if (r.queued === 0) setError("Esos creativos ya están analizados o en cola.")
+      onClear()
+      await refresh()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo encolar")
     }
-    await Promise.all([worker(), worker()])
-    setRunning(false)
-    router.refresh()
+    setSending(false)
   }
 
-  const minutes = Math.max(1, Math.round((unique.length * 1.2) / 2))
+  const minutes = Math.max(1, Math.round((selected.length * 1.2) / 2))
   return (
-    <div className="flex flex-col items-end gap-1">
-      <button onClick={run} disabled={running}
-        className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-60">
-        <ScanSearch className="h-4 w-4" />
-        {running ? `Analizando ${done}/${unique.length}…` : `Analizar partes de ${unique.length} creativo${unique.length === 1 ? "" : "s"} · ~${minutes} min`}
-      </button>
-      {running && <span className="text-xs text-muted-foreground">No cierres esta pestaña. Lo ya analizado se guarda.</span>}
-      {!running && errors.length > 0 && <span className="text-xs text-destructive">{errors.length} no se pudieron analizar: {errors[0]}</span>}
+    <div className="flex flex-col items-end gap-1.5">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {selectable > 0 && (
+          <>
+            <button onClick={onSelectAll} className="h-10 rounded-lg px-3 text-sm text-muted-foreground hover:text-foreground">Seleccionar pendientes ({selectable})</button>
+            {selected.length > 0 && <button onClick={onClear} className="h-10 rounded-lg px-3 text-sm text-muted-foreground hover:text-foreground">Limpiar</button>}
+          </>
+        )}
+        <button onClick={send} disabled={sending || selected.length === 0}
+          className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-50">
+          <ScanSearch className="h-4 w-4" />
+          {sending ? "Encolando…" : selected.length ? `Analizar ${selected.length} seleccionado${selected.length === 1 ? "" : "s"} · ~${minutes} min` : "Marca los creativos a analizar"}
+        </button>
+      </div>
+      {active && status && (
+        <span className="text-xs text-muted-foreground">
+          En cola {status.queued} · analizando {status.running} · listos {status.done}{status.error ? ` · ${status.error} con error` : ""} — sigue en el servidor aunque salgas de la página.
+        </span>
+      )}
+      {!active && status && status.error > 0 && status.lastError && <span className="text-xs text-destructive">{status.error} no se pudieron analizar: {status.lastError}</span>}
+      {error && <span className="text-xs text-destructive">{error}</span>}
     </div>
   )
 }

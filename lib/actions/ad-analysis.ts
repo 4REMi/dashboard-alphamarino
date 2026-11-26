@@ -1,6 +1,7 @@
 "use server"
 
 import { createClient } from "@/lib/supabase/server"
+import { getTrustedProfileId, isTrustedContext } from "@/lib/trusted-context"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { aaiPost, aaiGet } from "@/lib/actions/ad-clone"
 import { describeVideo, type VideoDescription } from "@/lib/ai/video-understanding"
@@ -122,7 +123,11 @@ export async function hasSavedAdAnalysis(adArchiveId: string): Promise<boolean> 
 
 export async function analyzeLibraryAd(ad: LibraryAdInput): Promise<LibraryAdAnalysis> {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user: sessionUser } } = await supabase.auth.getUser()
+  // Sin sesión solo vale un contexto de servidor de confianza CON perfil ya
+  // autenticado (el trabajador de auditorías fija el de quien encoló).
+  const trustedId = !sessionUser && isTrustedContext() ? getTrustedProfileId() : null
+  const user = sessionUser ?? (trustedId ? { id: trustedId } : null)
   if (!user) throw new Error("No autenticado")
   const mediaUrl = ad.videoUrl ?? ad.imageUrl
   if (!mediaUrl) throw new Error("Este anuncio no tiene video ni imagen para analizar")
