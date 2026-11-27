@@ -141,21 +141,35 @@
     // Meta (last_30d…) se calcula en la zona horaria de la cuenta y NO
     // incluye hoy. Antes se calculaba en UTC con hoy incluido y el período
     // salía corrido un día respecto al Ads Manager.
-    const datePreset = `last_${days}d`
+    // «Máximo»: todo lo que Meta guarda (hasta 37 meses), desde el primer día
+    // con datos de las campañas elegidas.
+    const isMax = days === "max"
+    const datePreset = isMax ? "maximum" : `last_${days}d`
     const localIso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
     let since, until
     try {
-      const r = await graph("graph", `/act_${act}/insights`, { date_preset: datePreset, fields: "date_start,date_stop" }, token)
+      const r = await graph("graph", `/act_${act}/insights`, {
+        date_preset: datePreset, fields: "date_start,date_stop",
+        ...(isMax ? { filtering: JSON.stringify([{ field: "campaign.id", operator: "IN", value: campaignIds }]) } : {}),
+      }, token)
       since = r.data?.[0]?.date_start
       until = r.data?.[0]?.date_stop
     } catch {}
     if (!since || !until) {
       // Sin datos en la cuenta para ese período: mismo cálculo en hora local.
       const y = new Date(); y.setDate(y.getDate() - 1)
-      const s = new Date(y); s.setDate(s.getDate() - (days - 1))
+      const s = new Date(y); s.setDate(s.getDate() - ((isMax ? 90 : Number(days)) - 1))
       since = localIso(s); until = localIso(y)
     }
     const iso = (x) => x
+    // Tramos de 90 días: pedir años de datos diarios de un jalón hace que
+    // Meta corte la consulta. El período completo es el mismo.
+    const windows = []
+    const addDays = (d, n) => { const x = new Date(`${d}T00:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10) }
+    for (let start = since; start <= until; start = addDays(start, 90)) {
+      const end = addDays(start, 89)
+      windows.push({ since: start, until: end < until ? end : until })
+    }
 
     onProgress("Leyendo la cuenta y las campañas…")
     const account = await graph("graph", `/act_${act}`, { fields: "name,currency" }, token)
@@ -181,16 +195,19 @@
       }, token)
       const ads = rawAds.map(parseCreative)
 
-      onProgress(`${label}: métricas por día…`)
-      const daily = await graph("graphAll", `/${camp.id}/insights`, {
-        level: "ad", time_increment: "1", date_preset: datePreset, fields: INSIGHT_FIELDS,
-        action_attribution_windows: JSON.stringify(["7d_click"]), limit: "500",
-      }, token)
+      const daily = []
+      for (let w = 0; w < windows.length; w++) {
+        onProgress(`${label}: métricas por día${windows.length > 1 ? ` (tramo ${w + 1} de ${windows.length})` : ""}…`)
+        daily.push(...await graph("graphAll", `/${camp.id}/insights`, {
+          level: "ad", time_increment: "1", time_range: JSON.stringify(windows[w]), fields: INSIGHT_FIELDS,
+          action_attribution_windows: JSON.stringify(["7d_click"]), limit: "500",
+        }, token))
+      }
       const rows = daily.map(toCounters)
 
       onProgress(`${label}: retención, alcance y frecuencia…`)
       const curves = await graph("graphAll", `/${camp.id}/insights`, {
-        level: "ad", date_preset: datePreset, fields: "ad_id,video_play_curve_actions,reach,frequency,video_avg_time_watched_actions", limit: "500",
+        level: "ad", time_range: JSON.stringify({ since, until }), fields: "ad_id,video_play_curve_actions,reach,frequency,video_avg_time_watched_actions", limit: "500",
       }, token)
       const retention = curves.map((r) => ({
         ad_id: r.ad_id,
@@ -295,7 +312,7 @@
     <h3>Enviar a Auditorías</h3>
     <small class="sel"></small>
     <label style="display:flex;flex-direction:column;gap:4px;color:#d4d4d8">Período
-      <select class="days"><option value="30">Últimos 30 días</option><option value="90">Últimos 90 días</option><option value="7">Últimos 7 días</option></select>
+      <select class="days"><option value="30">Últimos 30 días</option><option value="90">Últimos 90 días</option><option value="7">Últimos 7 días</option><option value="max">Máximo (todo el historial)</option></select>
     </label>
     <small>Se lee con tu sesión de Facebook (no sale del navegador). Va despacio a propósito para no saturar la cuenta.</small>
     <div class="progress" hidden></div>
@@ -323,7 +340,7 @@
     progress.hidden = false
     onProgress = (t) => { progress.textContent = t }
     try {
-      const res = await runAudit(ids, Number(panel.querySelector(".days").value))
+      const res = await runAudit(ids, panel.querySelector(".days").value)
       const settings = await send({ type: "settings" })
       const base = (settings.dashboardUrl || "").replace(/\/+$/, "")
       const warn = res.mediaErrors.length ? `\n⚠ ${res.mediaErrors.length} archivo(s) no se pudieron copiar.` : ""

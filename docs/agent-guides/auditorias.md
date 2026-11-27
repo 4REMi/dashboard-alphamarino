@@ -93,7 +93,9 @@ clientes sin la extensión (usuario de sistema). El mockup vive en el artifact
   el gancho y ya lo mide el hook rate). Desde la v0.6 también se capturan
   alcance, frecuencia y tiempo promedio visto por anuncio (`audit_ad_retention`).
 
-- **Período**: el de los presets de Meta (`last_7d`/`last_30d`/`last_90d`),
+- **Período**: el de los presets de Meta (`last_7d`/`last_30d`/`last_90d`, o
+  «Máximo» = `maximum`, todo lo que Meta guarda —hasta 37 meses— desde el
+  primer día con datos de las campañas elegidas; extensión v0.6.1),
   calculado en la zona horaria de la cuenta y SIN hoy, igual que el
   «Últimos N días» del Ads Manager (hasta 2026-11-26 se usaba UTC con hoy
   incluido y el período salía corrido un día). Las diferencias que quedan
@@ -230,7 +232,7 @@ anuncios y los archivos en Storage. **Prospecto/Cliente**: clic en la etiqueta.
   cuentas prestadas, un patrón raro puede hacer que Facebook pida verificación:
   no acelerar.
 - Máximo 10 campañas por auditoría; insights por día en tandas de 800 filas (ahora llevan todas las acciones)
-  (límite de 4.5 MB de Vercel); videos de 3 en 3 (los enlaces de Meta caducan
+  (límite de 4.5 MB de Vercel); Meta se consulta por tramos de 90 días (`time_range`) para que períodos largos no se corten; videos de 3 en 3 (los enlaces de Meta caducan
   en horas, se copian al capturar).
 - Tablas `audit_*` con RLS **sin políticas**: todo se lee/escribe desde el
   servidor con el cliente admin tras `requireAuditAccess`
