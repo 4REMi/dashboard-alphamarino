@@ -25,7 +25,7 @@ También consultable desde el MCP (solo lectura): `auditorias`,
 `auditoria_campana`, `auditoria_anuncio`, `auditoria_que_funciona`,
 `auditoria_hipotesis`, `auditoria_marca`, `metricas_auditoria`.
 - **Marca inferida** (2026-11-26) — Brand Brain + Brand Lines por cuenta, ver abajo.
-- **Resultado por conjunto** (2026-11-27, migración 128 + extensión v0.6) —
+- **Resultado por conjunto** (2026-11-27, migración 129 + extensión v0.6) —
   no solo e-commerce: cada conjunto se juzga por SU resultado (compras, leads,
   conversaciones, llamadas…), «Qué funciona» por Brand Line y detalle con
   «Comparar con», estructura alineada a la retención y embudo comparado.
@@ -44,7 +44,7 @@ clientes sin la extensión (usuario de sistema). El mockup vive en el artifact
 - **Conteos crudos, no porcentajes**: `audit_ad_daily` guarda impresiones,
   gasto, reproducciones (3 s, 25/50/75/95/100 %, ThruPlay), clics de salida,
   visitas, carritos, checkouts, compras y valor, más TODAS las `actions` y
-  `action_values` de Meta de ese día (JSONB, migración 128). Las métricas se calculan al
+  `action_values` de Meta de ese día (JSONB, migración 129). Las métricas se calculan al
   mostrarlas (`lib/ad-audit/metrics.ts`): cambiar una fórmula recalcula todas
   las auditorías.
 - **Resultado por conjunto** (`lib/ad-audit/results.ts`): igual que la
@@ -236,7 +236,7 @@ anuncios y los archivos en Storage. **Prospecto/Cliente**: clic en la etiqueta.
 
 ## Dónde vive esto en el código
 
-- `supabase/migrations/124_ad_audits.sql`, `125_ad_audit_hypotheses_metrics.sql`, `126_ad_audit_brand.sql`, `127_ad_audit_analysis_jobs.sql`, `128_ad_audit_results.sql` — tablas.
+- `supabase/migrations/124_ad_audits.sql`, `125_ad_audit_hypotheses_metrics.sql`, `126_ad_audit_brand.sql`, `127_ad_audit_analysis_jobs.sql`, `129_ad_audit_results.sql` — tablas.
 - `lib/ad-audit/analysis-jobs.ts` + `app/api/audit-worker/route.ts` — cola de análisis en el servidor.
 - `lib/ad-audit/parts.ts` (partes y tipos), `lib/ad-audit/findings.ts` (Qué funciona).
 - `extension/content/audit.js` — captura; `extension/background.js` →

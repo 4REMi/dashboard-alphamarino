@@ -114,7 +114,7 @@ export function resolveAdsetResult(input: {
 // Resultado y su valor de UNA fila diaria. Igual que el Creative Tracker:
 // se toma la primera variante presente ese día; si ninguna, 0 (Meta omite
 // la acción en vez de mandarla en 0; sumar otra cosa inflaría el número).
-// Filas capturadas antes de la migración 128 no traen `actions`: para
+// Filas capturadas antes de la migración 129 no traen `actions`: para
 // resultados de compra se usan las columnas de compra de siempre.
 export function rowResult(
   row: { actions?: Record<string, number> | null; action_values?: Record<string, number> | null; impressions?: number; purchases?: number; purchase_value?: number },

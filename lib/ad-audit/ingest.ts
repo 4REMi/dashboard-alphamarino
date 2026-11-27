@@ -28,7 +28,7 @@ const arr = (v: unknown, max: number, what: string): unknown[] => {
 }
 const obj = (v: unknown) => (v && typeof v === "object" ? (v as Record<string, unknown>) : {})
 
-// { action_type: número } saneado (todas las acciones de Meta, migración 128).
+// { action_type: número } saneado (todas las acciones de Meta, migración 129).
 function numberMap(v: unknown): Record<string, number> {
   const out: Record<string, number> = {}
   for (const [k, n] of Object.entries(obj(v)).slice(0, 300)) {
@@ -230,7 +230,7 @@ export async function saveDailyRows(raw: unknown) {
     .map((r) => {
       const row: Record<string, unknown> = { ad_id: adIds.get(String(r.ad_id)), date: r.date }
       for (const k of STORED_COUNTER_KEYS) row[k] = Math.max(0, Number(r[k]) || 0)
-      // Todas las acciones del día (resultado por conjunto, migración 128).
+      // Todas las acciones del día (resultado por conjunto, migración 129).
       if (r.actions !== undefined) row.actions = numberMap(r.actions)
       if (r.action_values !== undefined) row.action_values = numberMap(r.action_values)
       return row

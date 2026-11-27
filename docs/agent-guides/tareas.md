@@ -275,5 +275,5 @@ proyecto y fecha límite si la hay. Reglas (las valida el servidor,
 responsable y no está Hecha; no se puede recordar a uno mismo; **máximo uno por
 hora por tarea** (si no, dice a qué hora se puede de nuevo). Lo puede usar
 cualquiera con permiso de tareas sobre ese proyecto. El modal muestra cuándo fue
-el último recordatorio (`tasks.last_reminded_at`, migración 128). Es manual:
+el último recordatorio (`tasks.last_reminded_at`, migración 129). Es manual:
 no hay recordatorios automáticos.

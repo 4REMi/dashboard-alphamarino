@@ -276,7 +276,7 @@ export async function setAdsetResultOverride(adsetId: string, actionType: string
   if (!UUID_RE.test(adsetId)) throw new Error("Conjunto inválido")
   if (actionType !== null && !/^[\w.:-]{1,120}$/.test(actionType)) throw new Error("Tipo de resultado inválido")
   const { error } = await createAdminClient().from("audit_adsets").update({ result_override: actionType }).eq("id", adsetId)
-  if (error) throw new Error(/result_override/.test(error.message) ? "Falta correr la migración 128 en Supabase" : error.message)
+  if (error) throw new Error(/result_override/.test(error.message) ? "Falta correr la migración 129 en Supabase" : error.message)
   revalidatePath("/ad-lab/auditorias")
 }
 
