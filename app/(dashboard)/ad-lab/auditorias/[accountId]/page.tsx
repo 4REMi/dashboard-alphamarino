@@ -41,10 +41,17 @@ export default async function AuditAccountPage({ params }: { params: Promise<{ a
               <p className="font-semibold">{c.name}</p>
               <p className="text-xs text-muted-foreground">{c.period_since} → {c.period_until} · {c.objective ?? "—"}</p>
             </div>
-            <div className="grid grid-cols-3 gap-2 text-sm">
-              <div><p className="text-[11px] text-muted-foreground">Gasto</p><p className="font-semibold tabular-nums">{formatMoney(c.spend, currency)}</p></div>
-              <div><p className="text-[11px] text-muted-foreground">Compras</p><p className="font-semibold tabular-nums">{c.purchases}</p></div>
-              <div><p className="text-[11px] text-muted-foreground">ROAS</p><p className="font-semibold tabular-nums">{c.spend > 0 ? (c.purchase_value / c.spend).toFixed(1) : "—"}</p></div>
+            <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+              <div><p className="text-[11px] text-muted-foreground">Gasto</p><p className="text-lg font-bold tabular-nums">{formatMoney(c.spend, currency)}</p></div>
+              {c.results.map((r) => (
+                <div key={r.label}>
+                  <p className="text-[11px] text-muted-foreground">{r.label}</p>
+                  <p className="text-lg font-bold tabular-nums">
+                    {Math.round(r.results).toLocaleString("es-MX")}
+                    <span className="ml-1.5 text-xs font-normal text-muted-foreground">{r.results > 0 ? `${formatMoney(r.spend / r.results, currency)} c/u` : ""}{r.kind === "purchase" && r.spend > 0 && r.value > 0 ? ` · ROAS ${(r.value / r.spend).toFixed(1)}` : ""}</span>
+                  </p>
+                </div>
+              ))}
             </div>
             <p className="text-xs text-muted-foreground">{c.ads} anuncios</p>
           </Link>

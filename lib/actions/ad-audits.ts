@@ -12,7 +12,7 @@ import { requireAuditAccess } from "@/lib/ad-audit/access"
 import { getCampaignAudit } from "@/lib/ad-audit/queries"
 import { COUNTER_KEYS, METRICS, biggestDrop, curvePoints, formatMetric, formatSec, metricById, type MetricId } from "@/lib/ad-audit/metrics"
 import { parseAiJson } from "@/lib/utils/ai-json"
-import { inferAuditBrandCore, promoteAuditBrandCore } from "@/lib/ad-audit/brand"
+import { getAuditBrand, inferAuditBrandCore, promoteAuditBrandCore } from "@/lib/ad-audit/brand"
 import { can } from "@/lib/permissions"
 import type { Profile } from "@/lib/types"
 
@@ -119,12 +119,15 @@ export async function generateCampaignHypotheses(campaignId: string): Promise<{ 
   const view = await getCampaignAudit(campaignId)
   if (!view) throw new Error("Campaña no encontrada")
   const currency = view.account.currency ?? "MXN"
+  const { lines } = await getAuditBrand(view.account.id)
+  const lineName = new Map(lines.map((l) => [l.id, l.name]))
 
   const labels = new Map<string, string>() // "A1" → ad uuid
   let n = 0
   const sets = view.adsets.filter((s) => s.ads.length >= 2).map((s) => ({
     conjunto_id: s.id,
     conjunto: s.name,
+    resultado: `${s.result.label}${s.result.source === "manual" ? " (elegido a mano)" : ""}`,
     anuncios: s.ads.map((ad) => {
       const label = `A${++n}`
       labels.set(label, ad.id)
@@ -141,6 +144,8 @@ export async function generateCampaignHypotheses(campaignId: string): Promise<{ 
         formato: ad.format,
         veredicto: ad.evaluation.verdict,
         porcentaje_gasto: `${(ad.evaluation.spendShare * 100).toFixed(1)} %`,
+        resultados: Math.round(ad.counters.results),
+        linea: ad.brandLineId ? lineName.get(ad.brandLineId) ?? null : null,
         se_rompe_en: ad.evaluation.breakAt ? metricById(ad.evaluation.breakAt, view.metrics).label : null,
         metricas: m,
         partes: ad.parts ? { gancho: ad.parts.gancho.tipo, cuerpo: ad.parts.cuerpo.tipo, cierre: ad.parts.cierre.tipo } : "sin analizar",
@@ -155,13 +160,14 @@ export async function generateCampaignHypotheses(campaignId: string): Promise<{ 
   const msg = await client.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 2500,
-    system: `Eres estratega creativo senior de paid media auditando una cuenta de e-commerce en Meta. Formulas HIPÓTESIS sobre por qué unos creativos ganan y otros pierden, enfocadas en el creativo (gancho, cuerpo, cierre) y, si los datos lo muestran, en la tienda.
+    system: `Eres estratega creativo senior de paid media auditando una cuenta en Meta. Cada conjunto dice qué cuenta como «resultado» (compras, leads, conversaciones…): júzgalo por eso y por su costo por resultado. Formulas HIPÓTESIS sobre por qué unos creativos ganan y otros pierden, enfocadas en el creativo (gancho, cuerpo, cierre) y, si los datos lo muestran, en la tienda.
 REGLAS:
 - Compara SOLO anuncios del mismo conjunto (misma audiencia y fechas).
 - Usa ÚNICAMENTE los números de la tabla, citados tal cual. No inventes datos, porcentajes ni causas que no se puedan sostener con ellos.
 - Las métricas listadas ya tienen muestra suficiente; si una no aparece, no la uses.
 - Confianza: "alta" solo si 3+ anuncios apuntan a lo mismo con diferencias claras; "media" con 2 anuncios o diferencias moderadas; "baja" si es una señal con poca muestra.
 - Incluye perdedores: qué los rompe, no solo por qué ganan los ganadores.
+- "linea" es la línea de producto/servicio del anuncio: si dos anuncios venden líneas distintas, di si la diferencia puede ser del producto y no del creativo.
 - "como_probarla": un creativo o prueba concreta que la confirme o descarte.
 - Máximo 2 hipótesis por conjunto y 8 en total. Español, corto: se lee en una interfaz.
 Responde SOLO JSON:
@@ -258,4 +264,36 @@ export async function promoteAuditBrand(accountId: string): Promise<{ brandBrain
   revalidatePath("/brand-brains")
   revalidatePath("/ad-lab/auditorias")
   return r
+}
+
+// ── Corregir a mano el resultado de un conjunto ───────────────────
+// null = automático (lo que optimiza el conjunto). Cualquier acción que
+// aparezca en los datos (o "reach"/"impressions"). No requiere recapturar:
+// los resultados se calculan al leer a partir de todas las acciones.
+export async function setAdsetResultOverride(adsetId: string, actionType: string | null): Promise<void> {
+  await requireSessionOrTrusted()
+  await requireAuditAccess()
+  if (!UUID_RE.test(adsetId)) throw new Error("Conjunto inválido")
+  if (actionType !== null && !/^[\w.:-]{1,120}$/.test(actionType)) throw new Error("Tipo de resultado inválido")
+  const { error } = await createAdminClient().from("audit_adsets").update({ result_override: actionType }).eq("id", adsetId)
+  if (error) throw new Error(/result_override/.test(error.message) ? "Falta correr la migración 128 en Supabase" : error.message)
+  revalidatePath("/ad-lab/auditorias")
+}
+
+// ── Corregir a mano la Brand Line de un anuncio ───────────────────
+export async function setAdBrandLine(adId: string, lineId: string | null): Promise<void> {
+  await requireSessionOrTrusted()
+  await requireAuditAccess()
+  if (!UUID_RE.test(adId) || (lineId !== null && !UUID_RE.test(lineId))) throw new Error("Datos inválidos")
+  const admin = createAdminClient()
+  if (lineId) {
+    // La línea tiene que ser de la misma cuenta que el anuncio.
+    const { data: ad } = await admin.from("audit_ads").select("campaign_id").eq("id", adId).single()
+    const { data: camp } = await admin.from("audit_campaigns").select("account_id").eq("id", ad?.campaign_id).single()
+    const { data: line } = await admin.from("audit_brand_lines").select("account_id").eq("id", lineId).single()
+    if (!camp || !line || line.account_id !== camp.account_id) throw new Error("Esa línea no es de esta cuenta")
+  }
+  const { error } = await admin.from("audit_ads").update({ audit_brand_line_id: lineId }).eq("id", adId)
+  if (error) throw new Error(error.message)
+  revalidatePath("/ad-lab/auditorias")
 }

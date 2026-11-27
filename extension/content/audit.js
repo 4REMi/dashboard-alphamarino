@@ -66,8 +66,22 @@
   }
   const sumList = (list) => (Array.isArray(list) ? list.reduce((s, x) => s + (Number(x.value) || 0), 0) : 0)
 
+  // Todas las acciones del día como { action_type: n } (7 días después del
+  // clic cuando Meta lo da). Con esto el dashboard calcula el resultado de
+  // cualquier tipo de campaña (mensajes, leads, llamadas…) sin otra captura.
+  const actionMap = (list) => {
+    const out = {}
+    for (const a of Array.isArray(list) ? list : []) {
+      const n = Number(a["7d_click"] ?? a.value)
+      if (a.action_type && Number.isFinite(n) && n !== 0) out[a.action_type] = n
+    }
+    return out
+  }
+
   function toCounters(row) {
     return {
+      actions: actionMap(row.actions),
+      action_values: actionMap(row.action_values),
       ad_id: row.ad_id,
       date: row.date_start,
       impressions: Number(row.impressions) || 0,
@@ -160,7 +174,7 @@
       const camp = campaigns[i]
       const label = `Campaña ${i + 1} de ${campaigns.length}`
       onProgress(`${label}: conjuntos y anuncios…`)
-      const adsets = await graph("graphAll", `/${camp.id}/adsets`, { fields: "id,name,effective_status,optimization_goal", limit: "200" }, token)
+      const adsets = await graph("graphAll", `/${camp.id}/adsets`, { fields: "id,name,effective_status,optimization_goal,promoted_object", limit: "200" }, token)
       const rawAds = await graph("graphAll", `/${camp.id}/ads`, {
         fields: "id,name,adset_id,effective_status,created_time,creative{video_id,image_url,thumbnail_url,body,object_story_spec,asset_feed_spec{videos{video_id},images{url},link_urls{website_url},bodies{text}}}",
         limit: "100",
@@ -174,13 +188,17 @@
       }, token)
       const rows = daily.map(toCounters)
 
-      onProgress(`${label}: curvas de retención…`)
+      onProgress(`${label}: retención, alcance y frecuencia…`)
       const curves = await graph("graphAll", `/${camp.id}/insights`, {
-        level: "ad", date_preset: datePreset, fields: "ad_id,video_play_curve_actions", limit: "500",
+        level: "ad", date_preset: datePreset, fields: "ad_id,video_play_curve_actions,reach,frequency,video_avg_time_watched_actions", limit: "500",
       }, token)
-      const retention = curves
-        .map((r) => ({ ad_id: r.ad_id, curve: r.video_play_curve_actions?.[0]?.value }))
-        .filter((r) => Array.isArray(r.curve))
+      const retention = curves.map((r) => ({
+        ad_id: r.ad_id,
+        curve: Array.isArray(r.video_play_curve_actions?.[0]?.value) ? r.video_play_curve_actions[0].value : null,
+        reach: r.reach ?? null,
+        frequency: r.frequency ?? null,
+        avg_watch_sec: r.video_avg_time_watched_actions?.[0]?.value ?? null,
+      }))
 
       // Videos: un registro por video (se repiten entre anuncios).
       const videoIds = [...new Set(ads.map((a) => a.video_id).filter(Boolean))]
@@ -218,12 +236,12 @@
       onProgress(`${label}: guardando en el dashboard…`)
       const structure = await api("/api/extension/audit/structure", {
         campaignId: camp.id, since: iso(since), until: iso(until),
-        adsets: adsets.map((s) => ({ id: s.id, name: s.name, status: s.effective_status, optimization_goal: s.optimization_goal })),
+        adsets: adsets.map((s) => ({ id: s.id, name: s.name, status: s.effective_status, optimization_goal: s.optimization_goal, promoted_object: s.promoted_object })),
         ads, retention, missing_events: missing,
         videos: videos.map((v) => ({ id: v.id, duration: v.duration, picture: v.picture })),
       })
-      for (let r = 0; r < rows.length; r += 2000) {
-        await api("/api/extension/audit/daily", { campaignId: camp.id, rows: rows.slice(r, r + 2000) })
+      for (let r = 0; r < rows.length; r += 800) {
+        await api("/api/extension/audit/daily", { campaignId: camp.id, rows: rows.slice(r, r + 800) })
       }
 
       // Copiar media: los enlaces de Meta caducan en horas.

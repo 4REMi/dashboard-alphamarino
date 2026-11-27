@@ -3,9 +3,12 @@
 // Ver docs/agent-guides/auditorias.md.
 //
 // Método:
-// - Cada parte se juzga con SU métrica: gancho → hook rate (video) o CTR
-//   (imagen); cuerpo → hold rate (video) o visita → carrito (imagen);
-//   cierre → conversión de sesión, con AOV de apoyo.
+// - Cada parte se juzga con SU métrica, que depende del tipo de resultado
+//   dominante (por gasto) de lo que se mira (ver partMetrics):
+//   compras → gancho hook rate/CTR, cuerpo hold rate/visita→carrito,
+//   cierre conversión de sesión (AOV de apoyo); leads/mensajes/otros →
+//   cierre resultados por clic (costo por resultado de apoyo).
+// - Se puede filtrar por Brand Line (opts.lineId; "none" = sin línea).
 // - El número que se muestra por tipo es POOLED: suma de numeradores ÷ suma
 //   de denominadores de sus anuncios (no un promedio de porcentajes).
 // - El veredicto usa la diferencia de cada anuncio contra la MEDIANA DE SU
@@ -14,17 +17,29 @@
 //   conjunto.
 // - Solo cuentan anuncios con muestra suficiente; con menos de 2 → «Pocos datos».
 
-import { formatMetric, metricById, type MetricDef, type MetricId } from "@/lib/ad-audit/metrics"
+import { formatMetric, metricById, type MetricDef, type MetricId, type ResultKind } from "@/lib/ad-audit/metrics"
 import { PART_TYPES, type PartKey } from "@/lib/ad-audit/parts"
 import type { AuditAdView, CampaignAuditView } from "@/lib/ad-audit/queries"
 
 export type Format = "video" | "image"
 
-export const PART_METRIC: Record<PartKey, Record<Format, { main: MetricId; second?: MetricId }>> = {
+type PartMetrics = Record<PartKey, Record<Format, { main: MetricId; second?: MetricId }>>
+
+export const PART_METRIC: PartMetrics = {
   gancho: { video: { main: "hook" }, image: { main: "ctr" } },
   cuerpo: { video: { main: "hold", second: "visit_cart" }, image: { main: "visit_cart" } },
   cierre: { video: { main: "session_cvr", second: "aov" }, image: { main: "session_cvr", second: "aov" } },
 }
+
+// Sin tienda (leads, mensajes, otros): el cuerpo de una imagen y el cierre
+// se juzgan por resultados por clic y costo por resultado.
+const PART_METRIC_NO_STORE: PartMetrics = {
+  gancho: { video: { main: "hook" }, image: { main: "ctr" } },
+  cuerpo: { video: { main: "hold", second: "ctr" }, image: { main: "result_rate" } },
+  cierre: { video: { main: "result_rate", second: "cpr" }, image: { main: "cpr" } },
+}
+
+export const partMetrics = (kind: ResultKind): PartMetrics => (kind === "purchase" ? PART_METRIC : PART_METRIC_NO_STORE)
 
 const WIN = 0.10
 
@@ -50,7 +65,7 @@ export interface FindingRow {
   second: string | null
   ads: number                      // con muestra suficiente
   spendShare: number
-  purchases: number
+  results: number
   support: string                  // "412 de 4,527 · 5 anuncios"
   clips: FindingClip[]
 }
@@ -58,20 +73,26 @@ export interface FindingRow {
 export interface Recipe {
   parts: Record<PartKey, string>
   ads: number
-  purchases: number
-  roas: number
-  accountRoas: number
-  purchaseShare: number
+  results: number
+  cpr: number
+  accountCpr: number
+  roas: number | null              // solo si el resultado es compra
+  accountRoas: number | null
+  resultShare: number
+  currency: string
   clips: Record<PartKey, FindingClip>
 }
 
 export interface Findings {
   coverage: { analyzed: number; total: number }
+  kind: ResultKind                 // tipo de resultado dominante (por gasto)
+  resultLabel: string
+  metrics: PartMetrics
   rows: Record<Format, Record<PartKey, FindingRow[]>>
   recipe: Record<Format, Recipe | null>
 }
 
-interface Item { ad: AuditAdView; href: string; currency: string; defs: MetricDef[] }
+interface Item { ad: AuditAdView; href: string; currency: string; defs: MetricDef[]; kind: ResultKind; label: string }
 
 function clipOf(it: Item, part: PartKey, metric: MetricId): FindingClip {
   const m = it.ad.evaluation.metrics[metric]
@@ -85,15 +106,39 @@ function clipOf(it: Item, part: PartKey, metric: MetricId): FindingClip {
   }
 }
 
-export function buildFindings(views: CampaignAuditView[], basePath: (v: CampaignAuditView) => string): Findings {
-  const items: Item[] = views.flatMap((v) => v.adsets.flatMap((s) => s.ads.map((ad) => ({
+export function buildFindings(
+  views: CampaignAuditView[],
+  basePath: (v: CampaignAuditView) => string,
+  opts: { lineId?: string | null } = {},
+): Findings {
+  const all: Item[] = views.flatMap((v) => v.adsets.flatMap((s) => s.ads.map((ad) => ({
     ad, href: `${basePath(v)}/a/${ad.id}`, currency: v.account.currency ?? "MXN", defs: v.metrics,
+    kind: s.result.kind, label: s.result.label,
   }))))
+  const items = opts.lineId === undefined || opts.lineId === null ? all
+    : all.filter((i) => (opts.lineId === "none" ? !i.ad.brandLineId : i.ad.brandLineId === opts.lineId))
+
+  // Tipo de resultado dominante por gasto: define con qué métricas se juzga.
+  const byKind = new Map<ResultKind, { spend: number; label: string }>()
+  for (const i of items) {
+    const k = byKind.get(i.kind) ?? { spend: 0, label: i.label }
+    k.spend += i.ad.counters.spend
+    byKind.set(i.kind, k)
+  }
+  const dominant = [...byKind.entries()].filter(([k]) => k !== "none").sort((x, y) => y[1].spend - x[1].spend)[0]
+  const kind: ResultKind = dominant?.[0] ?? "purchase"
+  const resultLabel = dominant?.[1].label ?? "Resultados"
+  const PM = partMetrics(kind)
+
   const creatives = items.filter((i) => i.ad.format !== "other")
+  // La receta solo suma resultados del tipo dominante (no mezcla compras con leads).
+  const same = items.filter((i) => i.kind === kind)
   const totalSpend = items.reduce((t, i) => t + i.ad.counters.spend, 0)
-  const totalValue = items.reduce((t, i) => t + i.ad.counters.purchase_value, 0)
-  const totalPurchases = items.reduce((t, i) => t + i.ad.counters.purchases, 0)
-  const accountRoas = totalSpend > 0 ? totalValue / totalSpend : 0
+  const kindSpend = same.reduce((t, i) => t + i.ad.counters.spend, 0)
+  const kindResults = same.reduce((t, i) => t + i.ad.counters.results, 0)
+  const kindValue = same.reduce((t, i) => t + i.ad.counters.result_value, 0)
+  const accountCpr = kindResults > 0 ? kindSpend / kindResults : Infinity
+  const accountRoas = kind === "purchase" && kindSpend > 0 ? kindValue / kindSpend : null
 
   const rows = { video: {}, image: {} } as Findings["rows"]
   const recipe = { video: null, image: null } as Findings["recipe"]
@@ -101,7 +146,7 @@ export function buildFindings(views: CampaignAuditView[], basePath: (v: Campaign
   for (const fmt of ["video", "image"] as Format[]) {
     const pool = creatives.filter((i) => i.ad.format === fmt && i.ad.parts)
     for (const part of ["gancho", "cuerpo", "cierre"] as PartKey[]) {
-      const { main, second } = PART_METRIC[part][fmt]
+      const { main, second } = PM[part][fmt]
       const out: FindingRow[] = []
       for (const type of PART_TYPES[part]) {
         const group = pool.filter((i) => i.ad.parts![part].tipo === type)
@@ -131,7 +176,7 @@ export function buildFindings(views: CampaignAuditView[], basePath: (v: Campaign
           second: secondText,
           ads: sampled.length,
           spendShare: totalSpend > 0 ? spend / totalSpend : 0,
-          purchases: group.reduce((t, i) => t + i.ad.counters.purchases, 0),
+          results: group.reduce((t, i) => t + (i.kind === kind ? i.ad.counters.results : 0), 0),
           support: `${Math.round(num).toLocaleString("es-MX")} de ${Math.round(den).toLocaleString("es-MX")} · ${group.length} anuncio${group.length === 1 ? "" : "s"}${sampled.length < group.length ? ` (${sampled.length} con muestra suficiente)` : ""}`,
           clips: [...group]
             .sort((a, b) => (b.ad.evaluation.metrics[main].value ?? -1) * higherBetter - (a.ad.evaluation.metrics[main].value ?? -1) * higherBetter)
@@ -144,36 +189,54 @@ export function buildFindings(views: CampaignAuditView[], basePath: (v: Campaign
       rows[fmt][part] = out
     }
 
-    // La combinación que más vende: gancho+cuerpo+cierre con más compras
-    // entre las que superan el ROAS de la cuenta (mínimo 3 compras).
+    // La combinación que más resultados trae entre las que cuestan por
+    // resultado lo mismo o menos que la cuenta (mínimo 3 resultados).
     const combos = new Map<string, Item[]>()
-    for (const i of pool) {
+    for (const i of pool.filter((x) => x.kind === kind)) {
       const k = `${i.ad.parts!.gancho.tipo}|${i.ad.parts!.cuerpo.tipo}|${i.ad.parts!.cierre.tipo}`
       combos.set(k, [...(combos.get(k) ?? []), i])
     }
     let best: Recipe | null = null
     for (const group of combos.values()) {
-      const purchases = group.reduce((t, i) => t + i.ad.counters.purchases, 0)
+      const results = group.reduce((t, i) => t + i.ad.counters.results, 0)
       const spend = group.reduce((t, i) => t + i.ad.counters.spend, 0)
-      const value = group.reduce((t, i) => t + i.ad.counters.purchase_value, 0)
-      const roas = spend > 0 ? value / spend : 0
-      if (purchases < 3 || roas < accountRoas) continue
-      if (best && purchases <= best.purchases) continue
-      const top = [...group].sort((a, b) => b.ad.counters.purchases - a.ad.counters.purchases)[0]
+      const value = group.reduce((t, i) => t + i.ad.counters.result_value, 0)
+      const cpr = results > 0 ? spend / results : Infinity
+      if (results < 3 || cpr > accountCpr) continue
+      if (best && results <= best.results) continue
+      const top = [...group].sort((a, b) => b.ad.counters.results - a.ad.counters.results)[0]
       const p = top.ad.parts!
       best = {
         parts: { gancho: p.gancho.tipo, cuerpo: p.cuerpo.tipo, cierre: p.cierre.tipo },
-        ads: group.length, purchases, roas, accountRoas,
-        purchaseShare: totalPurchases > 0 ? purchases / totalPurchases : 0,
+        ads: group.length, results, cpr, accountCpr,
+        roas: kind === "purchase" && spend > 0 ? value / spend : null, accountRoas,
+        resultShare: kindResults > 0 ? results / kindResults : 0,
+        currency: top.currency,
         clips: {
-          gancho: clipOf(top, "gancho", PART_METRIC.gancho[fmt].main),
-          cuerpo: clipOf(top, "cuerpo", PART_METRIC.cuerpo[fmt].main),
-          cierre: clipOf(top, "cierre", PART_METRIC.cierre[fmt].main),
+          gancho: clipOf(top, "gancho", PM.gancho[fmt].main),
+          cuerpo: clipOf(top, "cuerpo", PM.cuerpo[fmt].main),
+          cierre: clipOf(top, "cierre", PM.cierre[fmt].main),
         },
       }
     }
     recipe[fmt] = best
   }
 
-  return { coverage: { analyzed: creatives.filter((i) => i.ad.parts).length, total: creatives.length }, rows, recipe }
+  return { coverage: { analyzed: creatives.filter((i) => i.ad.parts).length, total: creatives.length }, kind, resultLabel, metrics: PM, rows, recipe }
+}
+
+// ── Por Brand Line ────────────────────────────────────────────────
+
+export interface LineFindings { id: string; name: string; color: string; findings: Findings }
+
+// Un Findings por línea (+ «Sin línea» si hay anuncios sin asignar).
+export function buildLineFindings(
+  views: CampaignAuditView[],
+  basePath: (v: CampaignAuditView) => string,
+  lines: { id: string; name: string; color: string }[],
+): LineFindings[] {
+  const out = lines.map((l) => ({ ...l, findings: buildFindings(views, basePath, { lineId: l.id }) }))
+  const none = buildFindings(views, basePath, { lineId: "none" })
+  if (lines.length && none.coverage.total > 0) out.push({ id: "none", name: "Sin línea", color: "#94a3b8", findings: none })
+  return out.filter((l) => l.findings.coverage.total > 0)
 }

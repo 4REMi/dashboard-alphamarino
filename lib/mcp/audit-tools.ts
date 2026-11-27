@@ -7,7 +7,7 @@ import {
   type AuditAdView, type CampaignAuditView,
 } from "@/lib/ad-audit/queries"
 import {
-  FUNNEL_ORDER, biggestDrop, computeMetric, curvePoints, formatMetric, formatMoney, formatSec, metricById,
+  FUNNEL_ORDER, STORE_COLS_BY_KIND, biggestDrop, curvePoints, formatMetric, formatMoney, formatSec, metricById,
   type MetricId,
 } from "@/lib/ad-audit/metrics"
 import { buildFindings, type Format } from "@/lib/ad-audit/findings"
@@ -97,11 +97,12 @@ function partsLine(ad: AuditAdView): string {
 function campaignHeader(view: CampaignAuditView): string {
   const currency = view.account.currency ?? "MXN"
   const t = view.totals
-  const kpi = (id: MetricId) => formatMetric(metricById(id, view.metrics), computeMetric(metricById(id, view.metrics), t, { isVideo: true, missing: view.campaign.missing_events }).value, currency)
+  const results = view.resultSummary.map((r) => `${r.label} ${Math.round(r.results).toLocaleString("es-MX")} (${r.results > 0 ? formatMoney(r.spend / r.results, currency) : "—"} c/u${r.kind === "purchase" && r.spend > 0 ? ` · ROAS ${(r.value / r.spend).toFixed(2)}` : ""})`).join(" · ")
   return [
     `CUENTA: ${view.account.name} (act_${view.account.meta_account_id})`,
     `CAMPAÑA: ${view.campaign.name} · ${view.campaign.period_since} a ${view.campaign.period_until} · atribución 7 días después del clic`,
-    `Gasto ${formatMoney(t.spend, currency)} · Compras ${t.purchases} · CPA ${kpi("cpa")} · ROAS ${kpi("roas")} · AOV ${kpi("aov")} · Conv. sesión ${kpi("session_cvr")}`,
+    `Gasto ${formatMoney(t.spend, currency)} · ${results || "sin resultados"}`,
+    `Resultado por conjunto: ${view.adsets.map((s) => `${s.name} → ${s.result.label}${s.result.source === "manual" ? " (elegido a mano)" : ""}`).join(" | ")}`,
     view.campaign.missing_events.length ? `Eventos que la cuenta NO manda (métricas "no medido"): ${view.campaign.missing_events.join(", ")}` : "",
   ].filter(Boolean).join("\n")
 }
@@ -153,13 +154,13 @@ export function registerAuditTools(server: McpServer) {
       const currency = view.account.currency ?? "MXN"
       const out = [campaignHeader(view)]
       for (const s of view.adsets) {
-        out.push(`\nCONJUNTO: ${s.name} (${s.ads.length} anuncios)`)
+        out.push(`\nCONJUNTO: ${s.name} (${s.ads.length} anuncios) · resultado: ${s.result.label}`)
         for (const ad of s.ads) {
           const e = ad.evaluation
-          const metrics = (["hook", "hold", "ctr", "cpa", "visit_cart", "cart_checkout", "checkout_purchase", "session_cvr", "aov", "roas"] as MetricId[])
+          const metrics = (["hook", "hold", "ctr", "cpr", "cpm", ...STORE_COLS_BY_KIND[s.result.kind].filter((x) => x !== "cpm")] as MetricId[])
             .map((id) => metricLine(view, ad, id, currency)).filter(Boolean).join(" · ")
           out.push([
-            `- ${ad.name} [${ad.format === "video" ? "video" : ad.format === "image" ? "imagen" : "otro"}] · ${VERDICT[e.verdict]} · ${(e.spendShare * 100).toFixed(1)} % del gasto · ${formatMoney(ad.counters.spend, currency)} · ${ad.counters.purchases} compras`,
+            `- ${ad.name} [${ad.format === "video" ? "video" : ad.format === "image" ? "imagen" : "otro"}] · ${VERDICT[e.verdict]} · ${(e.spendShare * 100).toFixed(1)} % del gasto · ${formatMoney(ad.counters.spend, currency)} · ${Math.round(ad.counters.results)} ${s.result.label.toLowerCase()}`,
             `  ${metrics || "sin métricas con muestra suficiente"}`,
             `  Se rompe en: ${e.breakAt ? metricById(e.breakAt, view.metrics).label : "no se rompe"}${e.verdict === "starved" || e.verdict === "nodata" ? ` · ${e.verdictReason}` : ""}`,
             `  ${partsLine(ad)}`,
@@ -199,26 +200,30 @@ export function registerAuditTools(server: McpServer) {
       const steps: [string, keyof typeof ad.counters, MetricId | null][] = [
         ["Impresiones", "impressions", null], ["Reproducciones de 3 s", "video_3s", "hook"], ["Reproducciones al 50 %", "video_p50", "hold"],
         ["Clics de salida", "outbound_clicks", "ctr"], ["Visitas a la página", "landing_page_views", "click_visit"],
-        ["Agregados al carrito", "add_to_cart", "visit_cart"], ["Pagos iniciados", "initiate_checkout", "cart_checkout"], ["Compras", "purchases", "checkout_purchase"],
+        ...(set.result.kind === "purchase"
+          ? [["Agregados al carrito", "add_to_cart", "visit_cart"], ["Pagos iniciados", "initiate_checkout", "cart_checkout"], ["Compras", "purchases", "checkout_purchase"]] as [string, keyof typeof ad.counters, MetricId][]
+          : [[set.result.label, "results", "result_rate"]] as [string, keyof typeof ad.counters, MetricId][]),
       ]
       const funnel = steps
         .filter(([, , id]) => !(ad.format !== "video" && (id === "hook" || id === "hold")))
+        .filter(([, key]) => set.result.kind === "purchase" || set.result.kind === "lead" || key !== "landing_page_views")
         .map(([label, key, id]) => `  ${label}: ${Math.round(ad.counters[key]).toLocaleString("es-MX")}${id ? ` → ${metricLine(view, ad, id, currency) ?? "—"}${e.breakAt === id ? "  ← SE ROMPE AQUÍ" : ""}` : ""}`)
       const drop = biggestDrop(curvePoints(ad.curve, ad.durationSec))
-      const winner = set.ads.filter((a) => a.id !== ad.id && a.evaluation.verdict === "win" && a.evaluation.metrics.cpa.value !== null)
-        .sort((a, b) => (a.evaluation.metrics.cpa.value ?? 0) - (b.evaluation.metrics.cpa.value ?? 0))[0]
+      const winner = set.ads.filter((a) => a.id !== ad.id && a.evaluation.verdict === "win" && a.evaluation.metrics.cpr.value !== null)
+        .sort((a, b) => (a.evaluation.metrics.cpr.value ?? 0) - (b.evaluation.metrics.cpr.value ?? 0))[0]
       return text([
         `ANUNCIO: ${ad.name} · ${VERDICT[e.verdict]} (${e.verdictReason})`,
         `Cuenta ${view.account.name} · campaña ${view.campaign.name} · conjunto ${set.name} · ${view.campaign.period_since} a ${view.campaign.period_until}`,
-        `${(e.spendShare * 100).toFixed(1)} % del gasto del conjunto · ${formatMoney(ad.counters.spend, currency)}`,
+        `${(e.spendShare * 100).toFixed(1)} % del gasto del conjunto · ${formatMoney(ad.counters.spend, currency)} · ${Math.round(ad.counters.results)} ${set.result.label.toLowerCase()}`,
+        [ad.reach != null ? `alcance ${ad.reach.toLocaleString("es-MX")}` : "", ad.frequency != null ? `frecuencia ${ad.frequency.toFixed(2)}` : "", ad.avgWatchSec != null ? `tiempo promedio visto ${ad.avgWatchSec.toFixed(1)} s` : ""].filter(Boolean).join(" · "),
         `EMBUDO (contra la mediana del conjunto):`,
         ...funnel,
-        ["aov", "cpa", "roas", "session_cvr"].map((id) => metricLine(view, ad, id as MetricId, currency)).filter(Boolean).join(" · "),
+        (set.result.kind === "purchase" ? ["cpr", "cpm", "cpc", "aov", "roas", "session_cvr"] : ["cpr", "cpm", "cpc"]).map((id) => metricLine(view, ad, id as MetricId, currency)).filter(Boolean).join(" · "),
         ad.format === "video"
           ? `RETENCIÓN: ${drop ? `mayor caída ${formatSec(drop.from)}–${formatSec(drop.to)}: se va el ${Math.round(drop.lostShare * 100)} % de quienes seguían` : "Meta no dio la curva"}${ad.durationSec ? ` · duración ${formatSec(ad.durationSec)}` : ""}`
           : "",
         partsLine(ad) + (ad.conceptName ? ` · concepto: ${ad.conceptName}` : ""),
-        winner ? `Ganador del conjunto para comparar: ${winner.name} (CPA ${formatMetric(metricById("cpa", view.metrics), winner.evaluation.metrics.cpa.value, currency)})` : "",
+        winner ? `Ganador del conjunto para comparar: ${winner.name} (costo por resultado ${formatMetric(metricById("cpr", view.metrics), winner.evaluation.metrics.cpr.value, currency)})` : "",
         ad.landingUrl ? `Destino: ${ad.landingUrl}` : "",
       ].filter(Boolean).join("\n"))
     },
@@ -229,26 +234,38 @@ export function registerAuditTools(server: McpServer) {
     {
       title: "Qué funciona en una cuenta auditada",
       description:
-        "Ganchos, cuerpos y cierres por tipo en toda la cuenta auditada: para cada tipo, su métrica (gancho → hook rate o CTR en imagen; cuerpo → hold rate o visita→carrito en imagen; cierre → conversión de sesión y AOV), el veredicto (Funciona / En la media / No funciona / Pocos datos) con su diferencia promedio contra la mediana de cada conjunto, el respaldo (conteos y anuncios) y ejemplos. Incluye la combinación gancho+cuerpo+cierre que más vende. Solo cuenta creativos ya analizados por partes. Solo lectura.",
+        "Ganchos, cuerpos y cierres por tipo en la cuenta auditada (toda, o una Brand Line con `linea`): para cada tipo, su métrica según el resultado dominante (compras: gancho → hook rate o CTR en imagen; cuerpo → hold rate o visita→carrito; cierre → conversión de sesión y AOV. Leads/mensajes/otros: cierre → resultados por clic y costo por resultado), el veredicto (Funciona / En la media / No funciona / Pocos datos) con su diferencia promedio contra la mediana de cada conjunto, el respaldo (conteos y anuncios) y ejemplos. Incluye la combinación gancho+cuerpo+cierre que más resultados trae a costo igual o menor al de la cuenta. Solo cuenta creativos ya analizados por partes. Solo lectura.",
       inputSchema: z.object({
         cuenta: z.string().describe("Nombre (o ID act_) de la cuenta auditada"),
         formato: z.enum(["video", "imagen"]).optional().describe("Por defecto, ambos"),
+        linea: z.string().optional().describe("Nombre (o parte) de una Brand Line inferida de la cuenta; por defecto, toda la cuenta"),
       }),
     },
-    async ({ cuenta, formato }, ctx: ToolCtx) => {
+    async ({ cuenta, formato, linea }, ctx: ToolCtx) => {
       await requireAuditAccess(ctx)
       const acc = await findAccount(cuenta)
       const views = await getAccountCampaignViews(acc.id)
-      const f = buildFindings(views, (v) => `/ad-lab/auditorias/${acc.id}/c/${v.campaign.id}`)
+      let lineId: string | undefined
+      let lineName = ""
+      if (linea?.trim()) {
+        const { lines } = await getAuditBrand(acc.id)
+        const q = linea.trim().toLowerCase()
+        const hit = lines.find((l) => l.name.toLowerCase() === q) ?? lines.find((l) => l.name.toLowerCase().includes(q))
+        if (!hit) throw new Error(`No encontré la línea "${linea}". Líneas de ${acc.name}: ${lines.map((l) => l.name).join(", ") || "ninguna (infiere la marca primero)"}.`)
+        lineId = hit.id
+        lineName = hit.name
+      }
+      const f = buildFindings(views, (v) => `/ad-lab/auditorias/${acc.id}/c/${v.campaign.id}`, { lineId })
       const fmts: Format[] = formato === "video" ? ["video"] : formato === "imagen" ? ["image"] : ["video", "image"]
       const V = { ok: "Funciona", mid: "En la media", bad: "No funciona", few: "Pocos datos" }
-      const out = [`CUENTA: ${acc.name} · ${f.coverage.analyzed} de ${f.coverage.total} creativos analizados por partes (solo esos cuentan).`]
+      const currency = acc.currency ?? "MXN"
+      const out = [`CUENTA: ${acc.name}${lineName ? ` · LÍNEA: ${lineName}` : ""} · resultado dominante: ${f.resultLabel} · ${f.coverage.analyzed} de ${f.coverage.total} creativos analizados por partes (solo esos cuentan).`]
       for (const fmt of fmts) {
         const rows = f.rows[fmt]
         if (!(["gancho", "cuerpo", "cierre"] as PartKey[]).some((p) => rows[p].length)) continue
         out.push(`\n=== ${fmt === "video" ? "VIDEO" : "IMAGEN"} ===`)
         const r = f.recipe[fmt]
-        if (r) out.push(`Combinación que más vende: ${r.parts.gancho} → ${r.parts.cuerpo} → ${r.parts.cierre} · ROAS ${r.roas.toFixed(1)} (cuenta ${r.accountRoas.toFixed(1)}) · ${r.ads} anuncio(s) · ${Math.round(r.purchaseShare * 100)} % de las compras · ej. ${r.clips.gancho.name}`)
+        if (r) out.push(`Combinación que más resultados trae: ${r.parts.gancho} → ${r.parts.cuerpo} → ${r.parts.cierre} · ${formatMoney(r.cpr, currency)} por resultado (cuenta ${formatMoney(r.accountCpr, currency)})${r.roas !== null ? ` · ROAS ${r.roas.toFixed(1)} (cuenta ${(r.accountRoas ?? 0).toFixed(1)})` : ""} · ${r.ads} anuncio(s) · ${Math.round(r.resultShare * 100)} % de ${f.resultLabel.toLowerCase()} · ej. ${r.clips.gancho.name}`)
         for (const p of ["gancho", "cuerpo", "cierre"] as PartKey[]) {
           if (!rows[p].length) continue
           out.push(`${PART_LABEL[p].toUpperCase()}S:`)
@@ -332,7 +349,7 @@ export function registerAuditTools(server: McpServer) {
         lines.length ? "\nBRAND LINES:" : "Sin Brand Lines.",
         ...lines.map((x) => [
           `- ${x.name}: ${x.description ?? ""}`,
-          `  ${x.ads.length} anuncios · ${formatMoney(x.ads.reduce((t, a) => t + a.spend, 0), currency)} · ${x.ads.reduce((t, a) => t + a.purchases, 0)} compras${x.ads.length ? ` · ej. ${x.ads.slice(0, 4).map((a) => a.name).join(", ")}` : ""}`,
+          `  ${x.ads.length} anuncios · ${formatMoney(x.ads.reduce((t, a) => t + a.spend, 0), currency)}${x.ads.some((a) => a.purchases > 0) ? ` · ${x.ads.reduce((t, a) => t + a.purchases, 0)} compras` : ""}${x.ads.length ? ` · ej. ${x.ads.slice(0, 4).map((a) => a.name).join(", ")}` : ""}`,
           [l("USPs", x.usps), l("Dolores", x.pain_points), l("Keywords", x.keywords)].filter(Boolean).map((t) => `  ${t}`).join("\n"),
           x.landing_urls.length ? `  Destino: ${x.landing_urls.join(", ")}` : "",
         ].filter(Boolean).join("\n")),

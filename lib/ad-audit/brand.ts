@@ -118,7 +118,7 @@ export async function inferAuditBrandCore(accountId: string, profileId: string):
   if (!account) throw new Error("Cuenta no encontrada")
 
   const views = await getAccountCampaignViews(accountId)
-  const ads = views.flatMap((v) => v.adsets.flatMap((s) => s.ads))
+  const ads = views.flatMap((v) => v.adsets.flatMap((s) => s.ads.map((a) => ({ ...a, resultLabel: s.result.label }))))
   if (ads.length === 0) throw new Error("La cuenta no tiene anuncios capturados")
   const totalSpend = ads.reduce((t, a) => t + a.counters.spend, 0) || 1
 
@@ -160,7 +160,7 @@ export async function inferAuditBrandCore(accountId: string, profileId: string):
       nombre: a.name,
       formato: a.format,
       gasto: `${((a.counters.spend / totalSpend) * 100).toFixed(1)} %`,
-      compras: a.counters.purchases,
+      resultados: `${Math.round(a.counters.results)} ${a.resultLabel.toLowerCase()}`,
       destino: normalizeLanding(a.landingUrl)?.path ?? null,
       copy: a.body ? a.body.slice(0, 400) : null,
       inferido_del_creativo: an ? {
@@ -175,7 +175,7 @@ export async function inferAuditBrandCore(accountId: string, profileId: string):
     model: "claude-sonnet-4-6",
     max_tokens: 3500,
     system: `Eres estratega de marca. Construyes el Brand Brain de una marca y sus Brand Lines (líneas de producto/servicio) a partir de SUS PROPIOS ANUNCIOS en Meta y su sitio web. Usa SOLO la evidencia: no inventes productos, precios ni datos que no aparezcan.
-Brand Lines: cada producto, colección o servicio distinto que los anuncios venden (pistas: la página de destino y el copy). Si todos los anuncios venden lo mismo, UNA línea. Máximo 8. Asigna cada anuncio a UNA línea (o a ninguna si no se sabe). Nombres de línea cortos (2-5 palabras).
+Brand Lines: cada producto, colección o servicio distinto que los anuncios venden (pistas: la página de destino y el copy). Si todos los anuncios venden lo mismo, UNA línea. Los paquetes/bundles/kits que combinan varios productos son SU PROPIA línea (p. ej. «Paquetes»), no se reparten entre los productos que incluyen. Máximo 8. Asigna cada anuncio a UNA línea (o a ninguna si no se sabe). Nombres de línea cortos (2-5 palabras).
 El gasto indica qué es lo más importante para la marca.
 Escribe en el idioma de la marca. Listas: 3-5 elementos cortos.
 Responde SOLO JSON:

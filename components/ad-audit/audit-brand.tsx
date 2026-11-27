@@ -116,7 +116,7 @@ export function AuditBrand({ accountId, brain, lines, error, currency, canPromot
                     {l.promoted_brand_line_id && <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">en Brand Brains</span>}
                   </div>
                   {l.description && <p className="text-sm text-muted-foreground">{l.description}</p>}
-                  <p className="text-xs tabular-nums">{l.ads.length} anuncio{l.ads.length === 1 ? "" : "s"} · {formatMoney(spend, currency)} · {purchases} compras</p>
+                  <p className="text-xs tabular-nums">{l.ads.length} anuncio{l.ads.length === 1 ? "" : "s"} · {formatMoney(spend, currency)} {purchases > 0 ? ` · ${purchases} compras` : ""}</p>
                   <List label="USPs" items={l.usps} />
                   <List label="Dolores" items={l.pain_points} />
                   {l.keywords.length > 0 && <div className="flex flex-wrap gap-1">{l.keywords.map((k) => <span key={k} className="rounded-full bg-muted px-2 py-0.5 text-[11px]">{k}</span>)}</div>}

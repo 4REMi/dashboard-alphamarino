@@ -10,7 +10,7 @@ import { revalidatePath } from "next/cache"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { mirrorToStorage } from "@/lib/ad-lab/storage-mirror"
 import { ExtensionError, NUMERIC_ID_RE, safeMetaUrl, str } from "@/lib/ad-lab/extension"
-import { COUNTER_KEYS, type StoreEvent } from "@/lib/ad-audit/metrics"
+import { STORED_COUNTER_KEYS, type StoreEvent } from "@/lib/ad-audit/metrics"
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 const STORE_EVENTS: StoreEvent[] = ["landing_page_view", "add_to_cart", "initiate_checkout", "purchase"]
@@ -27,6 +27,26 @@ const arr = (v: unknown, max: number, what: string): unknown[] => {
   return v
 }
 const obj = (v: unknown) => (v && typeof v === "object" ? (v as Record<string, unknown>) : {})
+
+// { action_type: número } saneado (todas las acciones de Meta, migración 128).
+function numberMap(v: unknown): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const [k, n] of Object.entries(obj(v)).slice(0, 300)) {
+    const num = Number(n)
+    if (/^[\w.:-]{1,120}$/.test(k) && Number.isFinite(num) && num !== 0) out[k] = num
+  }
+  return out
+}
+
+// promoted_object del conjunto: solo los campos que usa resolveResultSpec.
+function promotedObject(v: unknown): Record<string, string> | null {
+  const o = obj(v)
+  const out: Record<string, string> = {}
+  for (const k of ["custom_event_type", "custom_conversion_id", "pixel_id", "page_id", "application_id"]) {
+    if (typeof o[k] === "string" || typeof o[k] === "number") out[k] = String(o[k]).slice(0, 80)
+  }
+  return Object.keys(out).length ? out : null
+}
 
 async function campaignByMetaId(metaCampaignId: string) {
   const admin = createAdminClient()
@@ -91,6 +111,7 @@ export async function saveCampaignStructure(raw: unknown) {
     name: str(s.name, 300) ?? String(s.id),
     status: str(s.status, 40),
     optimization_goal: str(s.optimization_goal, 60),
+    promoted_object: promotedObject(s.promoted_object),
   }))
   const adsetIds = new Map<string, string>()
   if (adsets.length) {
@@ -153,13 +174,19 @@ export async function saveCampaignStructure(raw: unknown) {
   // Curvas de retención del período
   const since = date(body.since)
   const until = date(body.until)
+  // Datos del período por anuncio: curva de retención (videos) y alcance,
+  // frecuencia y tiempo promedio de reproducción (no se suman por día).
+  const optNum = (v: unknown) => (v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) ? null : Number(v))
   const curves = arr(body.retention, 1000, "curvas").map(obj)
-    .filter((r) => adIds.has(String(r.ad_id)) && Array.isArray(r.curve))
+    .filter((r) => adIds.has(String(r.ad_id)))
     .map((r) => ({
       ad_id: adIds.get(String(r.ad_id))!,
       period_since: since,
       period_until: until,
-      curve: (r.curve as unknown[]).slice(0, 30).map((x) => Math.max(0, Math.min(100, Number(x) || 0))),
+      curve: Array.isArray(r.curve) ? (r.curve as unknown[]).slice(0, 30).map((x) => Math.max(0, Math.min(100, Number(x) || 0))) : null,
+      reach: optNum(r.reach),
+      frequency: optNum(r.frequency),
+      avg_watch_sec: optNum(r.avg_watch_sec),
     }))
   if (curves.length) {
     const { error } = await admin.from("audit_ad_retention").upsert(curves, { onConflict: "ad_id" })
@@ -202,7 +229,10 @@ export async function saveDailyRows(raw: unknown) {
     .filter((r) => adIds.has(String(r.ad_id)) && date(r.date))
     .map((r) => {
       const row: Record<string, unknown> = { ad_id: adIds.get(String(r.ad_id)), date: r.date }
-      for (const k of COUNTER_KEYS) row[k] = Math.max(0, Number(r[k]) || 0)
+      for (const k of STORED_COUNTER_KEYS) row[k] = Math.max(0, Number(r[k]) || 0)
+      // Todas las acciones del día (resultado por conjunto, migración 128).
+      if (r.actions !== undefined) row.actions = numberMap(r.actions)
+      if (r.action_values !== undefined) row.action_values = numberMap(r.action_values)
       return row
     })
   if (clean.length) {

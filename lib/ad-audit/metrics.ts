@@ -7,6 +7,13 @@
 // DEL MISMO CONJUNTO (misma audiencia, presupuesto y fechas) contra la
 // mediana de sus compañeros. Las fórmulas son las de la agencia: cambiar una
 // definición aquí recalcula todas las auditorías, incluidas las viejas.
+//
+// «Resultado» NO es siempre compra: es lo que optimiza cada conjunto (mismo
+// criterio que la columna Resultados del Ads Manager, lib/meta/result-spec.ts,
+// resuelto en lib/ad-audit/results.ts). results/result_value se calculan al
+// leer a partir de todas las acciones guardadas; el veredicto es costo por
+// resultado contra la mediana del conjunto, y el embudo después del clic
+// depende del tipo de resultado (compra, lead, mensajes, otro, ninguno).
 
 export interface Counters {
   impressions: number
@@ -24,12 +31,16 @@ export interface Counters {
   initiate_checkout: number
   purchases: number
   purchase_value: number
+  results: number          // calculado: el resultado del conjunto (no se guarda)
+  result_value: number     // calculado: valor de ese resultado, si Meta lo da
 }
 
-export const COUNTER_KEYS: (keyof Counters)[] = [
+// Columnas que se GUARDAN en audit_ad_daily (results/result_value no).
+export const STORED_COUNTER_KEYS: (keyof Counters)[] = [
   "impressions", "spend", "video_3s", "video_p25", "video_p50", "video_p75", "video_p95", "video_p100",
   "thruplays", "outbound_clicks", "landing_page_views", "add_to_cart", "initiate_checkout", "purchases", "purchase_value",
 ]
+export const COUNTER_KEYS: (keyof Counters)[] = [...STORED_COUNTER_KEYS, "results", "result_value"]
 
 export const zeroCounters = (): Counters =>
   Object.fromEntries(COUNTER_KEYS.map((k) => [k, 0])) as unknown as Counters
@@ -47,13 +58,17 @@ export const COUNTER_LABEL: Record<keyof Counters, string> = {
   video_p95: "Reproducciones al 95 %", video_p100: "Reproducciones al 100 %", thruplays: "ThruPlays",
   outbound_clicks: "Clics de salida", landing_page_views: "Visitas a la página", add_to_cart: "Agregados al carrito",
   initiate_checkout: "Pagos iniciados", purchases: "Compras", purchase_value: "Valor de compras",
+  results: "Resultados", result_value: "Valor de los resultados",
 }
+
+// Tipo de resultado de un conjunto → qué embudo se muestra después del clic.
+export type ResultKind = "purchase" | "lead" | "message" | "other" | "none"
 
 // Eventos de la tienda que una cuenta puede no mandar (píxel/CAPI incompleto).
 export type StoreEvent = "landing_page_view" | "add_to_cart" | "initiate_checkout" | "purchase"
 
 export type MetricId =
-  | "hook" | "hold" | "ctr" | "cpa"
+  | "hook" | "hold" | "ctr" | "cpr" | "cpm" | "cpc" | "result_rate"
   | "click_visit" | "visit_cart" | "cart_checkout" | "checkout_purchase" | "session_cvr" | "aov" | "roas"
 
 export interface MetricDef {
@@ -62,10 +77,12 @@ export interface MetricDef {
   formula: string                 // texto para el tooltip
   num: keyof Counters
   den: keyof Counters
-  view: "creative" | "store"
+  view: "creative" | "store" | "cost"
   format: "pct" | "money" | "ratio"
   higherIsBetter: boolean
+  scale?: number                  // p. ej. CPM = gasto ÷ impresiones × 1,000
   videoOnly?: boolean             // en imágenes no hay reproducciones
+  onlyKinds?: ResultKind[]        // solo aplica con estos tipos de resultado
   // Muestra mínima para juzgar: el conteo `min.key` debe llegar a `min.value`.
   min: { key: keyof Counters; value: number; label: string }
   needs?: StoreEvent[]            // si la cuenta no manda el evento → "no medido"
@@ -76,14 +93,17 @@ export const METRICS: MetricDef[] = [
   { id: "hook", label: "Hook rate", formula: "Reproducciones de 3 s ÷ impresiones", num: "video_3s", den: "impressions", view: "creative", format: "pct", higherIsBetter: true, videoOnly: true, min: { key: "impressions", value: 1000, label: "1,000 impresiones" } },
   { id: "hold", label: "Hold rate", formula: "Reproducciones al 50 % ÷ reproducciones de 3 s", num: "video_p50", den: "video_3s", view: "creative", format: "pct", higherIsBetter: true, videoOnly: true, min: { key: "video_3s", value: 500, label: "500 reproducciones de 3 s" } },
   { id: "ctr", label: "CTR", formula: "Clics de salida ÷ impresiones", num: "outbound_clicks", den: "impressions", view: "creative", format: "pct", higherIsBetter: true, min: { key: "impressions", value: 1000, label: "1,000 impresiones" } },
-  { id: "cpa", label: "CPA", formula: "Gasto ÷ compras (7 días después del clic)", num: "spend", den: "purchases", view: "creative", format: "money", higherIsBetter: false, min: { key: "purchases", value: 3, label: "3 compras" }, needs: ["purchase"] },
-  { id: "click_visit", label: "Clic → visita", formula: "Visitas a la página ÷ clics de salida", num: "landing_page_views", den: "outbound_clicks", view: "store", format: "pct", higherIsBetter: true, min: { key: "outbound_clicks", value: 100, label: "100 clics" }, needs: ["landing_page_view"] },
-  { id: "visit_cart", label: "Visita → carrito", formula: "Agregados al carrito ÷ visitas a la página", num: "add_to_cart", den: "landing_page_views", view: "store", format: "pct", higherIsBetter: true, min: { key: "landing_page_views", value: 100, label: "100 visitas" }, needs: ["landing_page_view", "add_to_cart"] },
-  { id: "cart_checkout", label: "Carrito → checkout", formula: "Pagos iniciados ÷ agregados al carrito", num: "initiate_checkout", den: "add_to_cart", view: "store", format: "pct", higherIsBetter: true, min: { key: "add_to_cart", value: 20, label: "20 carritos" }, needs: ["add_to_cart", "initiate_checkout"] },
-  { id: "checkout_purchase", label: "Checkout → compra", formula: "Compras ÷ pagos iniciados", num: "purchases", den: "initiate_checkout", view: "store", format: "pct", higherIsBetter: true, min: { key: "initiate_checkout", value: 10, label: "10 pagos iniciados" }, needs: ["initiate_checkout", "purchase"] },
-  { id: "session_cvr", label: "Conv. sesión", formula: "Compras ÷ visitas a la página", num: "purchases", den: "landing_page_views", view: "store", format: "pct", higherIsBetter: true, min: { key: "landing_page_views", value: 100, label: "100 visitas" }, needs: ["landing_page_view", "purchase"] },
-  { id: "aov", label: "AOV", formula: "Valor de compras ÷ compras", num: "purchase_value", den: "purchases", view: "store", format: "money", higherIsBetter: true, min: { key: "purchases", value: 5, label: "5 compras" }, needs: ["purchase"] },
-  { id: "roas", label: "ROAS", formula: "Valor de compras ÷ gasto", num: "purchase_value", den: "spend", view: "store", format: "ratio", higherIsBetter: true, min: { key: "purchases", value: 5, label: "5 compras" }, needs: ["purchase"] },
+  { id: "cpr", label: "Costo por resultado", formula: "Gasto ÷ resultados (lo que optimiza el conjunto)", num: "spend", den: "results", view: "creative", format: "money", higherIsBetter: false, min: { key: "results", value: 3, label: "3 resultados" } },
+  { id: "cpm", label: "CPM", formula: "Gasto ÷ impresiones × 1,000", num: "spend", den: "impressions", scale: 1000, view: "cost", format: "money", higherIsBetter: false, min: { key: "impressions", value: 1000, label: "1,000 impresiones" } },
+  { id: "cpc", label: "CPC", formula: "Gasto ÷ clics de salida", num: "spend", den: "outbound_clicks", view: "cost", format: "money", higherIsBetter: false, min: { key: "outbound_clicks", value: 50, label: "50 clics" } },
+  { id: "result_rate", label: "Clic → resultado", formula: "Resultados ÷ clics de salida", num: "results", den: "outbound_clicks", view: "store", format: "pct", higherIsBetter: true, min: { key: "outbound_clicks", value: 100, label: "100 clics" }, onlyKinds: ["lead", "message", "other"] },
+  { id: "click_visit", label: "Clic → visita", formula: "Visitas a la página ÷ clics de salida", num: "landing_page_views", den: "outbound_clicks", view: "store", format: "pct", higherIsBetter: true, min: { key: "outbound_clicks", value: 100, label: "100 clics" }, needs: ["landing_page_view"], onlyKinds: ["purchase", "lead", "other"] },
+  { id: "visit_cart", label: "Visita → carrito", formula: "Agregados al carrito ÷ visitas a la página", num: "add_to_cart", den: "landing_page_views", view: "store", format: "pct", higherIsBetter: true, min: { key: "landing_page_views", value: 100, label: "100 visitas" }, needs: ["landing_page_view", "add_to_cart"], onlyKinds: ["purchase"] },
+  { id: "cart_checkout", label: "Carrito → checkout", formula: "Pagos iniciados ÷ agregados al carrito", num: "initiate_checkout", den: "add_to_cart", view: "store", format: "pct", higherIsBetter: true, min: { key: "add_to_cart", value: 20, label: "20 carritos" }, needs: ["add_to_cart", "initiate_checkout"], onlyKinds: ["purchase"] },
+  { id: "checkout_purchase", label: "Checkout → compra", formula: "Compras ÷ pagos iniciados", num: "purchases", den: "initiate_checkout", view: "store", format: "pct", higherIsBetter: true, min: { key: "initiate_checkout", value: 10, label: "10 pagos iniciados" }, needs: ["initiate_checkout", "purchase"], onlyKinds: ["purchase"] },
+  { id: "session_cvr", label: "Conv. sesión", formula: "Compras ÷ visitas a la página", num: "purchases", den: "landing_page_views", view: "store", format: "pct", higherIsBetter: true, min: { key: "landing_page_views", value: 100, label: "100 visitas" }, needs: ["landing_page_view", "purchase"], onlyKinds: ["purchase"] },
+  { id: "aov", label: "AOV", formula: "Valor de compras ÷ compras", num: "purchase_value", den: "purchases", view: "store", format: "money", higherIsBetter: true, min: { key: "purchases", value: 5, label: "5 compras" }, needs: ["purchase"], onlyKinds: ["purchase"] },
+  { id: "roas", label: "ROAS", formula: "Valor de compras ÷ gasto", num: "purchase_value", den: "spend", view: "store", format: "ratio", higherIsBetter: true, min: { key: "purchases", value: 5, label: "5 compras" }, needs: ["purchase"], onlyKinds: ["purchase"] },
 ]
 
 export const metricById = (id: MetricId, defs: MetricDef[] = METRICS) => defs.find((m) => m.id === id)!
@@ -115,7 +135,25 @@ export function applyOverrides(overrides: MetricOverride[]): MetricDef[] {
 
 // Orden del embudo para "dónde se rompe": la primera etapa con muestra
 // suficiente que queda claramente por debajo de la mediana del conjunto.
-export const FUNNEL_ORDER: MetricId[] = ["hook", "hold", "ctr", "click_visit", "visit_cart", "cart_checkout", "checkout_purchase"]
+// Lo del creativo (hook, hold, CTR) es igual para todos; después del clic
+// depende del tipo de resultado.
+export const FUNNEL_BY_KIND: Record<ResultKind, MetricId[]> = {
+  purchase: ["hook", "hold", "ctr", "click_visit", "visit_cart", "cart_checkout", "checkout_purchase"],
+  lead: ["hook", "hold", "ctr", "result_rate"],
+  message: ["hook", "hold", "ctr", "result_rate"],
+  other: ["hook", "hold", "ctr", "result_rate"],
+  none: ["hook", "hold", "ctr"],
+}
+export const FUNNEL_ORDER: MetricId[] = FUNNEL_BY_KIND.purchase
+
+// Métricas de la vista «Embudo» (después del clic) según el tipo de resultado.
+export const STORE_COLS_BY_KIND: Record<ResultKind, MetricId[]> = {
+  purchase: ["click_visit", "visit_cart", "cart_checkout", "checkout_purchase", "session_cvr", "aov", "roas"],
+  lead: ["click_visit", "result_rate", "cpc", "cpm"],
+  message: ["result_rate", "cpc", "cpm"],
+  other: ["result_rate", "cpc", "cpm"],
+  none: ["cpm", "cpc"],
+}
 
 // Diferencia relativa contra la mediana a partir de la cual algo se marca
 // mejor/peor (por debajo de esto es "en la media") y se considera ruptura.
@@ -130,12 +168,15 @@ export interface MetricValue {
   status: "ok" | "na" | "not_measured" | "small_sample"
 }
 
-export function computeMetric(def: MetricDef, c: Counters, opts: { isVideo: boolean; missing: StoreEvent[] }): MetricValue {
+export function computeMetric(def: MetricDef, c: Counters, opts: { isVideo: boolean; missing: StoreEvent[]; kind?: ResultKind }): MetricValue {
   const num = c[def.num]
   const den = c[def.den]
+  const kind = opts.kind ?? "purchase"
   if (def.videoOnly && !opts.isVideo) return { value: null, num, den, sampleOk: false, status: "na" }
-  if (def.needs?.some((e) => opts.missing.includes(e))) return { value: null, num, den, sampleOk: false, status: "not_measured" }
-  const value = den > 0 ? num / den : null
+  if (def.onlyKinds && !def.onlyKinds.includes(kind)) return { value: null, num, den, sampleOk: false, status: "na" }
+  // Eventos de tienda faltantes solo importan cuando el resultado es compra.
+  if (kind === "purchase" && def.needs?.some((e) => opts.missing.includes(e))) return { value: null, num, den, sampleOk: false, status: "not_measured" }
+  const value = den > 0 ? (num / den) * (def.scale ?? 1) : null
   const sampleOk = c[def.min.key] >= def.min.value && value !== null
   return { value, num, den, sampleOk, status: sampleOk ? "ok" : "small_sample" }
 }
@@ -180,12 +221,14 @@ export interface AdEvaluation {
 const MIN_IMPRESSIONS = 1000
 const STARVED_SHARE = 0.05
 
-export function evaluateAdset(ads: AuditAdInput[], missing: StoreEvent[], defs: MetricDef[] = METRICS): { evaluations: AdEvaluation[]; medians: Record<MetricId, number | null>; totals: Counters } {
+export function evaluateAdset(
+  ads: AuditAdInput[], missing: StoreEvent[], defs: MetricDef[] = METRICS, kind: ResultKind = "purchase", resultLabel = "resultados",
+): { evaluations: AdEvaluation[]; medians: Record<MetricId, number | null>; totals: Counters } {
   const totals = ads.reduce((acc, a) => addCounters(acc, a.counters as unknown as Record<keyof Counters, number>), zeroCounters())
 
   const raw = ads.map((a) => ({
     ad: a,
-    values: Object.fromEntries(defs.map((m) => [m.id, computeMetric(m, a.counters, { isVideo: a.isVideo, missing })])) as Record<MetricId, MetricValue>,
+    values: Object.fromEntries(defs.map((m) => [m.id, computeMetric(m, a.counters, { isVideo: a.isVideo, missing, kind })])) as Record<MetricId, MetricValue>,
   }))
 
   const medians = Object.fromEntries(defs.map((m) => [
@@ -193,7 +236,7 @@ export function evaluateAdset(ads: AuditAdInput[], missing: StoreEvent[], defs: 
     median(raw.filter((r) => r.values[m.id].sampleOk).map((r) => r.values[m.id].value as number)),
   ])) as Record<MetricId, number | null>
 
-  const comparableForCpa = raw.filter((r) => r.values.cpa.sampleOk).length
+  const comparableForCpr = raw.filter((r) => r.values.cpr.sampleOk).length
 
   const evaluations = raw.map(({ ad, values }): AdEvaluation => {
     const metrics = Object.fromEntries(defs.map((m) => {
@@ -216,19 +259,19 @@ export function evaluateAdset(ads: AuditAdInput[], missing: StoreEvent[], defs: 
       verdictReason = hiddenWinner
         ? "Meta casi no le dio gasto, pero sus señales tempranas son buenas: posible ganador escondido"
         : "Meta casi no le dio gasto"
-    } else if (!metrics.cpa.sampleOk) {
+    } else if (!metrics.cpr.sampleOk) {
       verdict = "nodata"
-      verdictReason = metrics.cpa.status === "not_measured" ? "La cuenta no mide compras" : `${ad.counters.purchases} compras: muy pocas para juzgar el CPA`
-    } else if (comparableForCpa < 2) {
+      verdictReason = `${Math.round(ad.counters.results).toLocaleString("es-MX")} ${resultLabel.toLowerCase()}: muy pocos para juzgar el costo por resultado`
+    } else if (comparableForCpr < 2) {
       verdict = "alone"
-      verdictReason = "No hay otro anuncio con suficientes compras para comparar en este conjunto"
+      verdictReason = `No hay otro anuncio con suficientes ${resultLabel.toLowerCase()} para comparar en este conjunto`
     } else {
-      verdict = metrics.cpa.cmp === "worse" ? "lose" : "win"
-      verdictReason = verdict === "win" ? "CPA igual o mejor que la mediana del conjunto" : "CPA peor que la mediana del conjunto"
+      verdict = metrics.cpr.cmp === "worse" ? "lose" : "win"
+      verdictReason = verdict === "win" ? "Costo por resultado igual o mejor que la mediana del conjunto" : "Costo por resultado peor que la mediana del conjunto"
     }
 
     let breakAt: MetricId | null = null
-    for (const id of FUNNEL_ORDER) {
+    for (const id of FUNNEL_BY_KIND[kind]) {
       const m = metrics[id]
       if (m.cmp === "worse" && m.rel !== null && Math.abs(m.rel) >= BREAK_THRESHOLD) { breakAt = id; break }
     }
@@ -279,13 +322,15 @@ export function retentionAt(points: CurvePoint[], sec: number): number | null {
   return points[points.length - 1].pct
 }
 
-// Mayor caída en un tramo (desde el segundo 1, para no contar el scroll
-// inicial). Regresa el tramo y cuánto se perdió de quienes seguían viendo.
-export function biggestDrop(points: CurvePoint[]): { from: number; to: number; lostShare: number } | null {
+// Mayor caída DESPUÉS DEL GANCHO (desde el segundo 3): la caída de los
+// primeros segundos es el scroll y ya la mide el hook rate. Regresa el tramo
+// y cuánto se perdió de quienes seguían viendo.
+export function biggestDrop(points: CurvePoint[], fromSec = 3): { from: number; to: number; lostShare: number } | null {
   let best: { from: number; to: number; lostShare: number } | null = null
-  for (let i = 2; i < points.length; i++) {
+  for (let i = 1; i < points.length; i++) {
     const a = points[i - 1]
     const b = points[i]
+    if (a.sec < fromSec) continue
     if (a.pct <= 0) continue
     const lostShare = (a.pct - b.pct) / a.pct
     // Por segundo: después del 15 los tramos son de 5–10 s y si no siempre
@@ -295,6 +340,14 @@ export function biggestDrop(points: CurvePoint[]): { from: number; to: number; l
     if (perSec > bestPerSec) best = { from: a.sec, to: b.sec, lostShare }
   }
   return best
+}
+
+// % que se fue durante un tramo [from, to) de quienes seguían al empezar.
+export function lostDuring(points: CurvePoint[], from: number, to: number): number | null {
+  const a = retentionAt(points, from)
+  const b = retentionAt(points, to)
+  if (a === null || b === null || a <= 0) return null
+  return Math.max(0, (a - b) / a)
 }
 
 export function formatSec(sec: number): string {

@@ -40,10 +40,15 @@ export function MetricCell({ id, defs, evaluation, currency, isBreak }: { id: Me
   if (m.status === "not_measured") return <span className="text-xs text-muted-foreground" title="La cuenta no manda este evento">no medido</span>
   if (m.value === null) return <span className="text-muted-foreground">—</span>
   const arrow = m.rel === null || m.cmp === "neutral" ? "" : m.rel > 0 ? "↑ " : "↓ "
+  // Meta a veces cuenta más visitas que clics (recargas, otra atribución):
+  // se muestra topado en ~100 % en vez de un número que parece error.
+  const capped = id === "click_visit" && m.value > 1
   const sample = `${m.num.toLocaleString("es-MX", { maximumFractionDigits: 0 })} / ${m.den.toLocaleString("es-MX", { maximumFractionDigits: 0 })}`
   return (
     <span
-      title={m.sampleOk
+      title={capped
+        ? `Meta reporta más visitas (${Math.round(m.num)}) que clics (${Math.round(m.den)}): pasa con recargas o visitas atribuidas por otra vía.`
+        : m.sampleOk
         ? `${sample} · mediana del conjunto ${formatMetric(def, m.median, currency)}`
         : `Muestra chica (${sample}); mínimo ${def.min.label}. No se compara.`}
       className={cn(
@@ -52,7 +57,7 @@ export function MetricCell({ id, defs, evaluation, currency, isBreak }: { id: Me
         isBreak && "outline outline-1 outline-orange-500",
       )}
     >
-      {arrow}{formatMetric(def, m.value, currency)}
+      {arrow}{capped ? "~100 %" : formatMetric(def, m.value, currency)}
     </span>
   )
 }
@@ -66,7 +71,10 @@ export const BREAK_TEXT: Record<MetricId, string> = {
   cart_checkout: "Abandonan antes de pagar",
   checkout_purchase: "Se caen en el pago",
   session_cvr: "Convierte poco",
-  cpa: "CPA alto",
+  result_rate: "Pocos resultados por clic",
+  cpr: "Costo por resultado alto",
+  cpm: "CPM caro",
+  cpc: "Clic caro",
   aov: "Ticket bajo",
   roas: "ROAS bajo",
 }

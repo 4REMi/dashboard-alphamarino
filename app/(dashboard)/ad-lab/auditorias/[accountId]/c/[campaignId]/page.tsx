@@ -4,6 +4,7 @@ import { getAuditAccessUser } from "@/lib/ad-audit/access"
 import { getCampaignAudit, getCampaignHypotheses } from "@/lib/ad-audit/queries"
 import { CampaignAudit } from "@/components/ad-audit/campaign-audit"
 import { HypothesesPanel } from "@/components/ad-audit/hypotheses-panel"
+import { getAuditBrand } from "@/lib/ad-audit/brand"
 
 export const dynamic = "force-dynamic"
 // Los análisis por partes y las hipótesis se lanzan desde aquí (server actions).
@@ -14,7 +15,8 @@ export default async function AuditCampaignPage({ params }: { params: Promise<{ 
   const { accountId, campaignId } = await params
   const view = await getCampaignAudit(campaignId)
   if (!view || view.account.id !== accountId) notFound()
-  const hyp = await getCampaignHypotheses(campaignId)
+  const [hyp, brand] = await Promise.all([getCampaignHypotheses(campaignId), getAuditBrand(accountId)])
+  const lines = brand.lines.map((l) => ({ id: l.id, name: l.name, color: l.color }))
   const basePath = `/ad-lab/auditorias/${accountId}/c/${campaignId}`
   return (
     <div className="mx-auto flex max-w-[1500px] flex-col gap-5 p-4 sm:p-6">
@@ -31,7 +33,7 @@ export default async function AuditCampaignPage({ params }: { params: Promise<{ 
           {view.campaign.period_since} → {view.campaign.period_until} · {view.campaign.objective ?? "—"} · atribución 7 días después del clic
         </p>
       </div>
-      <CampaignAudit view={view} basePath={basePath} />
+      <CampaignAudit view={view} basePath={basePath} lines={lines} />
       <HypothesesPanel view={view} hypotheses={hyp.rows} error={hyp.error} basePath={basePath} />
     </div>
   )

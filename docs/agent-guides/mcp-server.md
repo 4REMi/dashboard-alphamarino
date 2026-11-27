@@ -589,14 +589,16 @@ nombre (exacto o parcial) o por ID `act_`; si hay varias coincidencias piden
 ser más específico.
 
 - `auditorias(busqueda?)` — cuentas auditadas con sus campañas y períodos.
-- `auditoria_campana(cuenta, campana?)` — totales y, por conjunto, cada anuncio:
-  veredicto, % del gasto, métricas de creativo y tienda contra la mediana de su
+- `auditoria_campana(cuenta, campana?)` — gasto y resultados por tipo, qué
+  cuenta como resultado en cada conjunto y, por conjunto, cada anuncio:
+  veredicto (por costo por resultado), % del gasto, resultados, métricas de creativo y tienda contra la mediana de su
   conjunto, dónde se rompe y partes (gancho/cuerpo/cierre).
-- `auditoria_anuncio(cuenta, anuncio, campana?)` — embudo completo con
-  medianas y etapa rota, mayor caída de retención, partes con segundos,
+- `auditoria_anuncio(cuenta, anuncio, campana?)` — embudo según el tipo de
+  resultado con medianas y etapa rota, costos, alcance/frecuencia/tiempo visto, mayor caída de retención, partes con segundos,
   ganador del conjunto para comparar.
-- `auditoria_que_funciona(cuenta, formato?)` — ganchos/cuerpos/cierres por
-  tipo con veredicto y respaldo, y la combinación que más vende (solo cuenta
+- `auditoria_que_funciona(cuenta, formato?, linea?)` — ganchos/cuerpos/cierres por
+  tipo con veredicto y respaldo (de toda la cuenta o de una Brand Line), y la
+  combinación ganadora por costo por resultado (solo cuenta
   creativos analizados por partes).
 - `auditoria_hipotesis(cuenta, campana?, estado?)` — hipótesis con estado,
   nota y evidencia hoy.
