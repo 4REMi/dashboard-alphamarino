@@ -142,6 +142,11 @@ export function CampaignAudit({ view, basePath, lines = [] }: {
                 {adset.result.source === "manual" && <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-[11px] font-semibold text-sky-700 dark:text-sky-300">{adset.result.label} · elegido a mano</span>}
               </label>
             </div>
+            {adset.result.stale && (
+              <p className="w-full rounded-lg border border-orange-500/50 bg-orange-500/10 px-3 py-2 text-sm">
+                Esta campaña se capturó con una versión vieja de la extensión, que solo guardaba compras: por eso {adset.result.label.toLowerCase()} sale en 0. <span className="font-semibold">Vuelve a auditarla con la extensión v0.6</span> (no duplica nada).
+              </p>
+            )}
             <p className="text-xs text-muted-foreground">
               ↑ ↓ contra la mediana del conjunto · <span className="text-emerald-700 dark:text-emerald-300">verde</span> mejor, <span className="text-orange-700 dark:text-orange-300">naranja</span> peor · gris: muestra chica
             </p>

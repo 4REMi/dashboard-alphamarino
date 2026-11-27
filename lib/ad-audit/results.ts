@@ -23,6 +23,9 @@ export interface AdsetResult {
   label: string                      // «Conversaciones iniciadas», «Compras»…
   source: "manual" | "auto" | "fallback"
   options: ResultOption[]            // acciones con datos, para corregir a mano
+  // Capturado con la extensión anterior a la v0.6 (sin `actions`): solo se
+  // pueden contar compras. Para otros resultados hay que volver a capturar.
+  stale?: boolean
 }
 
 const LABELS: [RegExp, string][] = [

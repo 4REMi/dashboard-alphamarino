@@ -195,6 +195,7 @@ export function AdAuditDetail({ ad, adset, view, currency, backHref, metrics, ba
           {ad.landingUrl && <a href={ad.landingUrl} target="_blank" rel="noreferrer" className="text-sm text-primary hover:underline">Página de destino ↗</a>}
         </div>
       </div>
+      {adset.result.stale && <p className="rounded-lg border border-orange-500/50 bg-orange-500/10 px-3 py-2 text-sm">Capturada con una versión vieja de la extensión (solo guardaba compras): {adset.result.label.toLowerCase()} sale en 0 hasta volver a auditar con la v0.6.</p>}
       {crossAdset && <p className="rounded-lg border border-orange-500/40 bg-orange-500/5 px-3 py-2 text-sm">Estás comparando con un anuncio de otro conjunto ({otherSet?.name}): otra audiencia o presupuesto. Sirve para ver diferencias de creativo, no para decidir quién gana.</p>}
 
       {/* Qué cambia entre los dos */}
@@ -221,10 +222,11 @@ export function AdAuditDetail({ ad, adset, view, currency, backHref, metrics, ba
         </div>
       )}
 
-      <div className="flex flex-wrap items-start gap-5">
-        {/* Videos */}
-        <div className="flex min-w-0 flex-[1_1_440px] flex-col gap-3">
-          <div className={cn("grid gap-3", other ? "grid-cols-2" : "grid-cols-1 max-w-[360px]")}>
+      {/* Videos fijos a la izquierda (siguen a la vista mientras se recorre el
+          análisis y se hace clic en la curva); en pantallas angostas van arriba. */}
+      <div className={cn("grid items-start gap-5", other ? "lg:grid-cols-[minmax(360px,440px)_minmax(0,1fr)]" : "lg:grid-cols-[minmax(240px,300px)_minmax(0,1fr)]")}>
+        <div className="flex min-w-0 flex-col gap-3 lg:sticky lg:top-4">
+          <div className={cn("grid gap-3", other ? "grid-cols-2" : "mx-auto w-full max-w-[300px] grid-cols-1")}>
             {[{ a: ad, ref: mainRef, p: pts, tag: "Este anuncio" }, ...(other ? [{ a: other, ref: otherRef, p: otherPts, tag: crossAdset ? "Otro conjunto" : other.evaluation.verdict === "win" ? "Ganador del conjunto" : "Del conjunto" }] : [])].map(({ a, ref, p, tag }) => {
               const keep = retentionAt(p, time)
               return (
@@ -238,19 +240,25 @@ export function AdAuditDetail({ ad, adset, view, currency, backHref, metrics, ba
                     ) : (
                       <div className={cn("flex w-full items-center justify-center text-xs text-muted-foreground", a.format === "video" ? "aspect-[9/16]" : "aspect-square")}>Sin archivo copiado</div>
                     )}
-                    <span className="absolute left-2 top-2 max-w-[90%] rounded-md bg-black/70 px-2 py-1 text-xs font-semibold text-white">{tag} · {a.name}</span>
+                    <span className="absolute left-1.5 top-1.5 max-w-[92%] truncate rounded-md bg-black/70 px-1.5 py-0.5 text-[11px] font-semibold text-white" title={`${tag} · ${a.name}`}>{tag}</span>
                     {a.format === "video" && (
                       <span className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/85 to-transparent p-3 text-white">
-                        <span className="block text-2xl font-bold tabular-nums">{keep === null ? "—" : `${Math.round(keep)} %`}</span>
-                        <span className="text-xs text-white/80">siguen viendo en {formatSec(time)}</span>
+                        <span className="block text-xl font-bold tabular-nums">{keep === null ? "—" : `${Math.round(keep)} %`}</span>
+                        <span className="text-[11px] text-white/80">siguen en {formatSec(time)}</span>
                       </span>
                     )}
                   </div>
-                  {a.id !== ad.id && bigStats(a)}
+                  {other && (
+                    <div className="flex flex-col gap-0.5 text-xs">
+                      <span className="truncate font-semibold" title={a.name}>{a.name}</span>
+                      <span className="tabular-nums"><span className="text-base font-bold">{formatMoney(a.counters.spend, currency)}</span> <span className="text-muted-foreground">· {(a.evaluation.spendShare * 100).toFixed(0)} %</span></span>
+                      <span className="tabular-nums"><span className="text-base font-bold">{Math.round(a.counters.results).toLocaleString("es-MX")}</span> <span className="text-muted-foreground">· {val(a, "cpr")} c/u</span></span>
+                    </div>
+                  )}
                   {!a.parts && a.format !== "other" && (
                     <button onClick={() => analyze(a.id)} disabled={pendingQueue || queued.has(a.id)}
-                      className="h-9 rounded-lg border border-border px-3 text-sm disabled:opacity-60">
-                      {queued.has(a.id) ? "En la cola de análisis…" : "Analizar este creativo"}
+                      className="h-9 rounded-lg border border-border px-2 text-xs font-semibold disabled:opacity-60">
+                      {queued.has(a.id) ? "En la cola…" : "Analizar creativo"}
                     </button>
                   )}
                 </div>
@@ -258,30 +266,30 @@ export function AdAuditDetail({ ad, adset, view, currency, backHref, metrics, ba
             })}
           </div>
           {isVideo && (
-            <div className="flex flex-wrap gap-2" role="group" aria-label="Saltar a una parte del video">
+            <div className="grid grid-cols-4 gap-1.5" role="group" aria-label="Saltar a una parte del video">
               {ad.videoUrl && (
-                <button onClick={togglePlay} className="h-11 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground">
+                <button onClick={togglePlay} className="col-span-4 h-11 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground">
                   {playing ? "Pausar" : other ? "Reproducir ambos" : "Reproducir"}
                 </button>
               )}
               {(["gancho", "cuerpo", "cierre"] as PartKey[]).map((p) => (
                 <button key={p} onClick={() => jumpToPart(p)} disabled={ad.parts?.[p]?.desde == null}
                   title={other ? "Cada video salta a su propia parte" : undefined}
-                  className="flex h-11 flex-col items-start justify-center rounded-lg border border-border px-3 text-left text-xs disabled:opacity-40">
+                  className="flex h-12 min-w-0 flex-col items-start justify-center rounded-lg border border-border px-2 text-left text-xs disabled:opacity-40">
                   <span className="font-bold">{PART_LABEL[p]}</span>
-                  <span className="text-muted-foreground tabular-nums">{ad.parts?.[p]?.desde != null ? formatSec(ad.parts[p].desde!) : "sin analizar"}{other?.parts?.[p]?.desde != null ? ` · ${formatSec(other.parts[p].desde!)}` : ""}</span>
+                  <span className="w-full truncate text-muted-foreground tabular-nums">{ad.parts?.[p]?.desde != null ? formatSec(ad.parts[p].desde!) : "—"}{other?.parts?.[p]?.desde != null ? ` · ${formatSec(other.parts[p].desde!)}` : ""}</span>
                 </button>
               ))}
               {drop && drop.lostShare > 0 && (
-                <button onClick={() => seekBoth(drop.from)} className="flex h-11 flex-col items-start justify-center rounded-lg border border-orange-500/60 px-3 text-left text-xs text-orange-700 dark:text-orange-300">
-                  <span className="font-bold tabular-nums">{formatSec(drop.from)}</span><span>Se va el {Math.round(drop.lostShare * 100)} %</span>
+                <button onClick={() => seekBoth(drop.from)} title={`Mayor caída después del gancho: se va el ${Math.round(drop.lostShare * 100)} %`} className="flex h-12 min-w-0 flex-col items-start justify-center rounded-lg border border-orange-500/60 px-2 text-left text-xs text-orange-700 dark:text-orange-300">
+                  <span className="font-bold tabular-nums">{formatSec(drop.from)}</span><span className="w-full truncate">−{Math.round(drop.lostShare * 100)} %</span>
                 </button>
               )}
             </div>
           )}
         </div>
 
-        <div className="flex min-w-0 flex-[999_1_520px] flex-col gap-4">
+        <div className="flex min-w-0 flex-col gap-4">
           {/* Retención + estructura alineada */}
           {isVideo && (
             <div className="rounded-xl border border-border bg-card p-4">

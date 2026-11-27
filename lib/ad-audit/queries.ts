@@ -264,11 +264,17 @@ export async function getCampaignAudit(campaignId: string): Promise<CampaignAudi
       promotedObject: s.promoted_object ?? null, override: s.result_override ?? null, actionTotals,
     })
 
+    const hasActions = setRows.some((r) => r.actions && Object.keys(r.actions).length > 0)
+    if (!hasActions && setRows.length > 0 && result.kind !== "purchase" && result.field !== "impressions") result.stale = true
+
     const countersByAd = new Map<string, Counters>()
     const weeklyByAd = new Map<string, Map<string, Counters>>()
     for (const r of setRows) {
       const { results, value } = rowResult(r, result)
       const row = { ...r, results, result_value: value }
+      // Anuncios a mensajes / formularios: no hay clics de salida, el clic es
+      // al chat o al formulario (link_click). Sin esto el CTR sale en 0 %.
+      if (!(Number(r.outbound_clicks) > 0) && Number(r.actions?.link_click) > 0) row.outbound_clicks = Number(r.actions!.link_click)
       const c = countersByAd.get(r.ad_id) ?? countersByAd.set(r.ad_id, zeroCounters()).get(r.ad_id)!
       addCounters(c, row)
       const weeks = weeklyByAd.get(r.ad_id) ?? weeklyByAd.set(r.ad_id, new Map()).get(r.ad_id)!

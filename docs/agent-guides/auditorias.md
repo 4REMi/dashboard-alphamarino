@@ -58,7 +58,11 @@ clientes sin la extensión (usuario de sistema). El mockup vive en el artifact
   mensaje, otro, ninguno; cambian qué columnas muestra «Embudo» y qué métrica
   se usa en el cierre. Auditorías capturadas antes de la v0.6 no tienen
   `actions`: para compras siguen funcionando; para otros resultados hay que
-  **volver a capturar**.
+  **volver a capturar** (la campaña y el detalle lo avisan en naranja,
+  `AdsetResult.stale`).
+- **CTR sin clics de salida**: en anuncios a mensajes o formularios Meta no da
+  clics de salida; si un día tiene 0 se usa `link_click` (clic al chat o
+  formulario) para que el CTR no salga en 0 %.
 - **Atribución**: conversiones (carrito, checkout, compra y su valor) con
   **7 días después del clic** (`7d_click`). De cada evento se toma una sola
   variante (`omni_*` primero) para no contar doble.
@@ -180,6 +184,8 @@ cuánta gente se va en cada momento; embudo por cada 1,000 impresiones con
 «dónde se separan»; costos (CPM, CPC, costo por resultado), alcance,
 frecuencia y tiempo visto; retención en 25/50/75/95/100 % de quienes pasan
 3 s; tendencia semanal (hook rate, CTR, costo por resultado) para ver fatiga.
+En pantallas anchas los videos y sus controles quedan fijos a la izquierda
+(sticky) mientras se recorre el análisis; en angostas van arriba.
 Si un creativo no está analizado, «Analizar este creativo» lo encola desde ahí.
 
 **Analizar por partes**: en la campaña, marca con la casilla los creativos que
