@@ -215,8 +215,8 @@ anuncios y los archivos en Storage. **Prospecto/Cliente**: clic en la etiqueta.
   la retoma. El análisis corre en contexto de confianza a nombre de quien
   encoló (`analyzeLibraryAd` acepta `isTrustedContext()` con perfil).
 
-- **Migración 128 antes que la extensión v0.6**: el servidor ya escribe
-  `actions`, `promoted_object`, alcance, etc. Sin la 128 la captura falla.
+- **Migración 129 antes que la extensión v0.6**: el servidor ya escribe
+  `actions`, `promoted_object`, alcance, etc. Sin la 129 la captura falla.
   Las lecturas toleran su ausencia (`selectOr`).
 - **Límites de Meta**: las lecturas cuentan contra los límites del Ads Manager
   del usuario. La extensión lee los encabezados de uso y pausa sola (≥75 % →
