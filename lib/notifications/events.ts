@@ -30,6 +30,16 @@ export const NOTIFICATION_EVENTS = {
         ? `📋 You were assigned a task: *${data.taskTitle}*${data.projectName ? ` · ${data.projectName}` : ""}`
         : `📋 Se te asignó una tarea: *${data.taskTitle}*${data.projectName ? ` · ${data.projectName}` : ""}`,
   },
+  // "Recordar" desde el modal de la tarea (sendTaskReminder en
+  // lib/actions/tasks.ts): alguien del equipo le reenvía al responsable un
+  // aviso de que la tarea sigue pendiente. Manual, máximo uno por hora.
+  task_reminder: {
+    label: "Recordatorio de tarea pendiente",
+    build: (data: { taskTitle: string; projectName?: string; senderName: string; dueDate?: string }, lang: NotificationLang) =>
+      lang === "en"
+        ? `⏰ ${data.senderName} is reminding you of a pending task: *${data.taskTitle}*${data.projectName ? ` · ${data.projectName}` : ""}${data.dueDate ? ` (due ${data.dueDate})` : ""}`
+        : `⏰ ${data.senderName} te recuerda una tarea pendiente: *${data.taskTitle}*${data.projectName ? ` · ${data.projectName}` : ""}${data.dueDate ? ` (vence el ${data.dueDate})` : ""}`,
+  },
   project_member_added: {
     label: "Agregado a proyecto",
     build: (data: { projectName: string }, lang: NotificationLang) =>

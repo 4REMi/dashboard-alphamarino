@@ -234,6 +234,7 @@ export interface Task {
   // "cuándo se terminó" aproximado y para detectar tareas sin movimiento.
   updated_at?: string
   completed_at?: string | null // migración 117
+  last_reminded_at?: string | null // migración 128 — último "Recordar" enviado al responsable
   description: string | null
   status: TaskStatus
   priority: TaskPriority // kept for DB compat, unused in UI

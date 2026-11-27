@@ -221,6 +221,57 @@ export async function updateTaskPinged(id: string, isPinged: boolean, projectId:
   revalidateTaskPaths(projectId)
 }
 
+// "Recordar" (buzz) desde el modal de la tarea: reenvía al responsable un
+// aviso de que la tarea sigue pendiente (evento task_reminder). Devuelve un
+// resultado en vez de lanzar para que la UI muestre el motivo (en producción
+// Next oculta el mensaje de los errores). Límite: uno por hora por tarea.
+const REMINDER_COOLDOWN_MS = 60 * 60 * 1000
+
+export type TaskReminderResult =
+  | { ok: true; remindedAt: string }
+  | { ok: false; reason: "no_assignee" | "done" | "self" | "cooldown" | "not_found"; retryAt?: string }
+
+export async function sendTaskReminder(id: string, projectId: string | null, actingProfileId?: string): Promise<TaskReminderResult> {
+  assertActingProfile(actingProfileId)
+  const user = await requireTaskPermission(projectId, actingProfileId)
+
+  const admin = createAdminClient()
+  const { data: task } = await admin
+    .from("tasks")
+    .select("id, title, status, assignee_id, project_id, due_date, last_reminded_at, project:projects(name)")
+    .eq("id", id)
+    .single()
+
+  // El projectId llega del cliente: la tarea tiene que ser de ese proyecto
+  // (el permiso se verificó contra él).
+  if (!task || (task.project_id ?? null) !== (projectId ?? null)) return { ok: false, reason: "not_found" }
+  if (!task.assignee_id) return { ok: false, reason: "no_assignee" }
+  if (task.status === "Done") return { ok: false, reason: "done" }
+  if (task.assignee_id === user.id) return { ok: false, reason: "self" }
+  if (task.last_reminded_at) {
+    const next = Date.parse(task.last_reminded_at) + REMINDER_COOLDOWN_MS
+    if (next > Date.now()) return { ok: false, reason: "cooldown", retryAt: new Date(next).toISOString() }
+  }
+
+  const remindedAt = new Date().toISOString()
+  const { error } = await admin.from("tasks").update({ last_reminded_at: remindedAt }).eq("id", id)
+  if (error) throw error
+
+  const { data: sender } = await admin.from("profiles").select("full_name").eq("id", user.id).single()
+  const project = (Array.isArray(task.project) ? task.project[0] : task.project) as { name: string } | null
+  const dueDate = task.due_date ? task.due_date.slice(0, 10).split("-").reverse().join("/") : undefined
+
+  await notify(task.assignee_id, "task_reminder", {
+    taskTitle: task.title,
+    projectName: project?.name,
+    senderName: sender?.full_name ?? "Alguien del equipo",
+    dueDate,
+  })
+
+  revalidateTaskPaths(projectId)
+  return { ok: true, remindedAt }
+}
+
 export async function updateTaskAssignee(id: string, assigneeId: string | null, projectId: string | null, actingProfileId?: string) {
   assertActingProfile(actingProfileId)
   await requireTaskPermission(projectId, actingProfileId)
